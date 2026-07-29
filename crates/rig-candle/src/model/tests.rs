@@ -829,8 +829,13 @@ fn gguf_metadata_shapes_and_tensor_encodings_are_validated_before_loading()
 
 #[cfg(not(target_family = "wasm"))]
 #[test]
-fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rig_agent::{agent::AgentBuilder, completion::Prompt};
+fn loaded_model_works_with_agent_request_preparation()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Candle has no `ProviderConfig` arm (model tensors are not expressible
+    // as plain configuration), so drive the sans-IO agent path directly:
+    // `prepare_request` builds the turn request, `functions::complete` runs
+    // it on the loaded model.
+    use rig_agent::agent::{AgentConfig, ToolCatalog, prepare_request};
 
     let runtime = tokio::runtime::Builder::new_current_thread().build()?;
     runtime.block_on(async {
@@ -838,8 +843,17 @@ fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Err
             .temperature(0.0)
             .max_tokens(1)
             .build()?;
-        let agent = AgentBuilder::new(model).preamble("Be brief.").build();
-        let _answer = agent.prompt("hello").await?;
+        let config = AgentConfig::new().with_preamble("Be brief.");
+        let prepared = prepare_request(
+            &config,
+            &ToolCatalog::default(),
+            false,
+            Message::user("hello"),
+            &[],
+            None,
+            None,
+        )?;
+        let _answer = crate::functions::complete(&model, prepared.request).await?;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     })?;
     Ok(())

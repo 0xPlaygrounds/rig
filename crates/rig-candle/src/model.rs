@@ -6,9 +6,16 @@
 //! synchronously inside the completion future; browser applications should own
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
+//! Candle models are not expressible as plain provider configuration (they
+//! are loaded tensors, not connection details), so they plug into the agent
+//! machinery through its sans-IO half: `rig_agent::agent::prepare_request`
+//! builds each turn's request and [`crate::functions::complete`] runs it on
+//! the loaded model.
+//!
 //! ```no_run
-//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::agent::{AgentConfig, ToolCatalog, prepare_request};
 //! use rig_candle::{CandleModel, ModelData};
+//! use rig_core::completion::Message;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let data = ModelData {
@@ -17,13 +24,21 @@
 //!     weights: std::fs::read("./model/model.safetensors")?,
 //! };
 //! let model = CandleModel::from_safetensors_async(data).await?;
-//! let agent = AgentBuilder::new(model)
-//!     .preamble("You are a helpful assistant.")
-//!     .temperature(0.7)
-//!     .max_tokens(256)
-//!     .build();
-//! let answer = agent.prompt("Explain Rust ownership briefly.").await?;
-//! println!("{answer}");
+//! let config = AgentConfig::new()
+//!     .with_preamble("You are a helpful assistant.")
+//!     .with_temperature(0.7)
+//!     .with_max_tokens(256);
+//! let prepared = prepare_request(
+//!     &config,
+//!     &ToolCatalog::default(),
+//!     false,
+//!     Message::user("Explain Rust ownership briefly."),
+//!     &[],
+//!     None,
+//!     None,
+//! )?;
+//! let response = rig_candle::functions::complete(&model, prepared.request).await?;
+//! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }
 //! ```

@@ -28,8 +28,7 @@ async fn completions_api_agent_prompt() {
         "completions_api/completions_api_agent_prompt",
         |client| async move {
             let agent = client
-                .completion_model(openai::GPT_4O)
-                .into_agent_builder()
+                .agent(openai::GPT_4O)
                 .preamble("You are a helpful assistant.")
                 .build();
 

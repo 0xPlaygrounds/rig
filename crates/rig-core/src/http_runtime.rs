@@ -23,6 +23,8 @@ pub(crate) enum Transport {
     Reqwest(reqwest::Client),
     #[cfg(feature = "test-utils")]
     Recording(crate::test_utils::RecordingHttpClient),
+    #[cfg(feature = "test-utils")]
+    Sequenced(crate::test_utils::SequencedHttpClient),
 }
 
 impl Default for HttpRuntime {
@@ -54,6 +56,14 @@ impl HttpRuntime {
         }
     }
 
+    /// A runtime that replays a scripted sequence of test responses.
+    #[cfg(feature = "test-utils")]
+    pub fn sequenced(client: crate::test_utils::SequencedHttpClient) -> Self {
+        Self {
+            transport: Transport::Sequenced(client),
+        }
+    }
+
     /// The underlying transport, for provider modules that drive streaming
     /// helpers generic over `HttpClientExt` (transitional until the sans-IO
     /// stream parser lands).
@@ -75,6 +85,8 @@ impl HttpRuntime {
             Transport::Reqwest(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
             #[cfg(feature = "test-utils")]
             Transport::Recording(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
+            #[cfg(feature = "test-utils")]
+            Transport::Sequenced(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
         };
         match sent {
             Ok(response) => {
@@ -99,6 +111,8 @@ impl std::fmt::Debug for HttpRuntime {
             Transport::Reqwest(_) => "reqwest",
             #[cfg(feature = "test-utils")]
             Transport::Recording(_) => "recording",
+            #[cfg(feature = "test-utils")]
+            Transport::Sequenced(_) => "sequenced",
         };
         formatter
             .debug_struct("HttpRuntime")

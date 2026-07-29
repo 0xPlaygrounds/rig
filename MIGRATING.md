@@ -11,6 +11,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → 0.42](#041--042-unreleased) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -271,6 +272,93 @@ They now key on `all(target_arch = "wasm32", target_os = "unknown")`. If you
 defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
+
+---
+
+## 0.41 → 0.42 (unreleased)
+
+The agent runtime is now *data-oriented*: providers are plain configuration,
+and the classic `Agent` lost its model type parameter.
+
+### `Agent<M>` is now `Agent`
+
+Every classic runtime type lost its `M: CompletionModel` parameter:
+`Agent<M>` → `Agent`, `AgentBuilder<M>` → `AgentBuilder`,
+`AgentRunner<M>` → `AgentRunner`, `PromptRequest<S, M>` → `PromptRequest<S>`,
+`StreamingPromptRequest<M>` → `StreamingPromptRequest`,
+`Extractor<M, T>` → `Extractor<T>`, `ExtractorBuilder<M, T>` →
+`ExtractorBuilder<T>`, and the `StreamingPrompt<M>`/`StreamingChat<M>` traits
+are now plain `StreamingPrompt`/`StreamingChat`.
+
+If you only ever wrote `client.agent(model)…`, delete the type annotations
+and you are done — construction, the builder surface, hooks, memory, and the
+tool server are unchanged:
+
+```rust
+// before
+let agent: Agent<openai::responses_api::ResponsesCompletionModel> =
+    openai.agent(openai::GPT_5_2).preamble("…").build();
+// after
+let agent: Agent = openai.agent(openai::GPT_5_2).preamble("…").build();
+```
+
+### Agents hold a `ProviderConfig`, not a model
+
+Internally an `Agent` now stores a `rig::provider::ProviderConfig` (a serde
+enum with one arm per bundled provider) plus an `Arc<rig::provider::Runtime>`
+(the process-local transport handles). `client.agent(model)` still works: the
+new `rig::client::ToProviderConfig` trait (in the prelude) captures the
+client's connection details — base URL, headers, API-key placement — as plain
+configuration. You can also skip clients entirely:
+
+```rust
+use rig::agent::AgentBuilder;
+use rig::provider::ProviderConfig;
+let provider = ProviderConfig::OpenAiResponses(
+    rig::providers::openai::responses_api::functions::Config::new("gpt-5.2"),
+);
+let agent = AgentBuilder::new(provider).preamble("…").build();
+```
+
+### `AgentBuilder::new` takes a `ProviderConfig`
+
+`AgentBuilder::new(model)` became `AgentBuilder::new(provider_config)`.
+Migrate `client.completion_model(m)` at agent-construction sites to
+`client.provider_config(m)` (from `ToProviderConfig`) or just
+`client.agent(m)`. The builder gained `.runtime(Arc<Runtime>)` for sharing
+one transport across agents (a fresh default `Runtime` is built otherwise).
+
+### `AgentModelExt` is gone
+
+`model.into_agent_builder()` was removed — a portable completion model no
+longer identifies a provider. Use `client.agent(model)` or
+`AgentBuilder::new(provider_config)`.
+
+### Providers that cannot be plain configuration
+
+`rig-candle` (in-memory model weights) and `rig-vertexai` (interactive OAuth)
+cannot be captured as serde configs, so they no longer construct classic
+agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
+`prepare_request(…)` + the provider's own completion call; see
+`rig-vertexai/examples/tool_vertexai.rs` for the full loop. ChatGPT/Copilot
+clients bridge only credentials that are already cached (non-interactively);
+interactive OAuth flows still work through the classic clients themselves.
+
+### Mocking moved to `MockScript`
+
+`rig_core::test_utils::MockCompletionModel` no longer plugs into agents. Use
+the scripted mock provider (`test-utils` feature):
+
+```rust
+use rig::provider::{MockScript, ProviderConfig};
+let script = MockScript::from_responses(vec![/* CompletionResponse per turn */]);
+let agent = AgentBuilder::new(ProviderConfig::Mock(script.clone())).build();
+// `script` (clone shares the cursor) exposes .calls() and .requests().
+```
+
+Custom HTTP transports injected via `.http_client(...)` do not survive the
+bridge; inject them at the runtime instead:
+`AgentBuilder::new(provider).runtime(Arc::new(Runtime::with_http(HttpRuntime::recording(client))))`.
 
 ---
 

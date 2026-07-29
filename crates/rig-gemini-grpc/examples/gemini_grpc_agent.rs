@@ -1,5 +1,4 @@
-use rig_agent::prelude::*;
-use rig_gemini_grpc::Client;
+use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
 
 #[tracing::instrument(ret)]
 #[tokio::main]
@@ -9,12 +8,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Initialize the Google Gemini gRPC client
-    let client = Client::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
-
-    // Create agent with a single context prompt
-    let agent = client
-        .agent("gemini-2.5-flash")
+    // Create agent with a single context prompt; the config reads
+    // `GEMINI_API_KEY` from the environment, like `Client::from_env` did.
+    let agent = AgentBuilder::new(ProviderConfig::GeminiGrpc(
+        rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"),
+    ))
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .build();

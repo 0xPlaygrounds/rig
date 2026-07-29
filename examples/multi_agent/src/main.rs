@@ -1,10 +1,11 @@
+use rig::client::ToProviderConfig;
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, Message},
+    completion::{Chat, Message},
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -13,7 +14,7 @@ use serde_json::json;
 
 // Define a wrapper around an agent so that it can be provided to another agent
 // as a tool
-struct TranslatorTool<M: CompletionModel>(Agent<M>);
+struct TranslatorTool(Agent);
 
 const TRANSLATOR_TOOL_NAME: &str = "translator";
 
@@ -23,7 +24,7 @@ struct TranslatorArgs {
     prompt: String,
 }
 
-impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
+impl Tool for TranslatorTool {
     const NAME: &'static str = TRANSLATOR_TOOL_NAME;
 
     type Error = PromptError;
@@ -74,9 +75,9 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = OpenAIClient::from_env()?;
-    let model = openai_client.completion_model(openai::GPT_4O);
+    let provider = openai_client.provider_config(openai::GPT_4O);
 
-    let translator_agent = AgentBuilder::new(model.clone())
+    let translator_agent = AgentBuilder::new(provider.clone())
                 .preamble(
                     "You are a translator assistant that will translate any input text into english. \
                     If the text is already in english, simply respond with the original text but fix any mistakes (grammar, syntax, etc.)."
@@ -85,7 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let translator_tool = TranslatorTool(translator_agent);
 
-    let multi_agent_system = AgentBuilder::new(model)
+    let multi_agent_system = AgentBuilder::new(provider)
         .preamble(&format!(
             "You are a helpful assistant that can work with text in any language. \
             When you receive input that is not in English, or contains grammatical errors \

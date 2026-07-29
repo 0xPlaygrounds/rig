@@ -16,7 +16,7 @@ const ROUTER_PREAMBLE: &str = "
 
 fn build_router_agent(
     client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+) -> rig::agent::Agent {
     client
         .agent(openai::GPT_4)
         .preamble(ROUTER_PREAMBLE)
@@ -25,7 +25,7 @@ fn build_router_agent(
 
 fn build_response_agent(
     client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+) -> rig::agent::Agent {
     client.agent(openai::GPT_4).build()
 }
 

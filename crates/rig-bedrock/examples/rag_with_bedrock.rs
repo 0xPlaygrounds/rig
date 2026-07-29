@@ -1,6 +1,6 @@
 use std::vec;
 
-use rig_agent::prelude::*;
+use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
@@ -67,7 +67,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
 
-    let rag_agent = client.agent(AMAZON_NOVA_LITE)
+    // The classic bedrock client is not expressible as portable provider
+    // configuration; build the agent from a bedrock provider config directly
+    // (default AWS credential chain and region, like `Client::from_env`).
+    let rag_agent = AgentBuilder::new(ProviderConfig::Bedrock(
+        rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
+    ))
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

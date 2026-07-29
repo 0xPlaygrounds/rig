@@ -16,13 +16,13 @@ const ADDER_PREAMBLE: &str =
 
 fn build_rng_agent(
     client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+) -> rig::agent::Agent {
     client.agent(openai::GPT_4).preamble(RNG_PREAMBLE).build()
 }
 
 fn build_adder_agent(
     client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+) -> rig::agent::Agent {
     client.agent(openai::GPT_4).preamble(ADDER_PREAMBLE).build()
 }
 

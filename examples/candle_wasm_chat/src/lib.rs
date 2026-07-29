@@ -3,9 +3,9 @@
 use std::cell::RefCell;
 
 use rig::{
-    agent::{Agent, AgentBuilder},
+    agent::{AgentConfig, ToolCatalog, prepare_request},
     candle::{CandleModel, GgufModelData},
-    completion::Chat,
+    completion::CompletionModel,
     message::Message,
 };
 use wasm_bindgen::prelude::*;
@@ -33,8 +33,13 @@ const MAX_MESSAGE_BYTES: usize = 1024;
 const MAX_HISTORY_MESSAGES: usize = 12;
 const MAX_HISTORY_JSON_BYTES: usize = 2048;
 
+// Candle has no `ProviderConfig` arm (model tensors are not expressible as
+// plain configuration), so the chat drives the sans-IO agent protocol
+// directly: `prepare_request` builds each turn's request and the loaded
+// model executes it.
 struct ChatState {
-    agent: Agent<CandleModel>,
+    model: CandleModel,
+    config: AgentConfig,
     history: Vec<Message>,
 }
 
@@ -74,18 +79,17 @@ pub fn initialize() -> Result<(), JsValue> {
         weights: WEIGHTS,
     })
     .map_err(|error| js_error(BrowserModelError::Initialization(error.to_string())))?;
-    let agent = AgentBuilder::new(model)
-        .preamble(
-            "Repeat facts the user asks you to remember. Use those facts in later answers. \
-             Never claim you cannot remember conversation history.",
-        )
-        .temperature(0.0)
-        .max_tokens(32)
-        .additional_params(serde_json::json!({"repeat_penalty": 1.0}))
-        .build();
+    let mut config = AgentConfig::new().with_preamble(
+        "Repeat facts the user asks you to remember. Use those facts in later answers. \
+         Never claim you cannot remember conversation history.",
+    );
+    config.temperature = Some(0.0);
+    config.max_tokens = Some(32);
+    config.additional_params = Some(serde_json::json!({"repeat_penalty": 1.0}));
     CHAT_STATE.with(|state| {
         state.replace(Some(ChatState {
-            agent,
+            model,
+            config,
             history: Vec::new(),
         }));
     });
@@ -108,9 +112,43 @@ pub async fn chat(message: String) -> Result<String, JsValue> {
         .with(|slot| slot.take())
         .ok_or_else(|| js_error(BrowserModelError::NotInitialized))?;
     trim_history(&mut state.history);
-    let result = state.agent.chat(message, &mut state.history).await;
+    let result = run_turn(&mut state, message).await;
     CHAT_STATE.with(|slot| slot.replace(Some(state)));
-    result.map_err(|error| js_error(BrowserModelError::Inference(error.to_string())))
+    result.map_err(js_error)
+}
+
+/// One tool-less conversational turn through the sans-IO agent protocol:
+/// prepare the request, run the loaded model, then append the user prompt and
+/// assistant reply to the history (the same history bookkeeping `Agent::chat`
+/// performs for an agent without tools).
+async fn run_turn(state: &mut ChatState, message: String) -> Result<String, BrowserModelError> {
+    let prompt = Message::user(message);
+    let prepared = prepare_request(
+        &state.config,
+        &ToolCatalog::default(),
+        false,
+        prompt.clone(),
+        &state.history,
+        None,
+        None,
+    )
+    .map_err(|error| BrowserModelError::Inference(error.to_string()))?;
+    let response = state
+        .model
+        .completion(prepared.request)
+        .await
+        .map_err(|error| BrowserModelError::Inference(error.to_string()))?;
+    let reply: String = response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    state.history.push(prompt);
+    state.history.push(Message::assistant(reply.clone()));
+    Ok(reply)
 }
 
 fn trim_history(history: &mut Vec<Message>) {

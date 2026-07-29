@@ -128,6 +128,28 @@ impl PlatformAuthenticator {
         })
     }
 
+    /// The cached, unexpired OAuth credential, if one exists on disk.
+    ///
+    /// Read-only and non-interactive: no token refresh, no device flow, and
+    /// no record rewrite — `None` whenever a network or interactive step
+    /// would be required to produce a usable token.
+    pub(super) fn cached_auth_context(&self) -> Option<AuthContext> {
+        let record = self.read_auth_record().ok()?;
+        let access_token = record.access_token.clone()?;
+        if token_expired(record.expires_at) {
+            return None;
+        }
+        let account_id = record
+            .account_id
+            .clone()
+            .or_else(|| extract_account_id(record.id_token.as_deref()))
+            .or_else(|| extract_account_id(Some(&access_token)));
+        Some(AuthContext {
+            access_token,
+            account_id,
+        })
+    }
+
     fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
         let Some(path) = &self.auth_file else {
             return Ok(AuthRecord::default());

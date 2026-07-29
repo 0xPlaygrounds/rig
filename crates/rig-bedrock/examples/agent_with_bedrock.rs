@@ -1,6 +1,6 @@
-use rig_agent::{agent::AgentBuilder, completion::Prompt, prelude::*};
-use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
-use rig_core::{client::ProviderClient, loaders::FileLoader};
+use rig_agent::{agent::AgentBuilder, completion::Prompt, provider::ProviderConfig};
+use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_core::loaders::FileLoader;
 use tracing::info;
 
 mod common;
@@ -29,18 +29,20 @@ async fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn client() -> Result<Client, anyhow::Error> {
-    Ok(Client::from_env()?)
+/// Bedrock provider configuration using the AWS SDK's default credential
+/// chain and region resolution (the config-level equivalent of
+/// `Client::from_env`).
+fn provider() -> ProviderConfig {
+    ProviderConfig::Bedrock(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
 }
 
-fn partial_agent() -> Result<AgentBuilder<rig_bedrock::completion::CompletionModel>, anyhow::Error>
-{
-    Ok(client()?.agent(AMAZON_NOVA_LITE))
+fn partial_agent() -> AgentBuilder {
+    AgentBuilder::new(provider())
 }
 
 /// Create an AWS Bedrock agent with a system prompt
 async fn basic() -> Result<(), anyhow::Error> {
-    let agent = partial_agent()?
+    let agent = partial_agent()
         .preamble("Answer with json format only")
         .build();
 
@@ -52,7 +54,7 @@ async fn basic() -> Result<(), anyhow::Error> {
 
 /// Create an AWS Bedrock with tools
 async fn tools() -> Result<(), anyhow::Error> {
-    let calculator_agent = partial_agent()?
+    let calculator_agent = partial_agent()
         .preamble("You must only do math by using a tool.")
         .max_tokens(1024)
         .tool(common::Adder)
@@ -67,10 +69,8 @@ async fn tools() -> Result<(), anyhow::Error> {
 }
 
 async fn context() -> Result<(), anyhow::Error> {
-    let model = client()?.completion_model(AMAZON_NOVA_LITE);
-
     // Create an agent with multiple context documents
-    let agent = AgentBuilder::new(model)
+    let agent = AgentBuilder::new(provider())
         .preamble("Answer the question")
         .context("Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets")
         .context("Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.")
@@ -90,8 +90,6 @@ async fn context() -> Result<(), anyhow::Error> {
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client()?.completion_model(AMAZON_NOVA_LITE);
-
     // Load in all the rust examples
     let examples = FileLoader::with_glob("examples/*.rs")?
         .read_with_path()
@@ -100,7 +98,7 @@ async fn loaders() -> Result<(), anyhow::Error> {
 
     // Create an agent with multiple context documents
     let agent = examples
-        .fold(AgentBuilder::new(model), |builder, (path, content)| {
+        .fold(AgentBuilder::new(provider()), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble("Answer the question")

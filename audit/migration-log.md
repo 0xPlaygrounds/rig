@@ -256,3 +256,59 @@ takes them as optional normal deps behind new `bedrock`/`gemini-grpc`
 features, forwarded by the facade's features. The design doc gained a
 Revision 2.2 note re-reading every "in the facade" placement accordingly;
 P6's classic runtime consequently also stays in `rig-agent`.
+
+## P6 — Classic runtime re-plumb: Agent loses M, stays in rig-agent (COMPLETE)
+
+Per maintainer direction the facade stayed pure (see the P6 pre-step): the
+whole classic runtime remains in rig-agent, now riding the in-crate
+`provider` module.
+
+- **`Agent<M>` → `Agent`**: holds `provider: ProviderConfig` +
+  `rt: Arc<Runtime>`; `AgentBuilder`/`AgentRunner`/`PromptRequest`/
+  `StreamingPromptRequest`/`Extractor`/`ExtractorBuilder` and the
+  `StreamingPrompt`/`StreamingChat` traits all lost `M`. Model calls go
+  through `provider::complete`/`open_stream`; capability checks read
+  `provider.descriptor()`. Hooks, memory, and the tool server are unchanged.
+- **`ToProviderConfig` bridge** (client.rs): `client.agent(model)` keeps
+  working — each classic client surrenders base_url/headers/credentials as
+  its `functions::Config`. Uniform macro for the plain compat providers;
+  dedicated impls where the classic client has provider-specific state:
+  azure (endpoint/api_version), huggingface (sub-provider model prefix),
+  anthropic + 4 anthropic-flavored alias clients (version/beta headers →
+  config fields), llamafile (`/v1` build_uri), gemini (query-param key →
+  `ApiKeyLocation::Inline`), openai responses vs completions (below),
+  chatgpt/copilot (cached OAuth context + ext knobs via new accessors).
+  `AgentModelExt` deleted (a portable model no longer names a provider).
+- **OpenAI responses face**: new
+  `openai::responses_api::functions` (Config/DESCRIPTOR/pure builders/
+  complete/open_stream, single-sourced with the trait impl) + hand-written
+  `ProviderConfig::OpenAiResponses` arm; canonical `openai::Client` bridges
+  to it, `CompletionsClient` keeps the chat-completions arm. Fixed ollama's
+  descriptor over-claiming `composes_native_output_with_tools`.
+- **Copilot `/responses` routing** extracted and shared
+  (`build_copilot_responses_request`, `stream_copilot_responses_from_event_source`);
+  chatgpt/copilot gained non-interactive `cached_auth_context()`.
+- **Test migration**: ~250 inline rig-agent tests moved from mock models to
+  `MockScript` shims (runner/prompt_request test_support); MockScript gained
+  `.with_errors`, `.requests()` (shared, serde-skipped), stream fidelity
+  (call_id, text-block metadata, MessageId raw events, inherited terminals);
+  `HttpRuntime` gained a `Sequenced` test transport. Classic tests that
+  injected custom HTTP clients now inject them via
+  `Runtime::with_http(HttpRuntime::recording/sequenced)`.
+- **Candle/vertexai**: no ProviderConfig arm (candle arm still deferred to
+  P7); their examples/tests drive `AgentRun` + `prepare_request` + their own
+  model calls (tool_vertexai.rs is the canonical out-of-tree example);
+  candle live conformance rewritten as a local sans-IO driver.
+- Examples/integrations updated across the workspace; `MIGRATING.md` gained
+  the "0.41 → 0.42 (unreleased)" chapter.
+
+**Tests deleted (logged)**: 2 runner tests unexpressible over MockScript
+(paused-transport pause point; scripted mid-stream error after final) and a
+span-safety-net test tied to a custom CompletionModel telemetry seam; 5
+telemetry-content assertions on raw provider requests dropped (closed
+dispatch, request counts kept).
+
+**Verification**: workspace `cargo check --all-targets` 0 errors; clippy
+clean workspace-wide; full facade suite green single-threaded (all 34 test
+targets, incl. every cassette suite byte-replaying against the bridged
+runtime); rig-agent 490 + doctests; rig-core 1084; cassettes untouched.

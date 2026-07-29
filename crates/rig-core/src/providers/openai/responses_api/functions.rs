@@ -1,70 +1,77 @@
-//! xAI Responses API as config + pure functions.
+//! OpenAI Responses API as config + pure functions.
 //!
-//! The data-oriented face of the xAI provider: a serde [`Config`], a
-//! [`DESCRIPTOR`] capability sheet, and free functions decomposing a
-//! completion into pure parts — [`build_request_body`] / [`build_request`]
-//! (data → HTTP request, no IO) and [`parse_response`] (bytes → normalized
-//! [`completion::CompletionResponse`], no IO) — plus async [`complete`] and
-//! [`open_stream`] wrappers over [`HttpRuntime`].
+//! The data-oriented face of the canonical OpenAI provider (which speaks the
+//! Responses API): a serde [`Config`], a [`DESCRIPTOR`] capability sheet, and
+//! free functions decomposing a completion into its pure parts —
+//! [`build_request_body`] / [`build_request`] (data → HTTP request, no IO)
+//! and [`parse_response`] (bytes → normalized
+//! [`completion::CompletionResponse`], no IO) — plus the async [`complete`]
+//! and [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! The pure functions delegate to the same typed conversion the
-//! [`CompletionModel`](super::completion::CompletionModel) trait path uses
-//! (`XAICompletionRequest`'s `TryFrom` plus the shared stream-flag helper),
-//! so both paths produce byte-identical request bodies. [`open_stream`]
-//! drives the exact SSE machinery the trait path uses
-//! (`send_xai_streaming_request`).
+//! The pure functions delegate to the same typed conversion
+//! ([`super::CompletionRequest`]`::try_from(`[`ResponsesRequestParams`]`)` /
+//! [`super::CompletionResponse`]`::try_into`) and SSE machinery
+//! ([`super::streaming`]) the
+//! [`GenericResponsesCompletionModel`](super::GenericResponsesCompletionModel)
+//! trait path uses, so both faces produce byte-identical request bodies.
+//!
+//! The chat-completions flavored OpenAI face lives in
+//! [`super::super::functions`] (`openai::functions`).
 
 use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use tracing_futures::Instrument;
 
-use super::api::ApiResponse;
-use super::completion::{XAICompletionRequest, apply_stream_flag};
+use super::{ResponsesRequestParams, SystemInstructionsPlacement};
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
-/// Default xAI API base URL.
-pub const DEFAULT_BASE_URL: &str = "https://api.x.ai";
+/// Default OpenAI API base URL.
+pub const DEFAULT_BASE_URL: &str = super::super::functions::DEFAULT_BASE_URL;
 
-/// xAI's capability sheet.
-///
-/// `supports_response_format` is `false`: the request conversion warns and
-/// drops `output_schema` ("Structured outputs currently not supported for
-/// xAI").
+/// The Responses API capability sheet for the canonical OpenAI provider.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
-    name: "xai",
+    name: "openai",
     supports_tools: true,
-    supports_response_format: false,
+    supports_response_format: true,
+    // The Responses API has no `stream_options.include_usage` opt-in; usage
+    // always arrives on the terminal `response.completed` event.
     stream_include_usage: false,
     emits_complete_single_chunk_tool_calls: false,
-    composes_native_output_with_tools: false,
-    max_embedding_documents: None,
+    // The Responses API constrains only the final assistant message via
+    // `text.format`; tools are still called across turns. See issue #1928.
+    composes_native_output_with_tools: true,
+    max_embedding_documents: Some(1024),
 };
 
-/// Plain-data xAI provider configuration.
+/// Plain-data OpenAI Responses API provider configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
     /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
     pub base_url: String,
-    /// Credential location; sent as a bearer `Authorization` header.
+    /// Credential location.
     pub api_key: ApiKeyLocation,
     /// Model identifier requests are built for.
     pub model: String,
     /// Extra headers attached to every request.
     pub extra_headers: Vec<(String, String)>,
+    /// Where Rig system instructions are placed in built requests (the
+    /// client-level [`super::ResponsesProviderExt`] knob as plain data).
+    #[serde(default)]
+    pub system_instructions_placement: SystemInstructionsPlacement,
 }
 
 impl Config {
-    /// Config for `model` reading `XAI_API_KEY` from the environment.
+    /// Config for `model` reading `OPENAI_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("XAI_API_KEY".to_string()),
+            api_key: ApiKeyLocation::Env("OPENAI_API_KEY".to_string()),
             model: model.into(),
             extra_headers: Vec::new(),
+            system_instructions_placement: SystemInstructionsPlacement::default(),
         }
     }
 
@@ -79,21 +86,34 @@ impl Config {
         self.base_url = base_url.into();
         self
     }
+
+    /// Override where Rig system instructions are placed. See
+    /// [`SystemInstructionsPlacement`].
+    pub fn with_system_instructions_placement(
+        mut self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.system_instructions_placement = placement;
+        self
+    }
 }
 
 /// Build the serialized Responses API request body for `request`.
 ///
-/// Pure: the exact bytes the wire sees. Delegates to the same typed
-/// conversion as the trait path; `stream` merges the top-level
-/// `stream: true` flag exactly as the trait streaming path does.
+/// Pure: the exact bytes the wire sees. `stream` sets the body's `stream`
+/// flag.
 pub fn build_request_body(
     cfg: &Config,
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
-    let mut typed = XAICompletionRequest::try_from((cfg.model.as_str(), request.clone()))?;
+    let mut typed = super::CompletionRequest::try_from(ResponsesRequestParams {
+        model: cfg.model.clone(),
+        request: request.clone(),
+        system_instructions_placement: cfg.system_instructions_placement,
+    })?;
     if stream {
-        apply_stream_flag(&mut typed);
+        typed.stream = Some(true);
     }
     Ok(serde_json::to_vec(&typed)?)
 }
@@ -107,7 +127,7 @@ pub fn build_request(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-    let url = format!("{}/v1/responses", cfg.base_url.trim_end_matches('/'));
+    let url = format!("{}/responses", cfg.base_url.trim_end_matches('/'));
     let body = build_request_body(cfg, request, stream)?;
 
     let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
@@ -138,16 +158,8 @@ pub fn parse_response(
             body.to_string(),
         ));
     }
-    match serde_json::from_str::<ApiResponse<super::completion::CompletionResponse>>(body)? {
-        ApiResponse::Ok(response) => response.try_into(),
-        ApiResponse::Error(error) => {
-            tracing::warn!(message = %error.message(), "provider returned an error response");
-            Err(CompletionError::from_http_response(
-                status,
-                body.to_string(),
-            ))
-        }
-    }
+    let raw = serde_json::from_str::<super::CompletionResponse>(body)?;
+    raw.try_into()
 }
 
 /// Open a streaming completion for `request`, driving the same SSE machinery
@@ -157,6 +169,7 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    use crate::http_client::sse::GenericEventSource;
     use crate::http_runtime::Transport;
 
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
@@ -170,26 +183,33 @@ pub async fn open_stream(
     let req = build_request(cfg, &request, true)?;
     match rt.transport() {
         Transport::Reqwest(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
+            let event_source = GenericEventSource::new(client.clone(), req);
+            Ok(super::streaming::stream_from_event_source(
+                event_source,
+                span,
+            ))
         }
         #[cfg(feature = "test-utils")]
         Transport::Recording(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
+            let event_source = GenericEventSource::new(client.clone(), req);
+            Ok(super::streaming::stream_from_event_source(
+                event_source,
+                span,
+            ))
         }
         #[cfg(feature = "test-utils")]
         Transport::Sequenced(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
+            let event_source = GenericEventSource::new(client.clone(), req);
+            Ok(super::streaming::stream_from_event_source(
+                event_source,
+                span,
+            ))
         }
     }
 }
 
-/// Send `request` to xAI and return the normalized response.
+/// Send `request` to the OpenAI Responses API and return the normalized
+/// response.
 pub async fn complete(
     cfg: &Config,
     rt: &HttpRuntime,
@@ -209,12 +229,12 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
+            preamble: Some("Respond tersely.".to_string()),
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),
-            temperature: Some(0.7),
-            max_tokens: Some(32),
+            temperature: Some(0.5),
+            max_tokens: Some(64),
             tool_choice: None,
             additional_params: None,
             output_schema: None,
@@ -224,12 +244,14 @@ mod tests {
 
     #[test]
     fn build_request_body_matches_typed_conversion() {
-        let cfg = Config::new("grok-4-0709").with_api_key("k");
+        let cfg = Config::new("gpt-5").with_api_key("k");
         let body = build_request_body(&cfg, &sample_request(), false).expect("build");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        assert_eq!(value["model"], "grok-4-0709");
-        assert_eq!(value["temperature"], 0.7);
-        assert_eq!(value["max_output_tokens"], 32);
+        assert_eq!(value["model"], "gpt-5");
+        assert_eq!(value["temperature"], 0.5);
+        assert_eq!(value["max_output_tokens"], 64);
+        // Leading system instructions are lifted into `instructions`.
+        assert_eq!(value["instructions"], "Respond tersely.");
         assert!(value.get("stream").is_none());
 
         let streaming = build_request_body(&cfg, &sample_request(), true).expect("build");
@@ -238,20 +260,20 @@ mod tests {
     }
 
     #[test]
-    fn build_request_honors_model_override() {
-        let cfg = Config::new("grok-4-0709").with_api_key("k");
-        let mut request = sample_request();
-        request.model = Some("grok-3".to_string());
-        let body = build_request_body(&cfg, &request, false).expect("build");
+    fn build_request_body_honors_system_message_placement() {
+        let cfg = Config::new("gpt-5")
+            .with_api_key("k")
+            .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages);
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        assert_eq!(value["model"], "grok-3");
+        assert!(value.get("instructions").is_none());
     }
 
     #[test]
     fn build_request_sets_url_and_auth() {
-        let cfg = Config::new("grok-4-0709").with_api_key("secret");
+        let cfg = Config::new("gpt-5").with_api_key("secret");
         let req = build_request(&cfg, &sample_request(), false).expect("build");
-        assert_eq!(req.uri(), "https://api.x.ai/v1/responses");
+        assert_eq!(req.uri(), "https://api.openai.com/v1/responses");
         assert_eq!(
             req.headers()
                 .get(http::header::AUTHORIZATION)
@@ -264,35 +286,47 @@ mod tests {
     fn parse_response_normalizes() {
         let body = serde_json::json!({
             "id": "resp_1",
-            "model": "grok-4-0709",
+            "object": "response",
+            "created_at": 1,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "model": "gpt-5",
+            "usage": {
+                "input_tokens": 3,
+                "input_tokens_details": {"cached_tokens": 0},
+                "output_tokens": 2,
+                "output_tokens_details": {"reasoning_tokens": 0},
+                "total_tokens": 5
+            },
             "output": [{
                 "type": "message",
                 "id": "msg_1",
-                "role": "assistant",
                 "status": "completed",
-                "content": [
-                    {"type": "output_text", "text": "hi", "annotations": []}
-                ]
+                "role": "assistant",
+                "content": [{"type": "output_text", "annotations": [], "text": "hi"}]
             }],
-            "usage": {
-                "input_tokens": 3,
-                "output_tokens": 2,
-                "total_tokens": 5
-            }
+            "tools": []
         })
         .to_string();
         let response = parse_response(http::StatusCode::OK, &body).expect("parse");
-        assert_eq!(response.provider, "xai");
-        assert_eq!(response.model.as_deref(), Some("grok-4-0709"));
-        assert_eq!(response.message_id.as_deref(), Some("msg_1"));
         assert_eq!(response.usage.input_tokens, 3);
         assert_eq!(response.usage.total_tokens, 5);
+        assert_eq!(response.finish_reason, Some(completion::FinishReason::Stop));
     }
 
     #[test]
-    fn parse_response_surfaces_provider_error_envelope() {
-        let body = r#"{"error":"boom","code":"503"}"#;
-        let error = parse_response(http::StatusCode::OK, body).expect_err("should error");
-        assert!(error.to_string().contains("boom"));
+    fn parse_response_preserves_error_status() {
+        let error = parse_response(
+            http::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"message":"bad key"}}"#,
+        )
+        .expect_err("should error");
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
     }
 }

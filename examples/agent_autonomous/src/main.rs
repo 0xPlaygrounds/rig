@@ -20,7 +20,7 @@ const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn build_counter_extractor(
     client: &Client,
-) -> rig::extractor::Extractor<openai::responses_api::ResponsesCompletionModel, Counter> {
+) -> rig::extractor::Extractor<Counter> {
     client
         .extractor::<Counter>(openai::GPT_4)
         .preamble(

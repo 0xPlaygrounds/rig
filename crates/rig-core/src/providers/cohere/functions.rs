@@ -169,6 +169,12 @@ pub async fn open_stream(
             req,
             span,
         )),
+        #[cfg(feature = "test-utils")]
+        Transport::Sequenced(client) => Ok(super::streaming::stream_cohere_sse(
+            client.clone(),
+            req,
+            span,
+        )),
     }
 }
 

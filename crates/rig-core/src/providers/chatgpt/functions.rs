@@ -239,6 +239,15 @@ pub async fn open_stream(
                 span,
             ))
         }
+        #[cfg(feature = "test-utils")]
+        Transport::Sequenced(client) => {
+            let event_source =
+                GenericEventSource::new(client.clone(), req).allow_missing_content_type();
+            Ok(responses_api::streaming::stream_from_event_source(
+                event_source,
+                span,
+            ))
+        }
     }
 }
 

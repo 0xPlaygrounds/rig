@@ -164,6 +164,13 @@ pub struct CopilotExt {
     auth: auth::Authenticator,
 }
 
+impl CopilotExt {
+    /// The credential resolver this client authenticates requests with.
+    pub fn authenticator(&self) -> &auth::Authenticator {
+        &self.auth
+    }
+}
+
 impl Debug for CopilotExt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CopilotExt")
@@ -561,6 +568,31 @@ enum CompletionRoute {
     Responses,
 }
 
+/// Build the typed Copilot `/responses` request for `model`.
+///
+/// The single source of truth for the Responses route's request shape: the
+/// trait path and the data-oriented [`functions`] face both route through
+/// this function. Copilot's Responses endpoint expects strict function tool
+/// schemas for reliable tool calls, so every tool is normalized to strict —
+/// Chat Completions strict mode stays opt-in.
+pub(crate) fn build_copilot_responses_request(
+    model: String,
+    completion_request: completion::CompletionRequest,
+) -> Result<ResponsesRequest, CompletionError> {
+    let mut request = ResponsesRequest::try_from(responses_api::ResponsesRequestParams {
+        model,
+        request: completion_request,
+        system_instructions_placement:
+            responses_api::SystemInstructionsPlacement::InputSystemMessages,
+    })?;
+    request.tools = request
+        .tools
+        .into_iter()
+        .map(responses_api::ResponsesToolDefinition::with_strict)
+        .collect();
+    Ok(request)
+}
+
 fn route_for_model(model: &str) -> CompletionRoute {
     if model.to_ascii_lowercase().contains("codex") {
         CompletionRoute::Responses
@@ -795,21 +827,7 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
-        let mut request = ResponsesRequest::try_from(responses_api::ResponsesRequestParams {
-            model: self.model.clone(),
-            request: completion_request,
-            system_instructions_placement:
-                responses_api::SystemInstructionsPlacement::InputSystemMessages,
-        })?;
-        // Copilot's Responses endpoint expects strict function tool schemas for
-        // reliable tool calls. Preserve that provider-specific behavior while
-        // keeping Chat Completions strict mode opt-in.
-        request.tools = request
-            .tools
-            .into_iter()
-            .map(responses_api::ResponsesToolDefinition::with_strict)
-            .collect();
-        Ok(request)
+        build_copilot_responses_request(self.model.clone(), completion_request)
     }
 
     async fn completion_chat(
@@ -1013,9 +1031,28 @@ where
         .build();
 
         let client = self.client.clone();
-        let mut event_source = crate::http_client::sse::GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::GenericEventSource::new(client, req);
+        Ok(stream_copilot_responses_from_event_source(
+            event_source,
+            span,
+        ))
+    }
+}
 
-        let stream = tracing_futures::Instrument::instrument(
+/// Drive a Copilot `/responses` SSE connection into the normalized streaming
+/// response.
+///
+/// The single source of truth for Copilot Responses streaming: the trait path
+/// ([`CompletionModel::stream`]) and the data-oriented [`functions`] face both
+/// route through this function.
+pub(crate) fn stream_copilot_responses_from_event_source<HttpClient>(
+    mut event_source: crate::http_client::sse::GenericEventSource<HttpClient, Vec<u8>>,
+    span: tracing::Span,
+) -> StreamingCompletionResponse
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+{
+    let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
                 let mut final_response_id: Option<String> = None;
@@ -1222,12 +1259,11 @@ where
                     final_response = final_response.with_model(model);
                 }
                 yield Ok(RawStreamingChoice::FinalResponse(final_response));
-            },
-            span,
-        );
+        },
+        span,
+    );
 
-        Ok(StreamingCompletionResponse::stream(Box::pin(stream)))
-    }
+    StreamingCompletionResponse::stream(Box::pin(stream))
 }
 
 impl<H> completion::CompletionModel for CompletionModel<H>

@@ -5,8 +5,7 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, Document, Message, Prompt, PromptError,
-        ToolDefinition, TypedPrompt,
+        Chat, CompletionError, Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     streaming::{StreamingChat, StreamingPrompt},
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
@@ -54,7 +53,10 @@ pub(crate) fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) 
 /// matches [`allowed_tool_names_for_choice`], which advertises the output tool
 /// for exactly that choice. Only a `None` choice or a `Specific` set that omits
 /// the output tool genuinely cannot finalize a pinned Tool-mode turn.
-pub(crate) fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
+pub(crate) fn output_tool_callable(
+    tool_choice: Option<&ToolChoice>,
+    output_tool_name: &str,
+) -> bool {
     match tool_choice {
         Some(ToolChoice::Specific { function_names }) => function_names
             .iter()
@@ -216,8 +218,8 @@ pub(crate) fn allowed_tool_names_for_choice(
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
-    model: &Arc<M>,
+pub(crate) async fn build_prepared_completion_request(
+    provider: &crate::provider::ProviderConfig,
     prompt: Message,
     chat_history: &[Message],
     preamble: Option<&str>,
@@ -270,7 +272,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     let prepared = super::prepare::prepare_request(
         &config,
         &catalog,
-        model.composes_native_output_with_tools(),
+        provider.descriptor().composes_native_output_with_tools,
         prompt,
         chat_history,
         committed_output_tool,
@@ -317,16 +319,16 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 /// ```
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct Agent<M>
-where
-    M: CompletionModel,
-{
+pub struct Agent {
     /// Name of the agent used for logging and debugging
     pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     pub(crate) description: Option<String>,
-    /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    pub(crate) model: Arc<M>,
+    /// Provider selection as plain configuration (which provider, base URL,
+    /// credential location, and model identifier).
+    pub(crate) provider: crate::provider::ProviderConfig,
+    /// Live transport handles requests are fulfilled with.
+    pub(crate) rt: std::sync::Arc<crate::provider::Runtime>,
     /// System prompt
     pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
@@ -365,10 +367,7 @@ where
     pub(crate) default_conversation_id: Option<String>,
 }
 
-impl<M> Agent<M>
-where
-    M: CompletionModel,
-{
+impl Agent {
     /// Returns the configured agent name.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -386,7 +385,7 @@ where
     /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
     /// agent's default hook stack. Attach more hooks with
     /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner<M> {
+    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
         AgentRunner::from_agent(self, prompt)
     }
 
@@ -410,37 +409,28 @@ where
 //  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
 
 #[allow(refining_impl_trait)]
-impl<M> Prompt for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Prompt for Agent {
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard, M> {
+    ) -> PromptRequest<prompt_request::Standard> {
         PromptRequest::from_agent(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
-impl<M> Prompt for &Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Prompt for &Agent {
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard, M> {
-        PromptRequest::from_agent(*self, prompt)
+    ) -> PromptRequest<prompt_request::Standard> {
+        PromptRequest::from_agent(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
-impl<M> Chat for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Chat for Agent {
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     async fn chat(
         &self,
@@ -460,32 +450,23 @@ where
     }
 }
 
-impl<M> StreamingPrompt<M> for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M> {
-        StreamingPromptRequest::<M>::from_agent(self, prompt)
+impl StreamingPrompt for Agent {
+    fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> StreamingPromptRequest {
+        StreamingPromptRequest::from_agent(self, prompt)
     }
 }
 
-impl<M> StreamingChat<M> for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl StreamingChat for Agent {
     fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
-    ) -> StreamingPromptRequest<M>
+    ) -> StreamingPromptRequest
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        StreamingPromptRequest::<M>::from_agent(self, prompt).history(chat_history)
+        StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
     }
 }
 
@@ -494,12 +475,9 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
 #[allow(refining_impl_trait)]
-impl<M> TypedPrompt for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl TypedPrompt for Agent {
     type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard, M>
+        = TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
@@ -538,7 +516,7 @@ where
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard, M>
+    ) -> TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
@@ -547,23 +525,20 @@ where
 }
 
 #[allow(refining_impl_trait)]
-impl<M> TypedPrompt for &Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl TypedPrompt for &Agent {
     type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard, M>
+        = TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard, M>
+    ) -> TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
-        TypedPromptRequest::from_agent(*self, prompt)
+        TypedPromptRequest::from_agent(self, prompt)
     }
 }
 

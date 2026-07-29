@@ -9,8 +9,8 @@ use rig::providers::openai::GPT_4O;
 use rig::providers::{anthropic, openai};
 
 enum Agents {
-    Anthropic(Agent<anthropic::completion::CompletionModel>),
-    OpenAI(Agent<openai::completion::CompletionModel>),
+    Anthropic(Agent),
+    OpenAI(Agent),
 }
 
 impl Agents {

@@ -35,6 +35,7 @@ use std::convert::Infallible;
 use std::ops::Add;
 use std::str::FromStr;
 
+pub mod functions;
 pub mod streaming;
 #[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
 pub mod websocket;
@@ -1112,7 +1113,8 @@ pub(crate) fn finish_reason_from_status(
 }
 
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum SystemInstructionsPlacement {
     /// Send the leading run of system instructions (the preamble and any system

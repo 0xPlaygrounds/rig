@@ -43,7 +43,8 @@ use rig_core::{
 
 use crate::{
     agent::{Agent, AgentBuilder, AgentHook, OutputMode},
-    completion::{CompletionError, CompletionModel, PromptError, Usage},
+    completion::{CompletionError, PromptError, Usage},
+    provider::ProviderConfig,
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
@@ -73,19 +74,17 @@ pub enum ExtractionError {
 }
 
 /// Extractor for structured data from text
-pub struct Extractor<M, T>
+pub struct Extractor<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
-    agent: Agent<M>,
+    agent: Agent,
     _t: PhantomData<T>,
     retries: u64,
 }
 
-impl<M, T> Extractor<M, T>
+impl<T> Extractor<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
     /// Attempts to extract data from the given text with a number of retries.
@@ -249,24 +248,22 @@ where
 }
 
 /// Builder for the Extractor
-pub struct ExtractorBuilder<M, T>
+pub struct ExtractorBuilder<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M>,
+    agent_builder: AgentBuilder,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
 
-impl<M, T> ExtractorBuilder<M, T>
+impl<T> ExtractorBuilder<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub fn new(model: M) -> Self {
+    pub fn new(provider: ProviderConfig) -> Self {
         Self {
-            agent_builder: AgentBuilder::new(model)
+            agent_builder: AgentBuilder::new(provider)
                 .preamble("\
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
@@ -318,6 +315,13 @@ where
         self
     }
 
+    /// Use an existing provider [`Runtime`](crate::provider::Runtime) for the
+    /// inner Agent instead of building a fresh one.
+    pub fn runtime(mut self, rt: std::sync::Arc<crate::provider::Runtime>) -> Self {
+        self.agent_builder = self.agent_builder.runtime(rt);
+        self
+    }
+
     /// Set the maximum number of retries for the extractor.
     pub fn retries(mut self, retries: u64) -> Self {
         self.retries = Some(retries);
@@ -343,7 +347,7 @@ where
     }
 
     /// Build the Extractor
-    pub fn build(self) -> Extractor<M, T> {
+    pub fn build(self) -> Extractor<T> {
         Extractor {
             agent: self.agent_builder.build(),
             _t: PhantomData,
@@ -363,7 +367,9 @@ mod tests {
 
     use super::*;
     use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
-    use crate::test_utils::{MockCompletionModel, MockTurn};
+    use crate::provider::MockScript;
+    use rig_core::OneOrMany;
+    use rig_core::completion::CompletionResponse as ModelResponse;
     use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
     use rig_core::vector_store::{
         VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
@@ -381,15 +387,36 @@ mod tests {
         }
     }
 
-    fn extractor(
-        model: MockCompletionModel,
-        retries: u64,
-    ) -> Extractor<MockCompletionModel, Person> {
-        ExtractorBuilder::new(model).retries(retries).build()
+    fn extractor(script: MockScript, retries: u64) -> Extractor<Person> {
+        ExtractorBuilder::new(ProviderConfig::Mock(script))
+            .retries(retries)
+            .build()
     }
 
-    fn submit_turn(name: &str) -> MockTurn {
-        MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
+    fn response_from(contents: Vec<AssistantContent>, usage: Usage) -> ModelResponse {
+        let choice = OneOrMany::many(contents).expect("at least one content item");
+        ModelResponse::new(choice, usage, "mock")
+    }
+
+    fn text_response(text: &str) -> ModelResponse {
+        response_from(vec![AssistantContent::text(text)], Usage::new())
+    }
+
+    fn submit_response(name: &str) -> ModelResponse {
+        response_from(
+            vec![tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))],
+            Usage::new(),
+        )
+    }
+
+    /// Placeholder response occupying an index that `with_errors` fails.
+    fn error_slot() -> ModelResponse {
+        text_response("unused error slot")
+    }
+
+    fn with_usage(mut response: ModelResponse, usage: Usage) -> ModelResponse {
+        response.usage = usage;
+        response
     }
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
@@ -593,9 +620,10 @@ mod tests {
 
     #[tokio::test]
     async fn extractor_runs_through_full_response_lifecycle() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
+        let script = MockScript::from_responses(vec![submit_response("John")]);
+        let probe = script.clone();
         let counts = LifecycleCounts::default();
-        let response = ExtractorBuilder::<_, Person>::new(model.clone())
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(counts.clone())
             .build()
             .extract("John")
@@ -603,7 +631,7 @@ mod tests {
             .expect("extraction should succeed");
 
         assert_eq!(response.name, "John");
-        assert_eq!(model.request_count(), 1);
+        assert_eq!(probe.calls(), 1);
         assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
         assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
         assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
@@ -613,10 +641,11 @@ mod tests {
     async fn extractor_hook_receives_canonical_response_fields() {
         let capture = ExtractorResponseCapture::default();
         let expected_usage = usage(23);
-        let response =
-            ExtractorBuilder::<_, Person>::new(MockCompletionModel::new([submit_turn("John")
-                .with_usage(expected_usage)
-                .with_message_id("extractor-message")]))
+        let script = MockScript::from_responses(vec![
+            with_usage(submit_response("John"), expected_usage)
+                .with_message_id("extractor-message"),
+        ]);
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(capture.clone())
             .build()
             .extract("John")
@@ -643,10 +672,10 @@ mod tests {
 
     #[tokio::test]
     async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
-        let probe = model.clone();
+        let script = MockScript::from_responses(vec![submit_response("John")]);
+        let probe = script.clone();
         let queries = Arc::new(Mutex::new(Vec::new()));
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .dynamic_context(
                 2,
                 ExtractorContextIndex {
@@ -676,8 +705,9 @@ mod tests {
 
     #[tokio::test]
     async fn extractor_completion_call_stop_prevents_provider_io() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
-        let error = ExtractorBuilder::<_, Person>::new(model.clone())
+        let script = MockScript::from_responses(vec![submit_response("John")]);
+        let probe = script.clone();
+        let error = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(StopBeforeCompletion)
             .build()
             .extract("John")
@@ -689,17 +719,17 @@ mod tests {
             ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
                 if reason == "extractor stopped"
         ));
-        assert_eq!(model.request_count(), 0);
+        assert_eq!(probe.calls(), 0);
     }
 
     #[tokio::test]
     async fn usage_accumulates_across_failed_attempts() {
-        let model = MockCompletionModel::new([
-            MockTurn::text("no submit call").with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
+        let script = MockScript::from_responses(vec![
+            with_usage(text_response("no submit call"), usage(10)),
+            with_usage(submit_response("John"), usage(5)),
         ]);
 
-        let response = extractor(model, 1)
+        let response = extractor(script, 1)
             .extract_with_usage("John")
             .await
             .expect("second attempt should succeed");
@@ -714,11 +744,11 @@ mod tests {
     }
 
     async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
-        let model = MockCompletionModel::new([
-            submit_turn("ignored").with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
+        let script = MockScript::from_responses(vec![
+            with_usage(submit_response("ignored"), usage(10)),
+            with_usage(submit_response("John"), usage(5)),
         ]);
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .retries(1)
             .add_hook(StopFirstBilledResponse {
                 phase,
@@ -745,12 +775,15 @@ mod tests {
 
     #[tokio::test]
     async fn unexpected_tool_call_preserves_usage_and_retries() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
+        let script = MockScript::from_responses(vec![
+            response_from(
+                vec![tool_call("unknown", "unexpected", json!({}))],
+                usage(10),
+            ),
+            with_usage(submit_response("John"), usage(5)),
         ]);
 
-        let response = extractor(model, 1)
+        let response = extractor(script, 1)
             .extract_with_usage("John")
             .await
             .expect("second attempt should succeed");
@@ -761,13 +794,16 @@ mod tests {
 
     #[tokio::test]
     async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
+        let script = MockScript::from_responses(vec![
+            response_from(
+                vec![tool_call("unknown", "unexpected", json!({}))],
+                usage(10),
+            ),
+            with_usage(submit_response("John"), usage(5)),
         ]);
         let counts = LifecycleCounts::default();
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .retries(1)
             .add_hook(counts.clone())
             .build()
@@ -784,10 +820,12 @@ mod tests {
 
     #[tokio::test]
     async fn unexpected_tool_call_hook_can_stop_extraction() {
-        let model =
-            MockCompletionModel::new([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
+        let script = MockScript::from_responses(vec![response_from(
+            vec![tool_call("unknown", "unexpected", json!({}))],
+            Usage::new(),
+        )]);
 
-        let error = ExtractorBuilder::<_, Person>::new(model)
+        let error = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(StopOnInvalidToolCall)
             .build()
             .extract("John")
@@ -803,13 +841,16 @@ mod tests {
 
     #[tokio::test]
     async fn unexpected_tool_call_hook_can_repair_to_submit() {
-        let model = MockCompletionModel::new([MockTurn::tool_call(
-            "unknown",
-            "unexpected",
-            json!({ "name": "John" }),
+        let script = MockScript::from_responses(vec![response_from(
+            vec![tool_call(
+                "unknown",
+                "unexpected",
+                json!({ "name": "John" }),
+            )],
+            Usage::new(),
         )]);
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(RepairUnexpectedAsSubmit)
             .build()
             .extract("John")
@@ -821,14 +862,15 @@ mod tests {
 
     #[tokio::test]
     async fn skip_hook_preserves_valid_submit_sibling() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown", "unexpected", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ])
-        .expect("two tool calls");
-        let model = MockCompletionModel::new([turn]);
+        let script = MockScript::from_responses(vec![response_from(
+            vec![
+                tool_call("unknown", "unexpected", json!({})),
+                tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+            ],
+            Usage::new(),
+        )]);
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .add_hook(SkipUnexpected)
             .build()
             .extract("John")
@@ -840,15 +882,15 @@ mod tests {
 
     #[tokio::test]
     async fn submit_call_wins_over_unexpected_sibling_call() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown", "unexpected", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ])
-        .expect("two tool calls")
-        .with_usage(usage(7));
-        let model = MockCompletionModel::new([turn]);
+        let script = MockScript::from_responses(vec![response_from(
+            vec![
+                tool_call("unknown", "unexpected", json!({})),
+                tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+            ],
+            usage(7),
+        )]);
 
-        let response = extractor(model, 0)
+        let response = extractor(script, 0)
             .extract_with_usage("John")
             .await
             .expect("submit should remain authoritative");
@@ -859,13 +901,15 @@ mod tests {
 
     #[tokio::test]
     async fn submit_call_wins_before_unexpected_sibling_call() {
-        let turn = MockTurn::from_contents([
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-            tool_call("unknown", "unexpected", json!({})),
-        ])
-        .expect("two tool calls");
+        let script = MockScript::from_responses(vec![response_from(
+            vec![
+                tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+                tool_call("unknown", "unexpected", json!({})),
+            ],
+            Usage::new(),
+        )]);
 
-        let response = extractor(MockCompletionModel::new([turn]), 0)
+        let response = extractor(script, 0)
             .extract("John")
             .await
             .expect("an earlier submit should remain authoritative");
@@ -875,14 +919,16 @@ mod tests {
 
     #[tokio::test]
     async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown-before", "unexpected_before", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-            tool_call("unknown-after", "unexpected_after", json!({})),
-        ])
-        .expect("three tool calls");
+        let script = MockScript::from_responses(vec![response_from(
+            vec![
+                tool_call("unknown-before", "unexpected_before", json!({})),
+                tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
+                tool_call("unknown-after", "unexpected_after", json!({})),
+            ],
+            Usage::new(),
+        )]);
 
-        let response = extractor(MockCompletionModel::new([turn]), 0)
+        let response = extractor(script, 0)
             .extract("John")
             .await
             .expect("unexpected siblings should not displace submit");
@@ -892,12 +938,13 @@ mod tests {
 
     #[tokio::test]
     async fn transport_errors_contribute_no_usage() {
-        let model = MockCompletionModel::new([
-            MockTurn::error("boom"),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
+        let script = MockScript::from_responses(vec![
+            error_slot(),
+            with_usage(submit_response("John"), usage(5)),
+        ])
+        .with_errors(vec![Some("boom".to_string()), None]);
 
-        let response = extractor(model, 1)
+        let response = extractor(script, 1)
             .extract_with_usage("John")
             .await
             .expect("second attempt should succeed");
@@ -907,9 +954,10 @@ mod tests {
 
     #[tokio::test]
     async fn single_successful_attempt_reports_its_own_usage() {
-        let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
+        let script =
+            MockScript::from_responses(vec![with_usage(submit_response("John"), usage(7))]);
 
-        let response = extractor(model, 0)
+        let response = extractor(script, 0)
             .extract_with_usage("John")
             .await
             .expect("extraction should succeed");
@@ -919,10 +967,12 @@ mod tests {
 
     #[tokio::test]
     async fn exhausted_retries_return_last_error() {
-        let model =
-            MockCompletionModel::new([MockTurn::text("no submit call").with_usage(usage(10))]);
+        let script = MockScript::from_responses(vec![with_usage(
+            text_response("no submit call"),
+            usage(10),
+        )]);
 
-        let err = extractor(model, 0)
+        let err = extractor(script, 0)
             .extract("John")
             .await
             .expect_err("extraction should fail");
@@ -932,9 +982,10 @@ mod tests {
 
     #[tokio::test]
     async fn exhausted_retries_return_error_from_final_attempt() {
-        let model = MockCompletionModel::new([MockTurn::error("first"), MockTurn::error("second")]);
+        let script = MockScript::from_responses(vec![error_slot(), error_slot()])
+            .with_errors(vec![Some("first".to_string()), Some("second".to_string())]);
 
-        let err = extractor(model, 1)
+        let err = extractor(script, 1)
             .extract("John")
             .await
             .expect_err("extraction should fail");

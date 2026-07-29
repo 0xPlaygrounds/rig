@@ -83,13 +83,14 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .expect("Anthropic test client should build");
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+    let provider = rig::provider::ProviderConfig::Anthropic(
+        anthropic::functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key"),
+    );
+    let rt = std::sync::Arc::new(rig::provider::Runtime::with_http(
+        rig::http_runtime::HttpRuntime::recording(http.clone()),
+    ));
+    let agent = rig::agent::AgentBuilder::new(provider)
+        .runtime(rt)
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .build();
@@ -115,13 +116,14 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
 async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let output = smoke_structured_output_value();
     let http = RecordingHttpClient::new(text_response(&output.to_string()));
-    let client = anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .expect("Anthropic test client should build");
-    let agent = client
-        .agent(CLAUDE_SONNET_4_6)
+    let provider = rig::provider::ProviderConfig::Anthropic(
+        anthropic::functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key"),
+    );
+    let rt = std::sync::Arc::new(rig::provider::Runtime::with_http(
+        rig::http_runtime::HttpRuntime::recording(http.clone()),
+    ));
+    let agent = rig::agent::AgentBuilder::new(provider)
+        .runtime(rt)
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Prompted)
         .build();

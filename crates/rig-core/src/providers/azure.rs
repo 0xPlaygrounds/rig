@@ -52,6 +52,18 @@ pub struct AzureExt {
     api_version: String,
 }
 
+impl AzureExt {
+    /// Resource endpoint this client targets, e.g. `https://my-resource.openai.azure.com`.
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    /// API version query parameter this client sends.
+    pub fn api_version(&self) -> &str {
+        &self.api_version
+    }
+}
+
 impl DebugExt for AzureExt {
     fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
         [

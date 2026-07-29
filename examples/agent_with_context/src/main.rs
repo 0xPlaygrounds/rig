@@ -2,6 +2,7 @@
 //! Requires `COHERE_API_KEY`.
 //! Run it to see the model answer from the supplied in-memory facts.
 
+use rig::client::ToProviderConfig;
 use anyhow::Result;
 use rig::agent::AgentBuilder;
 use rig::completion::Prompt;
@@ -19,11 +20,11 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = cohere::Client::from_env()?;
-    let model = client.completion_model(COMMAND_R);
+    let provider = client.provider_config(COMMAND_R);
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(AgentBuilder::new(model), |builder, doc| {
+        .fold(AgentBuilder::new(provider), |builder, doc| {
             builder.context(doc)
         })
         .build();

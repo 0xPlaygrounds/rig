@@ -1,7 +1,7 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_agent::{client::AgentModelExt, completion::Prompt};
-use rig_core::client::{CompletionClient, EmbeddingsClient, ProviderClient};
+use rig_agent::{client::AgentClientExt, completion::Prompt};
+use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -71,11 +71,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store_index = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
 
     // Build RAG agent with dynamic context.
-    // Use OpenAI-compatible API interface to build agent
+    // Use the OpenAI chat-completions API interface to build the agent.
     let agent = openai_client
-        .completion_model(openai::GPT_4O)
         .completions_api()
-        .into_agent_builder()
+        .agent(openai::GPT_4O)
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")
         .dynamic_context(top_k, vector_store_index)

@@ -20,4 +20,9 @@ impl PlatformAuthenticator {
             "ChatGPT OAuth is not supported on wasm targets".into(),
         ))
     }
+
+    /// OAuth is unsupported on wasm, so there is never a cached credential.
+    pub(super) fn cached_auth_context(&self) -> Option<AuthContext> {
+        None
+    }
 }

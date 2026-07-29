@@ -1,7 +1,6 @@
-use rig_agent::prelude::*;
-use rig_bedrock::client::Client;
+use rig_agent::extractor::ExtractorBuilder;
+use rig_agent::provider::ProviderConfig;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_core::client::ProviderClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -20,8 +19,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env()?;
-    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
+    // Bedrock authenticates through the AWS SDK's default credential chain,
+    // so the provider is expressed as plain configuration (the config-level
+    // equivalent of `Client::from_env`).
+    let data_extractor = ExtractorBuilder::<Person>::new(ProviderConfig::Bedrock(
+        rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
+    ))
+    .build();
     let person = data_extractor
         .extract("Hello my name is John Doe! I am a software engineer.")
         .await?;

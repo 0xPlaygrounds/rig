@@ -34,6 +34,11 @@ impl PlatformAuthenticator {
         ))
     }
 
+    /// There is no token cache on wasm targets.
+    pub(super) fn cached_auth_context(&self, _bootstrap_token: Option<&str>) -> Option<AuthContext> {
+        None
+    }
+
     pub(super) async fn auth_context_with_github_access_token(
         &self,
         access_token: &str,

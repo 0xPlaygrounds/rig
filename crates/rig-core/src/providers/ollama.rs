@@ -1329,8 +1329,12 @@ pub mod functions {
         stream_include_usage: false,
         // Ollama emits whole tool calls in a single NDJSON chunk.
         emits_complete_single_chunk_tool_calls: true,
-        // `format` and `tools` are sent together without gating.
-        composes_native_output_with_tools: true,
+        // The classic `CompletionModel` impl never opted into composing
+        // `format` with `tools` (it keeps the default), so agentic
+        // structured-output runs use the output tool instead of native
+        // `format` whenever tools are present. Keep the descriptor faithful
+        // to that recorded behavior.
+        composes_native_output_with_tools: false,
         max_embedding_documents: Some(1024),
     };
 
@@ -1456,6 +1460,14 @@ pub mod functions {
             }
             #[cfg(feature = "test-utils")]
             Transport::Recording(client) => {
+                let response = client.send_streaming(req).await?;
+                let stream = super::consume_chat_streaming_response(response).await?;
+                Ok(crate::streaming::StreamingCompletionResponse::stream(
+                    Box::pin(stream),
+                ))
+            }
+        #[cfg(feature = "test-utils")]
+            Transport::Sequenced(client) => {
                 let response = client.send_streaming(req).await?;
                 let stream = super::consume_chat_streaming_response(response).await?;
                 Ok(crate::streaming::StreamingCompletionResponse::stream(

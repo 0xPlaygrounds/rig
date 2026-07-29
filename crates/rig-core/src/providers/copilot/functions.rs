@@ -7,11 +7,10 @@
 //! async [`complete`] and [`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
 //!
-//! This module covers the `/chat/completions` surface the classic
-//! [`CompletionModel`](super::CompletionModel) uses for conversational
-//! models. Codex-class models, which the classic client routes through
-//! `/responses` (see [`route_for_model`](super::CompletionModel)), are
-//! future work for this face.
+//! Like the classic [`CompletionModel`](super::CompletionModel), requests
+//! route by model: conversational models use `/chat/completions` while
+//! codex-class models use `/responses`, sharing the classic path's request
+//! shaping and SSE machinery for both.
 //!
 //! # Credentials
 //!
@@ -33,9 +32,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    ChatApiResponse, ChatCompletionResponse, CopilotIntent, apply_headers, base_url_from_token,
-    default_headers, request_has_vision, request_initiator, send_copilot_chat_streaming_request,
+    ChatApiResponse, ChatCompletionResponse, CompletionRoute, CopilotIntent, apply_headers,
+    base_url_from_token, build_copilot_responses_request, default_headers, request_has_vision,
+    request_initiator, route_for_model, send_copilot_chat_streaming_request,
+    stream_copilot_responses_from_event_source,
 };
+use crate::providers::openai::responses_api;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
@@ -115,6 +118,13 @@ pub fn build_request_body(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
+    if route_for_model(&cfg.model) == CompletionRoute::Responses {
+        let mut typed = build_copilot_responses_request(cfg.model.clone(), request.clone())?;
+        if stream {
+            typed.stream = Some(true);
+        }
+        return Ok(serde_json::to_vec(&typed)?);
+    }
     let typed =
         openai::completion::CompletionRequest::try_from(openai::completion::OpenAIRequestParams {
             model: cfg.model.clone(),
@@ -162,7 +172,11 @@ pub fn build_request(
     } else {
         cfg.base_url.clone()
     };
-    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let path = match route_for_model(&cfg.model) {
+        CompletionRoute::Responses => "/responses",
+        CompletionRoute::ChatCompletions => "/chat/completions",
+    };
+    let url = format!("{}{}", base_url.trim_end_matches('/'), path);
     let body = build_request_body(cfg, request, stream)?;
 
     let headers = default_headers(
@@ -181,6 +195,24 @@ pub fn build_request(
     builder
         .body(body)
         .map_err(|e| CompletionError::RequestError(Box::new(e)))
+}
+
+/// Parse a `/responses`-route response body into the normalized
+/// [`completion::CompletionResponse`]. Pure.
+pub fn parse_responses_route_response(
+    status: http::StatusCode,
+    body: &str,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    if !status.is_success() {
+        return Err(CompletionError::from_http_response(
+            status,
+            body.to_string(),
+        ));
+    }
+    let response = serde_json::from_str::<responses_api::CompletionResponse>(body)?;
+    let mut core = completion::CompletionResponse::try_from(response)?;
+    core.provider = "copilot".to_string();
+    Ok(core)
 }
 
 /// Parse a chat-completions response body into the normalized
@@ -214,15 +246,45 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    use crate::http_client::sse::GenericEventSource;
     use crate::http_runtime::Transport;
 
     let req = build_request(cfg, &request, true)?;
+    if route_for_model(&cfg.model) == CompletionRoute::Responses {
+        let span = CompletionSpanBuilder::new(
+            DESCRIPTOR.name,
+            &cfg.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(request.preamble.as_deref(), request.record_telemetry_content)
+        .build();
+        return Ok(match rt.transport() {
+            Transport::Reqwest(client) => stream_copilot_responses_from_event_source(
+                GenericEventSource::new(client.clone(), req),
+                span,
+            ),
+            #[cfg(feature = "test-utils")]
+            Transport::Recording(client) => stream_copilot_responses_from_event_source(
+                GenericEventSource::new(client.clone(), req),
+                span,
+            ),
+            #[cfg(feature = "test-utils")]
+            Transport::Sequenced(client) => stream_copilot_responses_from_event_source(
+                GenericEventSource::new(client.clone(), req),
+                span,
+            ),
+        });
+    }
     match rt.transport() {
         Transport::Reqwest(client) => {
             send_copilot_chat_streaming_request(client.clone(), req).await
         }
         #[cfg(feature = "test-utils")]
         Transport::Recording(client) => {
+            send_copilot_chat_streaming_request(client.clone(), req).await
+        }
+        #[cfg(feature = "test-utils")]
+        Transport::Sequenced(client) => {
             send_copilot_chat_streaming_request(client.clone(), req).await
         }
     }
@@ -236,7 +298,10 @@ pub async fn complete(
 ) -> Result<completion::CompletionResponse, CompletionError> {
     let req = build_request(cfg, &request, false)?;
     let (status, body) = rt.send(req).await?;
-    parse_response(status, &body)
+    match route_for_model(&cfg.model) {
+        CompletionRoute::Responses => parse_responses_route_response(status, &body),
+        CompletionRoute::ChatCompletions => parse_response(status, &body),
+    }
 }
 
 #[cfg(test)]

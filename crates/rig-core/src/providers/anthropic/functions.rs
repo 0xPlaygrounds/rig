@@ -242,6 +242,13 @@ pub async fn open_stream(
             DESCRIPTOR.name,
             span,
         )),
+        #[cfg(feature = "test-utils")]
+        Transport::Sequenced(client) => Ok(super::streaming::stream_anthropic_sse(
+            client.clone(),
+            req,
+            DESCRIPTOR.name,
+            span,
+        )),
     }
 }
 

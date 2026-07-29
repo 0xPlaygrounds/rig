@@ -2,6 +2,7 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model identify the example that uses `FileLoader::with_glob`.
 
+use rig::client::ToProviderConfig;
 use anyhow::Result;
 use rig::agent::AgentBuilder;
 use rig::completion::Prompt;
@@ -22,11 +23,11 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
-    let model = client.completion_model(openai::GPT_4O);
+    let provider = client.provider_config(openai::GPT_4O);
     let files = load_example_contexts()?;
 
     let agent = files
-        .fold(AgentBuilder::new(model), |builder, (path, content)| {
+        .fold(AgentBuilder::new(provider), |builder, (path, content)| {
             let context = format!("Rust example {path:?}:\n{content}");
             builder.context(&context)
         })

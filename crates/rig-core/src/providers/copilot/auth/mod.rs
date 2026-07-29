@@ -102,6 +102,26 @@ impl Authenticator {
         }
     }
 
+    /// Resolve the credential without any interactive or network step.
+    ///
+    /// Explicit API keys resolve directly; GitHub access tokens and OAuth
+    /// resolve only from an unexpired cached Copilot key file (for access
+    /// tokens, one bound to that token). Returns `None` whenever producing a
+    /// usable key would require an exchange, refresh, or device-code flow —
+    /// use [`Authenticator::auth_context`] for the full flow.
+    pub fn cached_auth_context(&self) -> Option<AuthContext> {
+        match &self.source {
+            AuthSource::ApiKey(api_key) => Some(AuthContext {
+                api_key: api_key.clone(),
+                api_base: None,
+            }),
+            AuthSource::GitHubAccessToken(access_token) => {
+                self.platform.cached_auth_context(Some(access_token))
+            }
+            AuthSource::OAuth => self.platform.cached_auth_context(None),
+        }
+    }
+
     pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
         match &self.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {

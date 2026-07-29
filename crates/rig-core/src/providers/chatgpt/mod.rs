@@ -102,6 +102,28 @@ pub struct ChatGPTExt {
     user_agent: String,
 }
 
+impl ChatGPTExt {
+    /// The credential resolver this client authenticates requests with.
+    pub fn authenticator(&self) -> &auth::Authenticator {
+        &self.auth
+    }
+
+    /// Default instructions merged into every request's `instructions`.
+    pub fn default_instructions(&self) -> Option<&str> {
+        self.default_instructions.as_deref()
+    }
+
+    /// The `originator` header value attached to every request.
+    pub fn originator(&self) -> &str {
+        &self.originator
+    }
+
+    /// The `user-agent` header value attached to every request.
+    pub fn user_agent(&self) -> &str {
+        &self.user_agent
+    }
+}
+
 impl Debug for ChatGPTExt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ChatGPTExt")

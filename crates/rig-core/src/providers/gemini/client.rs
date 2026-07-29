@@ -18,6 +18,13 @@ pub struct GeminiExt {
     api_key: String,
 }
 
+impl GeminiExt {
+    /// The API key this extension appends as the `key=` query parameter.
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+}
+
 /// Builder marker for the Gemini GenerateContent client.
 #[derive(Debug, Default, Clone)]
 pub struct GeminiBuilder;

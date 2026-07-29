@@ -14,10 +14,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completions_api_agent_prompt() {
-    let agent = support::client()
-        .completion_model(support::model_name())
-        .completions_api()
-        .into_agent_builder()
+    let agent = support::completions_client()
+        .agent(support::model_name())
         .preamble("You are a helpful assistant.")
         .build();
 

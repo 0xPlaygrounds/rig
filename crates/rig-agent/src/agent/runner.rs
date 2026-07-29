@@ -13,8 +13,7 @@
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
-//! # use rig_core::completion::CompletionModel;
-//! # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
 //!     .runner("What is 2 + 2?")
 //!     .max_turns(3)
@@ -59,7 +58,7 @@ use rig_core::{
 };
 
 use crate::{
-    completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
+    completion::{CompletionError, Document, Message, PromptError, Usage},
     json_utils,
     tool::{
         ToolContext, ToolDispatch, ToolOutput, ToolResult,
@@ -195,15 +194,15 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
 #[non_exhaustive]
-pub struct AgentRunner<M>
-where
-    M: CompletionModel,
-{
+pub struct AgentRunner {
     pub(crate) prompt: Message,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) model: Arc<M>,
+    /// Plain provider configuration this runner completes against.
+    pub(crate) provider: crate::provider::ProviderConfig,
+    /// Live transport handles shared with the owning agent.
+    pub(crate) rt: Arc<crate::provider::Runtime>,
     pub(crate) agent_name: Option<String>,
     pub(crate) preamble: Option<String>,
     pub(crate) static_context: Vec<Document>,
@@ -228,19 +227,17 @@ where
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
-            model: agent.model.clone(),
+            provider: agent.provider.clone(),
+            rt: agent.rt.clone(),
             agent_name: agent.name.clone(),
             preamble: agent.preamble.clone(),
             static_context: agent.static_context.clone(),
@@ -280,10 +277,7 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
@@ -660,17 +654,14 @@ pub(crate) struct ToolCallOutcome {
 /// Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
-pub(crate) async fn run_single_tool<M>(
-    runner: &AgentRunner<M>,
+pub(crate) async fn run_single_tool(
+    runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError>
-where
-    M: CompletionModel,
-{
+) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.hooks;
     let tool_context = &runner.tool_context;
     let record_content = runner.record_telemetry_content;
@@ -896,13 +887,10 @@ impl UnaryTurnSource {
     }
 }
 
-impl<M> TurnSource<M> for UnaryTurnSource
-where
-    M: CompletionModel,
-{
+impl TurnSource for UnaryTurnSource {
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
         let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
@@ -911,7 +899,7 @@ where
 
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
@@ -920,11 +908,13 @@ where
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            let resp = match runner
-                .model
-                .completion(prepared.request.clone())
-                .instrument(chat_span.clone())
-                .await
+            let resp = match crate::provider::complete(
+                &runner.provider,
+                &runner.rt,
+                prepared.request.clone(),
+            )
+            .instrument(chat_span.clone())
+            .await
             {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -1053,7 +1043,7 @@ where
 
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
@@ -1098,10 +1088,7 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     pub(crate) async fn run_with_error_usage(
         mut self,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
@@ -1183,6 +1170,342 @@ where
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    //! Scripted-model shims for this file's tests: the familiar
+    //! `MockTurn`/`MockStreamEvent`/`MockCompletionModel` vocabulary rendered
+    //! onto [`crate::provider::MockScript`] behind
+    //! [`crate::provider::ProviderConfig::Mock`]. The shim is pure data — the
+    //! transport is the provider dispatcher, exactly as in production.
+
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionRequest, CompletionResponse, Usage};
+    use rig_core::message::{AssistantContent, Reasoning, Text, ToolCall, ToolFunction};
+    use rig_core::one_or_many::EmptyListError;
+    use rig_core::streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent};
+
+    use crate::provider::{MockScript, ProviderConfig};
+
+    const MOCK_PROVIDER: &str = "mock";
+
+    /// A scripted non-streaming mock completion turn.
+    #[derive(Clone, Debug)]
+    pub struct MockTurn {
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        message_id: Option<String>,
+    }
+
+    impl MockTurn {
+        /// Create a text response turn.
+        pub fn text(text: impl Into<String>) -> Self {
+            Self::from_content(AssistantContent::text(text.into()))
+        }
+
+        /// Create a tool-call response turn.
+        pub fn tool_call(
+            id: impl Into<String>,
+            name: impl Into<String>,
+            arguments: serde_json::Value,
+        ) -> Self {
+            Self::from_content(AssistantContent::ToolCall(ToolCall::new(
+                id.into(),
+                ToolFunction::new(name.into(), arguments),
+            )))
+        }
+
+        /// Create a response turn from one assistant content item.
+        pub fn from_content(content: AssistantContent) -> Self {
+            Self {
+                choice: OneOrMany::one(content),
+                usage: Usage::new(),
+                message_id: None,
+            }
+        }
+
+        /// Create a response turn from multiple assistant content items.
+        pub fn from_contents(
+            content: impl IntoIterator<Item = AssistantContent>,
+        ) -> Result<Self, EmptyListError> {
+            Ok(Self {
+                choice: OneOrMany::many(content)?,
+                usage: Usage::new(),
+                message_id: None,
+            })
+        }
+
+        /// Override usage for this turn.
+        pub fn with_usage(mut self, usage: Usage) -> Self {
+            self.usage = usage;
+            self
+        }
+
+        /// Set a provider-assigned assistant message ID for this turn.
+        pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+            self.message_id = Some(message_id.into());
+            self
+        }
+
+        fn into_completion_response(self) -> CompletionResponse {
+            let mut completion = CompletionResponse::new(self.choice, self.usage, MOCK_PROVIDER);
+            if let Some(message_id) = self.message_id {
+                completion = completion.with_message_id(message_id);
+            }
+            completion
+        }
+    }
+
+    /// A scripted streaming event, rendered into
+    /// [`StreamedAssistantContent`] items for [`MockScript::with_streams`].
+    ///
+    /// `MessageId` has no streamed-content representation of its own, so it is
+    /// folded into the turn's terminal [`StreamFinal`] record.
+    #[derive(Clone, Debug)]
+    pub enum MockStreamEvent {
+        /// Text chunk.
+        Text(String),
+        /// Complete tool call event.
+        ToolCall {
+            id: String,
+            name: String,
+            arguments: serde_json::Value,
+        },
+        /// Tool call delta event.
+        ToolCallDelta {
+            id: String,
+            internal_call_id: String,
+            content: ToolCallDeltaContent,
+        },
+        /// Complete reasoning event.
+        Reasoning(Reasoning),
+        /// Reasoning delta event.
+        ReasoningDelta {
+            id: Option<String>,
+            reasoning: String,
+        },
+        /// Provider-assigned message ID (folded into the terminal record).
+        MessageId(String),
+        /// Provider-native output item that Rig does not model.
+        Unknown(serde_json::Value),
+        /// Final stream record carrying usage and metadata.
+        FinalResponse(StreamFinal),
+    }
+
+    impl MockStreamEvent {
+        /// Create a text chunk.
+        pub fn text(text: impl Into<String>) -> Self {
+            Self::Text(text.into())
+        }
+
+        /// Create a complete tool call event.
+        pub fn tool_call(
+            id: impl Into<String>,
+            name: impl Into<String>,
+            arguments: serde_json::Value,
+        ) -> Self {
+            Self::ToolCall {
+                id: id.into(),
+                name: name.into(),
+                arguments,
+            }
+        }
+
+        /// Create a tool call name delta.
+        pub fn tool_call_name_delta(
+            id: impl Into<String>,
+            internal_call_id: impl Into<String>,
+            name: impl Into<String>,
+        ) -> Self {
+            Self::ToolCallDelta {
+                id: id.into(),
+                internal_call_id: internal_call_id.into(),
+                content: ToolCallDeltaContent::Name(name.into()),
+            }
+        }
+
+        /// Create a tool call arguments delta.
+        pub fn tool_call_arguments_delta(
+            id: impl Into<String>,
+            internal_call_id: impl Into<String>,
+            arguments: impl Into<String>,
+        ) -> Self {
+            Self::ToolCallDelta {
+                id: id.into(),
+                internal_call_id: internal_call_id.into(),
+                content: ToolCallDeltaContent::Delta(arguments.into()),
+            }
+        }
+
+        /// Create a complete reasoning event.
+        pub fn reasoning(reasoning: impl AsRef<str>) -> Self {
+            Self::Reasoning(Reasoning::new(reasoning.as_ref()))
+        }
+
+        /// Create a reasoning delta event.
+        pub fn reasoning_delta(
+            id: Option<impl Into<String>>,
+            reasoning: impl Into<String>,
+        ) -> Self {
+            Self::ReasoningDelta {
+                id: id.map(Into::into),
+                reasoning: reasoning.into(),
+            }
+        }
+
+        /// Create a provider-assigned message ID event.
+        pub fn message_id(id: impl Into<String>) -> Self {
+            Self::MessageId(id.into())
+        }
+
+        /// Create an unmodeled provider output item.
+        pub fn unknown(value: serde_json::Value) -> Self {
+            Self::Unknown(value)
+        }
+
+        /// Create a final response event with usage.
+        pub fn final_response(usage: Usage) -> Self {
+            Self::FinalResponse(StreamFinal::new(MOCK_PROVIDER, usage))
+        }
+
+        /// Create a final response event with default zero usage.
+        pub fn final_response_with_default_usage() -> Self {
+            Self::final_response(Usage::new())
+        }
+
+        /// Create a final response event whose usage has only `total_tokens` set.
+        pub fn final_response_with_total_tokens(total_tokens: u64) -> Self {
+            let mut usage = Usage::new();
+            usage.total_tokens = total_tokens;
+            Self::final_response(usage)
+        }
+
+        /// Render one turn's events into streamed items, preserving order.
+        ///
+        /// A complete tool call reuses the internal call id of any delta that
+        /// shares its provider id (so chunked emissions assemble into a single
+        /// call), and otherwise mints a deterministic one. A `MessageId` event
+        /// is folded into the turn's `StreamFinal` record.
+        fn into_items(events: Vec<Self>) -> Vec<StreamedAssistantContent> {
+            let message_id = events.iter().rev().find_map(|event| match event {
+                Self::MessageId(id) => Some(id.clone()),
+                _ => None,
+            });
+            let delta_internal_id = |call_id: &str| {
+                events.iter().find_map(|event| match event {
+                    Self::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        ..
+                    } if id == call_id => Some(internal_call_id.clone()),
+                    _ => None,
+                })
+            };
+            events
+                .iter()
+                .filter_map(|event| match event.clone() {
+                    Self::Text(text) => Some(StreamedAssistantContent::Text(Text::new(text))),
+                    Self::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    } => {
+                        let internal_call_id =
+                            delta_internal_id(&id).unwrap_or_else(|| format!("ic-{id}"));
+                        Some(StreamedAssistantContent::ToolCall {
+                            tool_call: ToolCall::new(id, ToolFunction::new(name, arguments)),
+                            internal_call_id,
+                        })
+                    }
+                    Self::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    } => Some(StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    }),
+                    Self::Reasoning(reasoning) => {
+                        Some(StreamedAssistantContent::Reasoning(reasoning))
+                    }
+                    Self::ReasoningDelta { id, reasoning } => {
+                        Some(StreamedAssistantContent::ReasoningDelta { id, reasoning })
+                    }
+                    Self::MessageId(_) => None,
+                    Self::Unknown(value) => Some(StreamedAssistantContent::Unknown(value)),
+                    Self::FinalResponse(mut final_record) => {
+                        if final_record.message_id.is_none() {
+                            final_record.message_id = message_id.clone();
+                        }
+                        Some(StreamedAssistantContent::Final(final_record))
+                    }
+                })
+                .collect()
+        }
+    }
+
+    /// A cloneable scripted model handle: `clone` shares the underlying
+    /// [`MockScript`] (its cursor and request log), so a test can keep a probe
+    /// while the agent owns the provider configuration.
+    #[derive(Clone, Default)]
+    pub struct MockCompletionModel {
+        script: MockScript,
+    }
+
+    impl MockCompletionModel {
+        /// Create a mock model from scripted non-streaming turns.
+        pub fn new(turns: impl IntoIterator<Item = MockTurn>) -> Self {
+            Self::from_turns(turns)
+        }
+
+        /// Create a mock model that returns one text completion.
+        pub fn text(text: impl Into<String>) -> Self {
+            Self::from_turns([MockTurn::text(text)])
+        }
+
+        /// Create a mock model from scripted non-streaming turns.
+        pub fn from_turns(turns: impl IntoIterator<Item = MockTurn>) -> Self {
+            Self {
+                script: MockScript::from_responses(
+                    turns
+                        .into_iter()
+                        .map(MockTurn::into_completion_response)
+                        .collect(),
+                ),
+            }
+        }
+
+        /// Create a mock model from scripted streaming turns.
+        pub fn from_stream_turns(
+            stream_turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
+        ) -> Self {
+            Self {
+                script: MockScript::from_responses(Vec::new()).with_streams(
+                    stream_turns
+                        .into_iter()
+                        .map(|turn| MockStreamEvent::into_items(turn.into_iter().collect()))
+                        .collect(),
+                ),
+            }
+        }
+
+        /// The provider configuration an agent completes against.
+        pub fn provider(&self) -> ProviderConfig {
+            ProviderConfig::Mock(self.script.clone())
+        }
+
+        /// Return cloned requests received by this model's script.
+        pub fn requests(&self) -> Vec<CompletionRequest> {
+            self.script.requests()
+        }
+
+        /// Return the number of requests served by this model's script.
+        pub fn request_count(&self) -> usize {
+            self.script.calls()
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::sync::{
         Arc, Mutex,
@@ -1192,10 +1515,10 @@ mod tests {
     use futures::StreamExt;
     use serde_json::json;
 
+    use super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::{
         agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
-        completion::{CompletionModel, Document},
-        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
+        completion::Document,
         tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
     };
     use rig_core::message::ToolChoice;
@@ -1322,14 +1645,14 @@ mod tests {
 
     #[test]
     fn agent_exposes_read_only_name_and_description() {
-        let named = AgentBuilder::new(MockCompletionModel::text("done"))
+        let named = AgentBuilder::new(MockCompletionModel::text("done").provider())
             .name("researcher")
             .description("Finds evidence")
             .build();
         assert_eq!(named.name(), Some("researcher"));
         assert_eq!(named.description(), Some("Finds evidence"));
 
-        let unnamed = AgentBuilder::new(MockCompletionModel::text("done")).build();
+        let unnamed = AgentBuilder::new(MockCompletionModel::text("done").provider()).build();
         assert_eq!(unnamed.name(), None);
         assert_eq!(unnamed.description(), None);
     }
@@ -1337,7 +1660,7 @@ mod tests {
     #[tokio::test]
     async fn runner_applies_per_run_request_overrides() {
         let model = MockCompletionModel::text("done");
-        AgentBuilder::new(model.clone())
+        AgentBuilder::new(model.clone().provider())
             .preamble("baseline preamble")
             .context("baseline document")
             .temperature(0.1)
@@ -1396,7 +1719,7 @@ mod tests {
     #[tokio::test]
     async fn runner_can_merge_additional_params_into_the_baseline() {
         let model = MockCompletionModel::text("done");
-        AgentBuilder::new(model.clone())
+        AgentBuilder::new(model.clone().provider())
             .additional_params(json!({"baseline": true, "winner": "baseline"}))
             .build()
             .runner("go")
@@ -1423,7 +1746,7 @@ mod tests {
     #[tokio::test]
     async fn runner_can_replace_additional_params_wholesale() {
         let model = MockCompletionModel::text("done");
-        AgentBuilder::new(model.clone())
+        AgentBuilder::new(model.clone().provider())
             .additional_params(json!({"baseline": true}))
             .build()
             .runner("go")
@@ -1443,7 +1766,7 @@ mod tests {
     #[tokio::test]
     async fn runner_can_clear_configured_request_defaults() {
         let model = MockCompletionModel::text("done");
-        AgentBuilder::new(model.clone())
+        AgentBuilder::new(model.clone().provider())
             .preamble("baseline")
             .temperature(0.1)
             .max_tokens(10)
@@ -1475,7 +1798,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn direct_completion_model_requests_are_intentionally_hook_free() {
+    async fn direct_provider_requests_are_intentionally_hook_free() {
         #[derive(Clone)]
         struct CountCompletionCalls(Arc<AtomicUsize>);
 
@@ -1492,15 +1815,30 @@ mod tests {
 
         let model = MockCompletionModel::text("raw response");
         let calls = Arc::new(AtomicUsize::new(0));
-        let _agent = AgentBuilder::new(model.clone())
+        let _agent = AgentBuilder::new(model.provider())
             .add_hook(CountCompletionCalls(calls.clone()))
             .build();
 
-        model
-            .completion_request("raw request")
-            .send()
+        // A request issued straight against the provider dispatcher bypasses
+        // the agent loop entirely, so no agent hook fires.
+        let request = crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: rig_core::OneOrMany::one(crate::completion::Message::user(
+                "raw request",
+            )),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+        crate::provider::complete(&model.provider(), &crate::provider::Runtime::new(), request)
             .await
-            .expect("direct model request should succeed");
+            .expect("direct provider request should succeed");
 
         assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert_eq!(model.request_count(), 1);
@@ -1513,7 +1851,7 @@ mod tests {
             MockTurn::tool_call("tc1", "flaky_tool", json!({})),
             MockTurn::text("done"),
         ]);
-        AgentBuilder::new(blocking_model.clone())
+        AgentBuilder::new(blocking_model.clone().provider())
             .tool(MetadataFailingTool)
             .add_hook(blocking.clone())
             .build()
@@ -1536,7 +1874,7 @@ mod tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(streaming_model.clone())
+        let mut stream = AgentBuilder::new(streaming_model.clone().provider())
             .tool(MetadataFailingTool)
             .add_hook(streaming.clone())
             .build()
@@ -1595,7 +1933,7 @@ mod tests {
             MockTurn::tool_call("tc1", SnapshotMutatingTool::NAME, json!({})),
             MockTurn::tool_call("tc2", SnapshotMutatingTool::NAME, json!({})),
             MockTurn::text("done"),
-        ]))
+        ]).provider())
         .tool(tool.clone())
         .add_hook(results.clone())
         .build()
@@ -1636,19 +1974,17 @@ mod migrated_tests {
     use futures::StreamExt;
     use serde::Deserialize;
     use serde_json::json;
-    use tokio::sync::{Barrier, Notify};
+    use tokio::sync::Barrier;
 
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{
-        CompletionError, CompletionModel, Message, Prompt, PromptError, Usage,
-    };
+    use super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
+    use crate::completion::{CompletionError, Message, Prompt, PromptError, Usage};
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
-        MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockToolError, MockTurn,
+        MockAddTool, MockBarrierTool, MockOperationArgs, MockSubtractTool, MockToolError,
     };
     use crate::tool::{
         Tool, ToolContext, ToolExecutionError, ToolSet,
@@ -1913,7 +2249,7 @@ mod migrated_tests {
             "canonical response",
         )
         .with_usage(canonical_usage())
-        .with_message_id("msg-canonical")]))
+        .with_message_id("msg-canonical")]).provider())
         .add_hook(hook.clone())
         .build()
         .runner(prompt.clone())
@@ -1940,7 +2276,7 @@ mod migrated_tests {
             "canonical response",
         )
         .with_usage(canonical_usage())
-        .with_message_id("msg-canonical")]))
+        .with_message_id("msg-canonical")]).provider())
         .add_hook(blocking_hook.clone())
         .build()
         .runner(prompt.clone())
@@ -1953,7 +2289,7 @@ mod migrated_tests {
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             MockStreamEvent::message_id("msg-canonical"),
-        ]]))
+        ]]).provider())
         .add_hook(streaming_hook.clone())
         .build()
         .runner(prompt)
@@ -1984,7 +2320,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
-        ]]))
+        ]]).provider())
         .add_hook(hook.clone())
         .build()
         .runner("canonical prompt")
@@ -2006,7 +2342,7 @@ mod migrated_tests {
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             MockStreamEvent::message_id("msg-after-final"),
-        ]]))
+        ]]).provider())
         .add_hook(hook.clone())
         .build()
         .runner("canonical prompt")
@@ -2043,7 +2379,7 @@ mod migrated_tests {
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
             MockStreamEvent::message_id("msg-after-final"),
-        ]]))
+        ]]).provider())
         .add_hook(hook.clone())
         .build()
         .runner(prompt.clone())
@@ -2099,7 +2435,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
             MockStreamEvent::final_response(canonical_usage()),
-        ]]))
+        ]]).provider())
         .add_hook(StopCompletedModelTurn)
         .build()
         .runner(prompt.clone())
@@ -2137,41 +2473,6 @@ mod migrated_tests {
     }
 
     #[tokio::test]
-    async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() {
-        let hook = FinishLifecycleHook::default();
-        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text("canonical response"),
-            MockStreamEvent::final_response(canonical_usage()),
-            MockStreamEvent::error("post-final failure"),
-        ]]))
-        .add_hook(hook.clone())
-        .build()
-        .runner("canonical prompt")
-        .stream()
-        .await;
-        let mut saw_provider_final = false;
-        let mut error = None;
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                    _,
-                ))) => saw_provider_final = true,
-                Ok(_) => {}
-                Err(err) => error = Some(err),
-            }
-        }
-
-        assert!(!saw_provider_final, "the buffered final must remain hidden");
-        assert!(hook.snapshots.lock().expect("finish snapshots").is_empty());
-        assert_eq!(hook.model_turns.load(SeqCst), 0);
-        assert!(matches!(
-            error,
-            Some(StreamingError::Completion(CompletionError::ProviderError(message)))
-                if message == "post-final failure"
-        ));
-    }
-
-    #[tokio::test]
     async fn visible_assistant_items_after_final_are_rejected() {
         let cases = [
             ("text", MockStreamEvent::text("late text")),
@@ -2197,7 +2498,7 @@ mod migrated_tests {
                 MockStreamEvent::text("canonical response"),
                 MockStreamEvent::final_response(canonical_usage()),
                 visible_item,
-            ]]))
+            ]]).provider())
             .add_hook(hook.clone())
             .build()
             .runner("canonical prompt")
@@ -2242,7 +2543,7 @@ mod migrated_tests {
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response(canonical_usage()),
             MockStreamEvent::text("late text"),
-        ]]))
+        ]]).provider())
         .add_hook(hook.clone())
         .build()
         .runner("canonical prompt")
@@ -2278,7 +2579,7 @@ mod migrated_tests {
                 MockStreamEvent::text("done"),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
-        ]))
+        ]).provider())
         .tool(MockAddTool)
         .add_hook(hook.clone())
         .build()
@@ -2337,7 +2638,7 @@ mod migrated_tests {
     async fn from_agent_preserves_implicit_one_and_explicit_zero_budgets() {
         let implicit_model = blocking_model();
         let implicit_recorded = implicit_model.clone();
-        let implicit_agent = AgentBuilder::new(implicit_model).tool(MockAddTool).build();
+        let implicit_agent = AgentBuilder::new(implicit_model.provider()).tool(MockAddTool).build();
         let implicit_runner = super::AgentRunner::from_agent(&implicit_agent, "add 2 and 3");
         assert_eq!(implicit_runner.max_turns, 1);
 
@@ -2353,7 +2654,7 @@ mod migrated_tests {
 
         let zero_model = MockCompletionModel::text("should not be requested");
         let zero_recorded = zero_model.clone();
-        let zero_agent = AgentBuilder::new(zero_model).default_max_turns(0).build();
+        let zero_agent = AgentBuilder::new(zero_model.provider()).default_max_turns(0).build();
         let zero_runner = super::AgentRunner::from_agent(&zero_agent, "do not call");
         assert_eq!(zero_runner.max_turns, 0);
 
@@ -2374,7 +2675,7 @@ mod migrated_tests {
     async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
         let blocking_model = blocking_model();
         let blocking_recorded = blocking_model.clone();
-        let blocking_agent = AgentBuilder::new(blocking_model).tool(MockAddTool).build();
+        let blocking_agent = AgentBuilder::new(blocking_model.provider()).tool(MockAddTool).build();
         let blocking_err = blocking_agent
             .prompt("add 2 and 3")
             .max_turns(1)
@@ -2388,7 +2689,7 @@ mod migrated_tests {
 
         let streaming_model = streaming_model();
         let streaming_recorded = streaming_model.clone();
-        let streaming_agent = AgentBuilder::new(streaming_model).tool(MockAddTool).build();
+        let streaming_agent = AgentBuilder::new(streaming_model.provider()).tool(MockAddTool).build();
         let mut stream = streaming_agent
             .stream_prompt("add 2 and 3")
             .max_turns(1)
@@ -2416,7 +2717,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn run_and_stream_behave_identically_for_a_tool_call() {
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model())
+        let blocking = AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -2429,7 +2730,7 @@ mod migrated_tests {
         // No `.with_history` on either runner — `stream()` must return the final
         // history just like `run()` returns `messages`.
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model())
+        let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -2498,9 +2799,10 @@ mod migrated_tests {
             AgentBuilder, AgentHook, HookContext, HookStack, ToolCall, ToolCallAction,
             ToolResultAction, ToolResultEvent,
         };
+        use super::super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
         use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockDeniedTool, MockFailingTool,
-            MockHandledFailureTool, MockMetadataTool, MockRequestId, MockStreamEvent, MockTurn,
+            MockAddTool, MockDeniedTool, MockFailingTool, MockHandledFailureTool,
+            MockMetadataTool, MockRequestId,
         };
         use crate::tool::{ToolErrorKind, ToolResult};
 
@@ -2589,7 +2891,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn timeout_failure_surfaces_structured_outcome() {
             let hook = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
                 .add_hook(hook.clone())
                 .build()
@@ -2638,7 +2940,7 @@ mod migrated_tests {
                 MockTurn::tool_call("tc1", "flaky_tool", json!({})),
                 MockTurn::tool_call("tc2", "flaky_tool", json!({})),
                 MockTurn::text("unreachable"),
-            ]))
+            ]).provider())
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             // Observer first so it records both timeouts before the terminator fires.
             .add_hook(observer.clone())
@@ -2683,7 +2985,7 @@ mod migrated_tests {
                 }
             }
 
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::NotFound))
                 .add_hook(hook.clone())
                 .add_hook(StatusProbe(status.clone()))
@@ -2707,7 +3009,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn handled_failure_delivers_model_output_and_error_outcome() {
             let hook = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("lookup"))
+            AgentBuilder::new(model_one_tool_then_text("lookup").provider())
                 .tool(MockHandledFailureTool)
                 .add_hook(hook.clone())
                 .build()
@@ -2745,7 +3047,7 @@ mod migrated_tests {
             }
 
             let observer = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
                 .add_hook(SkipHook)
                 .add_hook(observer.clone())
@@ -2770,7 +3072,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn tool_authored_denial_produces_denied_outcome() {
             let hook = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("guarded"))
+            AgentBuilder::new(model_one_tool_then_text("guarded").provider())
                 .tool(MockDeniedTool)
                 .add_hook(hook.clone())
                 .build()
@@ -2791,7 +3093,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn permission_denied_failure_is_not_a_tool_refusal() {
             let hook = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::PermissionDenied))
                 .add_hook(hook.clone())
                 .build()
@@ -2870,7 +3172,7 @@ mod migrated_tests {
                 // The tool must never execute; `MockAddTool` would produce a
                 // `Success` outcome with result "42" if it (wrongly) ran.
                 if streaming {
-                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add"))
+                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add").provider())
                         .tool(MockAddTool)
                         .add_hook(RewriteHook)
                         .add_hook(SkipHook)
@@ -2886,7 +3188,7 @@ mod migrated_tests {
                         }
                     }
                 } else {
-                    AgentBuilder::new(model_one_tool_then_text("add"))
+                    AgentBuilder::new(model_one_tool_then_text("add").provider())
                         .tool(MockAddTool)
                         .add_hook(RewriteHook)
                         .add_hook(SkipHook)
@@ -2994,7 +3296,7 @@ mod migrated_tests {
             for streaming in [false, true] {
                 let probe = ArgsProbe::default();
                 if streaming {
-                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add"))
+                    let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("add").provider())
                         .tool(MockAddTool)
                         .add_hook(nested_stack())
                         .add_hook(probe.clone())
@@ -3009,7 +3311,7 @@ mod migrated_tests {
                         }
                     }
                 } else {
-                    AgentBuilder::new(model_one_tool_then_text("add"))
+                    AgentBuilder::new(model_one_tool_then_text("add").provider())
                         .tool(MockAddTool)
                         .add_hook(nested_stack())
                         .add_hook(probe.clone())
@@ -3047,7 +3349,7 @@ mod migrated_tests {
                 // `add` needs integers; a string is a hard parse failure.
                 MockTurn::tool_call("tc1", "add", json!({ "x": "not-a-number", "y": 1 })),
                 MockTurn::text("done"),
-            ]))
+            ]).provider())
             .tool(MockAddTool)
             .add_hook(hook.clone())
             .build()
@@ -3100,7 +3402,7 @@ mod migrated_tests {
 
                 if streaming {
                     let mut stream =
-                        AgentBuilder::new(stream_model_one_tool_then_text("with_meta"))
+                        AgentBuilder::new(stream_model_one_tool_then_text("with_meta").provider())
                             .tool(MockMetadataTool)
                             .add_hook(probe)
                             .build()
@@ -3114,7 +3416,7 @@ mod migrated_tests {
                         }
                     }
                 } else {
-                    AgentBuilder::new(model_one_tool_then_text("with_meta"))
+                    AgentBuilder::new(model_one_tool_then_text("with_meta").provider())
                         .tool(MockMetadataTool)
                         .add_hook(probe)
                         .build()
@@ -3170,7 +3472,7 @@ mod migrated_tests {
             }
 
             let observer = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::NotFound))
                 // Observer AFTER the redactor: it still sees the true outcome, and
                 // the chained (redacted) model-visible result.
@@ -3192,7 +3494,7 @@ mod migrated_tests {
         #[tokio::test]
         async fn streaming_and_blocking_outcomes_match() {
             let blocking = OutcomeHook::default();
-            AgentBuilder::new(model_one_tool_then_text("flaky_tool"))
+            AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
                 .add_hook(blocking.clone())
                 .build()
@@ -3203,7 +3505,7 @@ mod migrated_tests {
                 .expect("blocking run should succeed");
 
             let streaming = OutcomeHook::default();
-            let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("flaky_tool"))
+            let mut stream = AgentBuilder::new(stream_model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
                 .add_hook(streaming.clone())
                 .build()
@@ -3246,7 +3548,7 @@ mod migrated_tests {
             let response = AgentBuilder::new(MockCompletionModel::from_turns([
                 turn,
                 MockTurn::text("done"),
-            ]))
+            ]).provider())
             .tool(MockAddTool)
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             .add_hook(observer.clone())
@@ -3310,17 +3612,11 @@ mod migrated_tests {
         use crate::agent::{
             AgentBuilder, HookContext, MultiTurnStreamItem, ToolResultAction, ToolResultEvent,
         };
-        use crate::completion::{
-            CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Prompt,
-            PromptError, Usage,
-        };
+        use super::super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
+        use crate::completion::{PromptError, Usage};
         use crate::streaming::StreamedAssistantContent;
-        use crate::streaming::StreamingCompletionResponse;
-        use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn,
-        };
+        use crate::test_utils::MockAddTool;
         use crate::tool::{ToolContext, ToolExecutionError};
-        use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
         use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -3462,53 +3758,12 @@ mod migrated_tests {
             ])
         }
 
-        #[derive(Clone)]
-        struct CompletionTelemetryModel {
-            inner: MockCompletionModel,
-        }
-
-        impl CompletionModel for CompletionTelemetryModel {
-            type Client = ();
-
-            fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-                Self {
-                    inner: MockCompletionModel::default(),
-                }
-            }
-
-            async fn completion(
-                &self,
-                request: CompletionRequest,
-            ) -> Result<CompletionResponse, CompletionError> {
-                let span = CompletionSpanBuilder::new(
-                    "fixture-provider",
-                    "fixture-model",
-                    CompletionOperation::Chat,
-                )
-                .build();
-                self.inner.completion(request).instrument(span).await
-            }
-
-            async fn stream(
-                &self,
-                request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse, CompletionError> {
-                let span = CompletionSpanBuilder::new(
-                    "fixture-provider",
-                    "fixture-model",
-                    CompletionOperation::ChatStreaming,
-                )
-                .build();
-                self.inner.stream(request).instrument(span).await
-            }
-        }
-
         /// Register the blocking driver's span callsites against the scoped
         /// subscriber before asserting, mirroring the streaming usage test's
         /// interest-cache warm-up (a foreign thread without our subscriber can
         /// otherwise cache `Interest::never` for these callsites).
         async fn warm_blocking_callsites() {
-            let agent = AgentBuilder::new(tool_then_text_model())
+            let agent = AgentBuilder::new(tool_then_text_model().provider())
                 .record_content_telemetry(true)
                 .tool(MockAddTool)
                 .build();
@@ -3519,7 +3774,7 @@ mod migrated_tests {
             AgentBuilder::new(MockCompletionModel::from_turns([
                 MockTurn::text("rejected"),
                 MockTurn::text("accepted"),
-            ]))
+            ]).provider())
             .record_content_telemetry(true)
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
@@ -3544,7 +3799,7 @@ mod migrated_tests {
                     MockStreamEvent::text("accepted"),
                     MockStreamEvent::final_response_with_default_usage(),
                 ],
-            ]))
+            ]).provider())
             .record_content_telemetry(true)
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
@@ -3572,7 +3827,7 @@ mod migrated_tests {
         async fn run_blocking_model_turn_stop_with_content_telemetry() {
             let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text(
                 "stopped blocking response",
-            )]))
+            )]).provider())
             .record_content_telemetry(true)
             .add_hook(StopCompletedModelTurn)
             .build()
@@ -3592,7 +3847,7 @@ mod migrated_tests {
             let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
                 MockStreamEvent::text("stopped streaming response"),
                 MockStreamEvent::final_response_with_default_usage(),
-            ]]))
+            ]]).provider())
             .record_content_telemetry(true)
             .add_hook(StopCompletedModelTurn)
             .build()
@@ -3647,7 +3902,7 @@ mod migrated_tests {
 
             let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
             tracing::subscriber::with_default(Registry::default(), || {
-                let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+                let agent = AgentBuilder::new(MockCompletionModel::text("done").provider())
                     .name("contract-agent")
                     .build();
                 let runner = agent.runner("hello");
@@ -3839,7 +4094,7 @@ mod migrated_tests {
             tracing::callsite::rebuild_interest_cache();
             captured.clear();
 
-            let agent = AgentBuilder::new(tool_then_text_model())
+            let agent = AgentBuilder::new(tool_then_text_model().provider())
                 .record_content_telemetry(true)
                 .tool(MockAddTool)
                 .build();
@@ -3902,59 +4157,6 @@ mod migrated_tests {
         }
 
         #[tokio::test]
-        async fn classic_completion_parent_is_enriched_without_duplicate_provider_span() {
-            let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-            let captured = Captured::default();
-            let subscriber = Registry::default().with(CaptureLayer {
-                captured: captured.clone(),
-            });
-            let _default = tracing::subscriber::set_default(subscriber);
-
-            let warm = AgentBuilder::new(CompletionTelemetryModel {
-                inner: MockCompletionModel::text("warm"),
-            })
-            .build();
-            let _ = warm.prompt("warm").await;
-            tracing::callsite::rebuild_interest_cache();
-            captured.clear();
-
-            let agent = AgentBuilder::new(CompletionTelemetryModel {
-                inner: MockCompletionModel::text("done"),
-            })
-            .build();
-            let response = agent.prompt("hello").await.expect("prompt should succeed");
-            assert_eq!(response, "done");
-
-            let spans = captured.snapshot();
-            let chat_spans = spans
-                .iter()
-                .filter(|span| span.name == "chat")
-                .collect::<Vec<_>>();
-            assert_eq!(chat_spans.len(), 1, "provider telemetry must reuse chat");
-            assert_eq!(chat_spans[0].target, "rig::agent_chat");
-            assert!(
-                spans.iter().all(|span| span.target != "rig::completions"),
-                "an adopted classic completion parent must not gain a provider child"
-            );
-            assert_eq!(
-                chat_spans[0]
-                    .string_fields
-                    .get("gen_ai.provider.name")
-                    .and_then(|values| values.first())
-                    .map(String::as_str),
-                Some("fixture-provider")
-            );
-            assert_eq!(
-                chat_spans[0]
-                    .string_fields
-                    .get("gen_ai.request.model")
-                    .and_then(|values| values.first())
-                    .map(String::as_str),
-                Some("fixture-model")
-            );
-        }
-
-        #[tokio::test]
         async fn run_does_not_record_usage_onto_a_caller_supplied_outer_span() {
             let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
             let captured = Captured::default();
@@ -3977,7 +4179,7 @@ mod migrated_tests {
                 gen_ai.usage.output_tokens = tracing::field::Empty,
             );
             async {
-                let agent = AgentBuilder::new(tool_then_text_model())
+                let agent = AgentBuilder::new(tool_then_text_model().provider())
                     .tool(MockAddTool)
                     .build();
                 agent
@@ -4123,7 +4325,7 @@ mod migrated_tests {
                 MockTurn::tool_call("tc1", "raw_output", serde_json::json!({})),
                 MockTurn::text("ok"),
             ]);
-            let response = AgentBuilder::new(model)
+            let response = AgentBuilder::new(model.provider())
                 .record_content_telemetry(true)
                 .tool(RawOutputTool)
                 .add_hook(RedactResultHook)
@@ -4167,7 +4369,7 @@ mod migrated_tests {
                 "tc1",
                 "raw_output",
                 serde_json::json!({}),
-            )]))
+            )]).provider())
             .tool(RawOutputTool)
             .add_hook(StopOnResultHook)
             .build()
@@ -4248,7 +4450,7 @@ mod migrated_tests {
             .expect("two tool calls is a valid turn"),
             MockTurn::text("done"),
         ]);
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add two pairs")
@@ -4269,7 +4471,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add two pairs")
@@ -4354,7 +4556,7 @@ mod migrated_tests {
             .expect("two tool calls is a valid turn"),
             MockTurn::text("done"),
         ]);
-        let response = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model.provider())
             .tool(OutOfOrderTool {
                 gate: Arc::new(tokio::sync::Notify::new()),
                 order: Arc::new(AtomicU32::new(0)),
@@ -4432,7 +4634,7 @@ mod migrated_tests {
             .expect("two tool calls is a valid turn"),
             MockTurn::text("done"),
         ]);
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add two pairs")
@@ -4453,7 +4655,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let stream = AgentBuilder::new(streaming_model)
+        let stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add two pairs")
@@ -4492,7 +4694,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let stream = AgentBuilder::new(model)
+        let stream = AgentBuilder::new(model.provider())
             .tool(OutOfOrderTool {
                 gate: Arc::new(tokio::sync::Notify::new()),
                 order: Arc::new(AtomicU32::new(0)),
@@ -4537,7 +4739,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool(OutOfOrderTool {
                 gate: Arc::new(tokio::sync::Notify::new()),
                 order: Arc::new(AtomicU32::new(0)),
@@ -4598,7 +4800,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let stream = AgentBuilder::new(model)
+        let stream = AgentBuilder::new(model.provider())
             .tool(MockBarrierTool::new(barrier))
             .build()
             .runner("hit the barrier twice")
@@ -4635,7 +4837,7 @@ mod migrated_tests {
                     MockStreamEvent::final_response_with_total_tokens(0),
                 ],
             ]);
-            let mut stream = AgentBuilder::new(model)
+            let mut stream = AgentBuilder::new(model.provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("add two pairs")
@@ -4769,7 +4971,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool(DrainProbeTool {
                 started: started.clone(),
                 completed: completed.clone(),
@@ -4888,7 +5090,7 @@ mod migrated_tests {
     async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drivers() {
         let run_err = tokio::time::timeout(
             std::time::Duration::from_secs(5),
-            AgentBuilder::new(two_terminating_tools_blocking_model())
+            AgentBuilder::new(two_terminating_tools_blocking_model().provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("go")
@@ -4903,7 +5105,7 @@ mod migrated_tests {
         .expect("blocking run must not hang")
         .expect_err("the run must terminate");
 
-        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model().provider())
             .tool(MockAddTool)
             .build()
             .runner("go")
@@ -4969,7 +5171,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
         let blocking_calls = Arc::new(AtomicU32::new(0));
-        AgentBuilder::new(two_terminating_tools_blocking_model())
+        AgentBuilder::new(two_terminating_tools_blocking_model().provider())
             .tool(CountingAddTool {
                 calls: blocking_calls.clone(),
             })
@@ -4987,7 +5189,7 @@ mod migrated_tests {
         );
 
         let streaming_calls = Arc::new(AtomicU32::new(0));
-        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
+        let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model().provider())
             .tool(CountingAddTool {
                 calls: streaming_calls.clone(),
             })
@@ -5115,7 +5317,7 @@ mod migrated_tests {
     async fn concurrent_terminate_drops_beyond_window_sibling_but_drains_in_flight() {
         let called = Arc::new(Mutex::new(Vec::new()));
         let sibling_started = Arc::new(tokio::sync::Notify::new());
-        let mut stream = AgentBuilder::new(three_tools_first_terminates_streaming_model())
+        let mut stream = AgentBuilder::new(three_tools_first_terminates_streaming_model().provider())
             .tool(RecordingArgsTool {
                 called: called.clone(),
                 sibling_started: sibling_started.clone(),
@@ -5241,7 +5443,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool(SignalOnRunTool {
                 a_ran: a_ran.clone(),
                 a_done: a_done.clone(),
@@ -5312,7 +5514,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .add_hook(RewriteToolArgsHook(json!({"x": 2, "y": 40})))
             .build()
@@ -5378,7 +5580,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ]);
-        let stream = AgentBuilder::new(model)
+        let stream = AgentBuilder::new(model.provider())
             .tool(CountingAddTool {
                 calls: calls.clone(),
             })
@@ -5447,7 +5649,7 @@ mod migrated_tests {
 
         let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
         let probe = model.clone();
-        let err = AgentBuilder::new(model)
+        let err = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .tool_choice(ToolChoice::Required)
             .add_hook(EmptyActiveToolsHook)
@@ -5493,7 +5695,7 @@ mod migrated_tests {
 
         let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
         let probe = model.clone();
-        let err = AgentBuilder::new(model)
+        let err = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .tool_choice(ToolChoice::Specific {
@@ -5583,7 +5785,7 @@ mod migrated_tests {
             MockTurn::text("done"),
         ]);
 
-        let _ = AgentBuilder::new(model)
+        let _ = AgentBuilder::new(model.provider())
             .tool(probe)
             .build()
             .runner("probe concurrency")
@@ -5614,7 +5816,7 @@ mod migrated_tests {
             MockTurn::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockTurn::text("done"),
         ]);
-        let run = AgentBuilder::new(model)
+        let run = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add")
@@ -5690,7 +5892,7 @@ mod migrated_tests {
             MockStreamEvent::final_response_with_total_tokens(0),
         ]]);
         let hook = ToolOnlyHook::default();
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .build()
             .runner("hi")
             .add_hook(hook.clone())
@@ -5755,7 +5957,7 @@ mod migrated_tests {
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
         ] {
-            let err = AgentBuilder::new(blocking_model())
+            let err = AgentBuilder::new(blocking_model().provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("add 2 and 3")
@@ -5781,7 +5983,7 @@ mod migrated_tests {
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
         ] {
-            let mut stream = AgentBuilder::new(streaming_model())
+            let mut stream = AgentBuilder::new(streaming_model().provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("add 2 and 3")
@@ -5814,7 +6016,7 @@ mod migrated_tests {
     async fn multi_hook_stack_parity_across_run_and_stream() {
         let a_block = RecordingHook::default();
         let b_block = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model())
+        let blocking = AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -5827,7 +6029,7 @@ mod migrated_tests {
 
         let a_stream = RecordingHook::default();
         let b_stream = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model())
+        let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -5902,7 +6104,7 @@ mod migrated_tests {
             MockTurn::text("the answer is 5"),
         ]);
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -5929,7 +6131,7 @@ mod migrated_tests {
             ],
         ]);
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -5987,7 +6189,7 @@ mod migrated_tests {
         let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
             MockTurn::tool_call("tc1", "unknown_echo", json!("payload")),
             MockTurn::text("done"),
-        ]))
+        ]).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -6012,7 +6214,7 @@ mod migrated_tests {
                 MockStreamEvent::text("done"),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
-        ]))
+        ]).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -6161,7 +6363,7 @@ mod migrated_tests {
         let model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let hook = RecordingHook::default();
-        let response = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .build()
             .runner(prompt)
@@ -6187,7 +6389,7 @@ mod migrated_tests {
             turns.iter().map(|turn| turn.as_stream_events(shape)),
         );
         let hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .build()
             .runner(prompt)
@@ -6330,7 +6532,7 @@ mod migrated_tests {
             MockTurn::text("acknowledged"),
         ]);
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("do the thing")
@@ -6354,7 +6556,7 @@ mod migrated_tests {
             ],
         ]);
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("do the thing")
@@ -6427,7 +6629,7 @@ mod migrated_tests {
             MockTurn::text("the answer is 5"),
         ]);
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("compute")
@@ -6450,7 +6652,7 @@ mod migrated_tests {
             ],
         ]);
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("compute")
@@ -6521,7 +6723,7 @@ mod migrated_tests {
         // `agent_hook` is registered on the builder; `runner_hook` is registered
         // on the runner obtained from that agent. `AgentRunner::from_agent` clones
         // the agent's hook stack and `add_hook` pushes on top, so both must fire.
-        AgentBuilder::new(blocking_model())
+        AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
             .add_hook(agent_hook.clone())
             .build()
@@ -6577,7 +6779,7 @@ mod migrated_tests {
         let blocking_model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -6594,7 +6796,7 @@ mod migrated_tests {
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
         );
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -6756,89 +6958,56 @@ mod migrated_tests {
         }
     }
 
-    /// Pauses the first provider call after its request has been built. Tests
-    /// replace the live registry while that request is in flight, then let the
-    /// model return a call that is valid only for the advertised generation.
+    /// Registers the second-generation tool as soon as the first model turn
+    /// commits — after the request advertising generation one was built, but
+    /// before that turn's tool calls dispatch — so dispatch must use the pinned
+    /// generation-one snapshot the request advertised.
     #[derive(Clone)]
-    struct PausingCompletionModel {
-        inner: MockCompletionModel,
-        request_started: Arc<Notify>,
-        release_response: Arc<Notify>,
-        requests: Arc<AtomicU32>,
+    struct ReplaceGenerationAfterFirstTurn {
+        handle: ToolServerHandle,
+        second_calls: Arc<AtomicU32>,
     }
 
-    impl PausingCompletionModel {
-        fn new(inner: MockCompletionModel) -> (Self, Arc<Notify>, Arc<Notify>) {
-            let request_started = Arc::new(Notify::new());
-            let release_response = Arc::new(Notify::new());
-            (
-                Self {
-                    inner,
-                    request_started: request_started.clone(),
-                    release_response: release_response.clone(),
-                    requests: Arc::new(AtomicU32::new(0)),
-                },
-                request_started,
-                release_response,
-            )
-        }
-
-        async fn inspect_and_pause(&self, request: &crate::completion::CompletionRequest) {
-            let request_index = self.requests.fetch_add(1, SeqCst);
-            let definition = request
-                .tools
-                .iter()
-                .find(|definition| definition.name == FirstGenerationTool::NAME)
-                .expect("generation tool must be advertised");
-            if request_index == 0 {
-                assert_eq!(definition.description, "first generation schema");
-                self.request_started.notify_one();
-                self.release_response.notified().await;
-            } else {
-                assert_eq!(definition.description, "second generation schema");
+    impl AgentHook for ReplaceGenerationAfterFirstTurn {
+        async fn on_model_turn_finished(
+            &self,
+            ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            if ctx.turn() == 1 {
+                self.handle
+                    .add_tool(SecondGenerationTool(self.second_calls.clone()))
+                    .await;
             }
+            ModelTurnAction::continue_run()
         }
     }
 
-    impl CompletionModel for PausingCompletionModel {
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::new(MockCompletionModel::default()).0
-        }
-
-        async fn completion(
-            &self,
-            request: crate::completion::CompletionRequest,
-        ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError>
-        {
-            self.inspect_and_pause(&request).await;
-            self.inner.completion(request).await
-        }
-
-        async fn stream(
-            &self,
-            request: crate::completion::CompletionRequest,
-        ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
-        {
-            self.inspect_and_pause(&request).await;
-            self.inner.stream(request).await
-        }
+    /// The description advertised for the generation tool in `request`.
+    fn advertised_generation(request: &crate::completion::CompletionRequest) -> String {
+        request
+            .tools
+            .iter()
+            .find(|definition| definition.name == FirstGenerationTool::NAME)
+            .expect("generation tool must be advertised")
+            .description
+            .clone()
     }
 
     #[test]
-    fn one_hook_instance_attaches_to_distinct_completion_models() {
+    fn one_hook_instance_attaches_to_distinct_agents() {
         #[derive(Clone)]
         struct ProviderIndependentHook;
 
         impl AgentHook for ProviderIndependentHook {}
 
         let hook = ProviderIndependentHook;
-        let _mock_agent = AgentBuilder::new(MockCompletionModel::default())
+        let _mock_agent = AgentBuilder::new(MockCompletionModel::default().provider())
             .add_hook(hook.clone())
             .build();
-        let (other_model, _, _) = PausingCompletionModel::new(MockCompletionModel::default());
-        let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
+        let _other_agent = AgentBuilder::new(MockCompletionModel::text("other").provider())
+            .add_hook(hook)
+            .build();
     }
 
     /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
@@ -6877,7 +7046,7 @@ mod migrated_tests {
         let blocking_model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -6894,7 +7063,7 @@ mod migrated_tests {
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
         );
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -6939,7 +7108,7 @@ mod migrated_tests {
         let blocking_hook = RecordingHook::default();
         let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
             turns.iter().map(ScriptedTurn::as_blocking_turn),
-        ))
+        ).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -6954,7 +7123,7 @@ mod migrated_tests {
             turns
                 .iter()
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-        ))
+        ).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -6992,7 +7161,7 @@ mod migrated_tests {
         let blocking_hook = RecordingHook::default();
         let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
             turns.iter().map(ScriptedTurn::as_blocking_turn),
-        ))
+        ).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -7008,7 +7177,7 @@ mod migrated_tests {
             turns
                 .iter()
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-        ))
+        ).provider())
         .tool(EchoStringArgs)
         .build()
         .runner("echo a string")
@@ -7039,7 +7208,7 @@ mod migrated_tests {
         let handle: ToolServerHandle = ToolServer::new()
             .tool(FirstGenerationTool(first_calls.clone()))
             .run();
-        let inner = MockCompletionModel::from_turns([
+        let model = MockCompletionModel::from_turns([
             MockTurn::tool_call(
                 "tc-generation",
                 FirstGenerationTool::NAME,
@@ -7047,31 +7216,32 @@ mod migrated_tests {
             ),
             MockTurn::text("done"),
         ]);
-        let (model, request_started, release_response) = PausingCompletionModel::new(inner);
-        let runner = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model.provider())
             .tool_server_handle(handle.clone())
+            .add_hook(ReplaceGenerationAfterFirstTurn {
+                handle,
+                second_calls: second_calls.clone(),
+            })
             .build()
             .runner("use the generation tool")
-            .max_turns(3);
-
-        let run = runner.run();
-        let replace = async {
-            request_started.notified().await;
-            handle
-                .add_tool(SecondGenerationTool(second_calls.clone()))
-                .await;
-            release_response.notify_one();
-        };
-        let (response, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            tokio::join!(run, replace)
-        })
-        .await
-        .expect("in-flight blocking replacement must not hang");
-        let response = response.expect("blocking run should use its pinned tool generation");
+            .max_turns(3)
+            .run()
+            .await
+            .expect("blocking run should use its pinned tool generation");
 
         assert_eq!(response.output, "done");
+        // The first-generation tool ran even though generation two replaced it
+        // between the model turn committing and the tool dispatching.
         assert_eq!(first_calls.load(SeqCst), 1);
         assert_eq!(second_calls.load(SeqCst), 0);
+        // Each request advertised the registry generation it dispatched against.
+        let requests = model.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(advertised_generation(&requests[0]), "first generation schema");
+        assert_eq!(
+            advertised_generation(&requests[1]),
+            "second generation schema"
+        );
     }
 
     #[tokio::test]
@@ -7089,42 +7259,30 @@ mod migrated_tests {
             }]),
             ScriptedTurn::Text("done"),
         ];
-        let inner = MockCompletionModel::from_stream_turns(
+        let model = MockCompletionModel::from_stream_turns(
             turns
                 .iter()
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
         );
-        let (model, request_started, release_response) = PausingCompletionModel::new(inner);
-        let runner = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool_server_handle(handle.clone())
+            .add_hook(ReplaceGenerationAfterFirstTurn {
+                handle,
+                second_calls: second_calls.clone(),
+            })
             .build()
             .runner("use the generation tool")
-            .max_turns(3);
-
-        let drive = async {
-            let mut stream = runner.stream().await;
-            let mut final_output = None;
-            while let Some(item) = stream.next().await {
-                if let MultiTurnStreamItem::FinalResponse(response) =
-                    item.expect("streaming run should use its pinned tool generation")
-                {
-                    final_output = Some(response.output().to_string());
-                }
+            .max_turns(3)
+            .stream()
+            .await;
+        let mut final_output = None;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) =
+                item.expect("streaming run should use its pinned tool generation")
+            {
+                final_output = Some(response.output().to_string());
             }
-            final_output
-        };
-        let replace = async {
-            request_started.notified().await;
-            handle
-                .add_tool(SecondGenerationTool(second_calls.clone()))
-                .await;
-            release_response.notify_one();
-        };
-        let (final_output, ()) = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            tokio::join!(drive, replace)
-        })
-        .await
-        .expect("in-flight streaming replacement must not hang");
+        }
 
         assert_eq!(final_output.as_deref(), Some("done"));
         assert_eq!(first_calls.load(SeqCst), 1);
@@ -7180,7 +7338,7 @@ mod migrated_tests {
         let blocking_model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let blocking_hook = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -7197,7 +7355,7 @@ mod migrated_tests {
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
         );
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -7260,7 +7418,7 @@ mod migrated_tests {
         ];
         let model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-        let result = AgentBuilder::new(model)
+        let result = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .build()
             .runner("add 2 and 3")
@@ -7365,7 +7523,7 @@ mod migrated_tests {
 
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let blocking_probe = blocking_model.clone();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .preamble("baseline preamble")
@@ -7389,7 +7547,7 @@ mod migrated_tests {
             ScriptedTurn::Text("done").as_stream_events(StreamShape::Complete)
         ]);
         let streaming_probe = streaming_model.clone();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .preamble("baseline preamble")
@@ -7576,7 +7734,7 @@ mod migrated_tests {
 
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let blocking_probe = blocking_model.clone();
-        AgentBuilder::new(blocking_model)
+        AgentBuilder::new(blocking_model.provider())
             .context("static context text")
             .add_hook(ExtraContextHook {
                 id: "hook-doc",
@@ -7592,7 +7750,7 @@ mod migrated_tests {
         let streaming_model =
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .context("static context text")
             .add_hook(ExtraContextHook {
                 id: "hook-doc",
@@ -7613,7 +7771,7 @@ mod migrated_tests {
     async fn multiple_hooks_extra_context_append_in_registration_order() {
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let probe = model.clone();
-        AgentBuilder::new(model)
+        AgentBuilder::new(model.provider())
             .add_hook(ExtraContextHook {
                 id: "first",
                 text: "1",
@@ -7657,7 +7815,7 @@ mod migrated_tests {
         let blocking_queries = Arc::new(Mutex::new(Vec::new()));
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let blocking_probe = blocking_model.clone();
-        AgentBuilder::new(blocking_model)
+        AgentBuilder::new(blocking_model.provider())
             .context("static context")
             .dynamic_context(
                 2,
@@ -7682,7 +7840,7 @@ mod migrated_tests {
         let streaming_model =
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .dynamic_context(
                 3,
                 RecordingContextIndex {
@@ -7726,7 +7884,7 @@ mod migrated_tests {
         let queries = Arc::new(Mutex::new(Vec::new()));
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let probe = model.clone();
-        AgentBuilder::new(model)
+        AgentBuilder::new(model.provider())
             .context("static")
             .add_hook(ExtraContextHook {
                 id: "before",
@@ -7781,7 +7939,7 @@ mod migrated_tests {
         );
 
         let skipped_queries = Arc::new(Mutex::new(Vec::new()));
-        let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]))
+        let error = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]).provider())
             .add_hook(TerminateOn(StepEventKind::CompletionCall))
             .dynamic_context(
                 1,
@@ -7803,7 +7961,7 @@ mod migrated_tests {
     async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surfaces() {
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
         let blocking_probe = blocking_model.clone();
-        let error = AgentBuilder::new(blocking_model)
+        let error = AgentBuilder::new(blocking_model.provider())
             .dynamic_context(1, FailingContextIndex)
             .build()
             .runner("retrieve this")
@@ -7820,7 +7978,7 @@ mod migrated_tests {
         let streaming_model =
             MockCompletionModel::from_stream_turns([one_text_stream_turn("unused")]);
         let streaming_probe = streaming_model.clone();
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .dynamic_context(1, FailingContextIndex)
             .build()
             .runner("retrieve this")
@@ -7846,7 +8004,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         let queries = Arc::new(Mutex::new(Vec::new()));
-        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]).provider())
             .retrieved_tools(
                 1,
                 QueryRecordingToolIndex {
@@ -7861,7 +8019,7 @@ mod migrated_tests {
             .await
             .expect("blocking run should succeed");
 
-        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]).provider())
             .retrieved_tools(
                 1,
                 QueryRecordingToolIndex {
@@ -7887,7 +8045,7 @@ mod migrated_tests {
 
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
             one_text_stream_turn("done"),
-        ]))
+        ]).provider())
         .retrieved_tools(
             1,
             QueryRecordingToolIndex {
@@ -7906,7 +8064,7 @@ mod migrated_tests {
 
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
             one_text_stream_turn("done"),
-        ]))
+        ]).provider())
         .retrieved_tools(
             1,
             QueryRecordingToolIndex {
@@ -7963,7 +8121,7 @@ mod migrated_tests {
 
         let blocking_probe = blocking_model();
         let probe = blocking_probe.clone();
-        AgentBuilder::new(blocking_probe)
+        AgentBuilder::new(blocking_probe.provider())
             .tool(MockAddTool)
             .add_hook(ExtraContextTurnOneHook)
             .build()
@@ -7976,7 +8134,7 @@ mod migrated_tests {
 
         let streaming = streaming_model();
         let stream_probe = streaming.clone();
-        let mut stream = AgentBuilder::new(streaming)
+        let mut stream = AgentBuilder::new(streaming.provider())
             .tool(MockAddTool)
             .add_hook(ExtraContextTurnOneHook)
             .build()
@@ -8033,7 +8191,7 @@ mod migrated_tests {
 
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let blocking_probe = blocking_model.clone();
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .add_hook(HistoryOverrideHook)
             .build()
             .runner("real prompt")
@@ -8052,7 +8210,7 @@ mod migrated_tests {
         let streaming_model =
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
-        let stream = AgentBuilder::new(streaming_model)
+        let stream = AgentBuilder::new(streaming_model.provider())
             .add_hook(HistoryOverrideHook)
             .build()
             .runner("real prompt")
@@ -8075,7 +8233,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() {
         let blocking_hook = RecordingHook::default();
-        AgentBuilder::new(blocking_model())
+        AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
             .add_hook(blocking_hook.clone())
             .build()
@@ -8091,7 +8249,7 @@ mod migrated_tests {
         );
 
         let streaming_hook = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model())
+        let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
             .add_hook(streaming_hook.clone())
             .build()
@@ -8123,7 +8281,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response_with_total_tokens(0),
-        ]]))
+        ]]).provider())
         .add_hook(hook.clone())
         .build()
         .runner("reason")
@@ -8196,7 +8354,7 @@ mod migrated_tests {
             ],
         ]);
         let hook = CaptureFirstTurnContent::default();
-        let stream = AgentBuilder::new(model)
+        let stream = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .add_hook(hook.clone())
             .build()
@@ -8261,7 +8419,7 @@ mod migrated_tests {
         // WrapResult "A" and "B" chain, and a trailing recorder observes the fully
         // chained result "B(A(140))".
         let recorder = RecordingHook::default();
-        let blocking = AgentBuilder::new(blocking_model())
+        let blocking = AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
             .add_hook(SetArg {
                 key: "y",
@@ -8289,7 +8447,7 @@ mod migrated_tests {
 
         // Same on the streaming surface.
         let stream_recorder = RecordingHook::default();
-        let mut stream = AgentBuilder::new(streaming_model())
+        let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
             .add_hook(SetArg {
                 key: "y",
@@ -8442,7 +8600,7 @@ mod migrated_tests {
             MockTurn::tool_call("output", "final_result_1", json!({ "answer": "done" })),
         ]);
         let probe = model.clone();
-        let response = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model.provider())
             .tool(FinalResultTool)
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
@@ -8528,7 +8686,7 @@ mod migrated_tests {
                 ),
             ]);
             let probe = model.clone();
-            let err = AgentBuilder::new(model)
+            let err = AgentBuilder::new(model.provider())
                 .tool_server_handle(handle.clone())
                 .output_schema::<Answer>()
                 .output_mode(OutputMode::Tool)
@@ -8579,7 +8737,7 @@ mod migrated_tests {
             ],
         ]);
         let probe = model.clone();
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .tool_server_handle(handle.clone())
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
@@ -8644,7 +8802,7 @@ mod migrated_tests {
             ),
         ]);
         let probe = model.clone();
-        let err = AgentBuilder::new(model)
+        let err = AgentBuilder::new(model.provider())
             .tool_server_handle(handle.clone())
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
@@ -8705,7 +8863,7 @@ mod migrated_tests {
             ),
         ]);
         let probe = model.clone();
-        let err = AgentBuilder::new(model)
+        let err = AgentBuilder::new(model.provider())
             .tool_server_handle(handle)
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
@@ -8767,7 +8925,7 @@ mod migrated_tests {
             json!({ "answer": "done" }),
         )]);
         let probe = model.clone();
-        let response = AgentBuilder::new(model)
+        let response = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .tool(FinalResultTool)
             .output_schema::<Answer>()
@@ -8845,7 +9003,7 @@ mod migrated_tests {
             "out1",
             "final_result",
             json!({ "answer": "done" }),
-        )]))
+        )]).provider())
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
         .add_hook(hook.clone())
@@ -8870,7 +9028,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
             MockStreamEvent::tool_call("out1", "final_result", json!({ "answer": "done" })),
             MockStreamEvent::final_response_with_total_tokens(0),
-        ]]))
+        ]]).provider())
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
         .add_hook(s_hook.clone())
@@ -8896,7 +9054,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
             MockStreamEvent::tool_call("out1", "final_result", json!({ "answer": "done" })),
             MockStreamEvent::final_response_with_total_tokens(0),
-        ]]))
+        ]]).provider())
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
         .build()
@@ -9028,7 +9186,7 @@ mod migrated_tests {
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let blocking_recorder = RecordingHook::default();
         let blocking_approver = HumanApprovalHook::new(decisions());
-        let blocking = AgentBuilder::new(blocking_model)
+        let blocking = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("carry out the plan")
@@ -9046,7 +9204,7 @@ mod migrated_tests {
         );
         let streaming_recorder = RecordingHook::default();
         let streaming_approver = HumanApprovalHook::new(decisions());
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("carry out the plan")
@@ -9148,7 +9306,7 @@ mod migrated_tests {
         // Blocking driver: the run resolves to a PromptCancelled error.
         let blocking_model =
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
-        let err = AgentBuilder::new(blocking_model)
+        let err = AgentBuilder::new(blocking_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("do the sensitive thing")
@@ -9169,7 +9327,7 @@ mod migrated_tests {
                 .iter()
                 .map(|turn| turn.as_stream_events(StreamShape::Complete)),
         );
-        let mut stream = AgentBuilder::new(streaming_model)
+        let mut stream = AgentBuilder::new(streaming_model.provider())
             .tool(MockAddTool)
             .build()
             .runner("do the sensitive thing")
@@ -9270,7 +9428,7 @@ mod migrated_tests {
             MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn));
         let recorder = RecordingHook::default();
         let policy = PolicyHook::new(["add"]);
-        let out = AgentBuilder::new(model)
+        let out = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .build()
@@ -9417,7 +9575,7 @@ mod migrated_tests {
             MockTurn::text("rejected").with_usage(first_usage),
             MockTurn::text("accepted").with_usage(second_usage),
         ]);
-        let response = AgentBuilder::new(model.clone())
+        let response = AgentBuilder::new(model.clone().provider())
             .add_hook(completion_patch.clone())
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
@@ -9460,7 +9618,7 @@ mod migrated_tests {
             MockTurn::text("rejected"),
             MockTurn::text("accepted"),
         ]);
-        let response = AgentBuilder::new(model.clone())
+        let response = AgentBuilder::new(model.clone().provider())
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
                 1,
@@ -9506,7 +9664,7 @@ mod migrated_tests {
             MockTurn::text("").with_usage(first_usage),
             MockTurn::text("accepted").with_usage(second_usage),
         ]);
-        let response = AgentBuilder::new(model.clone())
+        let response = AgentBuilder::new(model.clone().provider())
             .add_hook(BoundedResponseRetry::new(
                 "",
                 1,
@@ -9558,7 +9716,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response(second_usage),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model.clone())
+        let mut stream = AgentBuilder::new(model.clone().provider())
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
                 1,
@@ -9610,7 +9768,7 @@ mod migrated_tests {
         let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
             MockTurn::text("rejected").with_usage(first_usage),
             MockTurn::text("accepted").with_usage(second_usage),
-        ]))
+        ]).provider())
         .add_hook(BoundedResponseRetry::new(
             "rejected",
             1,
@@ -9632,7 +9790,7 @@ mod migrated_tests {
                 MockStreamEvent::text("accepted"),
                 MockStreamEvent::final_response(second_usage),
             ],
-        ]))
+        ]).provider())
         .add_hook(BoundedResponseRetry::new(
             "rejected",
             1,
@@ -9678,7 +9836,7 @@ mod migrated_tests {
                 MockStreamEvent::final_response(second_usage),
             ],
         ]);
-        let mut stream = AgentBuilder::new(model.clone())
+        let mut stream = AgentBuilder::new(model.clone().provider())
             .add_hook(BoundedResponseRetry::new(
                 "",
                 1,
@@ -9741,7 +9899,7 @@ mod migrated_tests {
         AgentBuilder::new(MockCompletionModel::from_turns([
             MockTurn::text("rejected"),
             MockTurn::text("accepted"),
-        ]))
+        ]).provider())
         .add_hook(blocking_events.clone())
         .add_hook(BoundedResponseRetry::new(
             "rejected",
@@ -9765,7 +9923,7 @@ mod migrated_tests {
                 MockStreamEvent::text("accepted"),
                 MockStreamEvent::final_response_with_default_usage(),
             ],
-        ]))
+        ]).provider())
         .add_hook(streaming_events.clone())
         .add_hook(BoundedResponseRetry::new(
             "rejected",
@@ -9839,7 +9997,7 @@ mod migrated_tests {
             MockStreamEvent::text("rejected"),
             MockStreamEvent::final_response_with_default_usage(),
         ]]);
-        let mut stream = AgentBuilder::new(model)
+        let mut stream = AgentBuilder::new(model.provider())
             .add_hook(BoundedResponseRetry::new(
                 "rejected",
                 1,
@@ -9888,7 +10046,7 @@ mod migrated_tests {
             "tc1",
             "add",
             json!({"x": 1, "y": 2}),
-        )]))
+        )]).provider())
         .tool(CountingAddTool {
             calls: executions.clone(),
         })
@@ -9925,7 +10083,7 @@ mod migrated_tests {
             MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", r#"{"x":1,"y":2}"#),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockStreamEvent::final_response_with_default_usage(),
-        ]]))
+        ]]).provider())
         .tool(CountingAddTool {
             calls: executions.clone(),
         })
@@ -10015,7 +10173,7 @@ mod migrated_tests {
             MockTurn::text("rejected"),
             MockTurn::text("accepted one"),
             MockTurn::text("accepted two"),
-        ]))
+        ]).provider())
         .add_hook(hook)
         .build();
 

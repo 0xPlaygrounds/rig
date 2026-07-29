@@ -103,6 +103,25 @@ impl Authenticator {
         }
     }
 
+    /// Resolve the credential without any interactive or network step.
+    ///
+    /// Explicit access tokens resolve directly; OAuth resolves only from an
+    /// unexpired cached token file. Returns `None` whenever producing a
+    /// usable token would require a refresh or a device-code flow — use
+    /// [`Authenticator::auth_context`] for the full flow.
+    pub fn cached_auth_context(&self) -> Option<AuthContext> {
+        match &self.source {
+            AuthSource::AccessToken {
+                access_token,
+                account_id,
+            } => Some(AuthContext {
+                access_token: access_token.clone(),
+                account_id: account_id.clone(),
+            }),
+            AuthSource::OAuth => self.platform.cached_auth_context(),
+        }
+    }
+
     pub async fn auth_context(&self) -> Result<AuthContext, AuthError> {
         match &self.source {
             AuthSource::AccessToken {

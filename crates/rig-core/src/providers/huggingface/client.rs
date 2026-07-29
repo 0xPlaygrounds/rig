@@ -115,6 +115,13 @@ pub struct HuggingFaceExt {
     subprovider: SubProvider,
 }
 
+impl HuggingFaceExt {
+    /// The configured [`SubProvider`] chat completions route through.
+    pub fn subprovider(&self) -> &SubProvider {
+        &self.subprovider
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct HuggingFaceBuilder {
     subprovider: SubProvider,

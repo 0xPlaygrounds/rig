@@ -9,15 +9,15 @@
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig::agent::AgentConfig;
-//! use rig::provider::{ProviderConfig, Runtime};
-//! use rig::session::AgentSession;
+//! use rig_agent::agent::AgentConfig;
+//! use rig_agent::provider::{ProviderConfig, Runtime};
+//! use rig_agent::session::AgentSession;
 //! use std::sync::Arc;
 //!
 //! let rt = Arc::new(Runtime::new());
 //! let config = AgentConfig::new().with_preamble("You are terse.");
 //! let provider = ProviderConfig::OpenAi(
-//!     rig::providers::openai::functions::Config::new("gpt-4o"),
+//!     rig_agent::core::providers::openai::functions::Config::new("gpt-4o"),
 //! );
 //! let done = AgentSession::new(config, provider, rt, "Hello!").run().await?;
 //! println!("{}", done.output);

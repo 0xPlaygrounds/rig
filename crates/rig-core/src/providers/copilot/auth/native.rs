@@ -305,6 +305,20 @@ impl PlatformAuthenticator {
         Ok(token)
     }
 
+    /// The cached, unexpired Copilot API key record, if one exists on disk.
+    ///
+    /// Read-only and non-interactive: no key refresh, no device flow, and no
+    /// record rewrite. When `bootstrap_token` is provided, the cached key
+    /// must be bound to that GitHub access token to be reused.
+    pub(super) fn cached_auth_context(&self, bootstrap_token: Option<&str>) -> Option<AuthContext> {
+        let record = self.read_api_key_record().ok()?;
+        if !record.can_reuse_for_oauth(bootstrap_token) {
+            return None;
+        }
+        let api_base = record.api_base();
+        record.token.map(|api_key| AuthContext { api_key, api_base })
+    }
+
     fn read_api_key_record(&self) -> Result<ApiKeyRecord, AuthError> {
         let Some(path) = &self.api_key_file else {
             return Ok(ApiKeyRecord::default());

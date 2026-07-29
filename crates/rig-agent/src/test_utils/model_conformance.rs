@@ -26,9 +26,10 @@ use crate::{
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
-        AssistantContent, CompletionError, CompletionModel, Message, Prompt, PromptError,
+        AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
         ToolDefinition,
     },
+    provider::{ProviderConfig, Runtime},
     streaming::StreamingPrompt,
     tool::{Tool, ToolContext},
 };
@@ -945,6 +946,29 @@ fn report_from_response(
     })
 }
 
+/// Build a bare completion request for direct provider calls, bypassing the
+/// agent runtime (the moral successor of `model.completion_request(...)`).
+fn direct_request(
+    prompt: &str,
+    tools: Vec<ToolDefinition>,
+    tool_choice: Option<ToolChoice>,
+    max_tokens: u64,
+) -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        preamble: None,
+        chat_history: rig_core::OneOrMany::one(Message::user(prompt)),
+        documents: Vec::new(),
+        tools,
+        temperature: Some(0.0),
+        max_tokens: Some(max_tokens),
+        tool_choice,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
 fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
     value.as_i64() == Some(expected)
         || value
@@ -958,19 +982,18 @@ fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
 ///
 /// Set `tool_concurrency` to `Some(1)` to prove that serial host execution does
 /// not split or drop the model's parallel call batch.
-pub async fn parallel_tools<M, F>(
-    model: M,
+pub async fn parallel_tools<F>(
+    provider: ProviderConfig,
     configure: F,
     tool_concurrency: Option<usize>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble(FORCE_TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool(CountingAdd(add_calls.clone()))
@@ -1054,18 +1077,17 @@ where
 }
 
 /// Runs a zero-argument tool and validates verbatim string-result handling.
-pub async fn zero_argument_tool<M, F>(
-    model: M,
+pub async fn zero_argument_tool<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("You must use the provided tools. Report tool outputs exactly as returned.")
         .temperature(0.0)
         .tool(PingTool(calls.clone()))
@@ -1104,19 +1126,18 @@ where
 
 /// Runs string- and JSON-returning tools and validates that neither output is
 /// double encoded.
-pub async fn tool_output_serialization<M, F>(
-    model: M,
+pub async fn tool_output_serialization<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();
     let motto_calls = Arc::new(AtomicUsize::new(0));
     let config_calls = Arc::new(AtomicUsize::new(0));
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("You must use the provided tools before answering.")
         .temperature(0.0)
         .tool(MottoTool(motto_calls.clone()))
@@ -1166,13 +1187,12 @@ where
 
 /// Runs a nested, escaped, Unicode-bearing argument payload through typed tool
 /// deserialization and validates the exact semantic value received by the tool.
-pub async fn complex_tool_arguments<M, F>(
-    model: M,
+pub async fn complex_tool_arguments<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
@@ -1187,7 +1207,7 @@ where
     let calls = Arc::new(AtomicUsize::new(0));
     let captured = Arc::new(Mutex::new(None));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("Use store_profile exactly once with every value supplied by the user.")
         .temperature(0.0)
         .tool(CaptureComplexTool {
@@ -1223,21 +1243,15 @@ where
 
 /// Runs the same deterministic text request through buffered and raw streaming
 /// completion surfaces and validates equivalent visible content and usage.
-pub async fn buffered_streaming_text_parity<M>(model: M) -> Result<ScenarioReport, ScenarioError>
-where
-    M: CompletionModel + Clone + 'static,
-{
+pub async fn buffered_streaming_text_parity(
+    provider: ProviderConfig,
+    rt: Arc<Runtime>,
+) -> Result<ScenarioReport, ScenarioError> {
     const SCENARIO: &str = "buffered_streaming_text_parity";
     const PROMPT: &str = "Answer with exactly the single word Paris.";
     let started = Instant::now();
-    let request = || {
-        model
-            .completion_request(PROMPT)
-            .temperature(0.0)
-            .max_tokens(32)
-            .build()
-    };
-    let buffered = model.completion(request()).await?;
+    let request = || direct_request(PROMPT, Vec::new(), None, 32);
+    let buffered = crate::provider::complete(&provider, &rt, request()).await?;
     let buffered_text = buffered
         .choice
         .iter()
@@ -1247,7 +1261,7 @@ where
         })
         .collect::<String>();
 
-    let mut stream = model.stream(request()).await?;
+    let mut stream = crate::provider::open_stream(&provider, &rt, request()).await?;
     let mut streamed_text = String::new();
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
@@ -1301,14 +1315,13 @@ where
 
 /// Runs Rig's structured extractor and validates both the extracted semantic
 /// fields and accumulated usage.
-pub async fn structured_extraction<M>(model: M) -> Result<ScenarioReport, ScenarioError>
-where
-    M: CompletionModel + 'static,
-{
+pub async fn structured_extraction(
+    provider: ProviderConfig,
+) -> Result<ScenarioReport, ScenarioError> {
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
     let started = Instant::now();
-    let response = crate::extractor::ExtractorBuilder::<M, ExtractedPerson>::new(model)
+    let response = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(provider)
         .max_tokens(384)
         .retries(0)
         .build()
@@ -1370,20 +1383,19 @@ fn restricted_recovery_run(
 
 /// Uses one real model turn to exercise fail-fast, retry exhaustion, repair,
 /// rejected repair, and skip handling without executing a disallowed call.
-pub async fn invalid_tool_recovery<M, F>(
-    model: M,
+pub async fn invalid_tool_recovery<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
     let started = Instant::now();
     let add_calls = Arc::new(AtomicUsize::new(0));
     let sum_calls = Arc::new(AtomicUsize::new(0));
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble(FORCE_TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool(CountingAdd(add_calls.clone()))
@@ -1561,20 +1573,19 @@ where
 
 /// Exercises chained argument/result rewrites and a first-turn-only request
 /// patch. Completion proves `tool_choice=Required` did not leak to turn two.
-pub async fn hook_rewrites_and_request_patch<M, F>(
-    model: M,
+pub async fn hook_rewrites_and_request_patch<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
     let calls = Arc::new(AtomicUsize::new(0));
     let observed = ObserveArguments::default();
     let observed_probe = observed.clone();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("Use add for arithmetic and report only the tool result.")
         .temperature(0.0)
         .tool(CountingAdd(calls.clone()))
@@ -1635,19 +1646,18 @@ where
 
 /// Exercises post-execution cancellation and max-turn diagnostics through the
 /// public agent driver using real model-emitted calls.
-pub async fn cancellation_and_max_turns<M, F>(
-    model: M,
+pub async fn cancellation_and_max_turns<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + Clone + 'static,
-    F: Fn(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
     const REASON: &str = "portable result veto";
     let started = Instant::now();
     let cancelled_calls = Arc::new(AtomicUsize::new(0));
-    let cancelled_agent = configure(AgentBuilder::new(model.clone()))
+    let cancelled_agent = configure(AgentBuilder::new(provider.clone()))
         .preamble("Use add for arithmetic; never calculate by hand.")
         .temperature(0.0)
         .tool(CountingAdd(cancelled_calls.clone()))
@@ -1669,7 +1679,7 @@ where
     validate_cancelled_failure(&cancelled, REASON, CountingAdd::NAME)?;
 
     let max_turn_calls = Arc::new(AtomicUsize::new(0));
-    let max_turn_agent = configure(AgentBuilder::new(model))
+    let max_turn_agent = configure(AgentBuilder::new(provider))
         .preamble("Use add for arithmetic; never calculate by hand.")
         .temperature(0.0)
         .tool(CountingAdd(max_turn_calls.clone()))
@@ -1712,17 +1722,16 @@ where
 /// `configure` is deliberately outside the scenario so a provider suite can
 /// attach transport-only settings without putting them into the shared model
 /// contract.
-pub async fn optional_argument<M, F>(
-    model: M,
+pub async fn optional_argument<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("Use the repeat_text tool whenever asked to repeat text.")
         .tool(RepeatTool {
             calls: calls.clone(),
@@ -1750,15 +1759,17 @@ where
 }
 
 /// Runs a portable two-tool sequential arithmetic scenario.
-pub async fn sequential_tools<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
+pub async fn sequential_tools<F>(
+    provider: ProviderConfig,
+    configure: F,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble(
             "You are a calculator. Use the add and multiply tools for arithmetic; never compute by hand.",
         )
@@ -1789,14 +1800,16 @@ where
 }
 
 /// Runs a tool through Rig's multi-turn streaming agent driver.
-pub async fn streaming_tool<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
+pub async fn streaming_tool<F>(
+    provider: ProviderConfig,
+    configure: F,
+) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble("Use the add tool for arithmetic; do not calculate by hand.")
         .tool(AddTool(calls.clone()))
         .default_max_turns(4)
@@ -1883,17 +1896,16 @@ where
 }
 
 /// Runs a normal tool followed by Rig's synthetic structured-output tool.
-pub async fn structured_after_tool<M, F>(
-    model: M,
+pub async fn structured_after_tool<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble(
             "Use add for arithmetic, then finish by calling the structured output tool exactly once.",
         )
@@ -1920,10 +1932,10 @@ where
 }
 
 /// Runs all portable tool-choice modes directly against a completion model.
-pub async fn tool_choice_modes<M>(model: M) -> Result<ScenarioReport, ScenarioError>
-where
-    M: CompletionModel + 'static,
-{
+pub async fn tool_choice_modes(
+    provider: ProviderConfig,
+    rt: Arc<Runtime>,
+) -> Result<ScenarioReport, ScenarioError> {
     let definition = |name: &str| ToolDefinition {
         name: name.to_string(),
         description: format!("Return the supplied integer using {name}."),
@@ -1935,17 +1947,17 @@ where
     };
     let tools = vec![definition("alpha"), definition("beta")];
     let started = Instant::now();
-    let none = model
-        .completion(
-            model
-                .completion_request("Answer with only the number 4. Do not call a function.")
-                .tools(tools.clone())
-                .tool_choice(ToolChoice::None)
-                .temperature(0.0)
-                .max_tokens(64)
-                .build(),
-        )
-        .await?;
+    let none = crate::provider::complete(
+        &provider,
+        &rt,
+        direct_request(
+            "Answer with only the number 4. Do not call a function.",
+            tools.clone(),
+            Some(ToolChoice::None),
+            64,
+        ),
+    )
+    .await?;
     if none
         .choice
         .iter()
@@ -1957,17 +1969,17 @@ where
         ));
     }
 
-    let required = model
-        .completion(
-            model
-                .completion_request("Call alpha with value 7.")
-                .tools(tools.clone())
-                .tool_choice(ToolChoice::Required)
-                .temperature(0.0)
-                .max_tokens(96)
-                .build(),
-        )
-        .await?;
+    let required = crate::provider::complete(
+        &provider,
+        &rt,
+        direct_request(
+            "Call alpha with value 7.",
+            tools.clone(),
+            Some(ToolChoice::Required),
+            96,
+        ),
+    )
+    .await?;
     let required_calls = required
         .choice
         .iter()
@@ -1980,19 +1992,19 @@ where
         ));
     }
 
-    let specific = model
-        .completion(
-            model
-                .completion_request("Call beta with value 9.")
-                .tools(tools)
-                .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["beta".to_string()],
-                })
-                .temperature(0.0)
-                .max_tokens(96)
-                .build(),
-        )
-        .await?;
+    let specific = crate::provider::complete(
+        &provider,
+        &rt,
+        direct_request(
+            "Call beta with value 9.",
+            tools,
+            Some(ToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            }),
+            96,
+        ),
+    )
+    .await?;
     let specific_calls = specific
         .choice
         .iter()
@@ -2028,17 +2040,16 @@ where
 }
 
 /// Runs a streamed real-tool turn followed by Rig's synthetic output tool.
-pub async fn streaming_structured_after_tool<M, F>(
-    model: M,
+pub async fn streaming_structured_after_tool<F>(
+    provider: ProviderConfig,
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
-    let agent = configure(AgentBuilder::new(model))
+    let agent = configure(AgentBuilder::new(provider))
         .preamble(
             "Use add for arithmetic, then finish by calling the structured output tool exactly once.",
         )
@@ -2093,13 +2104,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        completion::Usage,
-        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
-    };
+    use crate::completion::Usage;
+    use crate::provider::MockScript;
     use rig_core::{
         OneOrMany,
-        message::{ToolCall, ToolFunction},
+        completion::CompletionResponse as ModelResponse,
+        message::{Text, ToolCall, ToolFunction},
+        streaming::{StreamFinal, StreamedAssistantContent},
     };
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
@@ -2118,6 +2129,23 @@ mod tests {
         }
     }
 
+    fn response_from(contents: Vec<AssistantContent>, usage: Usage) -> ModelResponse {
+        let choice = OneOrMany::many(contents).expect("at least one content item");
+        ModelResponse::new(choice, usage, "mock")
+    }
+
+    fn text_response(text: &str) -> ModelResponse {
+        response_from(vec![AssistantContent::text(text)], Usage::new())
+    }
+
+    fn tool_call_response(id: &str, name: &str, arguments: serde_json::Value) -> ModelResponse {
+        response_from(vec![tool_call(id, name, arguments)], Usage::new())
+    }
+
+    fn mock(responses: Vec<ModelResponse>) -> ProviderConfig {
+        ProviderConfig::Mock(MockScript::from_responses(responses))
+    }
+
     fn fixture_contract(condition: bool, details: &str) -> Result<(), ScenarioError> {
         if condition {
             Ok(())
@@ -2128,17 +2156,19 @@ mod tests {
 
     #[tokio::test]
     async fn parallel_contract_validates_batch_and_correlation() -> Result<(), ScenarioError> {
-        let first = MockTurn::from_contents([
-            tool_call("call_add", "add", serde_json::json!({"x": 3, "y": 4})),
-            tool_call(
-                "call_subtract",
-                "subtract",
-                serde_json::json!({"x": 10, "y": 2}),
-            ),
-        ])
-        .map_err(|error| ScenarioError::contract("test_fixture", error.to_string()))?;
+        let first = response_from(
+            vec![
+                tool_call("call_add", "add", serde_json::json!({"x": 3, "y": 4})),
+                tool_call(
+                    "call_subtract",
+                    "subtract",
+                    serde_json::json!({"x": 10, "y": 2}),
+                ),
+            ],
+            Usage::new(),
+        );
         let report = parallel_tools(
-            MockCompletionModel::new([first, MockTurn::text("7 and 8")]),
+            mock(vec![first, text_response("7 and 8")]),
             |builder| builder,
             Some(1),
         )
@@ -2151,25 +2181,27 @@ mod tests {
     #[tokio::test]
     async fn zero_argument_and_output_serialization_contracts_pass() -> Result<(), ScenarioError> {
         let zero = zero_argument_tool(
-            MockCompletionModel::new([
-                MockTurn::tool_call("ping_call", "ping", serde_json::json!({})),
-                MockTurn::text(PING_OUTPUT),
+            mock(vec![
+                tool_call_response("ping_call", "ping", serde_json::json!({})),
+                text_response(PING_OUTPUT),
             ]),
             |builder| builder,
         )
         .await?;
         fixture_contract(zero.tool_calls == 1, "zero-argument call count")?;
 
-        let first = MockTurn::from_contents([
-            tool_call("motto_call", "fetch_motto", serde_json::json!({})),
-            tool_call("config_call", "fetch_config", serde_json::json!({})),
-        ])
-        .map_err(|error| ScenarioError::contract("test_fixture", error.to_string()))?;
-        let serialized = tool_output_serialization(
-            MockCompletionModel::new([first, MockTurn::text("summary")]),
-            |builder| builder,
-        )
-        .await?;
+        let first = response_from(
+            vec![
+                tool_call("motto_call", "fetch_motto", serde_json::json!({})),
+                tool_call("config_call", "fetch_config", serde_json::json!({})),
+            ],
+            Usage::new(),
+        );
+        let serialized =
+            tool_output_serialization(mock(vec![first, text_response("summary")]), |builder| {
+                builder
+            })
+            .await?;
         fixture_contract(serialized.tool_calls == 2, "serialized-output call count")?;
         Ok(())
     }
@@ -2183,9 +2215,9 @@ mod tests {
             "quote": "path C:\\tmp and \"quoted\""
         });
         let report = complex_tool_arguments(
-            MockCompletionModel::new([
-                MockTurn::tool_call("profile_call", "store_profile", arguments),
-                MockTurn::text("stored"),
+            mock(vec![
+                tool_call_response("profile_call", "store_profile", arguments),
+                text_response("stored"),
             ]),
             |builder| builder,
         )
@@ -2196,16 +2228,18 @@ mod tests {
 
     #[tokio::test]
     async fn extraction_contract_requires_fields_and_usage() -> Result<(), ScenarioError> {
-        let report = structured_extraction(MockCompletionModel::new([MockTurn::tool_call(
-            "submit_call",
-            "submit",
-            serde_json::json!({
-                "first_name": "Ada",
-                "last_name": "Lovelace",
-                "job": "mathematician"
-            }),
-        )
-        .with_usage(usage(20, 5))]))
+        let report = structured_extraction(mock(vec![response_from(
+            vec![tool_call(
+                "submit_call",
+                "submit",
+                serde_json::json!({
+                    "first_name": "Ada",
+                    "last_name": "Lovelace",
+                    "job": "mathematician"
+                }),
+            )],
+            usage(20, 5),
+        )]))
         .await?;
         fixture_contract(report.prompt_tokens == 20, "extraction input usage")?;
         fixture_contract(report.generated_tokens == 5, "extraction output usage")?;
@@ -2214,21 +2248,23 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_contract_checks_events_history_and_usage() -> Result<(), ScenarioError> {
-        let model = MockCompletionModel::from_stream_turns([
+        let script = MockScript::from_responses(Vec::new()).with_streams(vec![
             vec![
-                MockStreamEvent::tool_call(
-                    "add_call",
-                    "add",
-                    serde_json::json!({"a": 17, "b": 25}),
-                ),
-                MockStreamEvent::final_response(usage(10, 2)),
+                StreamedAssistantContent::ToolCall {
+                    tool_call: ToolCall::new(
+                        "add_call".to_string(),
+                        ToolFunction::new("add".to_string(), serde_json::json!({"a": 17, "b": 25})),
+                    ),
+                    internal_call_id: "mock-internal-1".to_string(),
+                },
+                StreamedAssistantContent::Final(StreamFinal::new("mock", usage(10, 2))),
             ],
             vec![
-                MockStreamEvent::text("42"),
-                MockStreamEvent::final_response(usage(14, 1)),
+                StreamedAssistantContent::Text(Text::new("42")),
+                StreamedAssistantContent::Final(StreamFinal::new("mock", usage(14, 1))),
             ],
         ]);
-        let report = streaming_tool(model, |builder| builder).await?;
+        let report = streaming_tool(ProviderConfig::Mock(script), |builder| builder).await?;
         fixture_contract(report.prompt_tokens == 24, "streaming input usage")?;
         fixture_contract(report.generated_tokens == 3, "streaming output usage")?;
         Ok(())
@@ -2237,7 +2273,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_recovery_paths_do_not_execute_tools() -> Result<(), ScenarioError> {
         let report = invalid_tool_recovery(
-            MockCompletionModel::new([MockTurn::tool_call(
+            mock(vec![tool_call_response(
                 "invalid-add",
                 "add",
                 serde_json::json!({ "x": 2, "y": 3 }),
@@ -2252,9 +2288,9 @@ mod tests {
     #[tokio::test]
     async fn hook_rewrites_chain_and_request_patch_is_turn_local() -> Result<(), ScenarioError> {
         let report = hook_rewrites_and_request_patch(
-            MockCompletionModel::new([
-                MockTurn::tool_call("hook-add", "add", serde_json::json!({ "x": 1, "y": 1 })),
-                MockTurn::text("[portable-redacted]"),
+            mock(vec![
+                tool_call_response("hook-add", "add", serde_json::json!({ "x": 1, "y": 1 })),
+                text_response("[portable-redacted]"),
             ]),
             |builder| builder,
         )
@@ -2266,9 +2302,9 @@ mod tests {
     #[tokio::test]
     async fn cancellation_and_max_turn_controls_retain_diagnostics() -> Result<(), ScenarioError> {
         let report = cancellation_and_max_turns(
-            MockCompletionModel::new([
-                MockTurn::tool_call("cancel-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
-                MockTurn::tool_call("budget-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
+            mock(vec![
+                tool_call_response("cancel-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
+                tool_call_response("budget-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
             ]),
             |builder| builder,
         )

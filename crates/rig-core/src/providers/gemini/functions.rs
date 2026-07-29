@@ -188,6 +188,13 @@ pub async fn open_stream(
                 req,
             )),
         )),
+        #[cfg(feature = "test-utils")]
+        Transport::Sequenced(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
+            Box::pin(super::streaming::generate_content_stream(
+                client.clone(),
+                req,
+            )),
+        )),
     }
 }
 

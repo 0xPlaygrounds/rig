@@ -17,6 +17,7 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
+use rig::client::ToProviderConfig;
 use std::collections::BTreeSet;
 
 use anyhow::Result;
@@ -92,7 +93,7 @@ impl AgentHook for ToolLoggerHook {
 async fn main() -> Result<()> {
     let openai = openai::Client::from_env()?;
     let model = openai.completion_model(openai::GPT_4O);
-    let agent = rig::agent::AgentBuilder::new(model.clone())
+    let agent = rig::agent::AgentBuilder::new(openai.provider_config(openai::GPT_4O))
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();

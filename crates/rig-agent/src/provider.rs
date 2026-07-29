@@ -69,6 +69,11 @@ macro_rules! define_provider_config {
                 #[doc = concat!("The `", stringify!($module), "` provider.")]
                 $variant(rig_core::providers::$module::functions::Config),
             )*
+            /// The canonical OpenAI client speaking the Responses API
+            /// (`openai::responses_api::functions`). Hand-written because its
+            /// module path doesn't fit the one-module-per-row macro shape;
+            /// the chat-completions face stays on [`Self::OpenAi`].
+            OpenAiResponses(rig_core::providers::openai::responses_api::functions::Config),
             /// AWS Bedrock (Converse API over the AWS SDK).
             #[cfg(feature = "bedrock")]
             Bedrock(rig_bedrock::functions::Config),
@@ -78,7 +83,7 @@ macro_rules! define_provider_config {
             /// Scripted responses for tests — the successor to the deleted
             /// `MockCompletionModel`. Clone SHARES the turn cursor;
             /// deserialize resets it.
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Mock(MockScript),
         }
 
@@ -87,11 +92,14 @@ macro_rules! define_provider_config {
             pub fn descriptor(&self) -> &'static ProviderDescriptor {
                 match self {
                     $(Self::$variant(_) => &rig_core::providers::$module::functions::DESCRIPTOR,)*
+                    Self::OpenAiResponses(_) => {
+                        &rig_core::providers::openai::responses_api::functions::DESCRIPTOR
+                    }
                     #[cfg(feature = "bedrock")]
                     Self::Bedrock(_) => &rig_bedrock::functions::DESCRIPTOR,
                     #[cfg(feature = "gemini-grpc")]
                     Self::GeminiGrpc(_) => &rig_gemini_grpc::functions::DESCRIPTOR,
-                    #[cfg(feature = "test-utils")]
+                    #[cfg(any(test, feature = "test-utils"))]
                     Self::Mock(_) => &MOCK_DESCRIPTOR,
                 }
             }
@@ -100,11 +108,12 @@ macro_rules! define_provider_config {
             pub fn model(&self) -> &str {
                 match self {
                     $(Self::$variant(cfg) => &cfg.model,)*
+                    Self::OpenAiResponses(cfg) => &cfg.model,
                     #[cfg(feature = "bedrock")]
                     Self::Bedrock(cfg) => &cfg.model,
                     #[cfg(feature = "gemini-grpc")]
                     Self::GeminiGrpc(cfg) => &cfg.model,
-                    #[cfg(feature = "test-utils")]
+                    #[cfg(any(test, feature = "test-utils"))]
                     Self::Mock(_) => "mock",
                 }
             }
@@ -123,6 +132,12 @@ macro_rules! define_provider_config {
                             .await
                     }
                 )*
+                ProviderConfig::OpenAiResponses(cfg) => {
+                    rig_core::providers::openai::responses_api::functions::complete(
+                        cfg, &rt.http, request,
+                    )
+                    .await
+                }
                 #[cfg(feature = "bedrock")]
                 ProviderConfig::Bedrock(cfg) => {
                     let client = rt.bedrock_client(cfg).await;
@@ -133,7 +148,7 @@ macro_rules! define_provider_config {
                     let client = rt.gemini_grpc_client(cfg).await?;
                     rig_gemini_grpc::functions::complete(&client, &cfg.model, request).await
                 }
-                #[cfg(feature = "test-utils")]
+                #[cfg(any(test, feature = "test-utils"))]
                 ProviderConfig::Mock(script) => script.next_response(&request),
             }
         }
@@ -153,6 +168,12 @@ macro_rules! define_provider_config {
                         .await
                     }
                 )*
+                ProviderConfig::OpenAiResponses(cfg) => {
+                    rig_core::providers::openai::responses_api::functions::open_stream(
+                        cfg, &rt.http, request,
+                    )
+                    .await
+                }
                 #[cfg(feature = "bedrock")]
                 ProviderConfig::Bedrock(cfg) => {
                     let client = rt.bedrock_client(cfg).await;
@@ -163,7 +184,7 @@ macro_rules! define_provider_config {
                     let client = rt.gemini_grpc_client(cfg).await?;
                     rig_gemini_grpc::functions::open_stream(&client, &cfg.model, request).await
                 }
-                #[cfg(feature = "test-utils")]
+                #[cfg(any(test, feature = "test-utils"))]
                 ProviderConfig::Mock(script) => script.next_stream(&request),
             }
         }
@@ -174,7 +195,7 @@ for_each_builtin_provider!(define_provider_config);
 
 /// The mock provider's capability sheet: everything on, so scripted tests
 /// exercise every request shape.
-#[cfg(feature = "test-utils")]
+#[cfg(any(test, feature = "test-utils"))]
 pub static MOCK_DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("mock")
     .with_tools(true)
     .with_response_format(true)
@@ -257,7 +278,12 @@ impl Runtime {
 #[derive(Debug, Default, Clone)]
 struct BedrockCache {
     slot: std::sync::Arc<
-        tokio::sync::Mutex<Option<(rig_bedrock::functions::Config, aws_sdk_bedrockruntime::Client)>>,
+        tokio::sync::Mutex<
+            Option<(
+                rig_bedrock::functions::Config,
+                aws_sdk_bedrockruntime::Client,
+            )>,
+        >,
     >,
 }
 
@@ -274,7 +300,7 @@ struct GeminiGrpcCache {
 /// Plain data plus an interior-mutable turn cursor: `clone` SHARES the
 /// cursor (so a session and a test observing it stay in step), and
 /// deserialize RESETS it (`#[serde(skip)]`).
-#[cfg(feature = "test-utils")]
+#[cfg(any(test, feature = "test-utils"))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockScript {
     /// One normalized response per expected model call, in order.
@@ -284,18 +310,30 @@ pub struct MockScript {
     /// terminal-only stream.
     #[serde(default)]
     pub streams: Vec<Vec<rig_core::streaming::StreamedAssistantContent>>,
+    /// Per-call scripted transport errors, index-aligned with model calls.
+    /// `Some(message)` at index `i` makes call `i` fail with
+    /// [`CompletionError::ProviderError`] before any response lookup, so a
+    /// failed attempt can be scripted ahead of a successful retry.
+    #[serde(default)]
+    pub errors: Vec<Option<String>>,
     #[serde(skip)]
     cursor: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Requests observed so far. Like the cursor, `clone` SHARES the record
+    /// so a test probe stays in step with the script under test.
+    #[serde(skip)]
+    requests: std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>,
 }
 
-#[cfg(feature = "test-utils")]
+#[cfg(any(test, feature = "test-utils"))]
 impl MockScript {
     /// A script answering each model call with the next response.
     pub fn from_responses(responses: Vec<CompletionResponse>) -> Self {
         Self {
             responses,
             streams: Vec::new(),
+            errors: Vec::new(),
             cursor: std::sync::Arc::default(),
+            requests: std::sync::Arc::default(),
         }
     }
 
@@ -308,9 +346,40 @@ impl MockScript {
         self
     }
 
+    /// Attach per-call transport errors (index-aligned with model calls).
+    /// A `Some(message)` slot fails that call with
+    /// [`CompletionError::ProviderError`]; `None` slots fall through to the
+    /// scripted response or stream for that index.
+    pub fn with_errors(mut self, errors: Vec<Option<String>>) -> Self {
+        self.errors = errors;
+        self
+    }
+
     /// Calls served so far.
     pub fn calls(&self) -> usize {
         self.cursor.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Requests served so far, in call order. Clones share this record.
+    pub fn requests(&self) -> Vec<CompletionRequest> {
+        self.requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn record_request(&self, request: &CompletionRequest) {
+        self.requests
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(request.clone());
+    }
+
+    fn scripted_error(&self, index: usize) -> Option<CompletionError> {
+        self.errors
+            .get(index)
+            .and_then(Option::as_ref)
+            .map(|message| CompletionError::ProviderError(message.clone()))
     }
 
     fn take_index(&self) -> usize {
@@ -320,9 +389,13 @@ impl MockScript {
 
     fn next_response(
         &self,
-        _request: &CompletionRequest,
+        request: &CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
+        self.record_request(request);
         let index = self.take_index();
+        if let Some(error) = self.scripted_error(index) {
+            return Err(error);
+        }
         self.responses.get(index).cloned().ok_or_else(|| {
             CompletionError::ProviderError(format!(
                 "mock script exhausted: call {index} has no scripted response"
@@ -336,25 +409,42 @@ impl MockScript {
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal};
 
+        self.record_request(request);
         let index = self.take_index();
+        if let Some(error) = self.scripted_error(index) {
+            return Err(error);
+        }
         let items: Vec<RawStreamingChoice> = if let Some(script) = self.streams.get(index) {
-            let mut items: Vec<RawStreamingChoice> = script
-                .iter()
-                .map(|item| match item.clone() {
+            let mut items: Vec<RawStreamingChoice> = Vec::with_capacity(script.len());
+            for item in script.iter() {
+                let raw = match item.clone() {
                     rig_core::streaming::StreamedAssistantContent::Text(text) => {
+                        // Preserve text-block metadata boundaries: a Text item
+                        // carrying additional_params opens a fresh block with
+                        // that metadata before its (possibly empty) delta.
+                        if let Some(params) = text.additional_params {
+                            items.push(RawStreamingChoice::TextStart {
+                                additional_params: Some(params),
+                            });
+                        }
                         RawStreamingChoice::Message(text.text)
                     }
                     rig_core::streaming::StreamedAssistantContent::ToolCall {
                         tool_call,
                         internal_call_id,
-                    } => RawStreamingChoice::ToolCall(
-                        RawStreamingToolCall::new(
+                    } => {
+                        let mut raw = RawStreamingToolCall::new(
                             tool_call.id,
                             tool_call.function.name,
                             tool_call.function.arguments,
                         )
-                        .with_internal_call_id(internal_call_id),
-                    ),
+                        .with_internal_call_id(internal_call_id)
+                        .with_additional_params(tool_call.additional_params);
+                        if let Some(call_id) = tool_call.call_id {
+                            raw = raw.with_call_id(call_id);
+                        }
+                        RawStreamingChoice::ToolCall(raw)
+                    }
                     rig_core::streaming::StreamedAssistantContent::ToolCallDelta {
                         id,
                         internal_call_id,
@@ -380,13 +470,19 @@ impl MockScript {
                         reasoning,
                     } => RawStreamingChoice::ReasoningDelta { id, reasoning },
                     rig_core::streaming::StreamedAssistantContent::Final(final_record) => {
+                        // Real providers surface the message id as its own raw
+                        // event; the assembler reads only the stream-level id.
+                        if let Some(id) = final_record.message_id.clone() {
+                            items.push(RawStreamingChoice::MessageId(id));
+                        }
                         RawStreamingChoice::FinalResponse(final_record)
                     }
                     rig_core::streaming::StreamedAssistantContent::Unknown(value) => {
                         RawStreamingChoice::Unknown(value)
                     }
-                })
-                .collect();
+                };
+                items.push(raw);
+            }
             // Scripts that don't hand-author a terminal record inherit one
             // from the paired `responses` entry, like the unary branch.
             if !items
@@ -399,6 +495,7 @@ impl MockScript {
                     final_record = final_record.with_finish_reason(reason);
                 }
                 if let Some(id) = response.message_id {
+                    items.push(RawStreamingChoice::MessageId(id.clone()));
                     final_record = final_record.with_message_id(id);
                 }
                 items.push(RawStreamingChoice::FinalResponse(final_record));
@@ -419,13 +516,11 @@ impl MockScript {
                         Some(RawStreamingChoice::Message(text.text.clone()))
                     }
                     rig_core::message::AssistantContent::ToolCall(tool_call) => {
-                        Some(RawStreamingChoice::ToolCall(
-                            RawStreamingToolCall::new(
-                                tool_call.id.clone(),
-                                tool_call.function.name.clone(),
-                                tool_call.function.arguments.clone(),
-                            ),
-                        ))
+                        Some(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                            tool_call.id.clone(),
+                            tool_call.function.name.clone(),
+                            tool_call.function.arguments.clone(),
+                        )))
                     }
                     _ => None,
                 })
@@ -435,12 +530,12 @@ impl MockScript {
                 final_record = final_record.with_finish_reason(reason);
             }
             if let Some(id) = response.message_id {
+                items.push(RawStreamingChoice::MessageId(id.clone()));
                 final_record = final_record.with_message_id(id);
             }
             items.push(RawStreamingChoice::FinalResponse(final_record));
             items
         };
-        let _ = request;
         Ok(StreamingCompletionResponse::stream(Box::pin(
             futures::stream::iter(items.into_iter().map(Ok)),
         )))

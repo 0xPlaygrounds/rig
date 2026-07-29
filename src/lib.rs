@@ -65,7 +65,7 @@ pub mod client {
     // completion client (`AgentClientExt`) and `into_agent_builder()` on any
     // completion model (`AgentModelExt`).
     #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentClientExt, AgentModelExt};
+    pub use rig_agent::client::{AgentClientExt, ToProviderConfig};
 
     // The full portable provider-client surface, including the canonical
     // `CompletionClient`. `AgentClientExt` is a distinct name, so there is no
@@ -128,7 +128,7 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
+        Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
         StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
         TypedPrompt,
     };

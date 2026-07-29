@@ -8,7 +8,7 @@ use rig_core::{
 };
 
 use crate::{
-    completion::{CompletionModel, Message, PromptError, Usage},
+    completion::{Message, PromptError, Usage},
     tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
@@ -206,24 +206,20 @@ impl PromptType for Extended {}
 /// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
 /// configured or implicit budget; a tool call followed by a model-authored final
 /// answer generally requires at least two model calls.
-pub struct PromptRequest<S, M>
+pub struct PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// The hook-aware driver this request configures and runs.
-    pub(crate) runner: AgentRunner<M>,
+    pub(crate) runner: AgentRunner,
     /// Phantom data to track the type of the request (Standard vs Extended).
     state: PhantomData<S>,
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     /// Create a new PromptRequest from an agent, cloning the agent's data and
     /// default hook stack.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         PromptRequest {
             runner: AgentRunner::from_agent(agent, prompt),
             state: PhantomData,
@@ -231,10 +227,9 @@ where
     }
 }
 
-impl<S, M> PromptRequest<S, M>
+impl<S> PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -242,7 +237,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M> {
+    pub fn extended_details(self) -> PromptRequest<Extended> {
         PromptRequest {
             runner: self.runner,
             state: PhantomData,
@@ -279,10 +274,7 @@ where
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M> IntoFuture for PromptRequest<Standard, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Standard> {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -291,10 +283,7 @@ where
     }
 }
 
-impl<M> IntoFuture for PromptRequest<Extended, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Extended> {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -303,10 +292,7 @@ where
     }
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
     }
@@ -675,10 +661,7 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
         .collect()
 }
 
-impl<M> PromptRequest<Extended, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Extended> {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         self.runner.run().await
     }
@@ -708,25 +691,23 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M>
+pub struct TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
-    inner: PromptRequest<S, M>,
+    inner: PromptRequest<S>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Create a new TypedPromptRequest from an agent.
     ///
     /// This automatically sets the output schema based on the type parameter `T`.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.runner.output_schema = Some(schema_for!(T));
@@ -744,18 +725,17 @@ where
     }
 }
 
-impl<T, S, M> TypedPromptRequest<T, S, M>
+impl<T, S> TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -807,10 +787,9 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -825,10 +804,9 @@ where
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Extended, M>
+impl<T> TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -844,10 +822,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Standard, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -857,10 +834,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Extended, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -869,26 +845,351 @@ where
         Box::pin(self.send())
     }
 }
+/// Test-only shim preserving the deleted `rig_core::test_utils` mock-model
+/// ergonomics (`MockCompletionModel` / `MockTurn` / `MockStreamEvent`) on top
+/// of the scripted Mock provider (`ProviderConfig::Mock` + `MockScript`).
+///
+/// Differences from the deleted originals, dictated by the closed provider
+/// dispatch:
+/// - Scripted *errors* are no longer expressible; an empty script exhausts
+///   into a `CompletionError::ProviderError`, which covers the same intent.
+/// - Raw provider requests cannot be intercepted. [`mock_support::agent_builder`]
+///   attaches an observe-only `on_completion_call` hook instead, so recorded
+///   requests carry the reconstructed `chat_history` (history + prompt);
+///   every other `CompletionRequest` field is defaulted.
+#[cfg(test)]
+pub(crate) mod mock_support {
+    use std::sync::{Arc, Mutex};
+
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionRequest, CompletionResponse, Usage};
+    use rig_core::message::{
+        AssistantContent, Message, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction,
+    };
+    use rig_core::streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent};
+
+    use crate::agent::AgentBuilder;
+    use crate::agent::hook::{
+        AgentHook, CompletionCall as CompletionCallEvent, CompletionCallAction, HookContext,
+        StepEventKind,
+    };
+    use crate::provider::{MockScript, ProviderConfig};
+
+    /// A scripted non-streaming mock turn.
+    #[derive(Clone)]
+    pub(crate) struct MockTurn {
+        response: CompletionResponse,
+    }
+
+    impl MockTurn {
+        /// Create a text response turn.
+        pub(crate) fn text(text: impl Into<String>) -> Self {
+            Self::from_content(AssistantContent::text(text.into()))
+        }
+
+        /// Create a tool-call response turn.
+        pub(crate) fn tool_call(
+            id: impl Into<String>,
+            name: impl Into<String>,
+            arguments: serde_json::Value,
+        ) -> Self {
+            Self::from_content(AssistantContent::ToolCall(ToolCall::new(
+                id.into(),
+                ToolFunction::new(name.into(), arguments),
+            )))
+        }
+
+        /// Create a response turn from one assistant content item.
+        pub(crate) fn from_content(content: AssistantContent) -> Self {
+            Self {
+                response: CompletionResponse::new(OneOrMany::one(content), Usage::new(), "mock"),
+            }
+        }
+
+        /// Create a response turn from multiple assistant content items.
+        pub(crate) fn from_contents(
+            content: impl IntoIterator<Item = AssistantContent>,
+        ) -> Result<Self, rig_core::one_or_many::EmptyListError> {
+            Ok(Self {
+                response: CompletionResponse::new(OneOrMany::many(content)?, Usage::new(), "mock"),
+            })
+        }
+
+        /// Attach a provider-specific call ID to the turn's first tool call.
+        pub(crate) fn with_call_id(mut self, call_id: impl Into<String>) -> Self {
+            let call_id = call_id.into();
+            for content in self.response.choice.iter_mut() {
+                if let AssistantContent::ToolCall(tool_call) = content {
+                    tool_call.call_id = Some(call_id);
+                    break;
+                }
+            }
+            self
+        }
+
+        /// Override usage for this turn.
+        pub(crate) fn with_usage(mut self, usage: Usage) -> Self {
+            self.response.usage = usage;
+            self
+        }
+    }
+
+    /// A scripted streaming mock event.
+    #[derive(Clone)]
+    pub(crate) struct MockStreamEvent(StreamedAssistantContent);
+
+    impl MockStreamEvent {
+        /// Create a text chunk.
+        pub(crate) fn text(text: impl Into<String>) -> Self {
+            Self(StreamedAssistantContent::Text(Text::new(text.into())))
+        }
+
+        /// Start a new text content block with optional provider metadata.
+        ///
+        /// Modeled as an empty text item carrying the metadata: the scripted
+        /// stream vocabulary is `StreamedAssistantContent`, which has no
+        /// dedicated text-start item.
+        pub(crate) fn text_start(additional_params: Option<serde_json::Value>) -> Self {
+            Self(StreamedAssistantContent::Text(Text {
+                text: String::new(),
+                additional_params,
+            }))
+        }
+
+        /// Create a complete tool call event.
+        pub(crate) fn tool_call(
+            id: impl Into<String>,
+            name: impl Into<String>,
+            arguments: serde_json::Value,
+        ) -> Self {
+            let id = id.into();
+            let internal_call_id = format!("{id}_internal");
+            Self(StreamedAssistantContent::ToolCall {
+                tool_call: ToolCall::new(id, ToolFunction::new(name.into(), arguments)),
+                internal_call_id,
+            })
+        }
+
+        /// Attach a provider-specific call ID to a complete tool call event.
+        pub(crate) fn with_call_id(mut self, call_id: impl Into<String>) -> Self {
+            if let StreamedAssistantContent::ToolCall { tool_call, .. } = &mut self.0 {
+                tool_call.call_id = Some(call_id.into());
+            }
+            self
+        }
+
+        /// Create a tool call name delta.
+        pub(crate) fn tool_call_name_delta(
+            id: impl Into<String>,
+            internal_call_id: impl Into<String>,
+            name: impl Into<String>,
+        ) -> Self {
+            Self(StreamedAssistantContent::ToolCallDelta {
+                id: id.into(),
+                internal_call_id: internal_call_id.into(),
+                content: ToolCallDeltaContent::Name(name.into()),
+            })
+        }
+
+        /// Create a tool call arguments delta.
+        pub(crate) fn tool_call_arguments_delta(
+            id: impl Into<String>,
+            internal_call_id: impl Into<String>,
+            arguments: impl Into<String>,
+        ) -> Self {
+            Self(StreamedAssistantContent::ToolCallDelta {
+                id: id.into(),
+                internal_call_id: internal_call_id.into(),
+                content: ToolCallDeltaContent::Delta(arguments.into()),
+            })
+        }
+
+        /// Create a complete reasoning event.
+        pub(crate) fn reasoning(reasoning: impl Into<String>) -> Self {
+            let mut block = Reasoning::new("");
+            block.content = vec![ReasoningContent::Text {
+                text: reasoning.into(),
+                signature: None,
+            }];
+            Self(StreamedAssistantContent::Reasoning(block))
+        }
+
+        /// Attach a provider-specific reasoning ID to a complete reasoning event.
+        pub(crate) fn with_reasoning_id(mut self, reasoning_id: impl Into<String>) -> Self {
+            if let StreamedAssistantContent::Reasoning(reasoning) = &mut self.0 {
+                reasoning.id = Some(reasoning_id.into());
+            }
+            self
+        }
+
+        /// Create a reasoning delta event.
+        pub(crate) fn reasoning_delta(
+            id: Option<impl Into<String>>,
+            reasoning: impl Into<String>,
+        ) -> Self {
+            Self(StreamedAssistantContent::ReasoningDelta {
+                id: id.map(Into::into),
+                reasoning: reasoning.into(),
+            })
+        }
+
+        /// Create a final response event with usage.
+        pub(crate) fn final_response(usage: Usage) -> Self {
+            Self(StreamedAssistantContent::Final(StreamFinal::new(
+                "mock", usage,
+            )))
+        }
+
+        /// Create a final response event whose usage has only `total_tokens` set.
+        pub(crate) fn final_response_with_total_tokens(total_tokens: u64) -> Self {
+            let mut usage = Usage::new();
+            usage.total_tokens = total_tokens;
+            Self::final_response(usage)
+        }
+
+        fn into_item(self) -> StreamedAssistantContent {
+            self.0
+        }
+    }
+
+    /// A cloneable scripted model handle over `ProviderConfig::Mock`.
+    ///
+    /// `clone` shares the script's turn cursor and the recorded-request store,
+    /// so a clone kept aside observes the calls the agent makes — the same
+    /// contract the deleted `MockCompletionModel` had.
+    #[derive(Clone, Default)]
+    pub(crate) struct MockCompletionModel {
+        script: MockScript,
+        requests: Arc<Mutex<Vec<CompletionRequest>>>,
+    }
+
+    impl MockCompletionModel {
+        /// Create a mock model from scripted non-streaming turns.
+        pub(crate) fn new(turns: impl IntoIterator<Item = MockTurn>) -> Self {
+            Self::from_turns(turns)
+        }
+
+        /// Create a mock model from scripted non-streaming turns.
+        pub(crate) fn from_turns(turns: impl IntoIterator<Item = MockTurn>) -> Self {
+            Self {
+                script: MockScript::from_responses(
+                    turns.into_iter().map(|turn| turn.response).collect(),
+                ),
+                requests: Arc::default(),
+            }
+        }
+
+        /// Create a mock model that returns one text completion.
+        pub(crate) fn text(text: impl Into<String>) -> Self {
+            Self::from_turns([MockTurn::text(text)])
+        }
+
+        /// Create a mock model from scripted streaming turns.
+        pub(crate) fn from_stream_turns(
+            stream_turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
+        ) -> Self {
+            Self {
+                script: MockScript::from_responses(Vec::new()).with_streams(
+                    stream_turns
+                        .into_iter()
+                        .map(|turn| turn.into_iter().map(MockStreamEvent::into_item).collect())
+                        .collect(),
+                ),
+                requests: Arc::default(),
+            }
+        }
+
+        /// The provider configuration serving this model's script.
+        pub(crate) fn provider(&self) -> ProviderConfig {
+            ProviderConfig::Mock(self.script.clone())
+        }
+
+        /// The number of model calls served from the script so far.
+        pub(crate) fn request_count(&self) -> usize {
+            self.script.calls()
+        }
+
+        /// Requests reconstructed by the recording hook, in call order.
+        pub(crate) fn requests(&self) -> Vec<CompletionRequest> {
+            self.requests
+                .lock()
+                .expect("recorded requests mutex was poisoned")
+                .clone()
+        }
+    }
+
+    /// Observe-only hook reconstructing one `CompletionRequest` per model call.
+    #[derive(Clone)]
+    struct RecordRequests {
+        requests: Arc<Mutex<Vec<CompletionRequest>>>,
+    }
+
+    impl AgentHook for RecordRequests {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let history: Vec<Message> = event
+                .history
+                .iter()
+                .cloned()
+                .chain([event.prompt.clone()])
+                .collect();
+            let chat_history =
+                OneOrMany::many(history).unwrap_or_else(|_| OneOrMany::one(event.prompt.clone()));
+            self.requests
+                .lock()
+                .expect("recorded requests mutex was poisoned")
+                .push(CompletionRequest {
+                    model: None,
+                    preamble: None,
+                    chat_history,
+                    documents: Vec::new(),
+                    tools: Vec::new(),
+                    temperature: None,
+                    max_tokens: None,
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                });
+            CompletionCallAction::Continue
+        }
+
+        // Stay invisible to the hot-path delta gates: this recorder must not
+        // flip the driver's `observes(TextDelta/ToolCallDelta)` optimizations.
+        fn observes(&self, _kind: StepEventKind) -> bool {
+            false
+        }
+    }
+
+    /// An `AgentBuilder` over the model's scripted provider, with the
+    /// request-recording hook attached (successor of `agent_builder(model)`).
+    pub(crate) fn agent_builder(model: MockCompletionModel) -> AgentBuilder {
+        AgentBuilder::new(model.provider()).add_hook(RecordRequests {
+            requests: model.requests,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::mock_support::{MockCompletionModel, MockTurn, agent_builder};
     use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
     use crate::{
-        agent::{
-            AgentBuilder,
-            hook::{
-                AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-                InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-                ToolCall as ToolCallEvent, ToolCallAction,
-            },
+        agent::hook::{
+            AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
+            InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
+            ToolCall as ToolCallEvent, ToolCallAction,
         },
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
             StructuredOutputError, TypedPrompt, Usage,
         },
         test_utils::{
-            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-            MockContextProbeTool, MockOperationArgs, MockSubtractTool, MockToolError, MockTurn,
-            SessionId,
+            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockContextProbeTool,
+            MockOperationArgs, MockSubtractTool, MockToolError, SessionId,
         },
         tool::{Tool, ToolContext},
     };
@@ -1339,7 +1640,7 @@ mod tests {
     #[tokio::test]
     async fn prompt_response_records_completion_call_without_reported_usage() {
         let model = MockCompletionModel::new([MockTurn::text("ok")]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = agent_builder(model).build();
 
         let response = agent
             .prompt("say ok")
@@ -1368,7 +1669,7 @@ mod tests {
         };
         let model =
             MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = agent_builder(model).build();
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
@@ -1450,7 +1751,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
             .prompt("use the tool")
@@ -1485,7 +1786,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
         let probe = MockContextProbeTool::default();
-        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let agent = agent_builder(model).tool(probe.clone()).build();
 
         let mut context = ToolContext::new();
         context.insert(SessionId("abc-123".to_string()));
@@ -1512,7 +1813,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
         let probe = MockContextProbeTool::default();
-        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let agent = agent_builder(model).tool(probe.clone()).build();
 
         let mut context = ToolContext::new();
         context.insert(SessionId("abc-123".to_string()));
@@ -1540,7 +1841,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
         let probe = MockContextProbeTool::default();
-        let agent = AgentBuilder::new(model).tool(probe.clone()).build();
+        let agent = agent_builder(model).tool(probe.clone()).build();
 
         let out = agent
             .prompt("use the tool")
@@ -1574,7 +1875,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
             .prompt("use the tool")
@@ -1601,7 +1902,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .tool_choice(ToolChoice::Specific {
@@ -1643,7 +1944,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::None)
             .build();
@@ -1678,7 +1979,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
             MockTurn::text("done"),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("add")
@@ -1720,7 +2021,7 @@ mod tests {
             MockTurn::text("retried"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("add")
@@ -1778,7 +2079,7 @@ mod tests {
             MockTurn::text("retried"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(CountingAddTool {
                 calls: add_calls.clone(),
             })
@@ -1865,7 +2166,7 @@ mod tests {
             .expect("tool-call response should be non-empty"),
             MockTurn::text("skipped"),
         ]);
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(CountingAddTool {
                 calls: add_calls.clone(),
             })
@@ -1920,7 +2221,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
             .prompt("add")
@@ -1950,7 +2251,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
             MockTurn::text("skipped"),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("add")
@@ -1990,7 +2291,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
             MockTurn::text("skipped"),
         ]);
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["add".to_string()],
@@ -2037,7 +2338,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .tool_choice(ToolChoice::Specific {
@@ -2068,7 +2369,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::None)
             .build();
@@ -2096,7 +2397,7 @@ mod tests {
             MockTurn::text("should not be requested"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::None)
             .build();
@@ -2124,7 +2425,7 @@ mod tests {
             MockTurn::text(r#"{"value":"should not be requested"}"#),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
@@ -2151,7 +2452,7 @@ mod tests {
             MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
             MockTurn::text(r#"{"value":"repaired"}"#),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
@@ -2175,7 +2476,7 @@ mod tests {
             MockTurn::text(r#"{"value":"retried"}"#),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
@@ -2201,7 +2502,7 @@ mod tests {
             MockTurn::text(r#"{"value":"should not be requested"}"#),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
@@ -2227,7 +2528,7 @@ mod tests {
     async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_request() {
         let model = MockCompletionModel::text("should not be requested");
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["missing".to_string()],
@@ -2257,7 +2558,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .tool(MockAddTool)
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["add".to_string()],
@@ -2300,7 +2601,8 @@ mod tests {
                 .with_usage(first_call_usage),
             MockTurn::text("").with_usage(second_call_usage),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let recorded = model.clone();
+        let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
             .prompt("do tool work")
@@ -2370,7 +2672,7 @@ mod tests {
                     AssistantContent::Text(text) if text.text.is_empty()
                 ))
         )));
-        let requests = agent.model.requests();
+        let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
     }
@@ -2383,7 +2685,7 @@ mod tests {
             AssistantContent::Text(Text::new(" and the sky is blue.")),
         ])
         .expect("mock response should contain text blocks")]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = agent_builder(model).build();
 
         let response = agent
             .prompt("answer with cited spans")
@@ -2412,7 +2714,7 @@ mod tests {
                 text: String::new(),
                 additional_params: Some(metadata.clone()),
             }))]);
-        let agent = AgentBuilder::new(model).build();
+        let agent = agent_builder(model).build();
 
         let response = agent
             .prompt("answer with cited metadata")
@@ -2454,7 +2756,7 @@ mod tests {
         let model = MockCompletionModel::text("ack");
         let recorded = model.clone();
 
-        let agent = AgentBuilder::new(model).memory(memory).build();
+        let agent = agent_builder(model).memory(memory).build();
         let _ = agent
             .prompt("ping")
             .conversation("thread-1")
@@ -2477,7 +2779,7 @@ mod tests {
     async fn memory_appends_full_turn_after_success() {
         let memory = InMemoryConversationMemory::new();
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let agent = agent_builder(model).memory(memory.clone()).build();
 
         let _ = agent
             .prompt("hello")
@@ -2501,7 +2803,7 @@ mod tests {
         let model = MockCompletionModel::text("ack");
         let recorded = model.clone();
 
-        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let agent = agent_builder(model).memory(memory.clone()).build();
         let _ = agent
             .prompt("hello")
             .conversation("t1")
@@ -2529,9 +2831,12 @@ mod tests {
     #[tokio::test]
     async fn memory_unchanged_on_provider_error() {
         let memory = InMemoryConversationMemory::new();
-        let model = MockCompletionModel::new([MockTurn::error("boom")]);
+        // A scripted provider *error* is no longer expressible through the Mock
+        // provider; an empty script exhausts into a `ProviderError` on the first
+        // call, preserving the test's intent (provider failure => no append).
+        let model = MockCompletionModel::default();
 
-        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let agent = agent_builder(model).memory(memory.clone()).build();
         let result = agent.prompt("hello").conversation("t1").await;
         assert!(result.is_err());
 
@@ -2550,7 +2855,7 @@ mod tests {
             MockTurn::text("sum is 5"),
         ]);
 
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(memory.clone())
             .tool(MockAddTool)
             .default_max_turns(2)
@@ -2604,7 +2909,7 @@ mod tests {
             .unwrap();
 
         let model = MockCompletionModel::text("new-a");
-        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let agent = agent_builder(model).memory(memory.clone()).build();
 
         let _ = agent
             .prompt("new-q")
@@ -2648,7 +2953,7 @@ mod tests {
 
         let memory = CountingMemory::default();
         let model = MockCompletionModel::text("unreached");
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(memory.clone())
             .add_hook(StopOnCompletion)
             .build();
@@ -2673,7 +2978,7 @@ mod tests {
             MockTurn::text("done"),
         ]);
 
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(memory.clone())
             .tool(MockAddTool)
             .default_max_turns(2)
@@ -2721,7 +3026,7 @@ mod tests {
     async fn missing_conversation_id_behaves_as_no_memory() {
         let memory = CountingMemory::default();
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model).memory(memory.clone()).build();
+        let agent = agent_builder(model).memory(memory.clone()).build();
 
         let _ = agent.prompt("hello").await.expect("prompt should succeed");
 
@@ -2733,7 +3038,7 @@ mod tests {
     async fn default_conversation_id_is_used_when_none_per_request() {
         let memory = InMemoryConversationMemory::new();
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(memory.clone())
             .conversation("default-thread")
             .build();
@@ -2762,7 +3067,7 @@ mod tests {
 
         let model = MockCompletionModel::text("ack");
         let recorded = model.clone();
-        let agent = AgentBuilder::new(model).memory(memory).build();
+        let agent = agent_builder(model).memory(memory).build();
 
         let _ = agent
             .prompt("ping")
@@ -2786,7 +3091,7 @@ mod tests {
     async fn without_memory_disables_for_request() {
         let memory = CountingMemory::default();
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(memory.clone())
             .conversation("t1")
             .build();
@@ -2804,7 +3109,7 @@ mod tests {
     #[tokio::test]
     async fn memory_load_error_surfaces_as_prompt_error() {
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(FailingMemory::default())
             .build();
         let result = agent.prompt("hello").conversation("t1").await;
@@ -2821,7 +3126,7 @@ mod tests {
     #[tokio::test]
     async fn memory_append_error_does_not_drop_response() {
         let model = MockCompletionModel::text("ack");
-        let agent = AgentBuilder::new(model)
+        let agent = agent_builder(model)
             .memory(AppendFailingMemory::default())
             .build();
         let response: String = agent

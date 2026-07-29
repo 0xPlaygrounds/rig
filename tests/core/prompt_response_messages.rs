@@ -1,62 +1,80 @@
-//! Integration tests for `PromptResponse.messages` using mock models.
-//! Exercises the real agent loop code path with mocked LLM responses.
+//! Integration tests for `PromptResponse.messages` using the scripted Mock
+//! provider. Exercises the real agent loop code path with mocked LLM responses.
 
+use rig::OneOrMany;
 use rig::agent::AgentBuilder;
-use rig::completion::{Chat, Message, Prompt, Usage};
+use rig::completion::{Chat, CompletionResponse, Message, Prompt, Usage};
 use rig::message::{AssistantContent, UserContent};
-use rig_agent::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+use rig::provider::{MockScript, ProviderConfig};
+use rig_agent::test_utils::MockAddTool;
 
 // ---------------------------------------------------------------------------
-// Mock model infrastructure
+// Mock provider infrastructure
 // ---------------------------------------------------------------------------
 
-fn simple_text_turn() -> MockTurn {
-    MockTurn::text("hello from mock")
-        .with_usage(Usage {
-            input_tokens: 10,
-            output_tokens: 5,
-            total_tokens: 15,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        })
-        .with_message_id("msg_mock_1")
+fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+    Usage {
+        input_tokens,
+        output_tokens,
+        total_tokens: input_tokens + output_tokens,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        tool_use_prompt_tokens: 0,
+        reasoning_tokens: 0,
+    }
 }
 
-fn simple_text_model(turns: usize) -> MockCompletionModel {
-    MockCompletionModel::new((0..turns).map(|_| simple_text_turn()))
+fn text_response(text: &str, usage: Usage, message_id: &str) -> CompletionResponse {
+    CompletionResponse::new(OneOrMany::one(AssistantContent::text(text)), usage, "mock")
+        .with_message_id(message_id)
 }
 
-fn tool_then_text_model() -> MockCompletionModel {
-    MockCompletionModel::new([
-        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
-            .with_usage(Usage {
-                input_tokens: 15,
-                output_tokens: 8,
-                total_tokens: 23,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .with_message_id("msg_tool"),
-        MockTurn::text("The answer is 5")
-            .with_usage(Usage {
-                input_tokens: 20,
-                output_tokens: 4,
-                total_tokens: 24,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .with_message_id("msg_text"),
-    ])
+fn tool_call_response(
+    id: &str,
+    name: &str,
+    args: serde_json::Value,
+    usage: Usage,
+    message_id: &str,
+) -> CompletionResponse {
+    CompletionResponse::new(
+        OneOrMany::one(AssistantContent::tool_call(id, name, args)),
+        usage,
+        "mock",
+    )
+    .with_message_id(message_id)
 }
 
-fn always_tool_call_turn() -> MockTurn {
-    MockTurn::tool_call("tc_loop", "add", serde_json::json!({"x": 1, "y": 1}))
+fn simple_text_turn() -> CompletionResponse {
+    text_response("hello from mock", usage(10, 5), "msg_mock_1")
+}
+
+fn simple_text_model(turns: usize) -> ProviderConfig {
+    ProviderConfig::Mock(MockScript::from_responses(
+        (0..turns).map(|_| simple_text_turn()).collect(),
+    ))
+}
+
+fn tool_then_text_model() -> ProviderConfig {
+    ProviderConfig::Mock(MockScript::from_responses(vec![
+        tool_call_response(
+            "tc_1",
+            "add",
+            serde_json::json!({"x": 2, "y": 3}),
+            usage(15, 8),
+            "msg_tool",
+        ),
+        text_response("The answer is 5", usage(20, 4), "msg_text"),
+    ]))
+}
+
+fn always_tool_call_turn() -> CompletionResponse {
+    tool_call_response(
+        "tc_loop",
+        "add",
+        serde_json::json!({"x": 1, "y": 1}),
+        Usage::new(),
+        "msg_loop",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -276,9 +294,9 @@ async fn prompt_response_with_messages_builder() {
 async fn max_turns_error_still_contains_history() {
     use rig::completion::PromptError;
 
-    let agent = AgentBuilder::new(MockCompletionModel::new(
-        (0..10).map(|_| always_tool_call_turn()),
-    ))
+    let agent = AgentBuilder::new(ProviderConfig::Mock(MockScript::from_responses(
+        (0..10).map(|_| always_tool_call_turn()).collect(),
+    )))
     .tool(MockAddTool)
     .build();
 

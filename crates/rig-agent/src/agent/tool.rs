@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt},
+    completion::Prompt,
     tool::{DynamicTool, ToolExecutionError, ToolOutput},
 };
 use schemars::{JsonSchema, schema_for};
@@ -17,7 +17,7 @@ struct AgentToolArgs {
 
 const DEFAULT_AGENT_TOOL_NAME: &str = "agent_tool";
 
-impl<M: CompletionModel + 'static> Agent<M> {
+impl Agent {
     /// Convert this agent into a runtime-defined tool.
     ///
     /// The configured agent name becomes the tool name. Unnamed agents use
@@ -64,8 +64,8 @@ impl<M: CompletionModel + 'static> Agent<M> {
     }
 }
 
-impl<M: CompletionModel + 'static> From<Agent<M>> for DynamicTool {
-    fn from(agent: Agent<M>) -> Self {
+impl From<Agent> for DynamicTool {
+    fn from(agent: Agent) -> Self {
         agent.into_tool()
     }
 }
@@ -74,8 +74,28 @@ impl<M: CompletionModel + 'static> From<Agent<M>> for DynamicTool {
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::test_utils::{MockCompletionModel, MockContextProbeTool, MockTurn, SessionId};
+    use crate::provider::{MockScript, ProviderConfig};
+    use crate::test_utils::{MockContextProbeTool, SessionId};
     use crate::tool::ToolContext;
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionResponse, Usage};
+    use rig_core::message::AssistantContent;
+
+    fn text_response(text: &str) -> CompletionResponse {
+        CompletionResponse::new(
+            OneOrMany::one(AssistantContent::text(text)),
+            Usage::new(),
+            "mock",
+        )
+    }
+
+    fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> CompletionResponse {
+        CompletionResponse::new(
+            OneOrMany::one(AssistantContent::tool_call(id, name, args)),
+            Usage::new(),
+            "mock",
+        )
+    }
 
     /// A `ToolContext` set on the outer run propagates into a sub-agent
     /// invoked as a tool, so the inner agent's own tools observe it.
@@ -83,22 +103,22 @@ mod tests {
     async fn context_propagates_into_sub_agent() {
         // Inner agent: calls a context-probing tool, then answers.
         let probe = MockContextProbeTool::default();
-        let inner_model = MockCompletionModel::new([
-            MockTurn::tool_call("c1", "context_probe", json!({})),
-            MockTurn::text("inner done"),
-        ]);
-        let inner = AgentBuilder::new(inner_model)
+        let inner_provider = ProviderConfig::Mock(MockScript::from_responses(vec![
+            tool_call_response("c1", "context_probe", json!({})),
+            text_response("inner done"),
+        ]));
+        let inner = AgentBuilder::new(inner_provider)
             .name("researcher")
             .tool(probe.clone())
             .build();
 
         // Outer agent: delegates to the inner agent (registered as the
         // "researcher" tool), then answers.
-        let outer_model = MockCompletionModel::new([
-            MockTurn::tool_call("c2", "researcher", json!({"prompt": "do research"})),
-            MockTurn::text("outer done"),
-        ]);
-        let outer = AgentBuilder::new(outer_model)
+        let outer_provider = ProviderConfig::Mock(MockScript::from_responses(vec![
+            tool_call_response("c2", "researcher", json!({"prompt": "do research"})),
+            text_response("outer done"),
+        ]));
+        let outer = AgentBuilder::new(outer_provider)
             .dynamic_tool(inner.into_tool())
             .build();
 
