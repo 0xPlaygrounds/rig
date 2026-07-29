@@ -442,8 +442,7 @@ where
     async fn completion_from_sse(
         &self,
         request: ResponsesRequest,
-    ) -> Result<completion::CompletionResponse<responses_api::CompletionResponse>, CompletionError>
-    {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
@@ -466,6 +465,10 @@ where
         }
 
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
+
+        let span = tracing::Span::current();
+        span.record("gen_ai.response.id", raw_response.id.as_str());
+        span.record("gen_ai.response.model", raw_response.model.as_str());
 
         match raw_response.clone().try_into() {
             Ok(response) => Ok(response),
@@ -492,8 +495,6 @@ where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = responses_api::CompletionResponse;
-    type StreamingResponse = responses_api::streaming::StreamingCompletionResponse;
     type Client = Client<H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -503,7 +504,7 @@ where
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
@@ -515,8 +516,6 @@ where
             async move {
                 let response = self.completion_from_sse(request).await?;
                 let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.raw_response.id);
-                span.record("gen_ai.response.model", &response.raw_response.model);
                 span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
                 span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
                 span.record(
@@ -533,7 +532,7 @@ where
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }
 }
@@ -546,10 +545,7 @@ where
     pub async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<
-        StreamingCompletionResponse<responses_api::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    > {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 

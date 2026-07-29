@@ -9,7 +9,7 @@ use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
     Content, GenericCompletionModel, Usage,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
@@ -156,8 +156,10 @@ pub struct PartialUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl PartialUsage {
+    /// Normalize the streamed partial usage; totals add cache reads/writes to
+    /// the base input tokens, mirroring the unary conversion.
+    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
@@ -193,27 +195,6 @@ struct ThinkingState {
     signature: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StreamingCompletionResponse {
-    pub usage: PartialUsage,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
-        usage.output_tokens = self.usage.output_tokens as u64;
-        usage.cached_input_tokens = self.usage.cache_read_input_tokens.unwrap_or(0);
-        usage.cache_creation_input_tokens = self.usage.cache_creation_input_tokens.unwrap_or(0);
-        usage.total_tokens = usage.input_tokens
-            + usage.cached_input_tokens
-            + usage.cache_creation_input_tokens
-            + usage.output_tokens;
-
-        usage
-    }
-}
-
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
@@ -222,8 +203,7 @@ where
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -276,13 +256,16 @@ where
         let stream = GenericEventSource::new(self.client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
+        let stream: StreamingResult = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut message_id: Option<String> = None;
+            let mut response_model: Option<String> = None;
+            let mut finish_reason: Option<crate::completion::FinishReason> = None;
 
             let mut text_content = String::new();
 
@@ -296,13 +279,16 @@ where
                                 match &event {
                                     StreamingEvent::MessageStart { message } => {
                                         input_tokens = message.usage.input_tokens;
+                                        message_id = Some(message.id.clone());
+                                        response_model = Some(message.model.clone());
 
                                         let span = tracing::Span::current();
                                         span.record("gen_ai.response.id", &message.id);
                                         span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
-                                        if delta.stop_reason.is_some() {
+                                        if let Some(stop_reason) = delta.stop_reason.as_deref() {
+                                            finish_reason = Some(super::completion::map_finish_reason(stop_reason));
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -314,7 +300,7 @@ where
                                             };
 
                                             let span = tracing::Span::current();
-                                            span.record_token_usage(&usage);
+                                            span.record_token_usage(&usage.token_usage());
                                             final_usage = Some(usage);
                                             break;
                                         }
@@ -353,9 +339,20 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
-            }))
+            let mut final_response = streaming::StreamFinal::new(
+                Ext::PROVIDER_NAME,
+                final_usage.unwrap_or_default().token_usage(),
+            );
+            if let Some(finish_reason) = finish_reason {
+                final_response = final_response.with_finish_reason(finish_reason);
+            }
+            if let Some(message_id) = message_id {
+                final_response = final_response.with_message_id(message_id);
+            }
+            if let Some(response_model) = response_model {
+                final_response = final_response.with_model(response_model);
+            }
+            yield Ok(RawStreamingChoice::FinalResponse(final_response))
         }.instrument(span));
 
         Ok(streaming::StreamingCompletionResponse::stream(stream))
@@ -367,7 +364,7 @@ fn handle_event(
     current_tool_call: &mut Option<ToolCallState>,
     server_tool_uses: &mut HashMap<usize, ServerToolUseState>,
     current_thinking: &mut Option<ThinkingState>,
-) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+) -> Option<Result<RawStreamingChoice, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { index, delta } => match delta {
             ContentDelta::TextDelta { text } => {
@@ -562,20 +559,17 @@ mod tests {
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
-        stream: impl futures::Stream<
-            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-        > + Send
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
+        + Send
         + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+    ) -> crate::streaming::StreamingResult {
         Box::pin(stream)
     }
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
-        stream: impl futures::Stream<
-            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-        > + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
+    ) -> crate::streaming::StreamingResult {
         Box::pin(stream)
     }
 
@@ -859,7 +853,7 @@ mod tests {
         event: &StreamingEvent,
         current_tool_call: &mut Option<ToolCallState>,
         current_thinking: &mut Option<ThinkingState>,
-    ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+    ) -> Option<Result<RawStreamingChoice, CompletionError>> {
         let mut server_tool_uses = HashMap::new();
         super::handle_event(
             event,
@@ -1617,9 +1611,10 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "anthropic",
+                PartialUsage::default().token_usage(),
+            )));
         };
 
         let mut stream =
@@ -1762,9 +1757,10 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "anthropic",
+                PartialUsage::default().token_usage(),
+            )));
         };
 
         let mut stream =

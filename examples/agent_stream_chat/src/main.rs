@@ -10,7 +10,7 @@ use rig::providers::openai;
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
 
-async fn collect_stream_final_response<R>(stream: &mut StreamingResult<R>) -> Result<String> {
+async fn collect_stream_final_response(stream: &mut StreamingResult) -> Result<String> {
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {

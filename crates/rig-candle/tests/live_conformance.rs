@@ -75,20 +75,20 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
             .await
     })
     .await??;
-    if !simple.raw_response.text.contains("Paris") {
-        return Err(format!(
-            "model-quality failure in simple completion: {:?}",
-            simple.raw_response.text
-        )
-        .into());
+    let simple_text: String = simple
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig_core::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    if !simple_text.contains("Paris") {
+        return Err(format!("model-quality failure in simple completion: {simple_text:?}").into());
     }
     println!(
-        "PASS simple_buffered prompt_tokens={} generated_tokens={} tool_calls=0 duration={}ms throughput={:?} output={:?}",
-        simple.raw_response.prompt_tokens,
-        simple.raw_response.generated_tokens,
-        simple.raw_response.generation_duration_ms,
-        simple.raw_response.tokens_per_second,
-        simple.raw_response.text,
+        "PASS simple_buffered prompt_tokens={} generated_tokens={} tool_calls=0 output={:?}",
+        simple.usage.input_tokens, simple.usage.output_tokens, simple_text,
     );
 
     let text_parity = tokio::time::timeout(

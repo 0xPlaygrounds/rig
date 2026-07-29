@@ -343,8 +343,7 @@ mod tests {
                     ]),
             ),
         ]);
-        let response: CompletionResponse<VertexGenerateContentOutput> =
-            VertexGenerateContentOutput(response)
+        let response: CompletionResponse = VertexGenerateContentOutput(response)
                 .try_into()
                 .expect("image response should convert");
 

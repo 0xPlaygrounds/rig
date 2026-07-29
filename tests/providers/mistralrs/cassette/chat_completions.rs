@@ -11,7 +11,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let response = client
+            let _response = client
                 .completion_model(model_name())
                 .completion_request(
                     "Think briefly, then answer in one sentence why token usage should be reported.",
@@ -21,8 +21,18 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                 .send()
                 .await
                 .expect("raw chat completion should succeed");
-            let raw = serde_json::to_value(&response.raw_response)
-                .expect("raw chat completion response should serialize");
+            // The normalized response no longer exposes the raw payload, so the
+            // wire-shape assertions read the recorded cassette body directly.
+            let bodies = crate::cassettes::recorded_response_bodies(
+                "mistralrs",
+                "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
+            );
+            let raw: Value = serde_json::from_str(
+                bodies
+                    .last()
+                    .expect("cassette should contain a recorded response body"),
+            )
+            .expect("recorded mistral.rs chat completion body should be JSON");
             let message = &raw["choices"][0]["message"];
             let text = message
                 .get("content")

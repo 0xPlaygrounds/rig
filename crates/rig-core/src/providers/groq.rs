@@ -122,9 +122,6 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<GroqExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path.
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
-
 impl ProviderClient for Client {
     type Input = String;
     type Error = crate::client::ProviderClientError;

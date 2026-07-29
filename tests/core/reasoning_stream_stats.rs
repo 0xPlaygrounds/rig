@@ -25,7 +25,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
 
     let items = vec![
         Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::<()>::text("Sure! Let me check the weather right away!"),
+            StreamedAssistantContent::text("Sure! Let me check the weather right away!"),
         )),
         Ok(MultiTurnStreamItem::StreamAssistantItem(
             StreamedAssistantContent::ToolCall {
@@ -37,7 +37,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
             StreamedUserContent::tool_result(tool_result, internal_call_id),
         )),
         Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::<()>::text("It's 72F and sunny in Tokyo."),
+            StreamedAssistantContent::text("It's 72F and sunny in Tokyo."),
         )),
         Ok(MultiTurnStreamItem::final_response(
             OneOrMany::one(AssistantContent::text("It's 72F and sunny in Tokyo.")),

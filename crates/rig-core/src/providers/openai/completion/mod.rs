@@ -2,9 +2,9 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
+use super::client::ApiResponse;
 use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
+    CompletionError, CompletionRequest as CoreCompletionRequest,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
@@ -1140,13 +1140,26 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Map an OpenAI-style `finish_reason` wire string onto the normalized enum.
+pub(crate) fn map_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "stop" => completion::FinishReason::Stop,
+        "length" => completion::FinishReason::Length,
+        "tool_calls" | "function_call" => completion::FinishReason::ToolCalls,
+        "content_filter" => completion::FinishReason::ContentFilter,
+        other => completion::FinishReason::Other(other.to_string()),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = (!choice.finish_reason.is_empty())
+            .then(|| map_finish_reason(&choice.finish_reason));
 
         let content = match &choice.message {
             Message::Assistant {
@@ -1205,15 +1218,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(|usage| completion::Usage::from(usage.clone()))
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        // "openai" is a placeholder for the shared wire conversion; the
+        // generic model stamps the real Ext::PROVIDER_NAME after conversion.
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "openai")
+            .with_model(response.model.clone());
+        if !response.id.is_empty() {
+            normalized = normalized.with_message_id(response.id.clone());
+        }
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -1360,20 +1376,21 @@ impl fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        let this = &value;
         let mut usage = crate::providers::internal::completion_usage(
-            self.prompt_tokens as u64,
-            self.completion_tokens
-                .unwrap_or_else(|| self.total_tokens.saturating_sub(self.prompt_tokens))
+            this.prompt_tokens as u64,
+            this.completion_tokens
+                .unwrap_or_else(|| this.total_tokens.saturating_sub(this.prompt_tokens))
                 as u64,
-            self.total_tokens as u64,
-            self.prompt_tokens_details
+            this.total_tokens as u64,
+            this.prompt_tokens_details
                 .as_ref()
                 .map(|d| d.cached_tokens as u64)
                 .unwrap_or(0),
         );
-        usage.reasoning_tokens = self
+        usage.reasoning_tokens = this
             .completion_tokens_details
             .as_ref()
             .map(|d| d.reasoning_tokens as u64)
@@ -1439,7 +1456,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
         + Default
-        + GetTokenUsage
+        + Into<crate::completion::Usage>
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
@@ -1450,8 +1467,8 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// The chat-completions payload this provider returns.
     type Response: serde::de::DeserializeOwned
         + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
-        + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
+        + crate::telemetry::ProviderResponseExt<Usage: Into<crate::completion::Usage> + Clone>
+        + TryInto<completion::CompletionResponse, Error = CompletionError>
         + WasmCompatSend
         + WasmCompatSync;
 
@@ -1914,9 +1931,6 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = Ext::Response;
-    type StreamingResponse = StreamingCompletionResponse<Ext::StreamingUsage>;
-
     type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -1941,7 +1955,7 @@ where
     async fn completion(
         &self,
         completion_request: CoreCompletionRequest,
-    ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -1997,7 +2011,11 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
-                        span.record_token_usage(&response.get_usage());
+                        let usage = response
+                            .get_usage()
+                            .map(Into::into)
+                            .unwrap_or_default();
+                        span.record_token_usage(&usage);
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
                                 target: "rig::completions",
@@ -2006,7 +2024,12 @@ where
                             );
                         }
 
-                        response.try_into()
+                        // The shared wire conversion fills a placeholder
+                        // provider; stamp the real one for this extension.
+                        let mut normalized: completion::CompletionResponse =
+                            response.try_into()?;
+                        normalized.provider = Ext::PROVIDER_NAME.to_string();
+                        Ok(normalized)
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
@@ -2025,10 +2048,7 @@ where
     async fn stream(
         &self,
         request: CoreCompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
     }
 }
@@ -2998,7 +3018,7 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse<CompletionResponse> =
+        let response: completion::CompletionResponse =
             response.try_into().unwrap();
 
         assert_eq!(response.choice.len(), 1);

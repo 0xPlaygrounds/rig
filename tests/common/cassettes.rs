@@ -1463,6 +1463,24 @@ pub(crate) fn cassette_path(provider: &str, scenario: &str) -> PathBuf {
     path
 }
 
+/// Recorded (scrubbed) response bodies for a cassette scenario, in interaction
+/// order. Wire-level assertions deserialize these into the provider's own
+/// response structs now that the normalized `CompletionResponse` no longer
+/// carries a provider-typed `raw_response`.
+pub(crate) fn recorded_response_bodies(provider: &str, scenario: &str) -> Vec<String> {
+    let path = cassette_path(provider, scenario);
+    let contents = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+    parse_cassette_interactions(&path, &contents)
+        .into_iter()
+        .map(|interaction| interaction.then.body.unwrap_or_default())
+        .collect()
+}
+
 fn sanitize_path_segment(segment: &str) -> String {
     segment
         .chars()

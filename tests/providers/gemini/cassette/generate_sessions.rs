@@ -257,8 +257,7 @@ async fn long_history_replay_nonstreaming() {
             );
             assert!(
                 response
-                    .raw_response
-                    .model_version
+                    .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"

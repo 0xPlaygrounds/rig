@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -52,7 +52,10 @@ async fn basic_interaction_returns_id() {
 
             assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.id.is_empty(),
+                response
+                    .message_id
+                    .as_deref()
+                    .is_some_and(|id| !id.is_empty()),
                 "interactions api should return an interaction id"
             );
         },
@@ -81,7 +84,10 @@ async fn followup_with_previous_interaction_id() {
                 )
                 .await
                 .expect("initial completion should succeed");
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -129,8 +135,20 @@ async fn google_search_tool_interaction() {
                 .expect("search completion should succeed");
 
             assert_nonempty_response(&extract_text(&response.choice));
+            // The facade response no longer carries the wire payload; the
+            // search exchange is wire-specific, so deserialize the recorded
+            // interaction body from the cassette itself.
+            let bodies = crate::cassettes::recorded_response_bodies(
+                "gemini",
+                "interactions_api/google_search_tool_interaction",
+            );
+            let interaction: rig::providers::gemini::interactions_api::Interaction =
+                serde_json::from_str(
+                    bodies.first().expect("cassette should record one exchange"),
+                )
+                .expect("recorded body should deserialize as an Interaction");
             assert!(
-                !response.raw_response.google_search_exchanges().is_empty(),
+                !interaction.google_search_exchanges().is_empty(),
                 "expected a search-backed exchange"
             );
         },
@@ -180,7 +198,10 @@ async fn tool_result_roundtrip() {
                 .call_id
                 .clone()
                 .unwrap_or_else(|| tool_call.id.clone());
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -229,7 +250,7 @@ async fn streaming_interaction() {
                 match chunk.expect("stream chunk should succeed") {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
-                        saw_usage = response.token_usage().has_values();
+                        saw_usage = response.usage.has_values();
                     }
                     _ => {}
                 }
@@ -266,8 +287,8 @@ async fn streaming_final_metadata_exposes_model_version() {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.token_usage().has_values();
-                        final_model_version = response.model_version.clone();
+                        saw_usage = response.usage.has_values();
+                        final_model_version = response.model.clone();
                     }
                     _ => {}
                 }

@@ -11,10 +11,9 @@ use tracing::{Instrument, Level, enabled};
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
-use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
 use crate::providers::openai::responses_api::{Output, ResponsesUsage};
 use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
 
@@ -131,7 +130,28 @@ pub struct CompletionResponse {
     pub usage: Option<ResponsesUsage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Convert an xAI Responses usage payload into the normalized [`completion::Usage`].
+pub(super) fn usage_from_responses(usage: &ResponsesUsage) -> completion::Usage {
+    completion::Usage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        total_tokens: usage.total_tokens,
+        cached_input_tokens: usage
+            .input_tokens_details
+            .as_ref()
+            .map(|details| details.cached_tokens)
+            .unwrap_or(0),
+        cache_creation_input_tokens: 0,
+        tool_use_prompt_tokens: 0,
+        reasoning_tokens: usage
+            .output_tokens_details
+            .as_ref()
+            .map(|details| details.reasoning_tokens)
+            .unwrap_or(0),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -149,19 +169,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(usage_from_responses)
             .unwrap_or_default();
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(message) => Some(message.id.clone()),
             _ => None,
         });
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "xai")
+            .with_model(response.model.clone());
+        if let Some(message_id) = message_id {
+            converted = converted.with_message_id(message_id);
+        }
+        Ok(converted)
     }
 }
 
@@ -188,9 +208,6 @@ impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
     type Client = Client<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -200,7 +217,7 @@ where
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request =
@@ -235,7 +252,7 @@ where
                         span.record("gen_ai.response.id", response.id.as_str());
                         span.record("gen_ai.response.model", response.model.as_str());
                         if let Some(usage) = &response.usage {
-                            span.record_token_usage(usage);
+                            span.record_token_usage(&usage_from_responses(usage));
                         }
 
                         if enabled!(Level::TRACE) {
@@ -269,7 +286,7 @@ where
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<BaseStreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<BaseStreamingCompletionResponse, CompletionError> {
         self.stream(request).await
     }
 }

@@ -1,7 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::completion::GetTokenUsage;
 use crate::providers::openai;
 use crate::{
     OneOrMany,
@@ -34,10 +33,6 @@ pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<MistralExt, H>;
-
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying Mistral's own usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
 // =================================================================
 // Rig Implementation Types
@@ -175,33 +170,27 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage.cached_input_tokens = self.cached_tokens();
+        usage.input_tokens = value.prompt_tokens as u64;
+        usage.output_tokens = value.completion_tokens as u64;
+        usage.total_tokens = value.total_tokens as u64;
+        usage.cached_input_tokens = value.cached_tokens();
         usage
     }
 }
 
-impl GetTokenUsage for CompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage
-            .as_ref()
-            .map(GetTokenUsage::token_usage)
-            .unwrap_or_default()
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = (!choice.finish_reason.is_empty()).then(|| {
+            crate::providers::openai::completion::map_finish_reason(&choice.finish_reason)
+        });
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -242,25 +231,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: usage.completion_tokens as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage.cached_tokens(),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(|usage| completion::Usage::from(usage.clone()))
             .unwrap_or_default();
 
-        let message_id = response.id.clone();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: Some(message_id),
-        })
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "mistral")
+            .with_model(response.model.clone())
+            .with_message_id(response.id.clone());
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 

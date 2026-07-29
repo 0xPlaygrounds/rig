@@ -1,6 +1,6 @@
 //! Public errors and response metadata.
 
-use rig_core::completion::{CompletionError, GetTokenUsage, Usage};
+use rig_core::completion::{CompletionError, Usage};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -250,13 +250,24 @@ pub struct CandleCompletionResponse {
     pub tokens_per_second: Option<f64>,
 }
 
-impl GetTokenUsage for CandleCompletionResponse {
-    fn token_usage(&self) -> Usage {
+impl CandleCompletionResponse {
+    /// Token usage derived from the local generation counters.
+    pub fn token_usage(&self) -> Usage {
         Usage {
             input_tokens: self.prompt_tokens,
             output_tokens: self.generated_tokens,
             total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
             ..Usage::new()
+        }
+    }
+}
+
+impl FinishReason {
+    /// Map the local finish reason onto rig's normalized finish reason.
+    pub fn normalized(&self) -> rig_core::completion::FinishReason {
+        match self {
+            FinishReason::Eos => rig_core::completion::FinishReason::Stop,
+            FinishReason::MaxTokens => rig_core::completion::FinishReason::Length,
         }
     }
 }

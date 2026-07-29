@@ -403,36 +403,53 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<deepseek::CompletionResponse>,
-) {
+fn assert_response_metadata(response: &rig::completion::CompletionResponse, scenario: &str) {
+    // The normalized response no longer exposes the raw provider payload, so
+    // wire-specific fields are re-checked against the recorded cassette body of
+    // the first (non-streaming) interaction.
+    let raw_response = recorded_wire_response(scenario);
+
     assert_nonempty_response(
         response
-            .raw_response
-            .id
+            .message_id
             .as_deref()
-            .expect("raw DeepSeek response should preserve id"),
+            .expect("response should preserve the DeepSeek message id"),
     );
     assert_nonempty_response(
         response
-            .raw_response
             .model
             .as_deref()
-            .expect("raw DeepSeek response should preserve model"),
+            .expect("response should preserve the DeepSeek model"),
     );
     assert!(
-        response
-            .raw_response
-            .choices
-            .iter()
-            .all(|choice| !choice.finish_reason.is_empty()),
+        !raw_response.choices.is_empty()
+            && raw_response
+                .choices
+                .iter()
+                .all(|choice| !choice.finish_reason.is_empty()),
         "raw DeepSeek choices should preserve finish reasons"
+    );
+    assert!(
+        response.finish_reason.is_some(),
+        "normalized response should preserve the finish reason"
     );
     assert!(
         response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
         "usage should be populated: {:?}",
         response.usage
     );
+}
+
+/// Deserializes the first recorded (non-streaming) response body for the
+/// scenario as a DeepSeek wire completion response.
+fn recorded_wire_response(scenario: &str) -> deepseek::CompletionResponse {
+    let bodies = crate::cassettes::recorded_response_bodies("deepseek", scenario);
+    serde_json::from_str(
+        bodies
+            .first()
+            .expect("cassette should contain a recorded response body"),
+    )
+    .expect("recorded DeepSeek body should deserialize as a wire completion response")
 }
 
 #[tokio::test]
@@ -708,7 +725,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+            );
 
             Ok(())
         },
@@ -830,18 +850,22 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 "core usage should preserve DeepSeek reasoning tokens: {:?}",
                 response.usage
             );
-            let raw_reasoning_tokens = response
-                .raw_response
-                .usage
-                .completion_tokens_details
-                .as_ref()
-                .and_then(|details| details.reasoning_tokens)
-                .unwrap_or_default() as u64;
+            let raw_reasoning_tokens = recorded_wire_response(
+                "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+            )
+            .usage
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|details| details.reasoning_tokens)
+            .unwrap_or_default() as u64;
             anyhow::ensure!(
                 response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
                 "usage reasoning tokens should match raw provider details"
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+            );
 
             let stream_request = model
                 .completion_request("Briefly solve 2 + 2, then answer with the number.")
@@ -950,7 +974,10 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
 
             let serialized = plan.to_string();
             assert_contains_all_case_insensitive(&serialized, &["canary", "low", "compile", "replay"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/json_object_response_format_roundtrip",
+            );
 
             Ok(())
         },

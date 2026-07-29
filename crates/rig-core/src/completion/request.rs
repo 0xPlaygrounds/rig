@@ -43,7 +43,6 @@ use crate::{
     message::{Message, UserContent},
 };
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
@@ -207,48 +206,89 @@ impl ProviderToolDefinition {
     }
 }
 
-/// General completion response struct that contains the high-level completion choice
-/// and the raw response. The completion choice contains one or more assistant content.
-#[derive(Debug)]
-pub struct CompletionResponse<T> {
+/// Why the model stopped generating, normalized across providers.
+///
+/// Providers report this under different names and vocabularies
+/// (`finish_reason`, `stop_reason`, `stopReason`, …); each provider's
+/// response conversion maps its wire value onto these variants and preserves
+/// anything unmapped verbatim in [`FinishReason::Other`]. Closes #2090/#1886.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    /// Natural end of the response.
+    Stop,
+    /// The response hit the output-token limit.
+    Length,
+    /// The model stopped to call one or more tools.
+    ToolCalls,
+    /// The provider filtered the content.
+    ContentFilter,
+    /// A provider-specific reason outside the normalized vocabulary,
+    /// carried verbatim.
+    Other(String),
+}
+
+/// General completion response struct: the completion choice plus normalized
+/// response metadata. The completion choice contains one or more assistant
+/// content items.
+///
+/// This type is concrete — it carries no provider-typed payload. Callers who
+/// need a provider's raw typed response call that provider's own parse/
+/// completion functions directly, on the provider's side of the boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// The raw response returned by the completion model provider
-    pub raw_response: T,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Why the model stopped generating, when the provider reported it.
+    pub finish_reason: Option<FinishReason>,
+    /// Name of the provider that produced this response (descriptor name,
+    /// e.g. `"openai"`).
+    pub provider: String,
+    /// Provider-reported model identifier for the response, when available.
+    pub model: Option<String>,
 }
 
-/// A trait for grabbing the token usage of a completion response.
-///
-/// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
-pub trait GetTokenUsage {
-    /// Returns token usage for this response. Zero-valued usage is
-    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
-    /// response types that carry no usage return [`Usage::new`].
-    fn token_usage(&self) -> crate::completion::Usage;
-}
-
-impl GetTokenUsage for () {
-    fn token_usage(&self) -> crate::completion::Usage {
-        crate::completion::Usage::new()
-    }
-}
-
-impl<T> GetTokenUsage for Option<T>
-where
-    T: GetTokenUsage,
-{
-    fn token_usage(&self) -> crate::completion::Usage {
-        if let Some(usage) = self {
-            usage.token_usage()
-        } else {
-            crate::completion::Usage::new()
+impl CompletionResponse {
+    /// Create a response from its required parts; optional metadata starts
+    /// unset and is filled with the `with_*` helpers.
+    pub fn new(
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        provider: impl Into<String>,
+    ) -> Self {
+        Self {
+            choice,
+            usage,
+            message_id: None,
+            finish_reason: None,
+            provider: provider.into(),
+            model: None,
         }
+    }
+
+    /// Attach the provider-assigned message ID.
+    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.message_id = Some(message_id.into());
+        self
+    }
+
+    /// Attach the normalized finish reason.
+    pub fn with_finish_reason(mut self, finish_reason: FinishReason) -> Self {
+        self.finish_reason = Some(finish_reason);
+        self
+    }
+
+    /// Attach the provider-reported model identifier.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 }
 
@@ -336,17 +376,6 @@ impl AddAssign for Usage {
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// The raw response type returned by the underlying completion model.
-    type Response: WasmCompatSend + WasmCompatSync + Serialize + DeserializeOwned;
-    /// The raw response type returned by the underlying completion model when streaming.
-    type StreamingResponse: Clone
-        + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
-        + Serialize
-        + DeserializeOwned
-        + GetTokenUsage;
-
     /// Provider client type used to construct this model.
     type Client;
 
@@ -354,19 +383,19 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     fn make(client: &Self::Client, model: impl Into<String>) -> Self;
 
     /// Generates a completion response for the given completion request.
+    ///
+    /// The response is the concrete, normalized [`CompletionResponse`];
+    /// provider-typed payloads live on the provider's own side of the
+    /// boundary (its parse functions), not in this trait.
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend;
 
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend;
 
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
@@ -857,19 +886,13 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
+    pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
     }
 
     /// Stream the completion request
-    pub async fn stream<'a>(
-        self,
-    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError>
-    where
-        <M as CompletionModel>::StreamingResponse: 'a,
-        Self: 'a,
-    {
+    pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
         let model = self.model.clone();
         model.stream(self.build()).await
     }

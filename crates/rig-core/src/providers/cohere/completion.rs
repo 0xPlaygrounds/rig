@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError},
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 use super::client::Client;
 use crate::completion::CompletionRequest;
-use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, Level, enabled};
 
@@ -103,8 +102,20 @@ pub struct Usage {
     pub tokens: Option<Tokens>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&FinishReason> for completion::FinishReason {
+    fn from(finish_reason: &FinishReason) -> Self {
+        match finish_reason {
+            FinishReason::Complete | FinishReason::StopSequence => Self::Stop,
+            FinishReason::MaxTokens => Self::Length,
+            FinishReason::ToolCall => Self::ToolCalls,
+            FinishReason::Error => Self::Other("ERROR".to_owned()),
+        }
+    }
+}
+
+impl Usage {
+    /// Normalize the billed-unit token counts reported by Cohere.
+    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         if let Some(ref billed_units) = self.billed_units {
@@ -137,7 +148,7 @@ pub struct Tokens {
     pub output_tokens: Option<f64>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -195,12 +206,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice: model_response,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(
+            completion::CompletionResponse::new(model_response, usage, "cohere")
+                .with_finish_reason((&response.finish_reason).into()),
+        )
     }
 }
 
@@ -626,8 +635,6 @@ impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
     type Client = Client<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -637,7 +644,7 @@ where
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -675,7 +682,12 @@ where
             if status.is_success() {
                 let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
-                span.record_token_usage(&json_response.usage);
+                let token_usage = json_response
+                    .usage
+                    .as_ref()
+                    .map(Usage::token_usage)
+                    .unwrap_or_default();
+                span.record_token_usage(&token_usage);
                 span.record_response_metadata(&json_response);
 
                 if enabled!(Level::TRACE) {
@@ -686,8 +698,7 @@ where
                     );
                 }
 
-                let completion: completion::CompletionResponse<CompletionResponse> =
-                    json_response.try_into()?;
+                let completion: completion::CompletionResponse = json_response.try_into()?;
                 Ok(completion)
             } else {
                 Err(CompletionError::from_http_response(
@@ -703,10 +714,7 @@ where
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }

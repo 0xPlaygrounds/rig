@@ -575,13 +575,18 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = choice
+            .finish_reason
+            .as_deref()
+            .filter(|reason| !reason.is_empty())
+            .map(crate::providers::openai::completion::map_finish_reason);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -728,12 +733,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "openrouter")
+            .with_model(response.model.clone());
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -1500,10 +1503,6 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path.
-pub type StreamingCompletionResponse =
-    openai::completion::streaming::StreamingCompletionResponse<Usage>;
-
 impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
     /// Enable explicit prompt caching for supported OpenRouter models.
     ///
@@ -1875,7 +1874,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
 
         assert_eq!(converted.usage.input_tokens, 500);
@@ -1907,7 +1906,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
@@ -1942,12 +1941,12 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
 
         assert_eq!(
-            converted.raw_response.model,
-            "google/gemini-2.5-pro-exp-03-25:free"
+            converted.model.as_deref(),
+            Some("google/gemini-2.5-pro-exp-03-25:free")
         );
         assert!(matches!(
             converted.choice.first(),
@@ -2833,7 +2832,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
@@ -3015,7 +3014,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
@@ -3343,7 +3342,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
@@ -3704,7 +3703,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
@@ -3753,7 +3752,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
+        let converted: completion::CompletionResponse =
             response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);

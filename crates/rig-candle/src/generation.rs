@@ -233,7 +233,7 @@ use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
 use rig_core::OneOrMany;
-use rig_core::completion::{AssistantContent, CompletionResponse, GetTokenUsage};
+use rig_core::completion::{AssistantContent, CompletionResponse};
 use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
 use tokenizers::tokenizer::DecodeStream;
 use tokenizers::{
@@ -558,7 +558,7 @@ pub(crate) fn infer(
     loaded: &LoadedModel,
     request: CompletionRequest,
     cancellation: &CancellationSignal,
-) -> Result<CompletionResponse<CandleCompletionResponse>, CandleError> {
+) -> Result<(CompletionResponse, CandleCompletionResponse), CandleError> {
     let parse_request = request.clone();
     let mut raw_response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
@@ -571,19 +571,16 @@ pub(crate) fn infer(
         CandleError::Inference("output protocol produced no assistant content".to_string())
     })?;
     let usage = raw_response.token_usage();
-    Ok(CompletionResponse {
-        choice,
-        usage,
-        raw_response,
-        message_id: None,
-    })
+    let response = CompletionResponse::new(choice, usage, "candle")
+        .with_finish_reason(raw_response.finish_reason.normalized());
+    Ok((response, raw_response))
 }
 
 pub(crate) fn stream_generate(
     loaded: &LoadedModel,
     request: CompletionRequest,
     cancellation: &CancellationSignal,
-    mut emit: impl FnMut(RawStreamingChoice<CandleCompletionResponse>) -> Result<(), CandleError>,
+    mut emit: impl FnMut(RawStreamingChoice) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
     if loaded.profile.definition.protocol != ModelFamily::Qwen3 {
         return generate(loaded, request, cancellation, |fragment| {

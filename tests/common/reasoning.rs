@@ -15,9 +15,8 @@ use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{StreamFinal, StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
-use rig::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -54,7 +53,6 @@ where
 pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
 where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
 {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
@@ -64,8 +62,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     mut inspect_final: F,
 ) where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
-    F: FnMut(&M::StreamingResponse),
+    F: FnMut(&StreamFinal),
 {
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
@@ -423,8 +420,8 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
     );
 }
 
-pub(crate) async fn collect_stream_stats<R>(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>,
+pub(crate) async fn collect_stream_stats(
+    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
     provider: &str,
 ) -> StreamStats {
     let mut stats = StreamStats::new();

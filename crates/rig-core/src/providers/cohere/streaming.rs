@@ -1,4 +1,4 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
@@ -8,7 +8,7 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
@@ -59,33 +59,24 @@ struct MessageEndDelta {
     usage: Option<Usage>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse {
-    pub usage: Option<Usage>,
-}
+/// Normalize the streamed `message-end` usage payload; missing token counts
+/// yield the zero-usage sentinel.
+fn streamed_token_usage(usage: Option<&Usage>) -> crate::completion::Usage {
+    let tokens = usage.and_then(|usage| usage.tokens.as_ref()).map(|tokens| {
+        (
+            tokens.input_tokens.map(|x| x as u64),
+            tokens.output_tokens.map(|y| y as u64),
+        )
+    });
+    let Some((Some(input), Some(output))) = tokens else {
+        return crate::completion::Usage::new();
+    };
+    let mut usage = crate::completion::Usage::new();
+    usage.input_tokens = input;
+    usage.output_tokens = output;
+    usage.total_tokens = input + output;
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let tokens = self
-            .usage
-            .clone()
-            .and_then(|response| response.tokens)
-            .map(|tokens| {
-                (
-                    tokens.input_tokens.map(|x| x as u64),
-                    tokens.output_tokens.map(|y| y as u64),
-                )
-            });
-        let Some((Some(input), Some(output))) = tokens else {
-            return crate::completion::Usage::new();
-        };
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = input;
-        usage.output_tokens = output;
-        usage.total_tokens = input + output;
-
-        usage
-    }
+    usage
 }
 
 impl<T> CompletionModel<T>
@@ -95,8 +86,7 @@ where
     pub(crate) async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -169,8 +159,9 @@ where
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
                                 let span = tracing::Span::current();
-                                span.record_token_usage(&delta.usage);
-                                final_usage = Some(delta.usage.clone());
+                                let token_usage = streamed_token_usage(delta.usage.as_ref());
+                                span.record_token_usage(&token_usage);
+                                final_usage = Some(token_usage);
                                 break;
                             },
 
@@ -237,9 +228,10 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
-            }))
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "cohere",
+                final_usage.unwrap_or_else(crate::completion::Usage::new),
+            )))
         }.instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
