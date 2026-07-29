@@ -5,10 +5,8 @@
 //! seeing the recoverable legacy tool-name emission.
 
 use futures::StreamExt;
-use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
-    PromptResponse, StreamingResult,
-};
+use rig::agent::{InvalidToolCallAction, MultiTurnStreamItem, PromptResponse, StreamingResult};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolResultContent;
 use rig::prelude::*;
 use rig::providers::gemini::{
@@ -138,35 +136,39 @@ impl Tool for JavaScript {
     }
 }
 
+/// Records every invalid tool name the model emitted. The hook is an
+/// attach-and-forget closure, so the state it observes is owned by the host and
+/// shared into the closure through an `Arc`.
 #[derive(Clone, Default)]
-struct DefaultApiRepairHook {
-    invalid_tool_names: Arc<Mutex<Vec<String>>>,
-}
+struct InvalidToolNames(Arc<Mutex<Vec<String>>>);
 
-impl DefaultApiRepairHook {
-    fn invalid_tool_names(&self) -> Vec<String> {
-        self.invalid_tool_names
-            .lock()
-            .map(|names| names.clone())
-            .unwrap_or_default()
+impl InvalidToolNames {
+    fn names(&self) -> Vec<String> {
+        self.0.lock().map(|names| names.clone()).unwrap_or_default()
     }
 }
 
-impl AgentHook for DefaultApiRepairHook {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        context: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
-            invalid_tool_names.push(context.tool_name.clone());
-        }
-        Some(if context.tool_name == "default_api" {
-            InvalidToolCallAction::repair(JavaScript::NAME)
-        } else {
-            InvalidToolCallAction::fail()
-        })
-    }
+/// The repair hook as a [`HookEntry`]: it answers only `InvalidToolCall` events,
+/// rewriting the legacy `default_api` name onto the real `JavaScript` tool and
+/// failing fast on anything else. Every other event gets
+/// `HookDecision::Continue`.
+fn default_api_repair_hook(observed: InvalidToolNames) -> HookEntry {
+    HookEntry::new("default-api-repair", move |event| {
+        let decision = match event {
+            HookEvent::InvalidToolCall(context) => {
+                if let Ok(mut names) = observed.0.lock() {
+                    names.push(context.tool_name.clone());
+                }
+                HookDecision::InvalidToolCall(if context.tool_name == "default_api" {
+                    InvalidToolCallAction::repair(JavaScript::NAME)
+                } else {
+                    InvalidToolCallAction::fail()
+                })
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[derive(Debug, Default)]
@@ -345,16 +347,16 @@ async fn run_workspace_canary_attempt(
         .default_max_turns(CANARY_MAX_TURNS)
         .temperature(0.0)
         .build();
-    let repair_hook = DefaultApiRepairHook::default();
+    let invalid_tool_names = InvalidToolNames::default();
 
     let stream = agent
         .stream_prompt(workspace_canary_prompt(attempt))
-        .add_hook(repair_hook.clone())
+        .add_hook(default_api_repair_hook(invalid_tool_names.clone()))
         .history(Vec::<rig::message::Message>::new())
         .await;
 
     let mut observation = consume_workspace_like_stream(stream).await?;
-    observation.invalid_tool_names = repair_hook.invalid_tool_names();
+    observation.invalid_tool_names = invalid_tool_names.names();
     Ok(observation)
 }
 

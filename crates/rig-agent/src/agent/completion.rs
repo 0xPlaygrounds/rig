@@ -1,7 +1,8 @@
-use super::hook::{HookStack, RequestPatch};
+use super::hook::RequestPatch;
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
+use crate::hooks::Hooks;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
@@ -302,6 +303,27 @@ pub(crate) async fn build_prepared_completion_request(
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Conversation memory
+///
+/// An `Agent` owns no memory slot: conversation history is host-owned data.
+/// Wrap a run with two explicit calls against a store such as
+/// [`InMemoryConversationMemory`](rig_core::memory::InMemoryConversationMemory)
+/// (or `rig_memory::PolicyMemory` for windowing and rolling summaries):
+///
+/// - **load-before** — `let history = memory.load(id)?;` then
+///   `.history(history)`. A load failure is fatal: the run never starts.
+/// - **append-after** — take `PromptResponse::messages` from an
+///   [`extended_details`](crate::agent::prompt_request::PromptRequest::extended_details)
+///   run and `memory.append(id, messages)` once per run (a multi-step tool
+///   round-trip commits its transcript exactly once). Log and proceed on
+///   failure so a store hiccup never drops a reply, and skip the append
+///   entirely when the run errored or a hook stopped it.
+///
+/// Passing your own history is how memory is bypassed, and the conversation
+/// id is a flat string key you choose. The full recipe, including the
+/// streaming variant, lives in the [`agent_api`](crate::agent_api) module
+/// docs.
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Agent {
@@ -342,17 +364,13 @@ pub struct Agent {
     pub(crate) default_max_turns: Option<usize>,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.
-    pub(crate) hooks: HookStack,
+    pub(crate) hooks: Hooks,
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub(crate) output_schema: Option<schemars::Schema>,
     /// How `output_schema` is enforced — tool call, native structured output, or
     /// prompt injection (see [`OutputMode`] and issue #1928).
     pub(crate) output_mode: OutputMode,
-    /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub(crate) memory: Option<Arc<dyn rig_core::memory::ConversationMemory>>,
-    /// Optional default conversation id used when none is set per-request.
-    pub(crate) default_conversation_id: Option<String>,
 }
 
 impl Agent {

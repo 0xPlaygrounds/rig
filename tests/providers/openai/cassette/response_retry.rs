@@ -1,43 +1,43 @@
 //! OpenAI-backed regression coverage for retrying a completed model turn.
 
-use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use rig::agent::ModelTurnAction;
 use rig::completion::Message;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
 
-#[derive(Clone, Default)]
-struct RetryAttempts(usize);
-
-struct RetryOnceOnMarker;
-
-impl AgentHook for RetryOnceOnMarker {
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        let rejected = event.content.iter().any(|content| {
+/// Retries the first model turn that carries the `RETRY:` marker, then stops if
+/// the marker survives a second attempt. The attempt counter is host-owned
+/// state captured by the closure (formerly the run-scoped scratchpad).
+fn retry_once_on_marker() -> HookEntry {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    HookEntry::new("retry-once-on-marker", move |event| {
+        let HookEvent::ModelTurnFinished { content, .. } = event else {
+            return Box::pin(async { HookDecision::Continue });
+        };
+        let rejected = content.iter().any(|content| {
             matches!(content, AssistantContent::Text(text) if text.text.contains("RETRY:"))
         });
         if !rejected {
-            return ModelTurnAction::continue_run();
+            return Box::pin(async { HookDecision::ModelTurn(ModelTurnAction::continue_run()) });
         }
 
-        let attempt = ctx.scratchpad().update(|attempts: &mut RetryAttempts| {
-            attempts.0 += 1;
-            attempts.0
-        });
-        if attempt == 1 {
+        let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+        let action = if attempt == 1 {
             ModelTurnAction::retry_with_feedback(
                 "Replace the rejected response. Reply exactly `ACCEPTED`.",
             )
         } else {
             ModelTurnAction::stop("response retry limit exceeded")
-        }
-    }
+        };
+        Box::pin(async move { HookDecision::ModelTurn(action) })
+    })
 }
 
 #[tokio::test]
@@ -56,7 +56,7 @@ async fn rejected_response_is_retried_with_feedback() {
                 .build()
                 .runner("Begin the retry-hook demonstration.")
                 .max_turns(2)
-                .add_hook(RetryOnceOnMarker)
+                .add_hook(retry_once_on_marker())
                 .run()
                 .await
                 .expect("the feedback retry should recover");

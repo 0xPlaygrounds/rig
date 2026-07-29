@@ -1,6 +1,7 @@
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::client::Nothing;
 use rig::completion::Document;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
@@ -20,53 +21,70 @@ struct WordDefinition {
     definitions: Vec<String>,
 }
 
-/// Passive RAG as a hook: on every model call, embed the prompt, search the
-/// vector store, and inject the best-matching documents as per-turn context.
-struct RagHook {
+/// Passive RAG as a hook entry: on every model call, embed the prompt, search
+/// the vector store, and inject the best-matching documents as per-turn
+/// context.
+///
+/// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
+/// closure that receives an owned `HookEvent` and returns a `HookDecision`.
+/// Anything the closure needs (here the embedding model, the store, and the
+/// sample count) is captured, shared through an `Arc` so the future stays
+/// `'static + Send + Sync`.
+fn rag_hook(
     embedding_model: ollama::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
-}
+) -> HookEntry {
+    let state = std::sync::Arc::new((embedding_model, store, samples));
+    HookEntry::new("rag", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            // Only the pre-model-call event is interesting; everything else
+            // falls through untouched.
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples) = state.as_ref();
 
-impl AgentHook for RagHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        // Search with the prompt's text, falling back to the latest textual
-        // history message.
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
+            // Search with the prompt's text, falling back to the latest
+            // textual history message.
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
 
-        // Embed the query, then run a pre-embedded similarity search.
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n(request).await {
-            Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                hits.into_iter().map(|hit| Document {
-                    id: hit.id,
-                    text: hit.payload.to_string(),
-                    additional_props: Default::default(),
-                }),
-            )),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+            // Embed the query, then run a pre-embedded similarity search.
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n(request).await {
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
+                        id: hit.id,
+                        text: hit.payload.to_string(),
+                        additional_props: Default::default(),
+                    })),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 #[tokio::main]
@@ -121,11 +139,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You will find additional non-standard word definitions that could be useful below.
         ")
         // Passive RAG: retrieve one document per model call through the hook.
-        .add_hook(RagHook {
-            embedding_model,
-            store: vector_store,
-            samples: 1,
-        })
+        .add_hook(rag_hook(embedding_model, vector_store, 1))
         .build();
 
     // Prompt the agent and print the response

@@ -9,7 +9,7 @@ use rig::message::{Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
 
-use super::super::hook_stress_support::{ApplyPatch, FirstTurnPatch, fact_doc};
+use super::super::hook_stress_support::{apply_patch, fact_doc, first_turn_patch};
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::CountingAdd;
 use crate::support::assert_nonempty_response;
@@ -33,7 +33,7 @@ async fn preamble_override_forces_codeword_blocking() {
             let response = agent
                 .prompt("Greet me in one short sentence.")
                 .max_turns(2)
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .preamble(format!(
                             "You are a terse assistant. End every reply with the exact token \
@@ -75,7 +75,7 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
             let response = agent
                 .prompt("Use the add tool to compute 12 plus 30, then report the number.")
                 .max_turns(4)
-                .add_hook(FirstTurnPatch(
+                .add_hook(first_turn_patch(
                     RequestPatch::new()
                         .tool_choice(ToolChoice::Required)
                         .temperature(0.0),
@@ -109,7 +109,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
             let response = agent
                 .prompt("What is the passphrase?")
                 .max_turns(2)
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .history([Message::user(
                             "For this session, the passphrase is OMEGA-7. Acknowledge and remember it.",
@@ -144,7 +144,7 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
             let response = agent
                 .prompt("What is the depot code? Keep it short.")
                 .max_turns(2)
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .preamble(format!(
                             "You are a terse assistant. End every reply with the exact token \

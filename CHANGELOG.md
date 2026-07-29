@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- [**breaking**] *(agent)* hooks are concrete records: `AgentHook`/`HookStack`/`HookContext`/`Scratchpad`/`StepEventKind` removed in favour of `rig::hooks::{Hooks, HookEntry, HookEvent, HookDecision}` — `.add_hook()` now takes a `HookEntry`; the decision vocabulary at `rig::agent::hook` is unchanged; delta observation requires `.observing_deltas()`; run identity and the run-scoped scratchpad are host-owned closure state; tool-call argument rewrites chain as `serde_json::Value`
+- [**breaking**] *(core, agent, memory)* memory is host-owned: `ConversationMemory`, `MessageFilter`, `DemotionHook`, and `Compactor` removed, along with `AgentBuilder::memory`/`conversation` and `AgentRunner::without_memory` — hosts call `load` before a run and `append` after it; `InMemoryConversationMemory` is a concrete store with synchronous methods; `rig-memory` ships enum policies over one concrete `PolicyMemory` whose `append` returns an owned `AppendOutcome`
+
+### Other
+
 - [**breaking**] *(agent)* the classic tool system collapsed onto portable records: `ToolContext`/`ToolSet`/`ToolServer`/`DynamicTool`/`ToolEmbedding`/`Agent::into_tool` removed; `Tool` is the portable contract (context parameter dropped); tool execution rides `ToolExecutor`; the `IntoToolOutput` blanket impl (and its `Any` dispatch) replaced by explicit impls + `serialize_to_tool_output`; `#[rig_tool]` gains `.portable()`; MCP integration is `rig::tool::mcp` (the `rmcp` feature now aliases `mcp`)
 
 ### Added

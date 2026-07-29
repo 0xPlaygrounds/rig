@@ -29,27 +29,37 @@
 //!
 //! # Conversation memory as host calls
 //!
-//! The classic driver owned a `ConversationMemory` slot; [`SessionAgent`]
-//! deliberately does not. The classic semantics translate to two explicit
-//! host calls around a run:
+//! No agent in this crate owns a memory slot — neither [`SessionAgent`] nor
+//! the classic [`Agent`](crate::agent::Agent). Memory is host-owned data, and
+//! the semantics the classic driver used to apply internally translate to two
+//! explicit host calls around a run:
 //!
 //! - **load-before**: history is loaded from memory before the prompt, and a
-//!   load failure is **fatal** (the run never starts);
+//!   load failure is **fatal** (the run never starts). The classic driver
+//!   loaded only when a memory backend *and* a conversation id were both set;
+//!   with a host call, "no id" simply means "don't call load";
 //! - **append-after**: the finished run's new messages
-//!   ([`PromptResponse::messages`]) are appended after a successful run, and
-//!   an append failure **warns and proceeds** (the response is still
-//!   surfaced);
-//! - **explicit history bypasses memory entirely** — a caller that passes
-//!   its own history (classic `.history(...)` / [`SessionAgent::chat`] /
+//!   ([`PromptResponse::messages`]) are appended in **one** call after a
+//!   successful run — one append per run, not per model call, so a multi-step
+//!   tool round-trip persists its committed transcript exactly once. An
+//!   append failure **warns and proceeds** (the response is still surfaced),
+//!   and a run that errors or is stopped by a hook never reaches the append;
+//! - **explicit history bypasses memory entirely** — a caller that passes its
+//!   own history (classic `.history(...)` / [`SessionAgent::chat`] /
 //!   [`SessionAgent::run_with_history`]) performs neither the load nor the
-//!   append against a memory backend.
+//!   append. There is no `without_memory()` switch any more: not calling the
+//!   store *is* the switch.
+//!
+//! The conversation id is a flat string key chosen by the host, and nothing
+//! ever clears a conversation on your behalf — call the store's `clear` when
+//! a thread ends.
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use rig_agent::agent::AgentConfig;
 //! use rig_agent::agent_api::SessionAgent;
 //! use rig_agent::provider::ProviderConfig;
-//! use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
+//! use rig_core::memory::InMemoryConversationMemory;
 //!
 //! let memory = InMemoryConversationMemory::new();
 //! let conversation_id = "user-42";
@@ -61,13 +71,13 @@
 //! );
 //!
 //! // Load-before: a load failure is fatal, exactly like the classic driver.
-//! let history = memory.load(conversation_id).await?;
+//! let history = memory.load(conversation_id)?;
 //! let response = agent.run_with_history("Hello!", history).await?;
 //!
 //! // Append-after: warn and proceed on failure, exactly like the classic
 //! // driver — the response is still surfaced.
 //! if let Some(messages) = &response.messages
-//!     && let Err(error) = memory.append(conversation_id, messages.clone()).await
+//!     && let Err(error) = memory.append(conversation_id, messages.clone())
 //! {
 //!     tracing::warn!(
 //!         %error,
@@ -79,6 +89,21 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Streaming is the same recipe: load before [`SessionAgent::stream`] (the
+//! loaded history goes into the session's history) and append the final
+//! response's `messages` once the stream ends. A load
+//! failure that used to arrive as a one-item error stream is now just an
+//! error returned before the stream is created.
+//!
+//! # Shaping history
+//!
+//! History-shaping policies live in the `rig-memory` companion crate as data:
+//! `MemoryPolicy` (sliding window, token window), `Compactor` (rolling
+//! summaries), and a concrete `PolicyMemory` whose `append` returns an
+//! `AppendOutcome { stored, demoted, compaction }`. The host acts on
+//! `demoted` (archive it) and `compaction` (fold it into a summary) instead
+//! of a hook firing behind the run.
 
 use std::sync::Arc;
 
@@ -223,6 +248,10 @@ impl SessionAgent {
         history: Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
         let mut session = self.session(prompt, history);
+        // The session surfaces the turn prompt on `BeforeModelCall` only; the
+        // response observation carries it too (classic parity), so keep the
+        // most recent one.
+        let mut turn_prompt: Option<Message> = None;
         loop {
             match session.advance().await? {
                 SessionEvent::BeforeModelCall {
@@ -234,6 +263,7 @@ impl SessionAgent {
                         .hooks
                         .dispatch_completion_call(turn, &prompt, &history)
                         .await;
+                    turn_prompt = Some(prompt);
                     session.reply_before_call(action)?;
                 }
                 SessionEvent::TurnFinished {
@@ -244,10 +274,11 @@ impl SessionAgent {
                     // Observation over the full provider response first
                     // (classic order: the response hook fires before the
                     // model-turn verdict).
+                    let observed_prompt = turn_prompt.clone().unwrap_or_else(|| Message::from(""));
                     if let Some(response) = session.last_response().cloned()
                         && let ObservationAction::Stop(reason) = self
                             .hooks
-                            .dispatch_completion_response(turn, &response)
+                            .dispatch_completion_response(turn, &observed_prompt, &response)
                             .await
                     {
                         session.reply_turn(ModelTurnAction::Stop(reason))?;
@@ -271,7 +302,14 @@ impl SessionAgent {
                     // applied through the single-action inbox and only
                     // affects reporting, never execution (the body does not
                     // run).
-                    let (action, _salvaged) = self.hooks.dispatch_tool_call(&call.tool_call).await;
+                    let internal_call_id = call
+                        .internal_call_id
+                        .clone()
+                        .unwrap_or_else(|| call.tool_call.id.clone());
+                    let (action, _salvaged) = self
+                        .hooks
+                        .dispatch_tool_call(&call.tool_call, &internal_call_id)
+                        .await;
                     session.reply_tool_call(action)?;
                 }
                 SessionEvent::ToolCallsReady(calls) => {
@@ -303,7 +341,11 @@ impl SessionAgent {
                 }
                 SessionEvent::ToolResultReady { call, result } => {
                     let raw = raw_tool_result(&result);
-                    let action = self.hooks.dispatch_tool_result(&call, &raw).await;
+                    let internal_call_id = call.id.clone();
+                    let action = self
+                        .hooks
+                        .dispatch_tool_result(&call, &internal_call_id, &raw)
+                        .await;
                     session.reply_tool_result(action)?;
                 }
                 SessionEvent::Done(response) => return Ok(response),
@@ -384,6 +426,7 @@ mod tests {
     use crate::completion::Chat;
     use crate::hooks::{HookDecision, HookEntry, HookEvent};
     use crate::provider::MockScript;
+    use crate::test_utils::{AppendFailingMemory, CountingMemory, FailingMemory};
     use crate::tool::PortableDynamicTool;
     use rig_core::OneOrMany;
     use rig_core::completion::{CompletionResponse, FinishReason, Usage};
@@ -640,5 +683,217 @@ mod tests {
             names.iter().any(|name| name == "chat"),
             "expected a chat span, got {names:?}"
         );
+    }
+
+    // ----- host-owned conversation memory recipe -----
+    //
+    // These replace the classic driver's built-in memory orchestration tests.
+    // The behaviors they pin (load feeds the request, one append per run, an
+    // append failure never drops the response, a failed or stopped run never
+    // appends, explicit history bypasses the store) are now properties of the
+    // documented host recipe rather than of the agent.
+
+    #[tokio::test]
+    async fn host_recipe_load_before_feeds_the_request_and_append_after_persists_the_turn() {
+        let memory = CountingMemory::default();
+        memory
+            .inner()
+            .append(
+                "t1",
+                vec![Message::user("old-q"), Message::assistant("old-a")],
+            )
+            .expect("seed");
+
+        let script = MockScript::from_responses(vec![text_response("new-a")]);
+        let probe = script.clone();
+        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+
+        let history = memory.load("t1").expect("load");
+        let response = agent.run_with_history("new-q", history).await.expect("run");
+        let messages = response.messages.clone().expect("committed transcript");
+        memory.append("t1", messages).expect("append");
+
+        let sent = probe
+            .requests()
+            .first()
+            .expect("one call")
+            .chat_history
+            .len();
+        assert_eq!(sent, 3, "loaded history (2) + current prompt");
+        assert_eq!(memory.load_count(), 1, "one load for the run");
+        assert_eq!(memory.append_count(), 1, "one append for the run");
+
+        let stored = memory.inner().load("t1").expect("stored");
+        assert_eq!(
+            stored.len(),
+            4,
+            "only the new turn is appended; loaded history is not duplicated: {stored:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn host_recipe_appends_a_multi_step_tool_run_exactly_once() {
+        let memory = CountingMemory::default();
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(3);
+        let script = MockScript::from_responses(vec![
+            tool_call_response("call_1", "add", serde_json::json!({"a": 2, "b": 3})),
+            text_response("sum is 5"),
+        ]);
+        let agent = SessionAgent::new(config, ProviderConfig::Mock(script))
+            .with_executor(ToolExecutor::new().register(adder()));
+
+        let response = agent.run("add 2 and 3").await.expect("run");
+        let messages = response.messages.clone().expect("committed transcript");
+        memory.append("t1", messages).expect("append");
+
+        assert_eq!(
+            memory.append_count(),
+            1,
+            "one append for the whole run, not one per model call"
+        );
+        let stored = memory.inner().load("t1").expect("stored");
+        // user prompt + assistant tool call + tool result + final assistant text.
+        assert_eq!(
+            stored.len(),
+            4,
+            "the full committed turn is persisted once: {stored:?}"
+        );
+        assert!(
+            matches!(
+                stored.last(),
+                Some(Message::Assistant { content, .. })
+                    if content.iter().any(|item|
+                        matches!(item, AssistantContent::Text(t) if t.text == "sum is 5"))
+            ),
+            "final assistant text is persisted: {stored:?}"
+        );
+        // The committed transcript is a well-formed role sequence: it starts
+        // with the user prompt, never commits two assistant turns back to
+        // back, and pairs each tool call with a following tool result.
+        assert!(matches!(stored.first(), Some(Message::User { .. })));
+        assert!(
+            !stored
+                .windows(2)
+                .any(|pair| matches!(pair, [Message::Assistant { .. }, Message::Assistant { .. }])),
+            "no two assistant messages back to back: {stored:?}"
+        );
+        for (index, message) in stored.iter().enumerate() {
+            let has_tool_call = matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
+            );
+            if has_tool_call {
+                assert!(
+                    matches!(stored.get(index + 1), Some(Message::User { content })
+                        if content.iter().any(|item| matches!(item, UserContent::ToolResult(_)))),
+                    "assistant tool call at {index} is followed by a tool result: {stored:?}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn host_recipe_append_failure_does_not_drop_the_response() {
+        let memory = AppendFailingMemory::default();
+        let script = MockScript::from_responses(vec![text_response("ack")]);
+        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+
+        let history = memory.load("t1").expect("load");
+        let response = agent.run_with_history("hello", history).await.expect("run");
+        let append = memory.append("t1", response.messages.clone().unwrap_or_default());
+
+        assert!(append.is_err(), "the store fails on append");
+        assert_eq!(
+            response.output, "ack",
+            "warn-and-proceed: the response is still surfaced"
+        );
+    }
+
+    #[tokio::test]
+    async fn host_recipe_load_failure_is_fatal_before_the_run_starts() {
+        let memory = FailingMemory::default();
+        let script = MockScript::from_responses(vec![text_response("unreached")]);
+        let probe = script.clone();
+        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+
+        let error = memory.load("t1").expect_err("load fails");
+        assert!(error.to_string().contains("load boom"), "got {error}");
+        // The host never reaches the run, so the provider is never called.
+        assert!(probe.requests().is_empty());
+        let _ = agent;
+    }
+
+    #[tokio::test]
+    async fn host_recipe_failed_run_appends_nothing() {
+        let memory = CountingMemory::default();
+        // An exhausted script errors on the first call, standing in for any
+        // provider failure.
+        let script = MockScript::from_responses(vec![]);
+        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+
+        let history = memory.load("t1").expect("load");
+        let result = agent.run_with_history("hello", history).await;
+        assert!(result.is_err(), "the provider failed");
+        // The append only happens on the success path of the recipe.
+        assert_eq!(memory.append_count(), 0, "failed runs do not append");
+        assert!(memory.inner().load("t1").expect("stored").is_empty());
+    }
+
+    #[tokio::test]
+    async fn host_recipe_stopped_run_appends_nothing() {
+        let memory = CountingMemory::default();
+        let hooks = Hooks::new().with(entry("stop-on-completion", |event| match event {
+            HookEvent::BeforeModelCall { .. } => {
+                HookDecision::CompletionCall(CompletionCallAction::stop("stop"))
+            }
+            _ => HookDecision::Continue,
+        }));
+        let script = MockScript::from_responses(vec![text_response("unreached")]);
+        let agent =
+            SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script)).with_hooks(hooks);
+
+        let history = memory.load("t1").expect("load");
+        let result = agent.run_with_history("hello", history).await;
+        assert!(result.is_err(), "a stop hook terminates the run");
+        assert_eq!(memory.append_count(), 0, "stopped runs do not append");
+        assert!(memory.inner().load("t1").expect("stored").is_empty());
+    }
+
+    #[tokio::test]
+    async fn host_recipe_explicit_history_bypasses_the_store() {
+        // Passing caller history is how memory is bypassed: the host simply
+        // performs neither the load nor the append.
+        let memory = CountingMemory::default();
+        memory
+            .inner()
+            .append("t1", vec![Message::user("from-memory")])
+            .expect("seed");
+
+        let script = MockScript::from_responses(vec![text_response("ack")]);
+        let probe = script.clone();
+        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+
+        let response = agent
+            .run_with_history("hello", vec![Message::user("from-caller")])
+            .await
+            .expect("run");
+        assert_eq!(response.output, "ack");
+
+        assert_eq!(memory.load_count(), 0, "load skipped");
+        assert_eq!(memory.append_count(), 0, "append skipped");
+        let sent = probe
+            .requests()
+            .first()
+            .expect("one call")
+            .chat_history
+            .clone();
+        assert_eq!(sent.len(), 2, "caller history (1) + current prompt");
+        assert!(matches!(
+            sent.first(),
+            Message::User { content }
+                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+        ));
     }
 }

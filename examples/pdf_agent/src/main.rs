@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::client::Nothing;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::ollama;
@@ -18,50 +19,64 @@ struct Document {
     content: String,
 }
 
-/// Passive RAG as a hook: on every model call, embed the latest user text,
-/// search the PDF-chunk store, and inject the hits as per-turn context.
-struct PdfRagHook {
+/// Passive RAG as a hook entry: on every model call, embed the latest user
+/// text, search the PDF-chunk store, and inject the hits as per-turn context.
+///
+/// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
+/// closure over owned `HookEvent`s that returns a `HookDecision`; the
+/// embedding model, the store, and the sample count are captured behind an
+/// `Arc` so the returned future stays `'static + Send + Sync`.
+fn pdf_rag_hook(
     embedding_model: ollama::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
-}
+) -> HookEntry {
+    let state = std::sync::Arc::new((embedding_model, store, samples));
+    HookEntry::new("pdf-rag", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples) = state.as_ref();
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
 
-impl AgentHook for PdfRagHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n(request).await {
-            Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                hits.into_iter().map(|hit| rig::completion::Document {
-                    id: hit.id,
-                    text: hit.payload.to_string(),
-                    additional_props: Default::default(),
-                }),
-            )),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n(request).await {
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().extra_context(hits.into_iter().map(|hit| {
+                        rig::completion::Document {
+                            id: hit.id,
+                            text: hit.payload.to_string(),
+                            additional_props: Default::default(),
+                        }
+                    })),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
@@ -140,11 +155,7 @@ async fn main() -> Result<()> {
     let rag_agent = client
         .agent("deepseek-r1")
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
-        .add_hook(PdfRagHook {
-            embedding_model: model,
-            store: vector_store,
-            samples: 1,
-        })
+        .add_hook(pdf_rag_hook(model, vector_store, 1))
         .build();
 
     println!("Starting CLI chatbot...");

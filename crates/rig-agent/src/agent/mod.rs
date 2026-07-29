@@ -46,7 +46,8 @@
 //! # }
 //! ```
 //!
-//! Passive RAG is a hook recipe: implement [`AgentHook`], embed the prompt on
+//! Passive RAG is a hook recipe: attach a [`HookEntry`](crate::hooks::HookEntry),
+//! embed the prompt on
 //! every completion call, query a concrete vector store, and inject the hits
 //! with [`RequestPatch::extra_context`]. Because it is an ordinary hook, custom
 //! query selection, filtering, reranking, caching, formatting, and failure
@@ -58,8 +59,9 @@
 //! Passive RAG agent example
 //! ```no_run
 //! use rig_agent::{
-//!     agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch},
+//!     agent::{CompletionCallAction, RequestPatch},
 //!     completion::{Document, Prompt},
+//!     hooks::{HookDecision, HookEntry, HookEvent},
 //!     prelude::*,
 //!     provider::{EmbedderConfig, Runtime, embed},
 //! };
@@ -73,51 +75,61 @@
 //! /// Embeds each prompt, searches the store, and appends the hits as
 //! /// per-turn context documents. A retrieval failure stops the run before
 //! /// provider I/O.
-//! struct RagHook {
+//! fn rag_hook(
 //!     embedder: EmbedderConfig,
 //!     rt: Arc<Runtime>,
 //!     store: InMemoryVectorStore,
 //!     samples: u64,
-//! }
+//! ) -> HookEntry {
+//!     let state = Arc::new((embedder, rt, store, samples));
+//!     HookEntry::new("rag", move |event| {
+//!         let state = state.clone();
+//!         Box::pin(async move {
+//!             let HookEvent::BeforeModelCall { prompt, history, .. } = event else {
+//!                 return HookDecision::Continue;
+//!             };
+//!             let (embedder, rt, store, samples) = state.as_ref();
+//!             // Search with the prompt's text, falling back to the latest
+//!             // textual history message.
+//!             let query = prompt.rag_text().or_else(|| {
+//!                 history.iter().rev().find_map(|message| message.rag_text())
+//!             });
+//!             let Some(query) = query else {
+//!                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+//!             };
 //!
-//! impl AgentHook for RagHook {
-//!     async fn on_completion_call(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         event: CompletionCallEvent<'_>,
-//!     ) -> CompletionCallAction {
-//!         // Search with the prompt's text, falling back to the latest
-//!         // textual history message.
-//!         let query = event.prompt.rag_text().or_else(|| {
-//!             event.history.iter().rev().find_map(|message| message.rag_text())
-//!         });
-//!         let Some(query) = query else {
-//!             return CompletionCallAction::continue_run();
-//!         };
-//!
-//!         // Embed the query, then run a pre-embedded search.
-//!         let embedded = match embed(&self.embedder, &self.rt, vec![query]).await {
-//!             Ok(response) => response.embeddings.into_iter().next(),
-//!             Err(error) => return CompletionCallAction::stop(error.to_string()),
-//!         };
-//!         let Some(embedded) = embedded else {
-//!             return CompletionCallAction::stop("empty embedding response");
-//!         };
-//!         let request = VectorSearchRequest::builder()
-//!             .query(embedded)
-//!             .samples(self.samples)
-//!             .build();
-//!         match self.store.top_n(request).await {
-//!             Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-//!                 hits.into_iter().map(|hit| Document {
-//!                     id: hit.id,
-//!                     text: hit.payload.to_string(),
-//!                     additional_props: Default::default(),
-//!                 }),
-//!             )),
-//!             Err(error) => CompletionCallAction::stop(error.to_string()),
-//!         }
-//!     }
+//!             // Embed the query, then run a pre-embedded search.
+//!             let embedded = match embed(embedder, rt, vec![query]).await {
+//!                 Ok(response) => response.embeddings.into_iter().next(),
+//!                 Err(error) => {
+//!                     return HookDecision::CompletionCall(
+//!                         CompletionCallAction::stop(error.to_string()),
+//!                     );
+//!                 }
+//!             };
+//!             let Some(embedded) = embedded else {
+//!                 return HookDecision::CompletionCall(CompletionCallAction::stop(
+//!                     "empty embedding response",
+//!                 ));
+//!             };
+//!             let request = VectorSearchRequest::builder()
+//!                 .query(embedded)
+//!                 .samples(*samples)
+//!                 .build();
+//!             match store.top_n(request).await {
+//!                 Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+//!                     RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
+//!                         id: hit.id,
+//!                         text: hit.payload.to_string(),
+//!                         additional_props: Default::default(),
+//!                     })),
+//!                 )),
+//!                 Err(error) => HookDecision::CompletionCall(CompletionCallAction::stop(
+//!                     error.to_string(),
+//!                 )),
+//!             }
+//!         })
+//!     })
 //! }
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -155,7 +167,7 @@
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.
 //!     ")
-//!     .add_hook(RagHook { embedder, rt, store, samples: 1 })
+//!     .add_hook(rag_hook(embedder, rt, store, 1))
 //!     .build();
 //!
 //! // Prompt the agent and print the response
@@ -179,14 +191,11 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use builder::AgentBuilder;
 pub use completion::Agent;
 pub use config::AgentConfig;
-pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
-    AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
-    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
-    ObservationAction, RequestPatch, RetryRequest, RunId, Scratchpad, StepEventKind,
-    StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolCallResolution,
-    ToolResultAction, ToolResultEvent, ToolResultResolution, fold_completion_actions,
-    fold_invalid_resolutions, fold_observation_actions,
+    CompletionCallAction, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
+    ObservationAction, RequestPatch, RetryRequest, RunId, ToolCallAction, ToolCallResolution,
+    ToolResultAction, ToolResultResolution, fold_completion_actions, fold_invalid_resolutions,
+    fold_observation_actions,
 };
 pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use prompt_request::streaming::{

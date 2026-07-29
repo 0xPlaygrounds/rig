@@ -19,10 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
-        CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
-        ObservationAction, OutputMode, RequestPatch, StreamingError, ToolCall as ToolCallEvent,
-        ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentBuilder, CompletionCallAction, InvalidToolCallAction, MultiTurnStreamItem,
+        ObservationAction, OutputMode, RequestPatch, StreamingError, ToolCallAction,
+        ToolResultAction,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -517,106 +516,98 @@ impl PortableTool for CountingSubtract {
     }
 }
 
-#[derive(Clone)]
-struct RewriteArgument {
-    key: &'static str,
-    value: serde_json::Value,
-}
-
-impl AgentHook for RewriteArgument {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name != CountingAdd::NAME {
-            return ToolCallAction::run();
-        }
-        let Ok(mut arguments) = serde_json::from_str::<serde_json::Value>(event.args) else {
-            return ToolCallAction::run();
+/// Add/replace one argument key on every `add` call, chaining into later
+/// entries (the classic `RewriteArgument` hook, as a record).
+fn rewrite_argument(key: &'static str, value: serde_json::Value) -> HookEntry {
+    hook_entry("rewrite-argument", move |event| {
+        let HookEvent::ToolCall { call, .. } = event else {
+            return HookDecision::Continue;
         };
+        if call.function.name != CountingAdd::NAME {
+            return HookDecision::ToolCall(ToolCallAction::run());
+        }
+        let mut arguments = call.function.arguments;
         let Some(object) = arguments.as_object_mut() else {
-            return ToolCallAction::run();
+            return HookDecision::ToolCall(ToolCallAction::run());
         };
-        object.insert(self.key.to_string(), self.value.clone());
-        ToolCallAction::rewrite(arguments)
-    }
+        object.insert(key.to_string(), value.clone());
+        HookDecision::ToolCall(ToolCallAction::rewrite(arguments))
+    })
 }
 
-#[derive(Clone, Default)]
-struct ObserveArguments(Arc<Mutex<Vec<serde_json::Value>>>);
-
-impl AgentHook for ObserveArguments {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let value = serde_json::from_str(event.args)
-            .unwrap_or_else(|_| serde_json::Value::String(event.args.to_string()));
-        lock_recover(&self.0).push(value);
-        ToolCallAction::run()
-    }
-}
-
-#[derive(Clone)]
-struct ReplaceResult(&'static str);
-
-impl AgentHook for ReplaceResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(self.0)
-        } else {
-            ToolResultAction::keep()
+/// Record the effective arguments each `ToolCall` event carried (the classic
+/// `ObserveArguments` hook, as a record).
+fn observe_arguments(seen: Arc<Mutex<Vec<serde_json::Value>>>) -> HookEntry {
+    hook_entry("observe-arguments", move |event| {
+        if let HookEvent::ToolCall { call, .. } = event {
+            lock_recover(&seen).push(call.function.arguments);
         }
-    }
+        HookDecision::ToolCall(ToolCallAction::run())
+    })
 }
 
-#[derive(Clone)]
-struct WrapResult;
-
-impl AgentHook for WrapResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(format!("[{}]", event.presentation.render()))
+/// Replace every `add` result presentation (the classic `ReplaceResult` hook).
+fn replace_result(replacement: &'static str) -> HookEntry {
+    hook_entry("replace-result", move |event| {
+        let HookEvent::ToolResult { call, .. } = event else {
+            return HookDecision::Continue;
+        };
+        if call.function.name == CountingAdd::NAME {
+            HookDecision::ToolResult(ToolResultAction::rewrite(replacement))
         } else {
-            ToolResultAction::keep()
+            HookDecision::ToolResult(ToolResultAction::keep())
         }
-    }
+    })
 }
 
-#[derive(Clone)]
-struct FirstTurnPatch(RequestPatch);
-
-impl AgentHook for FirstTurnPatch {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if ctx.turn() == 1 {
-            CompletionCallAction::patch(self.0.clone())
+/// Wrap the *current* presentation, proving rewrites chain (the classic
+/// `WrapResult` hook).
+fn wrap_result() -> HookEntry {
+    hook_entry("wrap-result", |event| {
+        let HookEvent::ToolResult {
+            call, presentation, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        if call.function.name == CountingAdd::NAME {
+            HookDecision::ToolResult(ToolResultAction::rewrite(format!(
+                "[{}]",
+                presentation.render()
+            )))
         } else {
-            CompletionCallAction::continue_run()
+            HookDecision::ToolResult(ToolResultAction::keep())
         }
-    }
+    })
 }
 
-#[derive(Clone)]
-struct StopAfterResult(&'static str);
-
-impl AgentHook for StopAfterResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::stop(self.0)
+/// Patch only the first turn's request (the classic `FirstTurnPatch` hook —
+/// the turn index now arrives on the event instead of the context).
+fn first_turn_patch(patch: RequestPatch) -> HookEntry {
+    hook_entry("first-turn-patch", move |event| {
+        let HookEvent::BeforeModelCall { turn, .. } = event else {
+            return HookDecision::Continue;
+        };
+        if turn == 1 {
+            HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
         } else {
-            ToolResultAction::keep()
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
         }
-    }
+    })
+}
+
+/// Stop the run from the tool-result event (the classic `StopAfterResult`).
+fn stop_after_result(reason: &'static str) -> HookEntry {
+    hook_entry("stop-after-result", move |event| {
+        let HookEvent::ToolResult { call, .. } = event else {
+            return HookDecision::Continue;
+        };
+        if call.function.name == CountingAdd::NAME {
+            HookDecision::ToolResult(ToolResultAction::stop(reason))
+        } else {
+            HookDecision::ToolResult(ToolResultAction::keep())
+        }
+    })
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -1374,32 +1365,22 @@ where
         .tool(CountingSum(sum_calls.clone()))
         .tool_choice(ToolChoice::Required)
         .build();
-    #[derive(Clone)]
-    struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
-
-    impl AgentHook for CaptureTurn {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.message_id.map(str::to_owned),
-                event.content.clone(),
-                event.usage,
-                BTreeSet::new(),
-                BTreeSet::new(),
-            ));
-            ObservationAction::stop("captured conformance model turn")
-        }
-    }
-
-    let captured = Arc::new(Mutex::new(None));
-    let stopped = agent
-        .runner(PROMPT)
-        .add_hook(CaptureTurn(captured.clone()))
-        .run()
-        .await;
+    let captured: Arc<Mutex<Option<ModelTurn>>> = Arc::new(Mutex::new(None));
+    let capture_slot = captured.clone();
+    let capture_turn = hook_entry("capture-turn", move |event| {
+        let HookEvent::CompletionResponse { response, .. } = event else {
+            return HookDecision::Continue;
+        };
+        *lock_recover(&capture_slot) = Some(ModelTurn::new(
+            response.message_id.clone(),
+            response.choice.clone(),
+            response.usage,
+            BTreeSet::new(),
+            BTreeSet::new(),
+        ));
+        HookDecision::Observation(ObservationAction::stop("captured conformance model turn"))
+    });
+    let stopped = agent.runner(PROMPT).add_hook(capture_turn).run().await;
     if !matches!(stopped, Err(PromptError::PromptCancelled { .. })) {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -1555,7 +1536,7 @@ where
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
     let calls = Arc::new(AtomicUsize::new(0));
-    let observed = ObserveArguments::default();
+    let observed: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
     let observed_probe = observed.clone();
     let agent = configure(AgentBuilder::new(provider))
         .preamble("Use add for arithmetic and report only the tool result.")
@@ -1566,25 +1547,19 @@ where
     let response = agent
         .prompt("Use add once for x=1 and y=1, then report what the tool returns.")
         .max_turns(3)
-        .add_hook(FirstTurnPatch(
+        .add_hook(first_turn_patch(
             RequestPatch::new()
                 .active_tools([CountingAdd::NAME])
                 .tool_choice(ToolChoice::Required),
         ))
-        .add_hook(RewriteArgument {
-            key: "x",
-            value: serde_json::json!(7),
-        })
-        .add_hook(RewriteArgument {
-            key: "y",
-            value: serde_json::json!(8),
-        })
-        .add_hook(observed)
-        .add_hook(ReplaceResult("portable-redacted"))
-        .add_hook(WrapResult)
+        .add_hook(rewrite_argument("x", serde_json::json!(7)))
+        .add_hook(rewrite_argument("y", serde_json::json!(8)))
+        .add_hook(observe_arguments(observed))
+        .add_hook(replace_result("portable-redacted"))
+        .add_hook(wrap_result())
         .extended_details()
         .await?;
-    let observations = lock_recover(&observed_probe.0).clone();
+    let observations = lock_recover(&observed_probe).clone();
     validate_rewritten_arguments(
         SCENARIO,
         &observations,
@@ -1637,7 +1612,7 @@ where
     let cancelled = match cancelled_agent
         .prompt("Use add once to compute x=20 plus y=22.")
         .max_turns(2)
-        .add_hook(StopAfterResult(REASON))
+        .add_hook(stop_after_result(REASON))
         .await
     {
         Err(error) => error,
@@ -2734,7 +2709,7 @@ pub async fn hook_rewrites_and_request_patch_session(
     let executor = ToolExecutor::new().register(portable_tool(CountingAdd(calls.clone())));
     let rewrite = |key: &'static str, value: serde_json::Value| {
         move |event: HookEvent| {
-            let HookEvent::ToolCall { call } = event else {
+            let HookEvent::ToolCall { call, .. } = event else {
                 return HookDecision::Continue;
             };
             if call.function.name != CountingAdd::NAME {
@@ -2767,7 +2742,7 @@ pub async fn hook_rewrites_and_request_patch_session(
         .with(hook_entry("rewrite_x", rewrite("x", serde_json::json!(7))))
         .with(hook_entry("rewrite_y", rewrite("y", serde_json::json!(8))))
         .with(hook_entry("observe", move |event| {
-            if let HookEvent::ToolCall { call } = &event {
+            if let HookEvent::ToolCall { call, .. } = &event {
                 lock_recover(&observed_sink).push(call.function.arguments.clone());
             }
             HookDecision::Continue

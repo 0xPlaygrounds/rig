@@ -1,6 +1,6 @@
 pub mod streaming;
 
-use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
+use super::{Agent, run::OutputMode, runner::AgentRunner};
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, ToolResultContent, UserContent},
@@ -134,23 +134,6 @@ macro_rules! forward_prompt_setters {
             self
         }
 
-        /// Set the conversation id used to load and persist memory for this request.
-        ///
-        /// Overrides any default conversation id set on the agent. If memory is not
-        /// configured on the agent, this has no effect.
-        pub fn conversation(mut self, id: impl Into<String>) -> Self {
-            self.$recv = self.$recv.conversation(id);
-            self
-        }
-
-        /// Disable conversation memory for this request.
-        ///
-        /// History will neither be loaded from nor saved to the agent's memory backend.
-        pub fn without_memory(mut self) -> Self {
-            self.$recv = self.$recv.without_memory();
-            self
-        }
-
         /// Set the retry budget for invalid tool-call recovery.
         ///
         /// Invalid tool-call retries also consume the total model-call budget.
@@ -248,10 +231,7 @@ where
     /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
     /// observe-only/recovery events use first-non-`Continue`-wins). See the
     /// [`hook`](crate::agent::hook) module docs.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
+    pub fn add_hook(mut self, hook: crate::hooks::HookEntry) -> Self {
         self.runner = self.runner.add_hook(hook);
         self
     }
@@ -352,8 +332,10 @@ pub struct PromptResponse {
     /// length. Zero-valued entry usage means the provider reported no usage
     /// metrics for that request.
     pub completion_calls: Vec<CompletionCall>,
-    /// Accumulated message history for the run (the run's persisted transcript),
-    /// unless memory/history bookkeeping was disabled for the request.
+    /// Accumulated message history for the run: the run's committed transcript
+    /// (prompt, assistant turns, and tool-call/result pairs). Append these to
+    /// a conversation store to persist the turn — see the
+    /// [`agent_api`](crate::agent_api) module docs for the host recipe.
     pub messages: Option<Vec<Message>>,
     /// Structured assistant content for the final turn.
     ///
@@ -742,10 +724,7 @@ where
 
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries).
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
+    pub fn add_hook(mut self, hook: crate::hooks::HookEntry) -> Self {
         self.inner = self.inner.add_hook(hook);
         self
     }
@@ -843,7 +822,7 @@ where
 /// - Scripted *errors* are no longer expressible; an empty script exhausts
 ///   into a `CompletionError::ProviderError`, which covers the same intent.
 /// - Raw provider requests cannot be intercepted. [`mock_support::agent_builder`]
-///   attaches an observe-only `on_completion_call` hook instead, so recorded
+///   attaches an observe-only `BeforeModelCall` hook entry instead, so recorded
 ///   requests carry the reconstructed `chat_history` (history + prompt);
 ///   every other `CompletionRequest` field is defaulted.
 #[cfg(test)]
@@ -858,10 +837,8 @@ pub(crate) mod mock_support {
     use rig_core::streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent};
 
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{
-        AgentHook, CompletionCall as CompletionCallEvent, CompletionCallAction, HookContext,
-        StepEventKind,
-    };
+    use crate::agent::hook::CompletionCallAction;
+    use crate::hooks::{HookDecision, HookEntry, HookEvent};
     use crate::provider::{MockScript, ProviderConfig};
 
     /// A scripted non-streaming mock turn.
@@ -1107,58 +1084,51 @@ pub(crate) mod mock_support {
         }
     }
 
-    /// Observe-only hook reconstructing one `CompletionRequest` per model call.
-    #[derive(Clone)]
-    struct RecordRequests {
-        requests: Arc<Mutex<Vec<CompletionRequest>>>,
-    }
-
-    impl AgentHook for RecordRequests {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            let history: Vec<Message> = event
-                .history
-                .iter()
-                .cloned()
-                .chain([event.prompt.clone()])
-                .collect();
-            let chat_history =
-                OneOrMany::many(history).unwrap_or_else(|_| OneOrMany::one(event.prompt.clone()));
-            self.requests
-                .lock()
-                .expect("recorded requests mutex was poisoned")
-                .push(CompletionRequest {
-                    model: None,
-                    preamble: None,
-                    chat_history,
-                    documents: Vec::new(),
-                    tools: Vec::new(),
-                    temperature: None,
-                    max_tokens: None,
-                    tool_choice: None,
-                    additional_params: None,
-                    output_schema: None,
-                    record_telemetry_content: false,
-                });
-            CompletionCallAction::Continue
-        }
-
-        // Stay invisible to the hot-path delta gates: this recorder must not
-        // flip the driver's `observes(TextDelta/ToolCallDelta)` optimizations.
-        fn observes(&self, _kind: StepEventKind) -> bool {
-            false
-        }
+    /// Observe-only hook entry reconstructing one `CompletionRequest` per model
+    /// call.
+    ///
+    /// It deliberately does *not* call
+    /// [`HookEntry::observing_deltas`](crate::hooks::HookEntry::observing_deltas),
+    /// so it stays invisible to the hot-path delta gates: this recorder must
+    /// not flip the driver's `Hooks::observes_deltas` optimizations.
+    fn record_requests_entry(requests: Arc<Mutex<Vec<CompletionRequest>>>) -> HookEntry {
+        HookEntry::new("record-requests", move |event| {
+            let decision = match event {
+                HookEvent::BeforeModelCall {
+                    prompt, history, ..
+                } => {
+                    let full: Vec<Message> =
+                        history.iter().cloned().chain([prompt.clone()]).collect();
+                    let chat_history =
+                        OneOrMany::many(full).unwrap_or_else(|_| OneOrMany::one(prompt.clone()));
+                    requests
+                        .lock()
+                        .expect("recorded requests mutex was poisoned")
+                        .push(CompletionRequest {
+                            model: None,
+                            preamble: None,
+                            chat_history,
+                            documents: Vec::new(),
+                            tools: Vec::new(),
+                            temperature: None,
+                            max_tokens: None,
+                            tool_choice: None,
+                            additional_params: None,
+                            output_schema: None,
+                            record_telemetry_content: false,
+                        });
+                    HookDecision::CompletionCall(CompletionCallAction::Continue)
+                }
+                _ => HookDecision::Continue,
+            };
+            Box::pin(async move { decision })
+        })
     }
 
     /// An `AgentBuilder` over the model's scripted provider, with the
     /// request-recording hook attached (successor of `agent_builder(model)`).
     pub(crate) fn agent_builder(model: MockCompletionModel) -> AgentBuilder {
-        AgentBuilder::new(model.provider()).add_hook(RecordRequests {
-            requests: model.requests,
-        })
+        AgentBuilder::new(model.provider()).add_hook(record_requests_entry(model.requests))
     }
 }
 
@@ -1167,19 +1137,13 @@ mod tests {
     use super::mock_support::{MockCompletionModel, MockTurn, agent_builder};
     use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
     use crate::{
-        agent::hook::{
-            AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-            InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-            ToolCall as ToolCallEvent, ToolCallAction,
-        },
+        agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
         completion::{
             AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
             StructuredOutputError, TypedPrompt, Usage,
         },
-        test_utils::{
-            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockOperationArgs,
-            MockSubtractTool, MockToolError,
-        },
+        hooks::{HookDecision, HookEntry, HookEvent},
+        test_utils::{MockAddTool, MockOperationArgs, MockSubtractTool, MockToolError},
         tool::PortableTool,
     };
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
@@ -1231,113 +1195,84 @@ mod tests {
         assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
     }
 
-    #[derive(Clone)]
-    struct PanicOnUnknownToolHook;
-
-    impl AgentHook for PanicOnUnknownToolHook {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            panic!("unknown tool response should fail before response hooks run")
-        }
-        async fn on_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: ToolCallEvent<'_>,
-        ) -> ToolCallAction {
-            panic!("unknown tool call should fail before tool hooks run")
-        }
+    /// Named hook entry over a synchronous decision function.
+    fn hook_entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::new(name, move |event| {
+            let decision = decide(event);
+            Box::pin(async move { decision })
+        })
     }
 
-    #[derive(Clone)]
-    struct PanicOnToolCallHook;
-
-    impl AgentHook for PanicOnToolCallHook {
-        async fn on_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: ToolCallEvent<'_>,
-        ) -> ToolCallAction {
-            panic!("recovered invalid turn should not invoke normal tool hooks")
-        }
+    /// Fails the test if either the response hook or a tool-call hook runs:
+    /// an unknown tool call must fail before both.
+    fn panic_on_unknown_tool_hook() -> HookEntry {
+        hook_entry("panic-on-unknown-tool", |event| match event {
+            HookEvent::CompletionResponse { .. } => {
+                panic!("unknown tool response should fail before response hooks run")
+            }
+            HookEvent::ToolCall { .. } => {
+                panic!("unknown tool call should fail before tool hooks run")
+            }
+            _ => HookDecision::Continue,
+        })
     }
 
-    #[derive(Clone)]
-    struct SkipDefaultApiAndPanicOnToolCallHook;
-
-    impl AgentHook for SkipDefaultApiAndPanicOnToolCallHook {
-        async fn on_invalid_tool_call(
-            &self,
-            ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
-        }
-        async fn on_tool_call(
-            &self,
-            ctx: &HookContext,
-            event: ToolCallEvent<'_>,
-        ) -> ToolCallAction {
-            PanicOnToolCallHook.on_tool_call(ctx, event).await
-        }
+    /// Skips `default_api` and fails the test if a normal tool-call hook runs.
+    fn skip_default_api_and_panic_on_tool_call_hook() -> HookEntry {
+        hook_entry("skip-default-api-panic-on-tool-call", |event| match event {
+            HookEvent::InvalidToolCall(_) => HookDecision::InvalidToolCall(
+                InvalidToolCallAction::skip("default_api is not available"),
+            ),
+            HookEvent::ToolCall { .. } => {
+                panic!("recovered invalid turn should not invoke normal tool hooks")
+            }
+            _ => HookDecision::Continue,
+        })
     }
 
-    #[derive(Clone)]
-    struct RepairDefaultApiHook;
-
-    impl AgentHook for RepairDefaultApiHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            assert_eq!(event.tool_name, "default_api");
-            Some(InvalidToolCallAction::repair("add"))
-        }
+    fn repair_default_api_hook() -> HookEntry {
+        hook_entry("repair-default-api", |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            assert_eq!(context.tool_name, "default_api");
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair("add"))
+        })
     }
 
-    #[derive(Clone)]
-    struct RepairToSubtractHook;
-
-    impl AgentHook for RepairToSubtractHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            Some(InvalidToolCallAction::repair("subtract"))
-        }
+    fn repair_to_subtract_hook() -> HookEntry {
+        hook_entry("repair-to-subtract", |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair("subtract"))
+        })
     }
 
-    #[derive(Clone)]
-    struct RetryDefaultApiHook;
-
-    impl AgentHook for RetryDefaultApiHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            Some(InvalidToolCallAction::retry(format!(
+    fn retry_default_api_hook() -> HookEntry {
+        hook_entry("retry-default-api", |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::retry(format!(
                 "Use one of these tools instead: {:?}",
-                event.allowed_tools
+                context.allowed_tools
             )))
-        }
+        })
     }
 
-    #[derive(Clone)]
-    struct SkipDefaultApiHook;
-
-    impl AgentHook for SkipDefaultApiHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            Some(InvalidToolCallAction::skip("default_api is not available"))
-        }
+    fn skip_default_api_hook() -> HookEntry {
+        hook_entry("skip-default-api", |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip(
+                "default_api is not available",
+            ))
+        })
     }
 
     #[derive(Clone, Default)]
@@ -1354,18 +1289,19 @@ mod tests {
         }
     }
 
-    impl AgentHook for RecordingInvalidToolCallHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            self.contexts
-                .lock()
-                .expect("invalid tool context records mutex was poisoned")
-                .push(event.clone());
-            None
-        }
+    /// Records every invalid-call context and always defers (`Continue` — the
+    /// data form of the old `None` resolution).
+    fn recording_invalid_tool_call_entry(recorder: RecordingInvalidToolCallHook) -> HookEntry {
+        hook_entry("recording-invalid-tool-call", move |event| {
+            if let HookEvent::InvalidToolCall(context) = event {
+                recorder
+                    .contexts
+                    .lock()
+                    .expect("invalid tool context records mutex was poisoned")
+                    .push(context);
+            }
+            HookDecision::Continue
+        })
     }
 
     #[derive(Clone)]
@@ -1740,7 +1676,7 @@ mod tests {
 
         let err = agent
             .prompt("use the tool")
-            .add_hook(PanicOnUnknownToolHook)
+            .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
             .await
             .expect_err("unknown model-emitted tool should fail");
@@ -1775,7 +1711,7 @@ mod tests {
 
         let err = agent
             .prompt("use the tool")
-            .add_hook(invalid_hook.clone())
+            .add_hook(recording_invalid_tool_call_entry(invalid_hook.clone()))
             .max_turns(3)
             .await
             .expect_err("invalid tool should fail");
@@ -1808,7 +1744,7 @@ mod tests {
 
         let err = agent
             .prompt("use the allowed tool")
-            .add_hook(PanicOnUnknownToolHook)
+            .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
             .await
             .expect_err("disallowed model-emitted tool should fail");
@@ -1847,7 +1783,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .add_hook(PanicOnUnknownToolHook)
+            .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject returned tool calls");
@@ -1879,7 +1815,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(RepairDefaultApiHook)
+            .add_hook(repair_default_api_hook())
             .max_turns(3)
             .extended_details()
             .await
@@ -1921,7 +1857,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(RetryDefaultApiHook)
+            .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -1983,7 +1919,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(RetryDefaultApiHook)
+            .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .extended_details()
@@ -2070,7 +2006,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(SkipDefaultApiAndPanicOnToolCallHook)
+            .add_hook(skip_default_api_and_panic_on_tool_call_hook())
             .max_turns(3)
             .extended_details()
             .await
@@ -2121,7 +2057,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .add_hook(RetryDefaultApiHook)
+            .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
@@ -2151,7 +2087,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(SkipDefaultApiHook)
+            .add_hook(skip_default_api_hook())
             .max_turns(3)
             .extended_details()
             .await
@@ -2196,7 +2132,7 @@ mod tests {
 
         let response = agent
             .prompt("add")
-            .add_hook(SkipDefaultApiHook)
+            .add_hook(skip_default_api_hook())
             .max_turns(3)
             .extended_details()
             .await
@@ -2244,7 +2180,7 @@ mod tests {
 
         let err = agent
             .prompt("add")
-            .add_hook(RepairToSubtractHook)
+            .add_hook(repair_to_subtract_hook())
             .max_turns(3)
             .await
             .expect_err("repair to a disallowed tool should fail");
@@ -2272,7 +2208,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .add_hook(RepairDefaultApiHook)
+            .add_hook(repair_default_api_hook())
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject repaired tool calls");
@@ -2300,7 +2236,7 @@ mod tests {
 
         let err = agent
             .prompt("do not use tools")
-            .add_hook(SkipDefaultApiHook)
+            .add_hook(skip_default_api_hook())
             .max_turns(3)
             .await
             .expect_err("ToolChoice::None should reject skipped tool calls");
@@ -2325,7 +2261,7 @@ mod tests {
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .add_hook(PanicOnUnknownToolHook)
+            .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
             .await
             .expect_err("typed prompt should preserve fail-fast default");
@@ -2352,7 +2288,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .add_hook(RepairDefaultApiHook)
+            .add_hook(repair_default_api_hook())
             .max_turns(3)
             .await
             .expect("typed prompt should repair invalid tool call");
@@ -2376,7 +2312,7 @@ mod tests {
 
         let response = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .add_hook(RetryDefaultApiHook)
+            .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
             .await
@@ -2402,7 +2338,7 @@ mod tests {
 
         let err = agent
             .prompt_typed::<TypedAnswer>("return typed json")
-            .add_hook(RetryDefaultApiHook)
+            .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
             .await
@@ -2632,405 +2568,5 @@ mod tests {
                             && text.additional_params.as_ref() == Some(&metadata)
                 )
         )));
-    }
-
-    // ----- Conversation memory integration tests -----
-
-    use rig_core::memory::{ConversationMemory, InMemoryConversationMemory};
-
-    #[tokio::test]
-    async fn memory_loads_into_request_history() {
-        let memory = InMemoryConversationMemory::new();
-        memory
-            .append(
-                "thread-1",
-                vec![Message::user("hello"), Message::assistant("hi there")],
-            )
-            .await
-            .unwrap();
-
-        let model = MockCompletionModel::text("ack");
-        let recorded = model.clone();
-
-        let agent = agent_builder(model).memory(memory).build();
-        let _ = agent
-            .prompt("ping")
-            .conversation("thread-1")
-            .await
-            .expect("prompt should succeed");
-
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        assert_eq!(
-            received.len(),
-            3,
-            "loaded memory (2) + current prompt should appear in request: {received:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn memory_appends_full_turn_after_success() {
-        let memory = InMemoryConversationMemory::new();
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model).memory(memory.clone()).build();
-
-        let _ = agent
-            .prompt("hello")
-            .conversation("t1")
-            .await
-            .expect("prompt should succeed");
-
-        let stored = memory.load("t1").await.unwrap();
-        assert_eq!(stored.len(), 2, "user prompt + assistant response saved");
-    }
-
-    #[tokio::test]
-    async fn explicit_with_history_overrides_memory() {
-        let memory = CountingMemory::default();
-        memory
-            .inner()
-            .append("t1", vec![Message::user("from-memory")])
-            .await
-            .unwrap();
-
-        let model = MockCompletionModel::text("ack");
-        let recorded = model.clone();
-
-        let agent = agent_builder(model).memory(memory.clone()).build();
-        let _ = agent
-            .prompt("hello")
-            .conversation("t1")
-            .history(vec![Message::user("from-caller")])
-            .await
-            .expect("prompt should succeed");
-
-        assert_eq!(memory.load_count(), 0, "load skipped");
-        let appends = memory.append_count();
-        assert_eq!(appends, 0, "append skipped");
-
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        assert_eq!(received.len(), 2, "caller history (1) + current prompt");
-        assert!(matches!(
-            received.first(),
-            Some(Message::User { content })
-                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
-        ));
-    }
-
-    #[tokio::test]
-    async fn memory_unchanged_on_provider_error() {
-        let memory = InMemoryConversationMemory::new();
-        // A scripted provider *error* is no longer expressible through the Mock
-        // provider; an empty script exhausts into a `ProviderError` on the first
-        // call, preserving the test's intent (provider failure => no append).
-        let model = MockCompletionModel::default();
-
-        let agent = agent_builder(model).memory(memory.clone()).build();
-        let result = agent.prompt("hello").conversation("t1").await;
-        assert!(result.is_err());
-
-        let stored = memory.load("t1").await.unwrap();
-        assert!(stored.is_empty(), "no append on error");
-    }
-
-    #[tokio::test]
-    async fn multi_step_tool_run_appends_committed_turn_exactly_once() {
-        // A tool round-trip is two model calls (tool call -> final text) but one
-        // run: the committed turn must be appended to memory exactly once, not
-        // once per model call.
-        let memory = CountingMemory::default();
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("call-1", "add", json!({"x": 2, "y": 3})),
-            MockTurn::text("sum is 5"),
-        ]);
-
-        let agent = agent_builder(model)
-            .memory(memory.clone())
-            .tool(MockAddTool)
-            .default_max_turns(2)
-            .build();
-
-        let _ = agent
-            .prompt("add 2 and 3")
-            .conversation("t1")
-            .await
-            .expect("multi-step run should succeed");
-
-        assert_eq!(
-            memory.append_count(),
-            1,
-            "one append for the whole run, not one per model call"
-        );
-
-        let stored = memory.load("t1").await.unwrap();
-        // user prompt + assistant tool call + tool result + final assistant text.
-        assert_eq!(
-            stored.len(),
-            4,
-            "the full committed turn is persisted once: {stored:?}"
-        );
-        assert!(
-            matches!(
-                stored.last(),
-                Some(Message::Assistant { content, .. })
-                    if content
-                        .iter()
-                        .any(|item| matches!(item, AssistantContent::Text(t) if t.text == "sum is 5"))
-            ),
-            "final assistant text is persisted: {stored:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn append_persists_only_newly_committed_messages() {
-        // With pre-loaded history, a run must append only the new turn's
-        // messages, never re-append the loaded history (which would duplicate
-        // it). Pre-load directly through `inner()` so it does not count as an
-        // append by the run.
-        let memory = CountingMemory::default();
-        memory
-            .inner()
-            .append(
-                "t1",
-                vec![Message::user("old-q"), Message::assistant("old-a")],
-            )
-            .await
-            .unwrap();
-
-        let model = MockCompletionModel::text("new-a");
-        let agent = agent_builder(model).memory(memory.clone()).build();
-
-        let _ = agent
-            .prompt("new-q")
-            .conversation("t1")
-            .await
-            .expect("prompt should succeed");
-
-        assert_eq!(memory.append_count(), 1, "one append for the run");
-
-        let stored = memory.load("t1").await.unwrap();
-        // preloaded [old-q, old-a] + new [new-q, new-a]; re-appending the loaded
-        // history would instead make this 6.
-        assert_eq!(
-            stored.len(),
-            4,
-            "only the new turn is appended, loaded history is not duplicated: {stored:?}"
-        );
-        assert!(
-            matches!(
-                stored.first(),
-                Some(Message::User { content })
-                    if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
-            ),
-            "loaded history is preserved once at the front: {stored:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn hook_stopped_run_does_not_append() {
-        // A run stopped by a hook before it completes must not append.
-        struct StopOnCompletion;
-        impl AgentHook for StopOnCompletion {
-            async fn on_completion_call(
-                &self,
-                _ctx: &HookContext,
-                _event: crate::agent::CompletionCallEvent<'_>,
-            ) -> crate::agent::CompletionCallAction {
-                crate::agent::CompletionCallAction::stop("stop")
-            }
-        }
-
-        let memory = CountingMemory::default();
-        let model = MockCompletionModel::text("unreached");
-        let agent = agent_builder(model)
-            .memory(memory.clone())
-            .add_hook(StopOnCompletion)
-            .build();
-
-        let result = agent.prompt("hello").conversation("t1").await;
-        assert!(result.is_err(), "a stop hook terminates the run");
-
-        assert_eq!(memory.append_count(), 0, "stopped runs do not append");
-        let stored = memory.load("t1").await.unwrap();
-        assert!(stored.is_empty(), "nothing persisted on stop: {stored:?}");
-    }
-
-    #[tokio::test]
-    async fn committed_transcript_roles_form_a_valid_sequence() {
-        // The committed history of a tool round-trip must be a well-formed
-        // role sequence: it starts with a user message, never commits two
-        // consecutive assistant messages, and pairs each assistant tool call
-        // with a following user tool-result message.
-        let memory = CountingMemory::default();
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("call-1", "add", json!({"x": 1, "y": 1})),
-            MockTurn::text("done"),
-        ]);
-
-        let agent = agent_builder(model)
-            .memory(memory.clone())
-            .tool(MockAddTool)
-            .default_max_turns(2)
-            .build();
-
-        let _ = agent
-            .prompt("go")
-            .conversation("t1")
-            .await
-            .expect("run should succeed");
-
-        let stored = memory.load("t1").await.unwrap();
-
-        assert!(
-            matches!(stored.first(), Some(Message::User { .. })),
-            "committed transcript begins with a user message: {stored:?}"
-        );
-        assert!(
-            !stored
-                .windows(2)
-                .any(|pair| matches!(pair, [Message::Assistant { .. }, Message::Assistant { .. }])),
-            "no two assistant messages are committed back to back: {stored:?}"
-        );
-        // Each assistant turn carrying a tool call is followed by a user
-        // tool-result message.
-        for (index, message) in stored.iter().enumerate() {
-            let has_tool_call = matches!(
-                message,
-                Message::Assistant { content, .. }
-                    if content.iter().any(|item| matches!(item, AssistantContent::ToolCall(_)))
-            );
-            if has_tool_call {
-                assert!(
-                    matches!(stored.get(index + 1), Some(Message::User { content })
-                        if content
-                            .iter()
-                            .any(|item| matches!(item, UserContent::ToolResult(_)))),
-                    "assistant tool call at {index} is followed by a user tool result: {stored:?}"
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn missing_conversation_id_behaves_as_no_memory() {
-        let memory = CountingMemory::default();
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model).memory(memory.clone()).build();
-
-        let _ = agent.prompt("hello").await.expect("prompt should succeed");
-
-        assert_eq!(memory.load_count(), 0);
-        assert_eq!(memory.append_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn default_conversation_id_is_used_when_none_per_request() {
-        let memory = InMemoryConversationMemory::new();
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model)
-            .memory(memory.clone())
-            .conversation("default-thread")
-            .build();
-
-        let _ = agent.prompt("hello").await.expect("prompt should succeed");
-        let stored = memory.load("default-thread").await.unwrap();
-        assert_eq!(stored.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn with_filter_truncates_loaded_history() {
-        let memory = InMemoryConversationMemory::new()
-            .with_filter(|msgs: Vec<Message>| msgs.into_iter().rev().take(2).rev().collect());
-        memory
-            .append(
-                "t1",
-                vec![
-                    Message::user("1"),
-                    Message::assistant("2"),
-                    Message::user("3"),
-                    Message::assistant("4"),
-                ],
-            )
-            .await
-            .unwrap();
-
-        let model = MockCompletionModel::text("ack");
-        let recorded = model.clone();
-        let agent = agent_builder(model).memory(memory).build();
-
-        let _ = agent
-            .prompt("ping")
-            .conversation("t1")
-            .await
-            .expect("prompt should succeed");
-
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        assert_eq!(
-            received.len(),
-            3,
-            "window-truncated history (2) + current prompt"
-        );
-    }
-
-    #[tokio::test]
-    async fn without_memory_disables_for_request() {
-        let memory = CountingMemory::default();
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model)
-            .memory(memory.clone())
-            .conversation("t1")
-            .build();
-
-        let _ = agent
-            .prompt("hello")
-            .without_memory()
-            .await
-            .expect("prompt should succeed");
-
-        assert_eq!(memory.load_count(), 0);
-        assert_eq!(memory.append_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn memory_load_error_surfaces_as_prompt_error() {
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model)
-            .memory(FailingMemory::default())
-            .build();
-        let result = agent.prompt("hello").conversation("t1").await;
-
-        match result {
-            Err(PromptError::MemoryError(err)) => {
-                let msg = err.to_string();
-                assert!(msg.contains("load boom"), "got: {msg}");
-            }
-            other => panic!("expected PromptError::MemoryError, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn memory_append_error_does_not_drop_response() {
-        let model = MockCompletionModel::text("ack");
-        let agent = agent_builder(model)
-            .memory(AppendFailingMemory::default())
-            .build();
-        let response: String = agent
-            .prompt("hello")
-            .conversation("t1")
-            .await
-            .expect("append failure must not block successful completion");
-
-        assert!(!response.is_empty());
     }
 }

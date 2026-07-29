@@ -5,7 +5,7 @@
 //! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
 //! the side-effecting concerns — building and sending completion requests,
 //! executing tools, loading/saving conversation memory — and fires an
-//! [`AgentHook`] at every observable point. Both the blocking
+//! a hook ([`HookEntry`](crate::hooks::HookEntry)) at every observable point. Both the blocking
 //! [`PromptRequest`](crate::agent::prompt_request::PromptRequest) and the
 //! [`StreamingPromptRequest`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
 //! APIs are thin wrappers over an `AgentRunner`, and you can build one directly
@@ -35,10 +35,8 @@ use tracing::{Instrument, info_span, span::Id};
 use super::{
     completion::{Agent, PreparedCompletionRequest},
     hook::{
-        AgentHook, CompletionCall, CompletionCallAction,
-        CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
-        InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        CompletionCallAction, InvalidToolCallAction, ModelTurnAction, ObservationAction,
+        RequestPatch, ToolCallAction, ToolResultAction,
     },
     prompt_request::{
         PromptResponse,
@@ -52,14 +50,12 @@ use super::{
         AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
     },
 };
-use rig_core::{
-    memory::ConversationMemory,
-    message::{ToolCall, ToolChoice, UserContent},
-};
+use rig_core::message::{ToolCall, ToolChoice, UserContent};
 
 use crate::{
     completion::{CompletionError, Document, Message, PromptError, Usage},
     executor::ToolExecutor,
+    hooks::{HookEntry, Hooks},
     json_utils,
     tool::{ToolOutput, ToolResult, router_support},
 };
@@ -190,7 +186,7 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
 /// [`add_hook`](Self::add_hook), then call
 /// [`run`](Self::run) (blocking) or
 /// [`stream`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
-/// (incremental). Hooks are held in a [`HookStack`], an ordered,
+/// (incremental). Hooks are held in a [`Hooks`], an ordered,
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
@@ -223,9 +219,7 @@ pub struct AgentRunner {
     pub(crate) augment_output_preamble: bool,
     pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
-    pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
-    pub(crate) conversation_id: Option<String>,
-    pub(crate) hooks: HookStack,
+    pub(crate) hooks: Hooks,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
@@ -257,8 +251,6 @@ impl AgentRunner {
             augment_output_preamble: true,
             unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
             error_usage: None,
         }
@@ -270,11 +262,8 @@ impl AgentRunner {
     /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
     /// observe-only/recovery events use their event-specific terminal action). See the
     /// [`hook`](crate::agent::hook) module docs.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
-        self.hooks.push(hook);
+    pub fn add_hook(mut self, hook: HookEntry) -> Self {
+        self.hooks.add(hook);
         self
     }
 }
@@ -288,8 +277,7 @@ impl AgentRunner {
         self
     }
 
-    /// Set the chat history preceding the prompt. Passing explicit history
-    /// bypasses conversation memory for this run.
+    /// Set the chat history preceding the prompt.
     pub fn history<I, T>(mut self, history: I) -> Self
     where
         I: IntoIterator<Item = T>,
@@ -456,19 +444,6 @@ impl AgentRunner {
         self
     }
 
-    /// Set the conversation id used to load and persist memory for this run.
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
-        self
-    }
-
-    /// Disable conversation memory for this run (no load, no save).
-    pub fn without_memory(mut self) -> Self {
-        self.memory = None;
-        self.conversation_id = None;
-        self
-    }
-
     /// Set the retry budget for invalid tool-call recovery. Invalid tool-call
     /// retries also consume the total model-call budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
@@ -616,46 +591,15 @@ pub(crate) enum CompletionCallOutcome {
 
 /// Fire the event-specific completion-call hook for a turn.
 pub(crate) async fn resolve_completion_call(
-    hooks: &HookStack,
-    ctx: &HookContext,
+    hooks: &Hooks,
     prompt: &Message,
     history: &[Message],
     turn: usize,
 ) -> CompletionCallOutcome {
-    match completion_call_decision(
-        hooks
-            .on_completion_call(
-                ctx,
-                CompletionCall {
-                    prompt,
-                    history,
-                    turn,
-                },
-            )
-            .await,
-    ) {
+    match completion_call_decision(hooks.dispatch_completion_call(turn, prompt, history).await) {
         CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
         CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
         CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
-    }
-}
-
-/// Append a finished run's messages to conversation memory, logging and
-/// proceeding on failure. Shared `Done`-arm behavior for both drivers.
-pub(crate) async fn append_run_messages(
-    memory_handle: Option<&(Arc<dyn ConversationMemory>, String)>,
-    messages: &[Message],
-) {
-    // Clone into an owned vec only when there is a backend to append to — the
-    // common no-memory path pays nothing.
-    if let Some((memory, id)) = memory_handle
-        && let Err(err) = memory.append(id, messages.to_vec()).await
-    {
-        tracing::warn!(
-            error = %err,
-            conversation_id = %id,
-            "conversation memory append failed; surfacing final response anyway"
-        );
     }
 }
 
@@ -695,7 +639,6 @@ pub(crate) struct ToolCallOutcome {
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
-    ctx: &HookContext,
     tool_executor: &ToolExecutor,
     tool_call: &ToolCall,
     internal_call_id: &str,
@@ -720,18 +663,8 @@ pub(crate) async fn run_single_tool(
     // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
-    // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
-    let (action, salvaged_rewrite) = hooks
-        .resolve_tool_call(
-            ctx,
-            ToolCallEvent {
-                tool_name,
-                tool_call_id: tool_call.call_id.as_deref(),
-                internal_call_id,
-                args: &args,
-            },
-        )
-        .await;
+    // than leaking the model's original args (see [`Hooks::dispatch_tool_call`]).
+    let (action, salvaged_rewrite) = hooks.dispatch_tool_call(tool_call, internal_call_id).await;
 
     // Apply a salvaged rewrite (short-circuit path only) so `args` — what the
     // `ToolResult` reports — and the span reflect the effective arguments.
@@ -788,11 +721,15 @@ pub(crate) async fn run_single_tool(
     // Resolve the structured execution result and how the call surfaced. A skip
     // produces no execution-commit event; a real execution carries the effective
     // tool call (the model's call with any `ToolCallAction::Rewrite` applied).
+    // The effective call — the model's call with any hook rewrite applied — is
+    // what the post-execution event reports (matching the classic event's
+    // `args` field, which tracked the same rewrites).
+    let mut effective_call = tool_call.clone();
+    effective_call.function.arguments = effective_args.clone();
     let (exec, execution) = match skipped {
         Some(exec) => (exec, ToolExecution::Skipped),
         None => {
-            let mut effective_tool_call = tool_call.clone();
-            effective_tool_call.function.arguments = effective_args.clone();
+            let effective_tool_call = effective_call.clone();
             let exec = match tool_executor.get(tool_name) {
                 Some(tool) => {
                     tracing::debug!(
@@ -814,17 +751,7 @@ pub(crate) async fn run_single_tool(
     // and per-dispatch context remain unchanged for every hook.
     let result_decision = tool_result_decision(
         hooks
-            .on_tool_result(
-                ctx,
-                ToolResultEvent {
-                    tool_name,
-                    tool_call_id: tool_call.call_id.as_deref(),
-                    internal_call_id,
-                    args: &args,
-                    presentation: exec.output(),
-                    raw_result: &exec,
-                },
-            )
+            .dispatch_tool_result(&effective_call, internal_call_id, &exec)
             .await,
     );
     // Outcome metadata describes the execution itself, while result content
@@ -944,7 +871,7 @@ impl UnaryTurnSource {
     pub(crate) fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
+        turn: usize,
         run: &'a mut AgentRun,
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
@@ -986,7 +913,7 @@ impl UnaryTurnSource {
                     ModelTurnOutcome::NeedsResolution(context) => {
                         let action = runner
                             .hooks
-                            .on_invalid_tool_call(hook_ctx, &context)
+                            .dispatch_invalid_tool_call(&context)
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
@@ -1018,15 +945,7 @@ impl UnaryTurnSource {
                             if let Some(reason) = observe_action(
                                 runner
                                     .hooks
-                                    .on_completion_response(
-                                        hook_ctx,
-                                        CompletionResponseEvent {
-                                            prompt: &current_prompt,
-                                            content: &resp.choice,
-                                            usage: resp.usage,
-                                            message_id: resp.message_id.as_deref(),
-                                        },
-                                    )
+                                    .dispatch_completion_response(turn, &current_prompt, &resp)
                                     .await,
                             ) {
                                 if runner.record_telemetry_content
@@ -1041,14 +960,7 @@ impl UnaryTurnSource {
                             }
                             let action = runner
                                 .hooks
-                                .on_model_turn_finished(
-                                    hook_ctx,
-                                    ModelTurnFinished {
-                                        turn: hook_ctx.turn(),
-                                        content: &resp.choice,
-                                        usage: resp.usage,
-                                    },
-                                )
+                                .dispatch_model_turn(turn, &resp.choice, resp.usage)
                                 .await;
                             match resolve_model_turn_action(run, action) {
                                 Ok(ModelTurnDecision::Advance) => {}
@@ -1088,7 +1000,6 @@ impl UnaryTurnSource {
     pub(crate) fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner,
-        hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_executor: Arc<ToolExecutor>,
@@ -1098,7 +1009,6 @@ impl UnaryTurnSource {
         // skips building them.
         drive_tool_calls(
             runner,
-            hook_ctx,
             run,
             calls,
             tool_executor,
@@ -1162,21 +1072,7 @@ impl AgentRunner {
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this run (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
-            None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => {
-                    let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
-                }
-                _ => (None, None),
-            },
-        };
-
-        let run = self.build_run(history_override);
+        let run = self.build_run(None);
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the
@@ -1190,8 +1086,6 @@ impl AgentRunner {
             run,
             agent_span,
             created_agent_span,
-            memory_handle,
-            false,
         );
         futures::pin_mut!(driver);
 
@@ -1561,11 +1455,23 @@ mod tests {
 
     use super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::{
-        agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
+        agent::{AgentBuilder, CompletionCallAction, ToolResultAction},
         completion::Document,
+        hooks::{HookDecision, HookEntry, HookEvent},
         tool::{PortableTool, ToolErrorKind, ToolExecutionError},
     };
     use rig_core::message::ToolChoice;
+
+    /// Named hook entry over a synchronous decision function.
+    fn hook_entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::new(name, move |event| {
+            let decision = decide(event);
+            Box::pin(async move { decision })
+        })
+    }
 
     struct MetadataFailingTool;
 
@@ -1591,19 +1497,24 @@ mod tests {
     #[derive(Clone, Default)]
     struct Results(Arc<Mutex<Vec<(ToolErrorKind, String)>>>);
 
-    impl AgentHook for Results {
-        async fn on_tool_result(
-            &self,
-            _ctx: &HookContext,
-            event: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            if let Some(error) = event.raw_result.error() {
-                self.0
-                    .lock()
-                    .expect("results")
-                    .push((error.kind(), event.raw_result.output().render()));
-            }
-            ToolResultAction::rewrite("rewritten for model")
+    impl Results {
+        /// Records every failing raw tool result, then rewrites what the model
+        /// sees.
+        fn entry(&self) -> HookEntry {
+            let results = self.clone();
+            hook_entry("results", move |event| {
+                let HookEvent::ToolResult { result, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if let Some(error) = result.error() {
+                    results
+                        .0
+                        .lock()
+                        .expect("results")
+                        .push((error.kind(), result.output().render()));
+                }
+                HookDecision::ToolResult(ToolResultAction::rewrite("rewritten for model"))
+            })
         }
     }
 
@@ -1763,24 +1674,16 @@ mod tests {
 
     #[tokio::test]
     async fn direct_provider_requests_are_intentionally_hook_free() {
-        #[derive(Clone)]
-        struct CountCompletionCalls(Arc<AtomicUsize>);
-
-        impl AgentHook for CountCompletionCalls {
-            async fn on_completion_call(
-                &self,
-                _ctx: &HookContext,
-                _event: crate::agent::CompletionCallEvent<'_>,
-            ) -> crate::agent::CompletionCallAction {
-                self.0.fetch_add(1, Ordering::SeqCst);
-                crate::agent::CompletionCallAction::Continue
-            }
-        }
-
         let model = MockCompletionModel::text("raw response");
         let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
         let _agent = AgentBuilder::new(model.provider())
-            .add_hook(CountCompletionCalls(calls.clone()))
+            .add_hook(hook_entry("count-completion-calls", move |event| {
+                if matches!(event, HookEvent::BeforeModelCall { .. }) {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+                HookDecision::CompletionCall(CompletionCallAction::Continue)
+            }))
             .build();
 
         // A request issued straight against the provider dispatcher bypasses
@@ -1815,7 +1718,7 @@ mod tests {
         ]);
         AgentBuilder::new(blocking_model.clone().provider())
             .tool(MetadataFailingTool)
-            .add_hook(blocking.clone())
+            .add_hook(blocking.entry())
             .build()
             .runner("go")
             .max_turns(3)
@@ -1838,7 +1741,7 @@ mod tests {
         ]);
         let mut stream = AgentBuilder::new(streaming_model.clone().provider())
             .tool(MetadataFailingTool)
-            .add_hook(streaming.clone())
+            .add_hook(streaming.entry())
             .build()
             .runner("go")
             .max_turns(3)
@@ -1878,20 +1781,16 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod migrated_tests {
-    use std::collections::HashMap;
-
     use crate::agent::{
-        CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
-        InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction,
-        StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-        ToolResultEvent,
+        CompletionCallAction, InvalidToolCallAction, ModelTurnAction, ObservationAction,
+        ToolCallAction, ToolResultAction,
     };
+    use crate::hooks::{HookDecision, HookEntry, HookEvent, Hooks};
 
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU32, Ordering::SeqCst},
     };
 
     use futures::StreamExt;
@@ -1900,7 +1799,7 @@ mod migrated_tests {
 
     use super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
     use crate::agent::AgentBuilder;
-    use crate::agent::hook::{AgentHook, HookContext, RequestPatch, StepEventKind};
+    use crate::agent::hook::RequestPatch;
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{CompletionError, Message, Prompt, PromptError, Usage};
@@ -1916,11 +1815,37 @@ mod migrated_tests {
     };
     use rig_core::vector_store::{VectorSearchRequest, in_memory_store::InMemoryVectorStore};
 
+    /// Named hook entry over a synchronous decision function.
+    fn hook_entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::new(name, move |event| {
+            let decision = decide(event);
+            Box::pin(async move { decision })
+        })
+    }
+
+    /// Test-local mirror of the deleted `StepEventKind`: the recorded identity of
+    /// each dispatched [`HookEvent`], so event *sequences* stay assertable.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum EventKind {
+        CompletionCall,
+        CompletionResponse,
+        ModelTurnFinished,
+        InvalidToolCall,
+        ToolCall,
+        ToolResult,
+        TextDelta,
+        ToolCallDelta,
+        StreamResponseFinish,
+    }
+
     /// Records the kind of every hook event (and every tool-result payload) so a
     /// run() and a stream() of the same scenario can be compared.
     #[derive(Clone, Default)]
     struct RecordingHook {
-        events: Arc<Mutex<Vec<StepEventKind>>>,
+        events: Arc<Mutex<Vec<EventKind>>>,
         tool_results: Arc<Mutex<Vec<String>>>,
     }
 
@@ -1928,7 +1853,7 @@ mod migrated_tests {
         /// Event kinds that should be identical across streaming and
         /// non-streaming (excludes the medium-specific delta / response-finish
         /// events).
-        fn shared_events(&self) -> Vec<StepEventKind> {
+        fn shared_events(&self) -> Vec<EventKind> {
             self.events
                 .lock()
                 .expect("events lock")
@@ -1937,10 +1862,10 @@ mod migrated_tests {
                 .filter(|kind| {
                     matches!(
                         kind,
-                        StepEventKind::CompletionCall
-                            | StepEventKind::ToolCall
-                            | StepEventKind::ToolResult
-                            | StepEventKind::InvalidToolCall
+                        EventKind::CompletionCall
+                            | EventKind::ToolCall
+                            | EventKind::ToolResult
+                            | EventKind::InvalidToolCall
                     )
                 })
                 .collect()
@@ -1952,7 +1877,7 @@ mod migrated_tests {
 
         /// Count of a single event kind across the whole run, including the
         /// medium-specific response-finish events that `shared_events` excludes.
-        fn count(&self, kind: StepEventKind) -> usize {
+        fn count(&self, kind: EventKind) -> usize {
             self.events
                 .lock()
                 .expect("events lock")
@@ -1960,82 +1885,43 @@ mod migrated_tests {
                 .filter(|recorded| **recorded == kind)
                 .count()
         }
-    }
 
-    impl RecordingHook {
-        fn record(&self, kind: StepEventKind) {
+        fn record(&self, kind: EventKind) {
             self.events.lock().expect("events lock").push(kind);
         }
-    }
 
-    impl AgentHook for RecordingHook {
-        async fn on_completion_call(
-            &self,
-            _: &HookContext,
-            _: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            self.record(StepEventKind::CompletionCall);
-            CompletionCallAction::continue_run()
-        }
-        async fn on_completion_response(
-            &self,
-            _: &HookContext,
-            _: crate::agent::hook::CompletionResponse<'_>,
-        ) -> ObservationAction {
-            self.record(StepEventKind::CompletionResponse);
-            ObservationAction::continue_run()
-        }
-        async fn on_model_turn_finished(
-            &self,
-            _: &HookContext,
-            _: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.record(StepEventKind::ModelTurnFinished);
-            ModelTurnAction::continue_run()
-        }
-        async fn on_invalid_tool_call(
-            &self,
-            _: &HookContext,
-            _: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            self.record(StepEventKind::InvalidToolCall);
-            None
-        }
-        async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-            self.record(StepEventKind::ToolCall);
-            ToolCallAction::run()
-        }
-        async fn on_tool_result(
-            &self,
-            _: &HookContext,
-            event: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            self.record(StepEventKind::ToolResult);
-            self.tool_results
-                .lock()
-                .expect("results lock")
-                .push(event.presentation.render());
-            ToolResultAction::keep()
-        }
-        async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
-            self.record(StepEventKind::TextDelta);
-            ObservationAction::continue_run()
-        }
-        async fn on_tool_call_delta(
-            &self,
-            _: &HookContext,
-            _: ToolCallDelta<'_>,
-        ) -> ObservationAction {
-            self.record(StepEventKind::ToolCallDelta);
-            ObservationAction::continue_run()
-        }
-        async fn on_stream_response_finish(
-            &self,
-            _: &HookContext,
-            _: StreamResponseFinish<'_>,
-        ) -> ObservationAction {
-            self.record(StepEventKind::StreamResponseFinish);
-            ObservationAction::continue_run()
+        /// An observe-everything entry (deltas included) that never steers.
+        fn entry(&self) -> HookEntry {
+            let recorder = self.clone();
+            hook_entry("recording", move |event| {
+                match event {
+                    HookEvent::BeforeModelCall { .. } => recorder.record(EventKind::CompletionCall),
+                    HookEvent::CompletionResponse { .. } => {
+                        recorder.record(EventKind::CompletionResponse)
+                    }
+                    HookEvent::ModelTurnFinished { .. } => {
+                        recorder.record(EventKind::ModelTurnFinished)
+                    }
+                    HookEvent::InvalidToolCall(_) => recorder.record(EventKind::InvalidToolCall),
+                    HookEvent::ToolCall { .. } => recorder.record(EventKind::ToolCall),
+                    HookEvent::ToolResult { presentation, .. } => {
+                        recorder.record(EventKind::ToolResult);
+                        recorder
+                            .tool_results
+                            .lock()
+                            .expect("results lock")
+                            .push(presentation.render());
+                    }
+                    HookEvent::TextDelta { .. } => recorder.record(EventKind::TextDelta),
+                    HookEvent::ToolCallDelta { .. } => recorder.record(EventKind::ToolCallDelta),
+                    HookEvent::StreamResponseFinish { .. } => {
+                        recorder.record(EventKind::StreamResponseFinish)
+                    }
+                    _ => {}
+                }
+                HookDecision::Continue
+            })
+            .observing_deltas()
         }
     }
 
@@ -2054,51 +1940,44 @@ mod migrated_tests {
         committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
     }
 
-    impl AgentHook for CanonicalResponseHook {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: crate::agent::hook::CompletionResponse<'_>,
-        ) -> ObservationAction {
-            self.blocking
-                .lock()
-                .expect("blocking snapshots")
-                .push(CanonicalResponseSnapshot {
-                    prompt: event.prompt.clone(),
-                    content: event.content.clone(),
-                    usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
-                });
-            ObservationAction::continue_run()
-        }
-
-        async fn on_stream_response_finish(
-            &self,
-            _ctx: &HookContext,
-            event: StreamResponseFinish<'_>,
-        ) -> ObservationAction {
-            self.streaming
-                .lock()
-                .expect("streaming snapshots")
-                .push(CanonicalResponseSnapshot {
-                    prompt: event.prompt.clone(),
-                    content: event.content.clone(),
-                    usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
-                });
-            ObservationAction::continue_run()
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.committed
-                .lock()
-                .expect("committed snapshots")
-                .push(event.content.clone());
-            ModelTurnAction::continue_run()
+    impl CanonicalResponseHook {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("canonical-response", move |event| {
+                match event {
+                    HookEvent::CompletionResponse {
+                        prompt, response, ..
+                    } => hook.blocking.lock().expect("blocking snapshots").push(
+                        CanonicalResponseSnapshot {
+                            prompt,
+                            content: response.choice,
+                            usage: response.usage,
+                            message_id: response.message_id,
+                        },
+                    ),
+                    HookEvent::StreamResponseFinish {
+                        prompt,
+                        content,
+                        usage,
+                        message_id,
+                        ..
+                    } => hook.streaming.lock().expect("streaming snapshots").push(
+                        CanonicalResponseSnapshot {
+                            prompt,
+                            content,
+                            usage,
+                            message_id,
+                        },
+                    ),
+                    HookEvent::ModelTurnFinished { content, .. } => hook
+                        .committed
+                        .lock()
+                        .expect("committed snapshots")
+                        .push(content),
+                    _ => {}
+                }
+                HookDecision::Continue
+            })
         }
     }
 
@@ -2117,35 +1996,37 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for FinishLifecycleHook {
-        async fn on_stream_response_finish(
-            &self,
-            _ctx: &HookContext,
-            event: StreamResponseFinish<'_>,
-        ) -> ObservationAction {
-            self.snapshots
-                .lock()
-                .expect("finish snapshots")
-                .push(CanonicalResponseSnapshot {
-                    prompt: event.prompt.clone(),
-                    content: event.content.clone(),
-                    usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
-                });
-            if self.stop.load(SeqCst) {
-                ObservationAction::stop("stop at stream EOF")
-            } else {
-                ObservationAction::continue_run()
-            }
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.model_turns.fetch_add(1, SeqCst);
-            ModelTurnAction::continue_run()
+    impl FinishLifecycleHook {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("finish-lifecycle", move |event| match event {
+                HookEvent::StreamResponseFinish {
+                    prompt,
+                    content,
+                    usage,
+                    message_id,
+                    ..
+                } => {
+                    hook.snapshots.lock().expect("finish snapshots").push(
+                        CanonicalResponseSnapshot {
+                            prompt,
+                            content,
+                            usage,
+                            message_id,
+                        },
+                    );
+                    if hook.stop.load(SeqCst) {
+                        HookDecision::Observation(ObservationAction::stop("stop at stream EOF"))
+                    } else {
+                        HookDecision::Continue
+                    }
+                }
+                HookEvent::ModelTurnFinished { .. } => {
+                    hook.model_turns.fetch_add(1, SeqCst);
+                    HookDecision::Continue
+                }
+                _ => HookDecision::Continue,
+            })
         }
     }
 
@@ -2168,7 +2049,7 @@ mod migrated_tests {
                 .with_message_id("msg-canonical")])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner(prompt.clone())
         .run()
@@ -2196,7 +2077,7 @@ mod migrated_tests {
                 .with_message_id("msg-canonical")])
             .provider(),
         )
-        .add_hook(blocking_hook.clone())
+        .add_hook(blocking_hook.entry())
         .build()
         .runner(prompt.clone())
         .run()
@@ -2212,7 +2093,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(streaming_hook.clone())
+        .add_hook(streaming_hook.entry())
         .build()
         .runner(prompt)
         .stream()
@@ -2246,7 +2127,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("canonical prompt")
         .stream()
@@ -2271,7 +2152,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("canonical prompt")
         .stream()
@@ -2311,7 +2192,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner(prompt.clone())
         .stream()
@@ -2348,16 +2229,14 @@ mod migrated_tests {
         ));
     }
 
-    struct StopCompletedModelTurn;
-
-    impl AgentHook for StopCompletedModelTurn {
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            ModelTurnAction::stop("stop completed model turn")
-        }
+    /// Stops the run from every accepted model turn.
+    fn stop_completed_model_turn() -> HookEntry {
+        hook_entry("stop-completed-model-turn", |event| {
+            let HookEvent::ModelTurnFinished { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ModelTurn(ModelTurnAction::stop("stop completed model turn"))
+        })
     }
 
     #[tokio::test]
@@ -2370,7 +2249,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(StopCompletedModelTurn)
+        .add_hook(stop_completed_model_turn())
         .build()
         .runner(prompt.clone())
         .stream()
@@ -2436,7 +2315,7 @@ mod migrated_tests {
                 ]])
                 .provider(),
             )
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .build()
             .runner("canonical prompt")
             .stream()
@@ -2484,7 +2363,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("canonical prompt")
         .stream()
@@ -2524,7 +2403,7 @@ mod migrated_tests {
             .provider(),
         )
         .tool(MockAddTool)
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("go")
         .max_turns(3)
@@ -2673,7 +2552,7 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(2)
-            .add_hook(blocking_hook.clone())
+            .add_hook(blocking_hook.entry())
             .run()
             .await
             .expect("blocking run should succeed");
@@ -2686,7 +2565,7 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(2)
-            .add_hook(streaming_hook.clone())
+            .add_hook(streaming_hook.entry())
             .stream()
             .await;
 
@@ -2713,10 +2592,10 @@ mod migrated_tests {
         assert_eq!(
             blocking_hook.shared_events(),
             vec![
-                StepEventKind::CompletionCall,
-                StepEventKind::ToolCall,
-                StepEventKind::ToolResult,
-                StepEventKind::CompletionCall,
+                EventKind::CompletionCall,
+                EventKind::ToolCall,
+                EventKind::ToolResult,
+                EventKind::CompletionCall,
             ]
         );
 
@@ -2747,10 +2626,9 @@ mod migrated_tests {
         use serde_json::json;
 
         use super::super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
-        use crate::agent::{
-            AgentBuilder, AgentHook, HookContext, HookStack, ToolCall, ToolCallAction,
-            ToolResultAction, ToolResultEvent,
-        };
+        use super::hook_entry;
+        use crate::agent::{AgentBuilder, ToolCallAction, ToolResultAction};
+        use crate::hooks::{HookDecision, HookEntry, HookEvent};
         use crate::test_utils::{
             MockAddTool, MockDeniedTool, MockFailingTool, MockHandledFailureTool,
         };
@@ -2787,28 +2665,28 @@ mod migrated_tests {
             }
         }
 
-        impl AgentHook for OutcomeHook {
-            async fn on_tool_result(
-                &self,
-                _ctx: &HookContext,
-                event: ToolResultEvent<'_>,
-            ) -> ToolResultAction {
-                if let ToolResultEvent {
-                    presentation,
-                    raw_result,
-                    ..
-                } = event
-                {
-                    self.outcomes
+        impl OutcomeHook {
+            fn entry(&self) -> HookEntry {
+                let hook = self.clone();
+                hook_entry("outcome", move |event| {
+                    let HookEvent::ToolResult {
+                        result,
+                        presentation,
+                        ..
+                    } = event
+                    else {
+                        return HookDecision::Continue;
+                    };
+                    hook.outcomes
                         .lock()
                         .expect("outcomes")
-                        .push(outcome_label(raw_result));
-                    self.results
+                        .push(outcome_label(&result));
+                    hook.results
                         .lock()
                         .expect("results")
                         .push(presentation.render());
-                }
-                ToolResultAction::keep()
+                    HookDecision::ToolResult(ToolResultAction::keep())
+                })
             }
         }
 
@@ -2843,7 +2721,7 @@ mod migrated_tests {
             let hook = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
-                .add_hook(hook.clone())
+                .add_hook(hook.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -2856,33 +2734,28 @@ mod migrated_tests {
             assert_eq!(hook.results(), vec!["mock tool call failed".to_string()]);
         }
 
-        // (2) A hook counts timeout failures in the run scratchpad and terminates
-        // the run after a threshold — the motivating use case.
+        // (2) A hook counts timeout failures in its own captured state and
+        // terminates the run after a threshold — the motivating use case.
         #[tokio::test]
         async fn hook_terminates_after_repeated_timeouts() {
-            #[derive(Clone, Default)]
-            struct TimeoutCount(usize);
-
-            struct TimeoutTerminator;
-            impl AgentHook for TimeoutTerminator {
-                async fn on_tool_result(
-                    &self,
-                    ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let ToolResultEvent { raw_result, .. } = event
-                        && raw_result.is_error_kind(ToolErrorKind::Timeout)
-                    {
-                        let count = ctx.scratchpad().update(|c: &mut TimeoutCount| {
-                            c.0 += 1;
-                            c.0
-                        });
-                        if count >= 2 {
-                            return ToolResultAction::stop("aborting after repeated tool timeouts");
+            /// Terminates once it has observed two timeout results.
+            fn timeout_terminator() -> HookEntry {
+                let timeouts = Arc::new(Mutex::new(0usize));
+                hook_entry("timeout-terminator", move |event| {
+                    let HookEvent::ToolResult { result, .. } = event else {
+                        return HookDecision::Continue;
+                    };
+                    if result.is_error_kind(ToolErrorKind::Timeout) {
+                        let mut count = timeouts.lock().expect("timeouts");
+                        *count += 1;
+                        if *count >= 2 {
+                            return HookDecision::ToolResult(ToolResultAction::stop(
+                                "aborting after repeated tool timeouts",
+                            ));
                         }
                     }
-                    ToolResultAction::keep()
-                }
+                    HookDecision::ToolResult(ToolResultAction::keep())
+                })
             }
 
             let observer = OutcomeHook::default();
@@ -2896,8 +2769,8 @@ mod migrated_tests {
             )
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             // Observer first so it records both timeouts before the terminator fires.
-            .add_hook(observer.clone())
-            .add_hook(TimeoutTerminator)
+            .add_hook(observer.entry())
+            .add_hook(timeout_terminator())
             .build()
             .runner("go")
             .max_turns(5)
@@ -2924,24 +2797,22 @@ mod migrated_tests {
             let hook = OutcomeHook::default();
             let status: Arc<Mutex<Option<u16>>> = Arc::new(Mutex::new(None));
 
-            struct StatusProbe(Arc<Mutex<Option<u16>>>);
-            impl AgentHook for StatusProbe {
-                async fn on_tool_result(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let Some(error) = event.raw_result.error() {
-                        *self.0.lock().expect("status") = error.http_status();
+            fn status_probe(status: Arc<Mutex<Option<u16>>>) -> HookEntry {
+                hook_entry("status-probe", move |event| {
+                    let HookEvent::ToolResult { result, .. } = event else {
+                        return HookDecision::Continue;
+                    };
+                    if let Some(error) = result.error() {
+                        *status.lock().expect("status") = error.http_status();
                     }
-                    ToolResultAction::keep()
-                }
+                    HookDecision::ToolResult(ToolResultAction::keep())
+                })
             }
 
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::NotFound))
-                .add_hook(hook.clone())
-                .add_hook(StatusProbe(status.clone()))
+                .add_hook(hook.entry())
+                .add_hook(status_probe(status.clone()))
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -2964,7 +2835,7 @@ mod migrated_tests {
             let hook = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("lookup").provider())
                 .tool(MockHandledFailureTool)
-                .add_hook(hook.clone())
+                .add_hook(hook.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -2984,26 +2855,20 @@ mod migrated_tests {
         // outcome that the result hook observes.
         #[tokio::test]
         async fn flow_skip_produces_skipped_outcome() {
-            struct SkipHook;
-            impl AgentHook for SkipHook {
-                async fn on_tool_call(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolCall<'_>,
-                ) -> ToolCallAction {
-                    if let ToolCall { .. } = event {
-                        ToolCallAction::skip("not executed (denied by policy); do not retry")
-                    } else {
-                        ToolCallAction::run()
-                    }
-                }
-            }
+            let skip_hook = hook_entry("skip", |event| {
+                let HookEvent::ToolCall { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::ToolCall(ToolCallAction::skip(
+                    "not executed (denied by policy); do not retry",
+                ))
+            });
 
             let observer = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
-                .add_hook(SkipHook)
-                .add_hook(observer.clone())
+                .add_hook(skip_hook)
+                .add_hook(observer.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -3027,7 +2892,7 @@ mod migrated_tests {
             let hook = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("guarded").provider())
                 .tool(MockDeniedTool)
-                .add_hook(hook.clone())
+                .add_hook(hook.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -3048,7 +2913,7 @@ mod migrated_tests {
             let hook = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::PermissionDenied))
-                .add_hook(hook.clone())
+                .add_hook(hook.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -3068,59 +2933,44 @@ mod migrated_tests {
         #[tokio::test]
         async fn rewrite_args_then_skip_reports_rewritten_args() {
             // Rewrites the tool args, replacing whatever the model emitted.
-            struct RewriteHook;
-            impl AgentHook for RewriteHook {
-                async fn on_tool_call(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolCall<'_>,
-                ) -> ToolCallAction {
-                    if let ToolCall { .. } = event {
-                        ToolCallAction::rewrite(json!({ "x": 41, "y": 1 }))
-                    } else {
-                        ToolCallAction::run()
-                    }
-                }
+            fn rewrite_hook() -> HookEntry {
+                hook_entry("rewrite", |event| {
+                    let HookEvent::ToolCall { .. } = event else {
+                        return HookDecision::Continue;
+                    };
+                    HookDecision::ToolCall(ToolCallAction::rewrite(json!({ "x": 41, "y": 1 })))
+                })
             }
             // Skips *after* the rewrite (registered second).
-            struct SkipHook;
-            impl AgentHook for SkipHook {
-                async fn on_tool_call(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolCall<'_>,
-                ) -> ToolCallAction {
-                    if let ToolCall { .. } = event {
-                        ToolCallAction::skip("denied after rewrite")
-                    } else {
-                        ToolCallAction::run()
-                    }
-                }
+            fn skip_hook() -> HookEntry {
+                hook_entry("skip", |event| {
+                    let HookEvent::ToolCall { .. } = event else {
+                        return HookDecision::Continue;
+                    };
+                    HookDecision::ToolCall(ToolCallAction::skip("denied after rewrite"))
+                })
             }
             // Records the args + outcome seen on the `ToolResult` event.
             #[derive(Clone, Default)]
             struct ArgsProbe {
-                args: Arc<Mutex<Option<String>>>,
+                args: Arc<Mutex<Option<serde_json::Value>>>,
                 outcome: Arc<Mutex<Option<String>>>,
             }
-            impl AgentHook for ArgsProbe {
-                async fn on_tool_result(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let ToolResultEvent {
-                        args, raw_result, ..
-                    } = event
-                    {
-                        *self.args.lock().expect("args") = Some(args.to_string());
-                        *self.outcome.lock().expect("outcome") = Some(outcome_label(raw_result));
-                    }
-                    ToolResultAction::keep()
+            impl ArgsProbe {
+                fn entry(&self) -> HookEntry {
+                    let probe = self.clone();
+                    hook_entry("args-probe", move |event| {
+                        let HookEvent::ToolResult { call, result, .. } = event else {
+                            return HookDecision::Continue;
+                        };
+                        *probe.args.lock().expect("args") = Some(call.function.arguments);
+                        *probe.outcome.lock().expect("outcome") = Some(outcome_label(&result));
+                        HookDecision::ToolResult(ToolResultAction::keep())
+                    })
                 }
             }
 
-            async fn run_surface(streaming: bool) -> (String, String) {
+            async fn run_surface(streaming: bool) -> (serde_json::Value, String) {
                 let probe = ArgsProbe::default();
                 // The tool must never execute; `MockAddTool` would produce a
                 // `Success` outcome with result "42" if it (wrongly) ran.
@@ -3128,9 +2978,9 @@ mod migrated_tests {
                     let mut stream =
                         AgentBuilder::new(stream_model_one_tool_then_text("add").provider())
                             .tool(MockAddTool)
-                            .add_hook(RewriteHook)
-                            .add_hook(SkipHook)
-                            .add_hook(probe.clone())
+                            .add_hook(rewrite_hook())
+                            .add_hook(skip_hook())
+                            .add_hook(probe.entry())
                             .build()
                             .runner("go")
                             .max_turns(3)
@@ -3144,9 +2994,9 @@ mod migrated_tests {
                 } else {
                     AgentBuilder::new(model_one_tool_then_text("add").provider())
                         .tool(MockAddTool)
-                        .add_hook(RewriteHook)
-                        .add_hook(SkipHook)
-                        .add_hook(probe.clone())
+                        .add_hook(rewrite_hook())
+                        .add_hook(skip_hook())
+                        .add_hook(probe.entry())
                         .build()
                         .runner("go")
                         .max_turns(3)
@@ -3170,127 +3020,11 @@ mod migrated_tests {
                     outcome, "skipped",
                     "the skipped tool must produce a Skipped outcome (streaming={streaming})"
                 );
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&args).expect("ToolResult args are valid JSON");
                 assert_eq!(
-                    parsed,
+                    args,
                     json!({ "x": 41, "y": 1 }),
                     "the skipped ToolResult must report the rewritten args, not the model's \
-                     original {{}} (streaming={streaming}); got {args}"
-                );
-            }
-        }
-
-        // End-to-end nesting: a *nested* `HookStack` that rewrites args then skips
-        // must still report the rewritten args on the skipped `ToolResult` — the
-        // inner rewrite is not lost behind the inner skip when the stack is added
-        // as a single composed hook. Guards the nested-composition fix.
-        #[tokio::test]
-        async fn nested_hook_stack_rewrite_then_skip_reports_rewritten_args() {
-            struct RewriteHook;
-            impl AgentHook for RewriteHook {
-                async fn on_tool_call(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolCall<'_>,
-                ) -> ToolCallAction {
-                    if let ToolCall { .. } = event {
-                        ToolCallAction::rewrite(json!({ "x": 41, "y": 1 }))
-                    } else {
-                        ToolCallAction::run()
-                    }
-                }
-            }
-            struct SkipHook;
-            impl AgentHook for SkipHook {
-                async fn on_tool_call(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolCall<'_>,
-                ) -> ToolCallAction {
-                    if let ToolCall { .. } = event {
-                        ToolCallAction::skip("denied after nested rewrite")
-                    } else {
-                        ToolCallAction::run()
-                    }
-                }
-            }
-            #[derive(Clone, Default)]
-            struct ArgsProbe {
-                args: Arc<Mutex<Option<String>>>,
-                outcome: Arc<Mutex<Option<String>>>,
-            }
-            impl AgentHook for ArgsProbe {
-                async fn on_tool_result(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let ToolResultEvent {
-                        args, raw_result, ..
-                    } = event
-                    {
-                        *self.args.lock().expect("args") = Some(args.to_string());
-                        *self.outcome.lock().expect("outcome") = Some(outcome_label(raw_result));
-                    }
-                    ToolResultAction::keep()
-                }
-            }
-
-            // The rewrite + skip live inside a *nested* stack added as one hook.
-            fn nested_stack() -> HookStack {
-                let mut nested = HookStack::new();
-                nested.push(RewriteHook);
-                nested.push(SkipHook);
-                nested
-            }
-
-            // Verified on both surfaces: run_single_tool (shared) drives the same
-            // nested resolution, so blocking and streaming must agree.
-            for streaming in [false, true] {
-                let probe = ArgsProbe::default();
-                if streaming {
-                    let mut stream =
-                        AgentBuilder::new(stream_model_one_tool_then_text("add").provider())
-                            .tool(MockAddTool)
-                            .add_hook(nested_stack())
-                            .add_hook(probe.clone())
-                            .build()
-                            .runner("go")
-                            .max_turns(3)
-                            .stream()
-                            .await;
-                    while let Some(item) = stream.next().await {
-                        if let Err(err) = item {
-                            panic!("stream item errored: {err}");
-                        }
-                    }
-                } else {
-                    AgentBuilder::new(model_one_tool_then_text("add").provider())
-                        .tool(MockAddTool)
-                        .add_hook(nested_stack())
-                        .add_hook(probe.clone())
-                        .build()
-                        .runner("go")
-                        .max_turns(3)
-                        .run()
-                        .await
-                        .expect("run should succeed after the nested stack skips the tool");
-                }
-
-                assert_eq!(
-                    probe.outcome.lock().expect("outcome").clone(),
-                    Some("skipped".to_string()),
-                    "streaming={streaming}"
-                );
-                let args = probe.args.lock().expect("args").clone().expect("args seen");
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&args).expect("valid JSON args");
-                assert_eq!(
-                    parsed,
-                    json!({ "x": 41, "y": 1 }),
-                    "the nested stack's rewrite must survive its skip and reach the ToolResult \
-                     (streaming={streaming}); got {args}"
+                     original {{}} (streaming={streaming})"
                 );
             }
         }
@@ -3309,7 +3043,7 @@ mod migrated_tests {
                 .provider(),
             )
             .tool(MockAddTool)
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .build()
             .runner("go")
             .max_turns(3)
@@ -3325,28 +3059,20 @@ mod migrated_tests {
         // changes only what the model sees, not the classification.
         #[tokio::test]
         async fn rewrite_result_does_not_mask_the_structured_outcome() {
-            struct Redact;
-            impl AgentHook for Redact {
-                async fn on_tool_result(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let ToolResultEvent { .. } = event {
-                        ToolResultAction::rewrite("[REDACTED]")
-                    } else {
-                        ToolResultAction::keep()
-                    }
-                }
-            }
+            let redact = hook_entry("redact", |event| {
+                let HookEvent::ToolResult { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::ToolResult(ToolResultAction::rewrite("[REDACTED]"))
+            });
 
             let observer = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::NotFound))
                 // Observer AFTER the redactor: it still sees the true outcome, and
                 // the chained (redacted) model-visible result.
-                .add_hook(Redact)
-                .add_hook(observer.clone())
+                .add_hook(redact)
+                .add_hook(observer.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -3365,7 +3091,7 @@ mod migrated_tests {
             let blocking = OutcomeHook::default();
             AgentBuilder::new(model_one_tool_then_text("flaky_tool").provider())
                 .tool(MockFailingTool::new(ToolErrorKind::Timeout))
-                .add_hook(blocking.clone())
+                .add_hook(blocking.entry())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -3377,7 +3103,7 @@ mod migrated_tests {
             let mut stream =
                 AgentBuilder::new(stream_model_one_tool_then_text("flaky_tool").provider())
                     .tool(MockFailingTool::new(ToolErrorKind::Timeout))
-                    .add_hook(streaming.clone())
+                    .add_hook(streaming.entry())
                     .build()
                     .runner("go")
                     .max_turns(3)
@@ -3420,7 +3146,7 @@ mod migrated_tests {
             )
             .tool(MockAddTool)
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
-            .add_hook(observer.clone())
+            .add_hook(observer.entry())
             .build()
             .runner("go")
             .max_turns(3)
@@ -3479,15 +3205,14 @@ mod migrated_tests {
         use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
         use super::super::test_support::{MockCompletionModel, MockStreamEvent, MockTurn};
-        use crate::agent::{
-            AgentBuilder, HookContext, MultiTurnStreamItem, ToolResultAction, ToolResultEvent,
-        };
+        use crate::agent::{AgentBuilder, MultiTurnStreamItem, ToolResultAction};
         use crate::completion::{PromptError, Usage};
+        use crate::hooks::{HookDecision, HookEntry, HookEvent};
         use crate::streaming::StreamedAssistantContent;
         use crate::test_utils::MockAddTool;
         use crate::tool::ToolExecutionError;
 
-        use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
+        use super::{TestRetryMode, bounded_response_retry, hook_entry, stop_completed_model_turn};
 
         #[derive(Clone)]
         struct CapturedSpan {
@@ -3648,11 +3373,7 @@ mod migrated_tests {
                 .provider(),
             )
             .record_content_telemetry(true)
-            .add_hook(BoundedResponseRetry::new(
-                "rejected",
-                1,
-                TestRetryMode::Repeat,
-            ))
+            .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
             .build()
             .runner("question")
             .max_turns(2)
@@ -3676,11 +3397,7 @@ mod migrated_tests {
                 .provider(),
             )
             .record_content_telemetry(true)
-            .add_hook(BoundedResponseRetry::new(
-                "rejected",
-                1,
-                TestRetryMode::Repeat,
-            ))
+            .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
             .build()
             .runner("question")
             .max_turns(2)
@@ -3705,7 +3422,7 @@ mod migrated_tests {
                     .provider(),
             )
             .record_content_telemetry(true)
-            .add_hook(StopCompletedModelTurn)
+            .add_hook(stop_completed_model_turn())
             .build()
             .runner("question")
             .run()
@@ -3728,7 +3445,7 @@ mod migrated_tests {
                 .provider(),
             )
             .record_content_telemetry(true)
-            .add_hook(StopCompletedModelTurn)
+            .add_hook(stop_completed_model_turn())
             .build()
             .runner("question")
             .stream()
@@ -4117,31 +3834,23 @@ mod migrated_tests {
         }
 
         /// Redacts every tool result before the model sees it.
-        struct RedactResultHook;
-        impl crate::agent::AgentHook for RedactResultHook {
-            async fn on_tool_result(
-                &self,
-                _ctx: &HookContext,
-                event: ToolResultEvent<'_>,
-            ) -> ToolResultAction {
-                if let crate::agent::ToolResultEvent { .. } = event {
-                    crate::agent::ToolResultAction::rewrite("[REDACTED]")
-                } else {
-                    crate::agent::ToolResultAction::keep()
-                }
-            }
+        fn redact_result_hook() -> HookEntry {
+            hook_entry("redact-result", |event| {
+                let HookEvent::ToolResult { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::ToolResult(ToolResultAction::rewrite("[REDACTED]"))
+            })
         }
 
         /// Stops the run after observing a completed tool result.
-        struct StopOnResultHook;
-        impl crate::agent::AgentHook for StopOnResultHook {
-            async fn on_tool_result(
-                &self,
-                _ctx: &HookContext,
-                _event: ToolResultEvent<'_>,
-            ) -> ToolResultAction {
-                ToolResultAction::stop("stop after raw result")
-            }
+        fn stop_on_result_hook() -> HookEntry {
+            hook_entry("stop-on-result", |event| {
+                let HookEvent::ToolResult { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::ToolResult(ToolResultAction::stop("stop after raw result"))
+            })
         }
 
         /// Captures every value recorded into the `gen_ai.tool.call.result` span
@@ -4203,7 +3912,7 @@ mod migrated_tests {
             let response = AgentBuilder::new(model.provider())
                 .record_content_telemetry(true)
                 .tool(RawOutputTool)
-                .add_hook(RedactResultHook)
+                .add_hook(redact_result_hook())
                 .build()
                 .runner("go")
                 .max_turns(3)
@@ -4249,7 +3958,7 @@ mod migrated_tests {
                 .provider(),
             )
             .tool(RawOutputTool)
-            .add_hook(StopOnResultHook)
+            .add_hook(stop_on_result_hook())
             .build()
             .runner("go")
             .max_turns(2)
@@ -4754,26 +4463,29 @@ mod migrated_tests {
     /// Terminates from the `x == 1` tool's result, but only *after* the slow
     /// `x == 2` sibling has signalled it started executing — so that sibling is
     /// genuinely in flight when the terminate fires (not merely not-yet-started).
-    struct TerminateAfterSiblingStartedHook {
+    fn terminate_after_sibling_started_hook(
         sibling_started: Arc<tokio::sync::Notify>,
+    ) -> HookEntry {
+        HookEntry::new("terminate-after-sibling-started", move |event| {
+            let sibling_started = sibling_started.clone();
+            Box::pin(async move {
+                let HookEvent::ToolResult { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if arg_x(&call.function.arguments) == Some(1) {
+                    sibling_started.notified().await;
+                    return HookDecision::ToolResult(ToolResultAction::stop(
+                        "stop after a tool result",
+                    ));
+                }
+                HookDecision::ToolResult(ToolResultAction::keep())
+            })
+        })
     }
-    impl AgentHook for TerminateAfterSiblingStartedHook {
-        async fn on_tool_result(
-            &self,
-            _ctx: &HookContext,
-            event: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            if let ToolResultEvent { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(1)
-            {
-                self.sibling_started.notified().await;
-                return ToolResultAction::stop("stop after a tool result");
-            }
-            ToolResultAction::keep()
-        }
+
+    /// The `x` argument of a tool call, when it is an integer.
+    fn arg_x(args: &serde_json::Value) -> Option<i64> {
+        args.get("x").and_then(serde_json::Value::as_i64)
     }
 
     /// A probe tool for the concurrent drain path: records how many calls
@@ -4851,9 +4563,7 @@ mod migrated_tests {
             .runner("add two pairs")
             .max_turns(3)
             .tool_concurrency(2)
-            .add_hook(TerminateAfterSiblingStartedHook {
-                sibling_started: slow_started,
-            })
+            .add_hook(terminate_after_sibling_started_hook(slow_started))
             .stream()
             .await;
 
@@ -4900,30 +4610,31 @@ mod migrated_tests {
     /// call's `x` arg, forcing the `x == 2` call (tc2) to terminate *before* the
     /// `x == 1` call (tc1): tc2 opens the gate after terminating, tc1 awaits it
     /// first. So completion order (tc2) differs from call order (tc1).
-    struct OrderedTerminateHook {
-        gate: Arc<tokio::sync::Notify>,
-    }
-
-    impl AgentHook for OrderedTerminateHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { args, .. } = event {
-                let x = serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64));
-                match x {
+    fn ordered_terminate_hook(gate: Arc<tokio::sync::Notify>) -> HookEntry {
+        HookEntry::new("ordered-terminate", move |event| {
+            let gate = gate.clone();
+            Box::pin(async move {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                match arg_x(&call.function.arguments) {
                     Some(2) => {
-                        self.gate.notify_one();
-                        return ToolCallAction::stop("terminated-by-tc2".to_string());
+                        gate.notify_one();
+                        return HookDecision::ToolCall(ToolCallAction::stop(
+                            "terminated-by-tc2".to_string(),
+                        ));
                     }
                     Some(1) => {
-                        self.gate.notified().await;
-                        return ToolCallAction::stop("terminated-by-tc1".to_string());
+                        gate.notified().await;
+                        return HookDecision::ToolCall(ToolCallAction::stop(
+                            "terminated-by-tc1".to_string(),
+                        ));
                     }
                     _ => {}
                 }
-            }
-            ToolCallAction::run()
-        }
+                HookDecision::ToolCall(ToolCallAction::run())
+            })
+        })
     }
 
     fn two_terminating_tools_blocking_model() -> MockCompletionModel {
@@ -4966,9 +4677,7 @@ mod migrated_tests {
                 .runner("go")
                 .max_turns(3)
                 .tool_concurrency(2)
-                .add_hook(OrderedTerminateHook {
-                    gate: Arc::new(tokio::sync::Notify::new()),
-                })
+                .add_hook(ordered_terminate_hook(Arc::new(tokio::sync::Notify::new())))
                 .run(),
         )
         .await
@@ -4981,9 +4690,7 @@ mod migrated_tests {
             .runner("go")
             .max_turns(3)
             .tool_concurrency(2)
-            .add_hook(OrderedTerminateHook {
-                gate: Arc::new(tokio::sync::Notify::new()),
-            })
+            .add_hook(ordered_terminate_hook(Arc::new(tokio::sync::Notify::new())))
             .stream()
             .await;
 
@@ -5017,19 +4724,16 @@ mod migrated_tests {
 
     /// Terminates the run from the `ToolCall` event of the first tool only
     /// (`x == 1`), letting any later tool through.
-    struct TerminateOnFirstToolHook;
-    impl AgentHook for TerminateOnFirstToolHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(1)
-            {
-                return ToolCallAction::stop("stop".to_string());
+    fn terminate_on_first_tool_hook() -> HookEntry {
+        hook_entry("terminate-on-first-tool", |event| {
+            let HookEvent::ToolCall { call, .. } = event else {
+                return HookDecision::Continue;
+            };
+            if arg_x(&call.function.arguments) == Some(1) {
+                return HookDecision::ToolCall(ToolCallAction::stop("stop".to_string()));
             }
-            ToolCallAction::run()
-        }
+            HookDecision::ToolCall(ToolCallAction::run())
+        })
     }
 
     /// Fail-fast, lock-step across surfaces: on a multi-tool turn whose first
@@ -5048,7 +4752,7 @@ mod migrated_tests {
             .build()
             .runner("go")
             .max_turns(3)
-            .add_hook(TerminateOnFirstToolHook)
+            .add_hook(terminate_on_first_tool_hook())
             .run()
             .await
             .expect_err("the run terminates");
@@ -5066,7 +4770,7 @@ mod migrated_tests {
             .build()
             .runner("go")
             .max_turns(3)
-            .add_hook(TerminateOnFirstToolHook)
+            .add_hook(terminate_on_first_tool_hook())
             .stream()
             .await;
         let mut saw_error = false;
@@ -5152,22 +4856,22 @@ mod migrated_tests {
     /// Terminates from the `x == 0` tool's `ToolCall` hook, but only after the
     /// `x == 1` sibling has signalled it started executing — so tc1 is genuinely
     /// in flight (not merely not-yet-started) when the terminate fires.
-    struct TerminateOnArgZeroAfterSiblingHook {
+    fn terminate_on_arg_zero_after_sibling_hook(
         sibling_started: Arc<tokio::sync::Notify>,
-    }
-    impl AgentHook for TerminateOnArgZeroAfterSiblingHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(0)
-            {
-                self.sibling_started.notified().await;
-                return ToolCallAction::stop("stop");
-            }
-            ToolCallAction::run()
-        }
+    ) -> HookEntry {
+        HookEntry::new("terminate-on-arg-zero-after-sibling", move |event| {
+            let sibling_started = sibling_started.clone();
+            Box::pin(async move {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if arg_x(&call.function.arguments) == Some(0) {
+                    sibling_started.notified().await;
+                    return HookDecision::ToolCall(ToolCallAction::stop("stop"));
+                }
+                HookDecision::ToolCall(ToolCallAction::run())
+            })
+        })
     }
 
     /// Concurrent fail-fast: when a tool terminates the turn under
@@ -5193,7 +4897,7 @@ mod migrated_tests {
                 .runner("go")
                 .max_turns(3)
                 .tool_concurrency(2)
-                .add_hook(TerminateOnArgZeroAfterSiblingHook { sibling_started })
+                .add_hook(terminate_on_arg_zero_after_sibling_hook(sibling_started))
                 .stream()
                 .await;
 
@@ -5267,22 +4971,20 @@ mod migrated_tests {
     /// The `x == 2` tool's `ToolCall` hook terminates, but only after the `x == 1`
     /// sibling has finished (via the gate), so a *completed* sibling's result is
     /// still suppressed by the atomic batch.
-    struct TerminateAfterSiblingDoneHook {
-        a_done: Arc<tokio::sync::Notify>,
-    }
-    impl AgentHook for TerminateAfterSiblingDoneHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { args, .. } = event
-                && serde_json::from_str::<serde_json::Value>(args)
-                    .ok()
-                    .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
-                    == Some(2)
-            {
-                self.a_done.notified().await;
-                return ToolCallAction::stop("stop");
-            }
-            ToolCallAction::run()
-        }
+    fn terminate_after_sibling_done_hook(a_done: Arc<tokio::sync::Notify>) -> HookEntry {
+        HookEntry::new("terminate-after-sibling-done", move |event| {
+            let a_done = a_done.clone();
+            Box::pin(async move {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if arg_x(&call.function.arguments) == Some(2) {
+                    a_done.notified().await;
+                    return HookDecision::ToolCall(ToolCallAction::stop("stop"));
+                }
+                HookDecision::ToolCall(ToolCallAction::run())
+            })
+        })
     }
 
     /// Atomic concurrent batch: when the batch terminates, even a sibling that
@@ -5315,9 +5017,7 @@ mod migrated_tests {
             .runner("go")
             .max_turns(3)
             .tool_concurrency(2)
-            .add_hook(TerminateAfterSiblingDoneHook {
-                a_done: a_done.clone(),
-            })
+            .add_hook(terminate_after_sibling_done_hook(a_done.clone()))
             .stream()
             .await;
 
@@ -5379,7 +5079,7 @@ mod migrated_tests {
         ]);
         let mut stream = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
-            .add_hook(RewriteToolArgsHook(json!({"x": 2, "y": 40})))
+            .add_hook(rewrite_tool_args_hook(json!({"x": 2, "y": 40})))
             .build()
             .runner("go")
             .max_turns(3)
@@ -5417,20 +5117,12 @@ mod migrated_tests {
     /// `ToolExecutionCommitted` — nothing actually ran.
     #[tokio::test]
     async fn stream_hook_skip_surfaces_result_without_execution_commit() {
-        struct SkipHook;
-        impl AgentHook for SkipHook {
-            async fn on_tool_call(
-                &self,
-                _ctx: &HookContext,
-                event: ToolCall<'_>,
-            ) -> ToolCallAction {
-                if let ToolCall { .. } = event {
-                    ToolCallAction::skip("blocked by policy")
-                } else {
-                    ToolCallAction::run()
-                }
-            }
-        }
+        let skip_hook = hook_entry("skip", |event| {
+            let HookEvent::ToolCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ToolCall(ToolCallAction::skip("blocked by policy"))
+        });
 
         let calls = Arc::new(AtomicU32::new(0));
         let model = MockCompletionModel::from_stream_turns([
@@ -5447,7 +5139,7 @@ mod migrated_tests {
             .tool(CountingAddTool {
                 calls: calls.clone(),
             })
-            .add_hook(SkipHook)
+            .add_hook(skip_hook)
             .build()
             .runner("go")
             .max_turns(3)
@@ -5493,29 +5185,21 @@ mod migrated_tests {
     /// is a **local** error: the run fails before any provider round-trip.
     #[tokio::test]
     async fn required_with_empty_active_tools_errors_locally_without_provider_call() {
-        struct EmptyActiveToolsHook;
-        impl AgentHook for EmptyActiveToolsHook {
-            async fn on_completion_call(
-                &self,
-                _ctx: &HookContext,
-                event: CompletionCallEvent<'_>,
-            ) -> CompletionCallAction {
-                if let CompletionCallEvent { .. } = event {
-                    CompletionCallAction::patch(
-                        RequestPatch::new().active_tools(Vec::<String>::new()),
-                    )
-                } else {
-                    CompletionCallAction::continue_run()
-                }
-            }
-        }
+        let empty_active_tools_hook = hook_entry("empty-active-tools", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(Vec::<String>::new()),
+            ))
+        });
 
         let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
         let probe = model.clone();
         let err = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
             .tool_choice(ToolChoice::Required)
-            .add_hook(EmptyActiveToolsHook)
+            .add_hook(empty_active_tools_hook)
             .build()
             .runner("go")
             .run()
@@ -5541,20 +5225,14 @@ mod migrated_tests {
     /// out is a **local** error naming the filter, before any provider round-trip.
     #[tokio::test]
     async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call() {
-        struct FilterToAddHook;
-        impl AgentHook for FilterToAddHook {
-            async fn on_completion_call(
-                &self,
-                _ctx: &HookContext,
-                event: CompletionCallEvent<'_>,
-            ) -> CompletionCallAction {
-                if let CompletionCallEvent { .. } = event {
-                    CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-                } else {
-                    CompletionCallAction::continue_run()
-                }
-            }
-        }
+        let filter_to_add_hook = hook_entry("filter-to-add", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(["add"]),
+            ))
+        });
 
         let model = MockCompletionModel::from_turns([MockTurn::text("unreachable")]);
         let probe = model.clone();
@@ -5564,7 +5242,7 @@ mod migrated_tests {
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["subtract".to_string()],
             })
-            .add_hook(FilterToAddHook)
+            .add_hook(filter_to_add_hook)
             .build()
             .runner("go")
             .run()
@@ -5712,32 +5390,34 @@ mod migrated_tests {
         }
     }
 
+    /// Counts text deltas and completion calls. Built *without*
+    /// [`HookEntry::observing_deltas`], so the delta events must never reach it.
     #[derive(Clone, Default)]
     struct ToolOnlyHook {
         text_delta_calls: Arc<AtomicU32>,
         other_calls: Arc<AtomicU32>,
     }
 
-    impl AgentHook for ToolOnlyHook {
-        async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
-            self.text_delta_calls.fetch_add(1, SeqCst);
-            ObservationAction::continue_run()
-        }
-        async fn on_completion_call(
-            &self,
-            _: &HookContext,
-            _: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            self.other_calls.fetch_add(1, SeqCst);
-            CompletionCallAction::continue_run()
-        }
-        fn observes(&self, kind: StepEventKind) -> bool {
-            kind != StepEventKind::TextDelta
+    impl ToolOnlyHook {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("tool-only", move |event| {
+                match event {
+                    HookEvent::TextDelta { .. } => {
+                        hook.text_delta_calls.fetch_add(1, SeqCst);
+                    }
+                    HookEvent::BeforeModelCall { .. } => {
+                        hook.other_calls.fetch_add(1, SeqCst);
+                    }
+                    _ => {}
+                }
+                HookDecision::Continue
+            })
         }
     }
 
-    /// A hook that declares it does not observe text deltas is never dispatched
-    /// for them (the runner skips building/dispatching that event), but still
+    /// An entry that did not opt into delta observation is never dispatched for
+    /// text deltas (the runner skips building/dispatching that event), but still
     /// receives the events it does observe.
     #[tokio::test]
     async fn observes_gates_text_delta_dispatch() {
@@ -5750,7 +5430,7 @@ mod migrated_tests {
         let mut stream = AgentBuilder::new(model.provider())
             .build()
             .runner("hi")
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .stream()
             .await;
         while stream.next().await.is_some() {}
@@ -5768,38 +5448,19 @@ mod migrated_tests {
 
     /// Terminates the run when it sees a chosen event kind, observing every other
     /// event as `Continue`.
-    struct TerminateOn(StepEventKind);
-
-    impl AgentHook for TerminateOn {
-        async fn on_completion_call(
-            &self,
-            _: &HookContext,
-            _: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if self.0 == StepEventKind::CompletionCall {
-                CompletionCallAction::stop("stop here")
-            } else {
-                CompletionCallAction::continue_run()
+    fn terminate_on(kind: EventKind) -> HookEntry {
+        hook_entry("terminate-on", move |event| match event {
+            HookEvent::BeforeModelCall { .. } if kind == EventKind::CompletionCall => {
+                HookDecision::CompletionCall(CompletionCallAction::stop("stop here"))
             }
-        }
-        async fn on_tool_call(&self, _: &HookContext, _: ToolCall<'_>) -> ToolCallAction {
-            if self.0 == StepEventKind::ToolCall {
-                ToolCallAction::stop("stop here")
-            } else {
-                ToolCallAction::run()
+            HookEvent::ToolCall { .. } if kind == EventKind::ToolCall => {
+                HookDecision::ToolCall(ToolCallAction::stop("stop here"))
             }
-        }
-        async fn on_tool_result(
-            &self,
-            _: &HookContext,
-            _: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            if self.0 == StepEventKind::ToolResult {
-                ToolResultAction::stop("stop here")
-            } else {
-                ToolResultAction::keep()
+            HookEvent::ToolResult { .. } if kind == EventKind::ToolResult => {
+                HookDecision::ToolResult(ToolResultAction::stop("stop here"))
             }
-        }
+            _ => HookDecision::Continue,
+        })
     }
 
     /// the event-specific stop action cancels the blocking run from *every* shared driver
@@ -5808,16 +5469,16 @@ mod migrated_tests {
     #[tokio::test]
     async fn run_terminates_from_each_shared_event() {
         for kind in [
-            StepEventKind::CompletionCall,
-            StepEventKind::ToolCall,
-            StepEventKind::ToolResult,
+            EventKind::CompletionCall,
+            EventKind::ToolCall,
+            EventKind::ToolResult,
         ] {
             let err = AgentBuilder::new(blocking_model().provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("add 2 and 3")
                 .max_turns(3)
-                .add_hook(TerminateOn(kind))
+                .add_hook(terminate_on(kind))
                 .run()
                 .await
                 .expect_err(&format!("terminate at {kind:?} must cancel the run"));
@@ -5834,16 +5495,16 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_terminates_from_each_shared_event() {
         for kind in [
-            StepEventKind::CompletionCall,
-            StepEventKind::ToolCall,
-            StepEventKind::ToolResult,
+            EventKind::CompletionCall,
+            EventKind::ToolCall,
+            EventKind::ToolResult,
         ] {
             let mut stream = AgentBuilder::new(streaming_model().provider())
                 .tool(MockAddTool)
                 .build()
                 .runner("add 2 and 3")
                 .max_turns(3)
-                .add_hook(TerminateOn(kind))
+                .add_hook(terminate_on(kind))
                 .stream()
                 .await;
 
@@ -5876,8 +5537,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(a_block.clone())
-            .add_hook(b_block.clone())
+            .add_hook(a_block.entry())
+            .add_hook(b_block.entry())
             .run()
             .await
             .expect("blocking run should succeed");
@@ -5889,8 +5550,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(a_stream.clone())
-            .add_hook(b_stream.clone())
+            .add_hook(a_stream.entry())
+            .add_hook(b_stream.entry())
             .stream()
             .await;
         while stream.next().await.is_some() {}
@@ -5903,50 +5564,36 @@ mod migrated_tests {
         assert_eq!(
             a_block.shared_events(),
             vec![
-                StepEventKind::CompletionCall,
-                StepEventKind::ToolCall,
-                StepEventKind::ToolResult,
-                StepEventKind::CompletionCall,
+                EventKind::CompletionCall,
+                EventKind::ToolCall,
+                EventKind::ToolResult,
+                EventKind::CompletionCall,
             ]
         );
         assert_eq!(blocking.output, "the answer is 5");
     }
 
     /// Renames an invalid tool call to a known tool; observes everything else.
-    struct RepairInvalidToHook(&'static str);
-
-    impl AgentHook for RepairInvalidToHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            Some(if let _ = event {
-                InvalidToolCallAction::repair(self.0)
-            } else {
-                InvalidToolCallAction::fail()
-            })
-        }
+    fn repair_invalid_to_hook(replacement: &'static str) -> HookEntry {
+        hook_entry("repair-invalid", move |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement))
+        })
     }
 
-    #[derive(Clone)]
-    struct CaptureAndRepairInvalidHook {
+    fn capture_and_repair_invalid_hook(
         replacement: &'static str,
         args: Arc<Mutex<Vec<Option<String>>>>,
-    }
-
-    impl AgentHook for CaptureAndRepairInvalidHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            self.args
-                .lock()
-                .expect("invalid args")
-                .push(event.args.clone());
-            Some(InvalidToolCallAction::repair(self.replacement))
-        }
+    ) -> HookEntry {
+        hook_entry("capture-and-repair-invalid", move |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            args.lock().expect("invalid args").push(context.args);
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement))
+        })
     }
 
     /// An invalid tool call repaired by a hook recovers identically under run()
@@ -5964,8 +5611,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(RepairInvalidToHook("add"))
+            .add_hook(blocking_hook.entry())
+            .add_hook(repair_invalid_to_hook("add"))
             .run()
             .await
             .expect("blocking run should recover via repair");
@@ -5991,8 +5638,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(RepairInvalidToHook("add"))
+            .add_hook(streaming_hook.entry())
+            .add_hook(repair_invalid_to_hook("add"))
             .stream()
             .await;
         let mut final_response = None;
@@ -6019,7 +5666,7 @@ mod migrated_tests {
         assert!(
             blocking_hook
                 .shared_events()
-                .contains(&StepEventKind::InvalidToolCall),
+                .contains(&EventKind::InvalidToolCall),
             "the hook must observe the invalid tool call"
         );
         assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
@@ -6052,11 +5699,11 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(CaptureAndRepairInvalidHook {
-            replacement: EchoStringArgs::NAME,
-            args: blocking_args.clone(),
-        })
+        .add_hook(blocking_hook.entry())
+        .add_hook(capture_and_repair_invalid_hook(
+            EchoStringArgs::NAME,
+            blocking_args.clone(),
+        ))
         .run()
         .await
         .expect("blocking scalar repair should succeed");
@@ -6080,11 +5727,11 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(CaptureAndRepairInvalidHook {
-            replacement: EchoStringArgs::NAME,
-            args: streaming_args.clone(),
-        })
+        .add_hook(streaming_hook.entry())
+        .add_hook(capture_and_repair_invalid_hook(
+            EchoStringArgs::NAME,
+            streaming_args.clone(),
+        ))
         .stream()
         .await;
         let mut final_response = None;
@@ -6216,7 +5863,7 @@ mod migrated_tests {
     struct ParityOutcome {
         output: String,
         messages: Vec<Message>,
-        shared_events: Vec<StepEventKind>,
+        shared_events: Vec<EventKind>,
         tool_results: Vec<String>,
     }
 
@@ -6229,7 +5876,7 @@ mod migrated_tests {
             .build()
             .runner(prompt)
             .max_turns(8)
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .run()
             .await
             .expect("blocking scenario should succeed");
@@ -6255,7 +5902,7 @@ mod migrated_tests {
             .build()
             .runner(prompt)
             .max_turns(8)
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .stream()
             .await;
         let mut final_response = None;
@@ -6366,20 +6013,13 @@ mod migrated_tests {
 
     /// Skips an invalid tool call (synthetic result, no execution); observes
     /// everything else.
-    struct SkipInvalidHook(&'static str);
-
-    impl AgentHook for SkipInvalidHook {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            event: &InvalidToolCallContext,
-        ) -> Option<InvalidToolCallAction> {
-            Some(if let _ = event {
-                InvalidToolCallAction::skip(self.0)
-            } else {
-                InvalidToolCallAction::fail()
-            })
-        }
+    fn skip_invalid_hook(reason: &'static str) -> HookEntry {
+        hook_entry("skip-invalid", move |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip(reason))
+        })
     }
 
     /// An invalid tool call *skipped* by a hook recovers identically under
@@ -6398,8 +6038,8 @@ mod migrated_tests {
             .build()
             .runner("do the thing")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(SkipInvalidHook("tool not permitted"))
+            .add_hook(blocking_hook.entry())
+            .add_hook(skip_invalid_hook("tool not permitted"))
             .run()
             .await
             .expect("blocking run should recover via skip");
@@ -6422,8 +6062,8 @@ mod migrated_tests {
             .build()
             .runner("do the thing")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(SkipInvalidHook("tool not permitted"))
+            .add_hook(streaming_hook.entry())
+            .add_hook(skip_invalid_hook("tool not permitted"))
             .stream()
             .await;
         let mut final_response = None;
@@ -6446,7 +6086,7 @@ mod migrated_tests {
         assert!(
             blocking_hook
                 .shared_events()
-                .contains(&StepEventKind::InvalidToolCall),
+                .contains(&EventKind::InvalidToolCall),
             "the hook must observe the invalid tool call"
         );
 
@@ -6495,8 +6135,8 @@ mod migrated_tests {
             .build()
             .runner("compute")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(RepairInvalidToHook("add"))
+            .add_hook(blocking_hook.entry())
+            .add_hook(repair_invalid_to_hook("add"))
             .run()
             .await
             .expect("blocking run should recover via repair");
@@ -6518,8 +6158,8 @@ mod migrated_tests {
             .build()
             .runner("compute")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(RepairInvalidToHook("add"))
+            .add_hook(streaming_hook.entry())
+            .add_hook(repair_invalid_to_hook("add"))
             .stream()
             .await;
         while stream.next().await.is_some() {}
@@ -6530,22 +6170,22 @@ mod migrated_tests {
         // Blocking: the recovered turn 1 suppresses `CompletionResponse`; only the
         // plain turn 2 fires it.
         assert_eq!(
-            blocking_hook.count(StepEventKind::CompletionResponse),
+            blocking_hook.count(EventKind::CompletionResponse),
             1,
             "the recovered turn must not fire CompletionResponse"
         );
         // Streaming: the recovered turn 1 must likewise suppress
         // `StreamResponseFinish` (without the fix this is 2).
         assert_eq!(
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
+            streaming_hook.count(EventKind::StreamResponseFinish),
             1,
             "the recovered turn must not fire StreamResponseFinish"
         );
         // Stated as parity: the count of un-suppressed response-finish events is
         // the same across drivers.
         assert_eq!(
-            blocking_hook.count(StepEventKind::CompletionResponse),
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
+            blocking_hook.count(EventKind::CompletionResponse),
+            streaming_hook.count(EventKind::StreamResponseFinish),
         );
 
         // The normalized per-turn `ModelTurnFinished` is suppressed on the
@@ -6555,20 +6195,20 @@ mod migrated_tests {
         // this would be 2, and a per-turn accounting hook would double-count the
         // recovered turn.
         assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(EventKind::ModelTurnFinished),
             1,
             "the recovered turn must not fire ModelTurnFinished"
         );
         assert_eq!(
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            streaming_hook.count(EventKind::ModelTurnFinished),
             1,
             "the recovered turn must not fire ModelTurnFinished on the streaming surface either"
         );
         // Parity: the normalized per-turn event fires the same number of times on
         // both drivers even when a turn is recovered.
         assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(EventKind::ModelTurnFinished),
+            streaming_hook.count(EventKind::ModelTurnFinished),
         );
     }
 
@@ -6586,43 +6226,40 @@ mod migrated_tests {
         // the agent's hook stack and `add_hook` pushes on top, so both must fire.
         AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
-            .add_hook(agent_hook.clone())
+            .add_hook(agent_hook.entry())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(runner_hook.clone())
+            .add_hook(runner_hook.entry())
             .run()
             .await
             .expect("run should succeed");
 
         assert!(
-            agent_hook.count(StepEventKind::CompletionCall) >= 1,
+            agent_hook.count(EventKind::CompletionCall) >= 1,
             "the agent-default hook must still observe the run after a runner-level add_hook"
         );
         assert!(
-            runner_hook.count(StepEventKind::CompletionCall) >= 1,
+            runner_hook.count(EventKind::CompletionCall) >= 1,
             "the runner-level hook must also observe the run"
         );
         // Both saw the same number of completion calls — the runner-level hook
         // appended to the agent stack; it did not replace it.
         assert_eq!(
-            agent_hook.count(StepEventKind::CompletionCall),
-            runner_hook.count(StepEventKind::CompletionCall),
+            agent_hook.count(EventKind::CompletionCall),
+            runner_hook.count(EventKind::CompletionCall),
             "add_hook appends (both hooks observe every turn); it does not replace"
         );
     }
 
     /// Skips a *valid* tool call before execution; observes everything else.
-    struct SkipToolCallHook(&'static str);
-
-    impl AgentHook for SkipToolCallHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { .. } = event {
-                ToolCallAction::skip(self.0)
-            } else {
-                ToolCallAction::run()
-            }
-        }
+    fn skip_tool_call_hook(reason: &'static str) -> HookEntry {
+        hook_entry("skip-tool-call", move |event| {
+            let HookEvent::ToolCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ToolCall(ToolCallAction::skip(reason))
+        })
     }
 
     /// A hook that skips a *valid* tool call (`ToolCallAction::Skip` on `ToolCall`, the
@@ -6645,8 +6282,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(SkipToolCallHook("skipped by policy"))
+            .add_hook(blocking_hook.entry())
+            .add_hook(skip_tool_call_hook("skipped by policy"))
             .run()
             .await
             .expect("blocking run should succeed with a skipped tool call");
@@ -6662,8 +6299,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(SkipToolCallHook("skipped by policy"))
+            .add_hook(streaming_hook.entry())
+            .add_hook(skip_tool_call_hook("skipped by policy"))
             .stream()
             .await;
         let mut final_response = None;
@@ -6712,16 +6349,13 @@ mod migrated_tests {
     /// A hook that rewrites a valid tool call's arguments (`ToolCallAction::Rewrite` on
     /// `ToolCall`) so the tool executes with the replacement instead of what the
     /// model emitted.
-    struct RewriteToolArgsHook(serde_json::Value);
-
-    impl AgentHook for RewriteToolArgsHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            if let ToolCall { .. } = event {
-                ToolCallAction::rewrite(self.0.clone())
-            } else {
-                ToolCallAction::run()
-            }
-        }
+    fn rewrite_tool_args_hook(replacement: serde_json::Value) -> HookEntry {
+        hook_entry("rewrite-tool-args", move |event| {
+            let HookEvent::ToolCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ToolCall(ToolCallAction::rewrite(replacement.clone()))
+        })
     }
 
     struct EchoStringArgs;
@@ -6747,12 +6381,7 @@ mod migrated_tests {
 
     #[test]
     fn one_hook_instance_attaches_to_distinct_agents() {
-        #[derive(Clone)]
-        struct ProviderIndependentHook;
-
-        impl AgentHook for ProviderIndependentHook {}
-
-        let hook = ProviderIndependentHook;
+        let hook = hook_entry("provider-independent", |_| HookDecision::Continue);
         let _mock_agent = AgentBuilder::new(MockCompletionModel::default().provider())
             .add_hook(hook.clone())
             .build();
@@ -6802,8 +6431,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(RewriteToolArgsHook(replacement.clone()))
+            .add_hook(blocking_hook.entry())
+            .add_hook(rewrite_tool_args_hook(replacement.clone()))
             .run()
             .await
             .expect("blocking run should succeed with rewritten tool arguments");
@@ -6819,8 +6448,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(RewriteToolArgsHook(replacement))
+            .add_hook(streaming_hook.entry())
+            .add_hook(rewrite_tool_args_hook(replacement))
             .stream()
             .await;
         let mut final_response = None;
@@ -6865,7 +6494,7 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(blocking_hook.clone())
+        .add_hook(blocking_hook.entry())
         .run()
         .await
         .expect("blocking string call should execute");
@@ -6883,7 +6512,7 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(streaming_hook.clone())
+        .add_hook(streaming_hook.entry())
         .stream()
         .await;
         let mut final_output = None;
@@ -6922,8 +6551,8 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(blocking_hook.clone())
-        .add_hook(RewriteToolArgsHook(replacement.clone()))
+        .add_hook(blocking_hook.entry())
+        .add_hook(rewrite_tool_args_hook(replacement.clone()))
         .run()
         .await
         .expect("blocking string rewrite should execute");
@@ -6941,8 +6570,8 @@ mod migrated_tests {
         .build()
         .runner("echo a string")
         .max_turns(3)
-        .add_hook(streaming_hook.clone())
-        .add_hook(RewriteToolArgsHook(replacement))
+        .add_hook(streaming_hook.entry())
+        .add_hook(rewrite_tool_args_hook(replacement))
         .stream()
         .await;
         let mut final_output = None;
@@ -6963,20 +6592,13 @@ mod migrated_tests {
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) so the model sees the replacement instead of the tool's
     /// actual output.
-    struct RewriteToolResultHook(&'static str);
-
-    impl AgentHook for RewriteToolResultHook {
-        async fn on_tool_result(
-            &self,
-            _ctx: &HookContext,
-            event: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            if let ToolResultEvent { .. } = event {
-                ToolResultAction::rewrite(self.0)
-            } else {
-                ToolResultAction::keep()
-            }
-        }
+    fn rewrite_tool_result_hook(replacement: &'static str) -> HookEntry {
+        hook_entry("rewrite-tool-result", move |event| {
+            let HookEvent::ToolResult { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ToolResult(ToolResultAction::rewrite(replacement))
+        })
     }
 
     /// `ToolResultAction::Rewrite` resolves to a `Replace` tool-result decision carrying
@@ -7014,8 +6636,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(blocking_hook.clone())
-            .add_hook(RewriteToolResultHook("redacted-result"))
+            .add_hook(blocking_hook.entry())
+            .add_hook(rewrite_tool_result_hook("redacted-result"))
             .run()
             .await
             .expect("blocking run should succeed with a rewritten tool result");
@@ -7031,8 +6653,8 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(streaming_hook.clone())
-            .add_hook(RewriteToolResultHook("redacted-result"))
+            .add_hook(streaming_hook.entry())
+            .add_hook(rewrite_tool_result_hook("redacted-result"))
             .stream()
             .await;
         let mut final_response = None;
@@ -7094,7 +6716,7 @@ mod migrated_tests {
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
-            .add_hook(RewriteToolResultHook(IMAGE_JSON))
+            .add_hook(rewrite_tool_result_hook(IMAGE_JSON))
             .run()
             .await
             .expect("run should succeed with a JSON-shaped rewritten result");
@@ -7110,28 +6732,21 @@ mod migrated_tests {
     /// A hook that patches the model request for the turn (`CompletionCallAction::Patch`
     /// on `CompletionCall`): forces tool_choice + temperature, narrows the
     /// advertised tools to an allow-list, and injects a passthrough param.
-    struct PatchRequestHook;
-
-    impl AgentHook for PatchRequestHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(
-                    RequestPatch::new()
-                        .preamble(OVERRIDE_PREAMBLE)
-                        .temperature(0.25)
-                        .max_tokens(OVERRIDE_MAX_TOKENS)
-                        .tool_choice(ToolChoice::Required)
-                        .active_tools(["add"])
-                        .additional_params(json!({"injected": true})),
-                )
-            } else {
-                CompletionCallAction::continue_run()
-            }
-        }
+    fn patch_request_hook() -> HookEntry {
+        hook_entry("patch-request", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new()
+                    .preamble(OVERRIDE_PREAMBLE)
+                    .temperature(0.25)
+                    .max_tokens(OVERRIDE_MAX_TOKENS)
+                    .tool_choice(ToolChoice::Required)
+                    .active_tools(["add"])
+                    .additional_params(json!({"injected": true})),
+            ))
+        })
     }
 
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
@@ -7201,7 +6816,7 @@ mod migrated_tests {
             .temperature(0.9)
             .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
-            .add_hook(PatchRequestHook)
+            .add_hook(patch_request_hook())
             .build()
             .runner("go")
             .replace_additional_params(json!({"runner": "keep", "injected": false}))
@@ -7225,7 +6840,7 @@ mod migrated_tests {
             .temperature(0.9)
             .max_tokens(64)
             .additional_params(json!({"baseline": "keep"}))
-            .add_hook(PatchRequestHook)
+            .add_hook(patch_request_hook())
             .build()
             .runner("go")
             .replace_additional_params(json!({"runner": "keep", "injected": false}))
@@ -7251,46 +6866,31 @@ mod migrated_tests {
     }
 
     /// Injects one extra context document on every completion call.
-    struct ExtraContextHook {
-        id: &'static str,
-        text: &'static str,
-    }
-
-    impl AgentHook for ExtraContextHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(
-                    RequestPatch::new().context(hook_doc(self.id, self.text)),
-                )
-            } else {
-                CompletionCallAction::continue_run()
-            }
-        }
+    fn extra_context_hook(id: &'static str, text: &'static str) -> HookEntry {
+        hook_entry("extra-context", move |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().context(hook_doc(id, text)),
+            ))
+        })
     }
 
     /// Injects an extra context document only on the first turn (to prove
     /// per-turn, non-sticky behavior).
-    struct ExtraContextTurnOneHook;
-
-    impl AgentHook for ExtraContextTurnOneHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if let CompletionCallEvent { turn, .. } = event
-                && turn == 1
-            {
-                return CompletionCallAction::patch(
+    fn extra_context_turn_one_hook() -> HookEntry {
+        hook_entry("extra-context-turn-one", |event| {
+            let HookEvent::BeforeModelCall { turn, .. } = event else {
+                return HookDecision::Continue;
+            };
+            if turn == 1 {
+                return HookDecision::CompletionCall(CompletionCallAction::patch(
                     RequestPatch::new().context(hook_doc("turn-one", "only turn 1")),
-                );
+                ));
             }
-            CompletionCallAction::continue_run()
-        }
+            HookDecision::Continue
+        })
     }
 
     /// The passive-RAG hook recipe under test: embed the query, search a
@@ -7327,62 +6927,76 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for RagContextHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            let query = event.prompt.rag_text().or_else(|| {
-                event
-                    .history
-                    .iter()
-                    .rev()
-                    .find_map(|message| message.rag_text())
-            });
-            let Some(query) = query else {
-                return CompletionCallAction::continue_run();
-            };
-            self.queries
-                .lock()
-                .expect("context query recorder lock")
-                .push((query.clone(), self.samples));
+    impl RagContextHook {
+        /// The retrieval callback: an async entry (it awaits embedding + search).
+        fn entry(self) -> HookEntry {
+            let hook = Arc::new(self);
+            HookEntry::new("rag-context", move |event| {
+                let hook = hook.clone();
+                Box::pin(async move {
+                    let HookEvent::BeforeModelCall {
+                        prompt, history, ..
+                    } = event
+                    else {
+                        return HookDecision::Continue;
+                    };
+                    let query = prompt
+                        .rag_text()
+                        .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+                    let Some(query) = query else {
+                        return HookDecision::Continue;
+                    };
+                    hook.queries
+                        .lock()
+                        .expect("context query recorder lock")
+                        .push((query.clone(), hook.samples));
 
-            let embedded = match crate::provider::embed(&self.embedder, &self.rt, vec![query]).await
-            {
-                Ok(response) => response.embeddings.into_iter().next(),
-                Err(error) => {
-                    return CompletionCallAction::stop(format!(
-                        "failed to retrieve dynamic context: {error}"
-                    ));
-                }
-            };
-            let Some(embedded) = embedded else {
-                return CompletionCallAction::stop(
-                    "failed to retrieve dynamic context: empty embedding response",
-                );
-            };
+                    let embedded =
+                        match crate::provider::embed(&hook.embedder, &hook.rt, vec![query]).await {
+                            Ok(response) => response.embeddings.into_iter().next(),
+                            Err(error) => {
+                                return HookDecision::CompletionCall(CompletionCallAction::stop(
+                                    format!("failed to retrieve dynamic context: {error}"),
+                                ));
+                            }
+                        };
+                    let Some(embedded) = embedded else {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "failed to retrieve dynamic context: empty embedding response",
+                        ));
+                    };
 
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(self.samples)
-                .build();
-            match self.store.top_n(request).await {
-                Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                    hits.into_iter().map(|hit| {
-                        crate::completion::Document {
-                            id: hit.id,
-                            text: serde_json::to_string_pretty(&hit.payload)
-                                .unwrap_or_else(|_| hit.payload.to_string()),
-                            additional_props: Default::default(),
-                        }
-                    }),
-                )),
-                Err(error) => CompletionCallAction::stop(format!(
-                    "failed to retrieve dynamic context: {error}"
-                )),
-            }
+                    let request = VectorSearchRequest::builder()
+                        .query(embedded)
+                        .samples(hook.samples)
+                        .build();
+                    match hook.store.top_n(request).await {
+                        Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                            RequestPatch::new().extra_context(hits.into_iter().map(|hit| {
+                                crate::completion::Document {
+                                    id: hit.id,
+                                    text: serde_json::to_string_pretty(&hit.payload)
+                                        .unwrap_or_else(|_| hit.payload.to_string()),
+                                    additional_props: Default::default(),
+                                }
+                            })),
+                        )),
+                        Err(error) => HookDecision::CompletionCall(CompletionCallAction::stop(
+                            format!("failed to retrieve dynamic context: {error}"),
+                        )),
+                    }
+                })
+            })
         }
+    }
+
+    /// [`RagContextHook::with_source`] as a ready-to-register entry.
+    fn rag_source_entry(
+        id: &str,
+        samples: u64,
+        queries: Arc<Mutex<Vec<(String, u64)>>>,
+    ) -> HookEntry {
+        RagContextHook::with_source(id, samples, queries).entry()
     }
 
     /// A RAG hook whose embedder script is empty, so retrieval fails before
@@ -7434,10 +7048,7 @@ mod migrated_tests {
         let blocking_probe = blocking_model.clone();
         AgentBuilder::new(blocking_model.provider())
             .context("static context text")
-            .add_hook(ExtraContextHook {
-                id: "hook-doc",
-                text: "injected",
-            })
+            .add_hook(extra_context_hook("hook-doc", "injected"))
             .build()
             .runner("go")
             .run()
@@ -7450,10 +7061,7 @@ mod migrated_tests {
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model.provider())
             .context("static context text")
-            .add_hook(ExtraContextHook {
-                id: "hook-doc",
-                text: "injected",
-            })
+            .add_hook(extra_context_hook("hook-doc", "injected"))
             .build()
             .runner("go")
             .stream()
@@ -7470,14 +7078,8 @@ mod migrated_tests {
         let model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let probe = model.clone();
         AgentBuilder::new(model.provider())
-            .add_hook(ExtraContextHook {
-                id: "first",
-                text: "1",
-            })
-            .add_hook(ExtraContextHook {
-                id: "second",
-                text: "2",
-            })
+            .add_hook(extra_context_hook("first", "1"))
+            .add_hook(extra_context_hook("second", "2"))
             .build()
             .runner("go")
             .run()
@@ -7515,11 +7117,7 @@ mod migrated_tests {
         let blocking_probe = blocking_model.clone();
         AgentBuilder::new(blocking_model.provider())
             .context("static context")
-            .add_hook(RagContextHook::with_source(
-                "blocking",
-                2,
-                blocking_queries.clone(),
-            ))
+            .add_hook(rag_source_entry("blocking", 2, blocking_queries.clone()))
             .build()
             .runner("current blocking query")
             .history(vec![Message::user("ignored history query")])
@@ -7537,11 +7135,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model.provider())
-            .add_hook(RagContextHook::with_source(
-                "streaming",
-                3,
-                streaming_queries.clone(),
-            ))
+            .add_hook(rag_source_entry("streaming", 3, streaming_queries.clone()))
             .build()
             .runner(Message::User {
                 content: OneOrMany::one(UserContent::image_url(
@@ -7580,20 +7174,11 @@ mod migrated_tests {
         let probe = model.clone();
         AgentBuilder::new(model.provider())
             .context("static")
-            .add_hook(ExtraContextHook {
-                id: "before",
-                text: "before dynamic context",
-            })
-            .add_hook(RagContextHook::with_source("first", 1, queries.clone()))
-            .add_hook(ExtraContextHook {
-                id: "between",
-                text: "between dynamic contexts",
-            })
-            .add_hook(RagContextHook::with_source("second", 2, queries.clone()))
-            .add_hook(ExtraContextHook {
-                id: "after",
-                text: "after dynamic context",
-            })
+            .add_hook(extra_context_hook("before", "before dynamic context"))
+            .add_hook(rag_source_entry("first", 1, queries.clone()))
+            .add_hook(extra_context_hook("between", "between dynamic contexts"))
+            .add_hook(rag_source_entry("second", 2, queries.clone()))
+            .add_hook(extra_context_hook("after", "after dynamic context"))
             .build()
             .runner("query")
             .run()
@@ -7624,12 +7209,8 @@ mod migrated_tests {
         let error = AgentBuilder::new(
             MockCompletionModel::from_turns([MockTurn::text("unused")]).provider(),
         )
-        .add_hook(TerminateOn(StepEventKind::CompletionCall))
-        .add_hook(RagContextHook::with_source(
-            "skipped",
-            1,
-            skipped_queries.clone(),
-        ))
+        .add_hook(terminate_on(EventKind::CompletionCall))
+        .add_hook(rag_source_entry("skipped", 1, skipped_queries.clone()))
         .build()
         .runner("query")
         .run()
@@ -7644,7 +7225,7 @@ mod migrated_tests {
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("unused")]);
         let blocking_probe = blocking_model.clone();
         let error = AgentBuilder::new(blocking_model.provider())
-            .add_hook(failing_rag_hook())
+            .add_hook(failing_rag_hook().entry())
             .build()
             .runner("retrieve this")
             .run()
@@ -7661,7 +7242,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("unused")]);
         let streaming_probe = streaming_model.clone();
         let mut stream = AgentBuilder::new(streaming_model.provider())
-            .add_hook(failing_rag_hook())
+            .add_hook(failing_rag_hook().entry())
             .build()
             .runner("retrieve this")
             .stream()
@@ -7705,7 +7286,7 @@ mod migrated_tests {
         let probe = blocking_probe.clone();
         AgentBuilder::new(blocking_probe.provider())
             .tool(MockAddTool)
-            .add_hook(ExtraContextTurnOneHook)
+            .add_hook(extra_context_turn_one_hook())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -7718,7 +7299,7 @@ mod migrated_tests {
         let stream_probe = streaming.clone();
         let mut stream = AgentBuilder::new(streaming.provider())
             .tool(MockAddTool)
-            .add_hook(ExtraContextTurnOneHook)
+            .add_hook(extra_context_turn_one_hook())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -7736,21 +7317,15 @@ mod migrated_tests {
     async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         const SENTINEL: &str = "COMPACTED-HISTORY-SENTINEL";
 
-        struct HistoryOverrideHook;
-        impl AgentHook for HistoryOverrideHook {
-            async fn on_completion_call(
-                &self,
-                _ctx: &HookContext,
-                event: CompletionCallEvent<'_>,
-            ) -> CompletionCallAction {
-                if let CompletionCallEvent { .. } = event {
-                    CompletionCallAction::patch(
-                        RequestPatch::new().history([Message::user(SENTINEL)]),
-                    )
-                } else {
-                    CompletionCallAction::continue_run()
-                }
-            }
+        fn history_override_hook() -> HookEntry {
+            hook_entry("history-override", |event| {
+                let HookEvent::BeforeModelCall { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().history([Message::user(SENTINEL)]),
+                ))
+            })
         }
 
         fn request_has_sentinel(req: &crate::completion::CompletionRequest) -> bool {
@@ -7774,7 +7349,7 @@ mod migrated_tests {
         let blocking_model = MockCompletionModel::from_turns([MockTurn::text("done")]);
         let blocking_probe = blocking_model.clone();
         let blocking = AgentBuilder::new(blocking_model.provider())
-            .add_hook(HistoryOverrideHook)
+            .add_hook(history_override_hook())
             .build()
             .runner("real prompt")
             .run()
@@ -7793,7 +7368,7 @@ mod migrated_tests {
             MockCompletionModel::from_stream_turns([one_text_stream_turn("done")]);
         let streaming_probe = streaming_model.clone();
         let stream = AgentBuilder::new(streaming_model.provider())
-            .add_hook(HistoryOverrideHook)
+            .add_hook(history_override_hook())
             .build()
             .runner("real prompt")
             .stream()
@@ -7817,7 +7392,7 @@ mod migrated_tests {
         let blocking_hook = RecordingHook::default();
         AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
-            .add_hook(blocking_hook.clone())
+            .add_hook(blocking_hook.entry())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -7825,7 +7400,7 @@ mod migrated_tests {
             .await
             .expect("blocking run should succeed");
         assert_eq!(
-            blocking_hook.count(StepEventKind::ModelTurnFinished),
+            blocking_hook.count(EventKind::ModelTurnFinished),
             2,
             "one ModelTurnFinished per accepted turn (tool turn + text turn)"
         );
@@ -7833,7 +7408,7 @@ mod migrated_tests {
         let streaming_hook = RecordingHook::default();
         let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
-            .add_hook(streaming_hook.clone())
+            .add_hook(streaming_hook.entry())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -7843,7 +7418,7 @@ mod migrated_tests {
             let _ = item.map_err(|err| panic!("stream item errored: {err}"));
         }
         assert_eq!(
-            streaming_hook.count(StepEventKind::ModelTurnFinished),
+            streaming_hook.count(EventKind::ModelTurnFinished),
             2,
             "ModelTurnFinished fires once per turn on the streaming surface too"
         );
@@ -7851,7 +7426,7 @@ mod migrated_tests {
         // (text) turn fires StreamResponseFinish — proving ModelTurnFinished
         // covers the gap.
         assert_eq!(
-            streaming_hook.count(StepEventKind::StreamResponseFinish),
+            streaming_hook.count(EventKind::StreamResponseFinish),
             1,
             "the tool-only turn fires no StreamResponseFinish"
         );
@@ -7867,7 +7442,7 @@ mod migrated_tests {
             ]])
             .provider(),
         )
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("reason")
         .stream()
@@ -7877,12 +7452,12 @@ mod migrated_tests {
         }
 
         assert_eq!(
-            hook.count(StepEventKind::StreamResponseFinish),
+            hook.count(EventKind::StreamResponseFinish),
             0,
             "reasoning-only turns must not fire StreamResponseFinish"
         );
         assert_eq!(
-            hook.count(StepEventKind::ModelTurnFinished),
+            hook.count(EventKind::ModelTurnFinished),
             1,
             "the accepted reasoning-only turn still fires ModelTurnFinished"
         );
@@ -7894,27 +7469,27 @@ mod migrated_tests {
         kinds: Arc<Mutex<Option<Vec<&'static str>>>>,
     }
 
-    impl AgentHook for CaptureFirstTurnContent {
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if let ModelTurnFinished { turn, content, .. } = event
-                && turn == 1
-            {
-                let kinds = content
-                    .iter()
-                    .map(|c| match c {
-                        AssistantContent::Reasoning(_) => "reasoning",
-                        AssistantContent::Text(_) => "text",
-                        AssistantContent::ToolCall(_) => "tool_call",
-                        _ => "other",
-                    })
-                    .collect();
-                *self.kinds.lock().expect("kinds") = Some(kinds);
-            }
-            ModelTurnAction::continue_run()
+    impl CaptureFirstTurnContent {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("capture-first-turn-content", move |event| {
+                let HookEvent::ModelTurnFinished { turn, content, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if turn == 1 {
+                    let kinds = content
+                        .iter()
+                        .map(|c| match c {
+                            AssistantContent::Reasoning(_) => "reasoning",
+                            AssistantContent::Text(_) => "text",
+                            AssistantContent::ToolCall(_) => "tool_call",
+                            _ => "other",
+                        })
+                        .collect();
+                    *hook.kinds.lock().expect("kinds") = Some(kinds);
+                }
+                HookDecision::Continue
+            })
         }
     }
 
@@ -7941,7 +7516,7 @@ mod migrated_tests {
         let hook = CaptureFirstTurnContent::default();
         let stream = AgentBuilder::new(model.provider())
             .tool(MockAddTool)
-            .add_hook(hook.clone())
+            .add_hook(hook.entry())
             .build()
             .runner("go")
             .max_turns(3)
@@ -7962,41 +7537,31 @@ mod migrated_tests {
     #[tokio::test]
     async fn chained_rewrites_compose_across_hooks() {
         /// Sets one key of the tool arguments, preserving the rest.
-        struct SetArg {
-            key: &'static str,
-            value: i64,
-        }
-        impl AgentHook for SetArg {
-            async fn on_tool_call(
-                &self,
-                _ctx: &HookContext,
-                event: ToolCall<'_>,
-            ) -> ToolCallAction {
-                if let ToolCall { args, .. } = event {
-                    let mut parsed: serde_json::Value =
-                        serde_json::from_str(args).unwrap_or_else(|_| json!({}));
-                    parsed[self.key] = json!(self.value);
-                    ToolCallAction::rewrite(parsed)
-                } else {
-                    ToolCallAction::run()
+        fn set_arg(key: &'static str, value: i64) -> HookEntry {
+            hook_entry("set-arg", move |event| {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let mut parsed = call.function.arguments;
+                if !parsed.is_object() {
+                    parsed = json!({});
                 }
-            }
+                parsed[key] = json!(value);
+                HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
+            })
         }
 
         /// Wraps the tool result in `label(...)`.
-        struct WrapResult(&'static str);
-        impl AgentHook for WrapResult {
-            async fn on_tool_result(
-                &self,
-                _ctx: &HookContext,
-                event: ToolResultEvent<'_>,
-            ) -> ToolResultAction {
-                if let ToolResultEvent { presentation, .. } = event {
-                    ToolResultAction::rewrite(format!("{}({})", self.0, presentation.render()))
-                } else {
-                    ToolResultAction::keep()
-                }
-            }
+        fn wrap_result(label: &'static str) -> HookEntry {
+            hook_entry("wrap-result", move |event| {
+                let HookEvent::ToolResult { presentation, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                HookDecision::ToolResult(ToolResultAction::rewrite(format!(
+                    "{label}({})",
+                    presentation.render()
+                )))
+            })
         }
 
         // The model asks add(2, 3). SetArg{y:40} then SetArg{x:100} chain, so the
@@ -8006,17 +7571,11 @@ mod migrated_tests {
         let recorder = RecordingHook::default();
         let blocking = AgentBuilder::new(blocking_model().provider())
             .tool(MockAddTool)
-            .add_hook(SetArg {
-                key: "y",
-                value: 40,
-            })
-            .add_hook(SetArg {
-                key: "x",
-                value: 100,
-            })
-            .add_hook(WrapResult("A"))
-            .add_hook(WrapResult("B"))
-            .add_hook(recorder.clone())
+            .add_hook(set_arg("y", 40))
+            .add_hook(set_arg("x", 100))
+            .add_hook(wrap_result("A"))
+            .add_hook(wrap_result("B"))
+            .add_hook(recorder.entry())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -8034,17 +7593,11 @@ mod migrated_tests {
         let stream_recorder = RecordingHook::default();
         let mut stream = AgentBuilder::new(streaming_model().provider())
             .tool(MockAddTool)
-            .add_hook(SetArg {
-                key: "y",
-                value: 40,
-            })
-            .add_hook(SetArg {
-                key: "x",
-                value: 100,
-            })
-            .add_hook(WrapResult("A"))
-            .add_hook(WrapResult("B"))
-            .add_hook(stream_recorder.clone())
+            .add_hook(set_arg("y", 40))
+            .add_hook(set_arg("x", 100))
+            .add_hook(wrap_result("A"))
+            .add_hook(wrap_result("B"))
+            .add_hook(stream_recorder.entry())
             .build()
             .runner("add 2 and 3")
             .max_turns(3)
@@ -8152,20 +7705,15 @@ mod migrated_tests {
 
     /// Narrows the advertised tools to `add` for the turn, filtering out the real
     /// `final_result` tool.
-    struct ActiveToolsAddOnly;
-
-    impl AgentHook for ActiveToolsAddOnly {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if let CompletionCallEvent { .. } = event {
-                CompletionCallAction::patch(RequestPatch::new().active_tools(["add"]))
-            } else {
-                CompletionCallAction::continue_run()
-            }
-        }
+    fn active_tools_add_only() -> HookEntry {
+        hook_entry("active-tools-add-only", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(["add"]),
+            ))
+        })
     }
 
     /// Regression guard: a per-turn `active_tools` allow-list that filters out a
@@ -8194,7 +7742,7 @@ mod migrated_tests {
             .tool(FinalResultTool)
             .output_schema::<Answer>()
             .output_mode(OutputMode::Tool)
-            .add_hook(ActiveToolsAddOnly)
+            .add_hook(active_tools_add_only())
             .build()
             .runner("go")
             .max_turns(2)
@@ -8237,20 +7785,20 @@ mod migrated_tests {
         saw_output_tool_call: Arc<Mutex<bool>>,
     }
 
-    impl AgentHook for CaptureOutputToolInModelTurn {
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if let ModelTurnFinished { content, .. } = event
-                && content.iter().any(|c| {
+    impl CaptureOutputToolInModelTurn {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("capture-output-tool", move |event| {
+                let HookEvent::ModelTurnFinished { content, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                if content.iter().any(|c| {
                     matches!(c, AssistantContent::ToolCall(tc) if tc.function.name == "final_result")
-                })
-            {
-                *self.saw_output_tool_call.lock().expect("lock") = true;
-            }
-            ModelTurnAction::continue_run()
+                }) {
+                    *hook.saw_output_tool_call.lock().expect("lock") = true;
+                }
+                HookDecision::Continue
+            })
         }
     }
 
@@ -8273,7 +7821,7 @@ mod migrated_tests {
         )
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
-        .add_hook(hook.clone())
+        .add_hook(hook.entry())
         .build()
         .runner("go")
         .max_turns(2)
@@ -8301,7 +7849,7 @@ mod migrated_tests {
         )
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
-        .add_hook(s_hook.clone())
+        .add_hook(s_hook.entry())
         .build()
         .runner("go")
         .max_turns(2)
@@ -8405,28 +7953,30 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for HumanApprovalHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            let ToolCall {
-                tool_name, args, ..
-            } = event
-            else {
-                return ToolCallAction::run();
-            };
-            self.reviewed
-                .lock()
-                .unwrap()
-                .push(format!("{tool_name}({args})"));
-            let decision = self.decisions.lock().unwrap().pop_front();
-            match decision {
-                Some(Decision::Approve) => ToolCallAction::run(),
-                Some(Decision::Deny(reason)) => ToolCallAction::skip(reason),
-                Some(Decision::Edit(args)) => ToolCallAction::rewrite(args),
-                Some(Decision::Abort(reason)) => ToolCallAction::stop(reason),
-                // Fail closed if the script is exhausted (it shouldn't be) — deny
-                // rather than silently approve, matching the example's contract.
-                None => ToolCallAction::skip("denied: no scripted decision (fail-closed)"),
-            }
+    impl HumanApprovalHook {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("human-approval", move |event| {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let tool_name = &call.function.name;
+                let args = &call.function.arguments;
+                hook.reviewed
+                    .lock()
+                    .unwrap()
+                    .push(format!("{tool_name}({args})"));
+                let decision = hook.decisions.lock().unwrap().pop_front();
+                HookDecision::ToolCall(match decision {
+                    Some(Decision::Approve) => ToolCallAction::run(),
+                    Some(Decision::Deny(reason)) => ToolCallAction::skip(reason),
+                    Some(Decision::Edit(args)) => ToolCallAction::rewrite(args),
+                    Some(Decision::Abort(reason)) => ToolCallAction::stop(reason),
+                    // Fail closed if the script is exhausted (it shouldn't be) — deny
+                    // rather than silently approve, matching the example's contract.
+                    None => ToolCallAction::skip("denied: no scripted decision (fail-closed)"),
+                })
+            })
         }
     }
 
@@ -8464,8 +8014,8 @@ mod migrated_tests {
             .build()
             .runner("carry out the plan")
             .max_turns(3)
-            .add_hook(blocking_recorder.clone())
-            .add_hook(blocking_approver.clone())
+            .add_hook(blocking_recorder.entry())
+            .add_hook(blocking_approver.entry())
             .run()
             .await
             .expect("blocking HITL run should succeed");
@@ -8482,8 +8032,8 @@ mod migrated_tests {
             .build()
             .runner("carry out the plan")
             .max_turns(3)
-            .add_hook(streaming_recorder.clone())
-            .add_hook(streaming_approver.clone())
+            .add_hook(streaming_recorder.entry())
+            .add_hook(streaming_approver.entry())
             .stream()
             .await;
         let mut final_response = None;
@@ -8584,7 +8134,7 @@ mod migrated_tests {
             .build()
             .runner("do the sensitive thing")
             .max_turns(3)
-            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
+            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]).entry())
             .run()
             .await
             .expect_err("an aborted tool call should terminate the blocking run");
@@ -8605,7 +8155,7 @@ mod migrated_tests {
             .build()
             .runner("do the sensitive thing")
             .max_turns(3)
-            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
+            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]).entry())
             .stream()
             .await;
         let mut stream_error = None;
@@ -8652,29 +8202,33 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for PolicyHook {
-        async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-            let ToolCall { tool_name, .. } = event else {
-                return ToolCallAction::run();
-            };
-            let cached = self.cache.lock().unwrap().get(tool_name).copied();
-            let approved = match cached {
-                Some(decision) => decision, // sticky: reuse without re-evaluating
-                None => {
-                    self.evaluated.lock().unwrap().push(tool_name.to_string());
-                    let decision = self.auto_approve.contains(tool_name);
-                    self.cache
-                        .lock()
-                        .unwrap()
-                        .insert(tool_name.to_string(), decision);
-                    decision
-                }
-            };
-            if approved {
-                ToolCallAction::run()
-            } else {
-                ToolCallAction::skip(format!("denied by policy: `{tool_name}` not allowed"))
-            }
+    impl PolicyHook {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("policy", move |event| {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let tool_name = call.function.name.as_str();
+                let cached = hook.cache.lock().unwrap().get(tool_name).copied();
+                let approved = match cached {
+                    Some(decision) => decision, // sticky: reuse without re-evaluating
+                    None => {
+                        hook.evaluated.lock().unwrap().push(tool_name.to_string());
+                        let decision = hook.auto_approve.contains(tool_name);
+                        hook.cache
+                            .lock()
+                            .unwrap()
+                            .insert(tool_name.to_string(), decision);
+                        decision
+                    }
+                };
+                HookDecision::ToolCall(if approved {
+                    ToolCallAction::run()
+                } else {
+                    ToolCallAction::skip(format!("denied by policy: `{tool_name}` not allowed"))
+                })
+            })
         }
     }
 
@@ -8707,8 +8261,8 @@ mod migrated_tests {
             .build()
             .runner("go")
             .max_turns(3)
-            .add_hook(recorder.clone())
-            .add_hook(policy.clone())
+            .add_hook(recorder.entry())
+            .add_hook(policy.entry())
             .run()
             .await
             .expect("policy run should succeed");
@@ -8738,25 +8292,10 @@ mod migrated_tests {
         );
     }
 
-    static NEXT_RESPONSE_RETRY_HOOK_ID: AtomicU64 = AtomicU64::new(1);
-
-    #[derive(Clone, Default)]
-    struct ResponseRetryAttempts(HashMap<u64, usize>);
-
-    #[derive(Clone)]
+    #[derive(Clone, Copy)]
     enum TestRetryMode {
         Repeat,
         Feedback(&'static str),
-    }
-
-    /// A policy-owned retry budget. The framework only enforces `max_turns`;
-    /// this hook stores its narrower limit in the run-scoped scratchpad.
-    #[derive(Clone)]
-    struct BoundedResponseRetry {
-        id: u64,
-        rejected_text: &'static str,
-        max_retries: usize,
-        mode: TestRetryMode,
     }
 
     #[derive(Clone, Default)]
@@ -8770,64 +8309,56 @@ mod migrated_tests {
         }
     }
 
-    impl AgentHook for StatefulCompletionPatch {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            let call = self.calls.fetch_add(1, SeqCst);
-            CompletionCallAction::patch(RequestPatch::new().temperature(if call == 0 {
-                0.1
-            } else {
-                0.9
-            }))
+    impl StatefulCompletionPatch {
+        fn entry(&self) -> HookEntry {
+            let hook = self.clone();
+            hook_entry("stateful-completion-patch", move |event| {
+                let HookEvent::BeforeModelCall { .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let call = hook.calls.fetch_add(1, SeqCst);
+                HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().temperature(if call == 0 { 0.1 } else { 0.9 }),
+                ))
+            })
         }
     }
 
-    impl BoundedResponseRetry {
-        fn new(rejected_text: &'static str, max_retries: usize, mode: TestRetryMode) -> Self {
-            Self {
-                id: NEXT_RESPONSE_RETRY_HOOK_ID.fetch_add(1, SeqCst),
-                rejected_text,
-                max_retries,
-                mode,
-            }
-        }
-    }
-
-    impl AgentHook for BoundedResponseRetry {
-        async fn on_model_turn_finished(
-            &self,
-            ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
-                |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
+    /// A policy-owned retry budget: the framework only enforces `max_turns`, so
+    /// the entry keeps its narrower limit in the state it captures.
+    fn bounded_response_retry(
+        rejected_text: &'static str,
+        max_retries: usize,
+        mode: TestRetryMode,
+    ) -> HookEntry {
+        let attempts = Arc::new(Mutex::new(0usize));
+        hook_entry("bounded-response-retry", move |event| {
+            let HookEvent::ModelTurnFinished { content, .. } = event else {
+                return HookDecision::Continue;
+            };
+            let rejected = content.iter().any(
+                |content| matches!(content, AssistantContent::Text(text) if text.text == rejected_text),
             );
             if !rejected {
-                return ModelTurnAction::continue_run();
+                return HookDecision::Continue;
             }
 
-            let attempt = ctx
-                .scratchpad()
-                .update::<ResponseRetryAttempts, _>(|attempts| {
-                    let attempt = attempts.0.entry(self.id).or_default();
-                    *attempt += 1;
-                    *attempt
-                });
-            if attempt > self.max_retries {
-                return ModelTurnAction::stop(format!(
-                    "response retry limit ({}) exceeded",
-                    self.max_retries
-                ));
+            let attempt = {
+                let mut attempts = attempts.lock().expect("retry attempts");
+                *attempts += 1;
+                *attempts
+            };
+            if attempt > max_retries {
+                return HookDecision::ModelTurn(ModelTurnAction::stop(format!(
+                    "response retry limit ({max_retries}) exceeded"
+                )));
             }
 
-            match self.mode {
+            HookDecision::ModelTurn(match mode {
                 TestRetryMode::Repeat => ModelTurnAction::repeat(),
                 TestRetryMode::Feedback(feedback) => ModelTurnAction::retry_with_feedback(feedback),
-            }
-        }
+            })
+        })
     }
 
     fn retry_usage(input_tokens: u64, output_tokens: u64) -> Usage {
@@ -8849,12 +8380,8 @@ mod migrated_tests {
             MockTurn::text("accepted").with_usage(second_usage),
         ]);
         let response = AgentBuilder::new(model.clone().provider())
-            .add_hook(completion_patch.clone())
-            .add_hook(BoundedResponseRetry::new(
-                "rejected",
-                1,
-                TestRetryMode::Repeat,
-            ))
+            .add_hook(completion_patch.entry())
+            .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
             .build()
             .runner("question")
             .max_turns(2)
@@ -8892,7 +8419,7 @@ mod migrated_tests {
             MockTurn::text("accepted"),
         ]);
         let response = AgentBuilder::new(model.clone().provider())
-            .add_hook(BoundedResponseRetry::new(
+            .add_hook(bounded_response_retry(
                 "rejected",
                 1,
                 TestRetryMode::Feedback("try another approach"),
@@ -8938,7 +8465,7 @@ mod migrated_tests {
             MockTurn::text("accepted").with_usage(second_usage),
         ]);
         let response = AgentBuilder::new(model.clone().provider())
-            .add_hook(BoundedResponseRetry::new(
+            .add_hook(bounded_response_retry(
                 "",
                 1,
                 TestRetryMode::Feedback("provide an answer"),
@@ -8990,11 +8517,7 @@ mod migrated_tests {
             ],
         ]);
         let mut stream = AgentBuilder::new(model.clone().provider())
-            .add_hook(BoundedResponseRetry::new(
-                "rejected",
-                1,
-                TestRetryMode::Repeat,
-            ))
+            .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
             .build()
             .runner("question")
             .max_turns(2)
@@ -9045,7 +8568,7 @@ mod migrated_tests {
             ])
             .provider(),
         )
-        .add_hook(BoundedResponseRetry::new(
+        .add_hook(bounded_response_retry(
             "rejected",
             1,
             TestRetryMode::Feedback("correct the answer"),
@@ -9070,7 +8593,7 @@ mod migrated_tests {
             ])
             .provider(),
         )
-        .add_hook(BoundedResponseRetry::new(
+        .add_hook(bounded_response_retry(
             "rejected",
             1,
             TestRetryMode::Feedback("correct the answer"),
@@ -9116,7 +8639,7 @@ mod migrated_tests {
             ],
         ]);
         let mut stream = AgentBuilder::new(model.clone().provider())
-            .add_hook(BoundedResponseRetry::new(
+            .add_hook(bounded_response_retry(
                 "",
                 1,
                 TestRetryMode::Feedback("provide an answer"),
@@ -9182,12 +8705,8 @@ mod migrated_tests {
             ])
             .provider(),
         )
-        .add_hook(blocking_events.clone())
-        .add_hook(BoundedResponseRetry::new(
-            "rejected",
-            1,
-            TestRetryMode::Repeat,
-        ))
+        .add_hook(blocking_events.entry())
+        .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
         .build()
         .runner("question")
         .max_turns(2)
@@ -9209,12 +8728,8 @@ mod migrated_tests {
             ])
             .provider(),
         )
-        .add_hook(streaming_events.clone())
-        .add_hook(BoundedResponseRetry::new(
-            "rejected",
-            1,
-            TestRetryMode::Repeat,
-        ))
+        .add_hook(streaming_events.entry())
+        .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
         .build()
         .runner("question")
         .max_turns(2)
@@ -9234,16 +8749,16 @@ mod migrated_tests {
                 .filter(|event| {
                     matches!(
                         event,
-                        StepEventKind::CompletionCall | StepEventKind::ModelTurnFinished
+                        EventKind::CompletionCall | EventKind::ModelTurnFinished
                     )
                 })
                 .collect::<Vec<_>>()
         };
         let expected = vec![
-            StepEventKind::CompletionCall,
-            StepEventKind::ModelTurnFinished,
-            StepEventKind::CompletionCall,
-            StepEventKind::ModelTurnFinished,
+            EventKind::CompletionCall,
+            EventKind::ModelTurnFinished,
+            EventKind::CompletionCall,
+            EventKind::ModelTurnFinished,
         ];
         assert_eq!(shared_order(&blocking_events), expected);
         assert_eq!(shared_order(&streaming_events), expected);
@@ -9252,26 +8767,26 @@ mod migrated_tests {
         assert_eq!(
             blocking_order,
             vec![
-                StepEventKind::CompletionCall,
-                StepEventKind::CompletionResponse,
-                StepEventKind::ModelTurnFinished,
-                StepEventKind::CompletionCall,
-                StepEventKind::CompletionResponse,
-                StepEventKind::ModelTurnFinished,
+                EventKind::CompletionCall,
+                EventKind::CompletionResponse,
+                EventKind::ModelTurnFinished,
+                EventKind::CompletionCall,
+                EventKind::CompletionResponse,
+                EventKind::ModelTurnFinished,
             ]
         );
         let streaming_order = streaming_events.events.lock().expect("events").clone();
         assert_eq!(
             streaming_order,
             vec![
-                StepEventKind::CompletionCall,
-                StepEventKind::TextDelta,
-                StepEventKind::StreamResponseFinish,
-                StepEventKind::ModelTurnFinished,
-                StepEventKind::CompletionCall,
-                StepEventKind::TextDelta,
-                StepEventKind::StreamResponseFinish,
-                StepEventKind::ModelTurnFinished,
+                EventKind::CompletionCall,
+                EventKind::TextDelta,
+                EventKind::StreamResponseFinish,
+                EventKind::ModelTurnFinished,
+                EventKind::CompletionCall,
+                EventKind::TextDelta,
+                EventKind::StreamResponseFinish,
+                EventKind::ModelTurnFinished,
             ]
         );
     }
@@ -9283,11 +8798,7 @@ mod migrated_tests {
             MockStreamEvent::final_response_with_default_usage(),
         ]]);
         let mut stream = AgentBuilder::new(model.provider())
-            .add_hook(BoundedResponseRetry::new(
-                "rejected",
-                1,
-                TestRetryMode::Repeat,
-            ))
+            .add_hook(bounded_response_retry("rejected", 1, TestRetryMode::Repeat))
             .build()
             .runner("question")
             .max_turns(1)
@@ -9311,16 +8822,13 @@ mod migrated_tests {
         ));
     }
 
-    struct AlwaysRepeatModelTurn;
-
-    impl AgentHook for AlwaysRepeatModelTurn {
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            ModelTurnAction::repeat()
-        }
+    fn always_repeat_model_turn() -> HookEntry {
+        hook_entry("always-repeat-model-turn", |event| {
+            let HookEvent::ModelTurnFinished { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::ModelTurn(ModelTurnAction::repeat())
+        })
     }
 
     #[tokio::test]
@@ -9338,8 +8846,8 @@ mod migrated_tests {
         .tool(CountingAddTool {
             calls: executions.clone(),
         })
-        .add_hook(recorder.clone())
-        .add_hook(AlwaysRepeatModelTurn)
+        .add_hook(recorder.entry())
+        .add_hook(always_repeat_model_turn())
         .build()
         .runner("add")
         .max_turns(2)
@@ -9357,8 +8865,8 @@ mod migrated_tests {
         assert!(reason.contains("tool-bearing model turns"));
         assert!(reason.contains("tool-call hooks"));
         assert_eq!(chat_history, vec![Message::user("add")]);
-        assert_eq!(recorder.count(StepEventKind::ToolCall), 0);
-        assert_eq!(recorder.count(StepEventKind::ToolResult), 0);
+        assert_eq!(recorder.count(EventKind::ToolCall), 0);
+        assert_eq!(recorder.count(EventKind::ToolResult), 0);
         assert_eq!(executions.load(SeqCst), 0);
     }
 
@@ -9378,8 +8886,8 @@ mod migrated_tests {
         .tool(CountingAddTool {
             calls: executions.clone(),
         })
-        .add_hook(recorder.clone())
-        .add_hook(AlwaysRepeatModelTurn)
+        .add_hook(recorder.entry())
+        .add_hook(always_repeat_model_turn())
         .build()
         .runner("add")
         .max_turns(2)
@@ -9426,39 +8934,49 @@ mod migrated_tests {
         assert_eq!(provider_finals, 0);
         assert_eq!(agent_finals, 0);
         assert_eq!(retry_markers, 0);
-        assert_eq!(recorder.count(StepEventKind::ToolCall), 0);
-        assert_eq!(recorder.count(StepEventKind::ToolResult), 0);
+        assert_eq!(recorder.count(EventKind::ToolCall), 0);
+        assert_eq!(recorder.count(EventKind::ToolResult), 0);
         assert_eq!(executions.load(SeqCst), 0);
     }
 
-    #[derive(Clone)]
-    struct BarrierResponseRetry {
-        inner: BoundedResponseRetry,
-        barrier: Arc<Barrier>,
+    /// A per-run retry entry that parks at `barrier` on the first rejected turn,
+    /// so two concurrent runs are guaranteed to be mid-retry simultaneously.
+    fn barrier_response_retry(barrier: Arc<Barrier>) -> HookEntry {
+        let attempts = Arc::new(Mutex::new(0usize));
+        HookEntry::new("barrier-response-retry", move |event| {
+            let barrier = barrier.clone();
+            let attempts = attempts.clone();
+            Box::pin(async move {
+                let HookEvent::ModelTurnFinished { content, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let rejected = content.iter().any(
+                    |content| matches!(content, AssistantContent::Text(text) if text.text == "rejected"),
+                );
+                if !rejected {
+                    return HookDecision::Continue;
+                }
+                barrier.wait().await;
+                let attempt = {
+                    let mut attempts = attempts.lock().expect("retry attempts");
+                    *attempts += 1;
+                    *attempts
+                };
+                HookDecision::ModelTurn(if attempt > 1 {
+                    ModelTurnAction::stop("response retry limit (1) exceeded")
+                } else {
+                    ModelTurnAction::repeat()
+                })
+            })
+        })
     }
 
-    impl AgentHook for BarrierResponseRetry {
-        async fn on_model_turn_finished(
-            &self,
-            ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
-                |content| matches!(content, AssistantContent::Text(text) if text.text == "rejected"),
-            );
-            if rejected {
-                self.barrier.wait().await;
-            }
-            self.inner.on_model_turn_finished(ctx, event).await
-        }
-    }
-
+    /// Two concurrent runs of one agent each get their own retry budget: the
+    /// budget lives in the entry registered for that run, so both recover
+    /// instead of the second inheriting the first's exhausted allowance.
     #[tokio::test]
     async fn concurrent_runs_of_same_agent_have_independent_retry_budgets() {
-        let hook = BarrierResponseRetry {
-            inner: BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat),
-            barrier: Arc::new(Barrier::new(2)),
-        };
+        let barrier = Arc::new(Barrier::new(2));
         let agent = AgentBuilder::new(
             MockCompletionModel::from_turns([
                 MockTurn::text("rejected"),
@@ -9468,11 +8986,18 @@ mod migrated_tests {
             ])
             .provider(),
         )
-        .add_hook(hook)
         .build();
 
-        let first = agent.runner("first").max_turns(2).run();
-        let second = agent.runner("second").max_turns(2).run();
+        let first = agent
+            .runner("first")
+            .max_turns(2)
+            .add_hook(barrier_response_retry(barrier.clone()))
+            .run();
+        let second = agent
+            .runner("second")
+            .max_turns(2)
+            .add_hook(barrier_response_retry(barrier))
+            .run();
         let (first, second) = tokio::join!(first, second);
         let first = first.expect("first run");
         let second = second.expect("second run");
@@ -9489,146 +9014,80 @@ mod migrated_tests {
         assert_eq!(second.completion_calls.len(), 2);
     }
 
+    /// A model-turn entry that always answers `action` and counts its calls.
+    fn fixed_model_turn_action(action: ModelTurnAction, calls: Arc<AtomicU32>) -> HookEntry {
+        hook_entry("fixed-model-turn-action", move |event| {
+            let HookEvent::ModelTurnFinished { .. } = event else {
+                return HookDecision::Continue;
+            };
+            calls.fetch_add(1, SeqCst);
+            HookDecision::ModelTurn(action.clone())
+        })
+    }
+
+    /// The model-turn fold short-circuits on the first non-`Continue` answer:
+    /// later entries are never invoked, and the winning action is the one that
+    /// short-circuited (retry or stop, in registration order).
     #[tokio::test]
-    async fn retry_scratchpad_state_is_isolated_by_run_and_hook_instance() {
-        let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
-        let first_ctx = HookContext::new(false, None);
-        let second_ctx = HookContext::new(false, None);
-        let content = OneOrMany::one(AssistantContent::text("rejected"));
-        let first_event = ModelTurnFinished {
-            turn: 1,
-            content: &content,
-            usage: Usage::new(),
-        };
-        let second_event = first_event;
-
-        let (first, second) = tokio::join!(
-            shared_hook.on_model_turn_finished(&first_ctx, first_event),
-            shared_hook.on_model_turn_finished(&second_ctx, second_event),
-        );
-        assert!(matches!(first, ModelTurnAction::Retry(_)));
-        assert!(matches!(second, ModelTurnAction::Retry(_)));
-        assert!(matches!(
-            shared_hook
-                .on_model_turn_finished(&first_ctx, first_event)
-                .await,
-            ModelTurnAction::Stop(_)
-        ));
-
-        let same_run_ctx = HookContext::new(false, None);
-        let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
-        let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
-        let first_content = OneOrMany::one(AssistantContent::text("first"));
-        let second_content = OneOrMany::one(AssistantContent::text("second"));
-        let first_action = first_hook
-            .on_model_turn_finished(
-                &same_run_ctx,
-                ModelTurnFinished {
-                    turn: 1,
-                    content: &first_content,
-                    usage: Usage::new(),
-                },
-            )
-            .await;
-        let second_action = second_hook
-            .on_model_turn_finished(
-                &same_run_ctx,
-                ModelTurnFinished {
-                    turn: 2,
-                    content: &second_content,
-                    usage: Usage::new(),
-                },
-            )
-            .await;
-        assert!(matches!(first_action, ModelTurnAction::Retry(_)));
-        assert!(matches!(second_action, ModelTurnAction::Retry(_)));
-    }
-
-    #[derive(Clone)]
-    struct FixedModelTurnAction {
-        action: ModelTurnAction,
-        calls: Arc<AtomicU32>,
-    }
-
-    impl AgentHook for FixedModelTurnAction {
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.calls.fetch_add(1, SeqCst);
-            self.action.clone()
-        }
-    }
-
-    #[tokio::test]
-    async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
+    async fn model_turn_action_short_circuits_the_hook_list() {
         let content = OneOrMany::one(AssistantContent::text("response"));
-        let event = ModelTurnFinished {
-            turn: 1,
-            content: &content,
-            usage: Usage::new(),
-        };
-        let ctx = HookContext::new(false, None);
 
         let first_calls = Arc::new(AtomicU32::new(0));
         let retry_calls = Arc::new(AtomicU32::new(0));
         let skipped_calls = Arc::new(AtomicU32::new(0));
-        let mut flat = HookStack::new();
-        flat.push(FixedModelTurnAction {
-            action: ModelTurnAction::Continue,
-            calls: first_calls.clone(),
-        });
-        flat.push(FixedModelTurnAction {
-            action: ModelTurnAction::repeat(),
-            calls: retry_calls.clone(),
-        });
-        flat.push(FixedModelTurnAction {
-            action: ModelTurnAction::stop("unreachable"),
-            calls: skipped_calls.clone(),
-        });
+        let flat = Hooks::new()
+            .with(fixed_model_turn_action(
+                ModelTurnAction::Continue,
+                first_calls.clone(),
+            ))
+            .with(fixed_model_turn_action(
+                ModelTurnAction::repeat(),
+                retry_calls.clone(),
+            ))
+            .with(fixed_model_turn_action(
+                ModelTurnAction::stop("unreachable"),
+                skipped_calls.clone(),
+            ));
         assert!(matches!(
-            flat.on_model_turn_finished(&ctx, event).await,
+            flat.dispatch_model_turn(1, &content, Usage::new()).await,
             ModelTurnAction::Retry(_)
         ));
         assert_eq!(first_calls.load(SeqCst), 1);
         assert_eq!(retry_calls.load(SeqCst), 1);
         assert_eq!(skipped_calls.load(SeqCst), 0);
 
-        let nested_retry_calls = Arc::new(AtomicU32::new(0));
-        let outer_skipped_calls = Arc::new(AtomicU32::new(0));
-        let mut nested = HookStack::new();
-        nested.push(FixedModelTurnAction {
-            action: ModelTurnAction::retry_with_feedback("fix it"),
-            calls: nested_retry_calls.clone(),
-        });
-        let mut outer = HookStack::new();
-        outer.push(nested);
-        outer.push(FixedModelTurnAction {
-            action: ModelTurnAction::Continue,
-            calls: outer_skipped_calls.clone(),
-        });
+        let feedback_calls = Arc::new(AtomicU32::new(0));
+        let after_feedback_calls = Arc::new(AtomicU32::new(0));
+        let feedback = Hooks::new()
+            .with(fixed_model_turn_action(
+                ModelTurnAction::retry_with_feedback("fix it"),
+                feedback_calls.clone(),
+            ))
+            .with(fixed_model_turn_action(
+                ModelTurnAction::Continue,
+                after_feedback_calls.clone(),
+            ));
         assert!(matches!(
-            outer.on_model_turn_finished(&ctx, event).await,
+            feedback.dispatch_model_turn(1, &content, Usage::new()).await,
             ModelTurnAction::Retry(crate::agent::RetryRequest::Feedback(feedback))
                 if feedback == "fix it"
         ));
-        assert_eq!(nested_retry_calls.load(SeqCst), 1);
-        assert_eq!(outer_skipped_calls.load(SeqCst), 0);
+        assert_eq!(feedback_calls.load(SeqCst), 1);
+        assert_eq!(after_feedback_calls.load(SeqCst), 0);
 
         let stop_calls = Arc::new(AtomicU32::new(0));
         let after_stop_calls = Arc::new(AtomicU32::new(0));
-        let mut stopping = HookStack::new();
-        stopping.push(FixedModelTurnAction {
-            action: ModelTurnAction::stop("stop now"),
-            calls: stop_calls.clone(),
-        });
-        stopping.push(FixedModelTurnAction {
-            action: ModelTurnAction::Continue,
-            calls: after_stop_calls.clone(),
-        });
+        let stopping = Hooks::new()
+            .with(fixed_model_turn_action(
+                ModelTurnAction::stop("stop now"),
+                stop_calls.clone(),
+            ))
+            .with(fixed_model_turn_action(
+                ModelTurnAction::Continue,
+                after_stop_calls.clone(),
+            ));
         assert!(matches!(
-            stopping.on_model_turn_finished(&ctx, event).await,
+            stopping.dispatch_model_turn(1, &content, Usage::new()).await,
             ModelTurnAction::Stop(reason) if reason == "stop now"
         ));
         assert_eq!(stop_calls.load(SeqCst), 1);

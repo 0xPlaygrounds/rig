@@ -41,7 +41,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, OutputMode},
+    agent::{Agent, AgentBuilder, OutputMode},
     completion::{CompletionError, PromptError, Usage},
     provider::ProviderConfig,
 };
@@ -325,10 +325,7 @@ where
     ///
     /// Completion-response hooks receive canonical Rig content, usage, prompt,
     /// and message ID fields, just like hooks attached directly to an agent.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
+    pub fn add_hook(mut self, hook: crate::hooks::HookEntry) -> Self {
         self.agent_builder = self.agent_builder.add_hook(hook);
         self
     }
@@ -353,7 +350,10 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
+    use crate::agent::{
+        CompletionCallAction, InvalidToolCallAction, ModelTurnAction, ObservationAction,
+    };
+    use crate::hooks::{HookDecision, HookEntry, HookEvent};
     use crate::provider::MockScript;
     use rig_core::OneOrMany;
     use rig_core::completion::CompletionResponse as ModelResponse;
@@ -414,6 +414,17 @@ mod tests {
         ))
     }
 
+    /// Named hook entry over a synchronous decision function.
+    fn hook_entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::new(name, move |event| {
+            let decision = decide(event);
+            Box::pin(async move { decision })
+        })
+    }
+
     #[derive(Clone, Default)]
     struct LifecycleCounts {
         completion_calls: Arc<AtomicUsize>,
@@ -422,42 +433,27 @@ mod tests {
         invalid_tool_calls: Arc<AtomicUsize>,
     }
 
-    impl AgentHook for LifecycleCounts {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> crate::agent::CompletionCallAction {
-            self.completion_calls.fetch_add(1, Ordering::SeqCst);
-            crate::agent::CompletionCallAction::Continue
-        }
-
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            self.completion_responses.fetch_add(1, Ordering::SeqCst);
-            ObservationAction::Continue
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.model_turns.fetch_add(1, Ordering::SeqCst);
-            ModelTurnAction::Continue
-        }
-
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            self.invalid_tool_calls.fetch_add(1, Ordering::SeqCst);
-            None
-        }
+    /// One entry counting every lifecycle event the classic `LifecycleCounts`
+    /// hook counted, always deferring (`Continue` / `None`).
+    fn lifecycle_counts_entry(counts: LifecycleCounts) -> HookEntry {
+        hook_entry("lifecycle-counts", move |event| {
+            match event {
+                HookEvent::BeforeModelCall { .. } => {
+                    counts.completion_calls.fetch_add(1, Ordering::SeqCst);
+                }
+                HookEvent::CompletionResponse { .. } => {
+                    counts.completion_responses.fetch_add(1, Ordering::SeqCst);
+                }
+                HookEvent::ModelTurnFinished { .. } => {
+                    counts.model_turns.fetch_add(1, Ordering::SeqCst);
+                }
+                HookEvent::InvalidToolCall(_) => {
+                    counts.invalid_tool_calls.fetch_add(1, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+            HookDecision::Continue
+        })
     }
 
     type ExtractorResponseSnapshot = (Message, Vec<AssistantContent>, Usage, Option<String>);
@@ -467,32 +463,34 @@ mod tests {
         snapshot: Arc<Mutex<Option<ExtractorResponseSnapshot>>>,
     }
 
-    impl AgentHook for ExtractorResponseCapture {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            *self.snapshot.lock().expect("extractor response snapshot") = Some((
-                event.prompt.clone(),
-                event.content.iter().cloned().collect(),
-                event.usage,
-                event.message_id.map(str::to_owned),
+    fn response_capture_entry(capture: ExtractorResponseCapture) -> HookEntry {
+        hook_entry("extractor-response-capture", move |event| {
+            let HookEvent::CompletionResponse {
+                prompt, response, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            *capture
+                .snapshot
+                .lock()
+                .expect("extractor response snapshot") = Some((
+                prompt,
+                response.choice.iter().cloned().collect(),
+                response.usage,
+                response.message_id.clone(),
             ));
-            ObservationAction::continue_run()
-        }
+            HookDecision::Observation(ObservationAction::continue_run())
+        })
     }
 
-    struct StopBeforeCompletion;
-
-    impl AgentHook for StopBeforeCompletion {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> crate::agent::CompletionCallAction {
-            crate::agent::CompletionCallAction::stop("extractor stopped")
-        }
+    fn stop_before_completion_entry() -> HookEntry {
+        hook_entry("stop-before-completion", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::stop("extractor stopped"))
+        })
     }
 
     /// The passive-RAG hook recipe applied to an extractor: embed the prompt,
@@ -500,58 +498,65 @@ mod tests {
     struct ExtractorRagHook {
         embedder: crate::provider::EmbedderConfig,
         rt: Arc<crate::provider::Runtime>,
-        store: InMemoryVectorStore,
+        store: Arc<InMemoryVectorStore>,
         samples: u64,
         queries: Arc<Mutex<Vec<(String, u64)>>>,
     }
 
-    impl AgentHook for ExtractorRagHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            event: crate::agent::CompletionCallEvent<'_>,
-        ) -> crate::agent::CompletionCallAction {
-            use crate::agent::{CompletionCallAction, RequestPatch};
+    fn extractor_rag_entry(hook: ExtractorRagHook) -> HookEntry {
+        let hook = Arc::new(hook);
+        HookEntry::new("extractor-rag", move |event| {
+            let hook = hook.clone();
+            Box::pin(async move {
+                use crate::agent::RequestPatch;
 
-            let Some(query) = event.prompt.rag_text() else {
-                return CompletionCallAction::continue_run();
-            };
-            self.queries
-                .lock()
-                .expect("extractor query recorder")
-                .push((query.clone(), self.samples));
+                let HookEvent::BeforeModelCall { prompt, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let Some(query) = prompt.rag_text() else {
+                    return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+                };
+                hook.queries
+                    .lock()
+                    .expect("extractor query recorder")
+                    .push((query.clone(), hook.samples));
 
-            let embedded = match crate::provider::embed(&self.embedder, &self.rt, vec![query]).await
-            {
-                Ok(response) => response.embeddings.into_iter().next(),
-                Err(error) => {
-                    return CompletionCallAction::stop(format!("query embedding failed: {error}"));
-                }
-            };
-            let Some(embedded) = embedded else {
-                return CompletionCallAction::stop("query embedding was empty");
-            };
-
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(self.samples)
-                .build();
-            match self.store.top_n(request).await {
-                Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                    hits.into_iter().map(|hit| {
-                        crate::completion::Document {
-                            id: hit.id,
-                            text: serde_json::to_string_pretty(&hit.payload)
-                                .unwrap_or_else(|_| hit.payload.to_string()),
-                            additional_props: Default::default(),
+                let embedded =
+                    match crate::provider::embed(&hook.embedder, &hook.rt, vec![query]).await {
+                        Ok(response) => response.embeddings.into_iter().next(),
+                        Err(error) => {
+                            return HookDecision::CompletionCall(CompletionCallAction::stop(
+                                format!("query embedding failed: {error}"),
+                            ));
                         }
-                    }),
-                )),
-                Err(error) => {
-                    CompletionCallAction::stop(format!("context retrieval failed: {error}"))
+                    };
+                let Some(embedded) = embedded else {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "query embedding was empty",
+                    ));
+                };
+
+                let request = VectorSearchRequest::builder()
+                    .query(embedded)
+                    .samples(hook.samples)
+                    .build();
+                match hook.store.top_n(request).await {
+                    Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                        RequestPatch::new().extra_context(hits.into_iter().map(|hit| {
+                            crate::completion::Document {
+                                id: hit.id,
+                                text: serde_json::to_string_pretty(&hit.payload)
+                                    .unwrap_or_else(|_| hit.payload.to_string()),
+                                additional_props: Default::default(),
+                            }
+                        })),
+                    )),
+                    Err(error) => HookDecision::CompletionCall(CompletionCallAction::stop(
+                        format!("context retrieval failed: {error}"),
+                    )),
                 }
-            }
-        }
+            })
+        })
     }
 
     #[derive(Clone, Copy)]
@@ -560,82 +565,59 @@ mod tests {
         ModelTurnFinished,
     }
 
-    #[derive(Clone)]
-    struct StopFirstBilledResponse {
-        phase: StopFirstBilledResponseAt,
-        calls: Arc<AtomicUsize>,
+    /// Stops the run at the first event of `phase`, deferring afterwards.
+    fn stop_first_billed_response_entry(phase: StopFirstBilledResponseAt) -> HookEntry {
+        let calls = Arc::new(AtomicUsize::new(0));
+        hook_entry("stop-first-billed-response", move |event| match event {
+            HookEvent::CompletionResponse { .. } => {
+                if matches!(phase, StopFirstBilledResponseAt::CompletionResponse)
+                    && calls.fetch_add(1, Ordering::SeqCst) == 0
+                {
+                    HookDecision::Observation(ObservationAction::stop("stop first billed response"))
+                } else {
+                    HookDecision::Observation(ObservationAction::continue_run())
+                }
+            }
+            HookEvent::ModelTurnFinished { .. } => {
+                if matches!(phase, StopFirstBilledResponseAt::ModelTurnFinished)
+                    && calls.fetch_add(1, Ordering::SeqCst) == 0
+                {
+                    HookDecision::ModelTurn(ModelTurnAction::stop("stop first billed model turn"))
+                } else {
+                    HookDecision::ModelTurn(ModelTurnAction::continue_run())
+                }
+            }
+            _ => HookDecision::Continue,
+        })
     }
 
-    impl AgentHook for StopFirstBilledResponse {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ObservationAction::stop("stop first billed response")
-            } else {
-                ObservationAction::continue_run()
-            }
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::ModelTurnFinished)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ModelTurnAction::stop("stop first billed model turn")
-            } else {
-                ModelTurnAction::continue_run()
-            }
-        }
-    }
-
-    struct StopOnInvalidToolCall;
-
-    impl AgentHook for StopOnInvalidToolCall {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::stop(
+    fn stop_on_invalid_tool_call_entry() -> HookEntry {
+        hook_entry("stop-on-invalid-tool-call", |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::stop(
                 "unexpected extractor tool call",
             ))
-        }
+        })
     }
 
-    struct RepairUnexpectedAsSubmit;
-
-    impl AgentHook for RepairUnexpectedAsSubmit {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::repair(
-                SUBMIT_TOOL_NAME,
-            ))
-        }
+    fn repair_unexpected_as_submit_entry() -> HookEntry {
+        hook_entry("repair-unexpected-as-submit", |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(SUBMIT_TOOL_NAME))
+        })
     }
 
-    struct SkipUnexpected;
-
-    impl AgentHook for SkipUnexpected {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::skip(
-                "ignored by extractor hook",
-            ))
-        }
+    fn skip_unexpected_entry() -> HookEntry {
+        hook_entry("skip-unexpected", |event| {
+            let HookEvent::InvalidToolCall(_) = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip("ignored by extractor hook"))
+        })
     }
 
     #[tokio::test]
@@ -644,7 +626,7 @@ mod tests {
         let probe = script.clone();
         let counts = LifecycleCounts::default();
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(counts.clone())
+            .add_hook(lifecycle_counts_entry(counts.clone()))
             .build()
             .extract("John")
             .await
@@ -666,7 +648,7 @@ mod tests {
                 .with_message_id("extractor-message"),
         ]);
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(capture.clone())
+            .add_hook(response_capture_entry(capture.clone()))
             .build()
             .extract("John")
             .await
@@ -710,15 +692,15 @@ mod tests {
             .expect("store insert should succeed");
 
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(ExtractorRagHook {
+            .add_hook(extractor_rag_entry(ExtractorRagHook {
                 embedder: crate::provider::EmbedderConfig::Mock(
                     crate::provider::MockEmbedder::from_responses(vec![vec![vec![1.0, 0.0]]]),
                 ),
                 rt: Arc::new(crate::provider::Runtime::new()),
-                store,
+                store: Arc::new(store),
                 samples: 2,
                 queries: queries.clone(),
-            })
+            }))
             .build()
             .extract("John")
             .await
@@ -745,7 +727,7 @@ mod tests {
         let script = MockScript::from_responses(vec![submit_response("John")]);
         let probe = script.clone();
         let error = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(StopBeforeCompletion)
+            .add_hook(stop_before_completion_entry())
             .build()
             .extract("John")
             .await
@@ -787,10 +769,7 @@ mod tests {
         ]);
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .retries(1)
-            .add_hook(StopFirstBilledResponse {
-                phase,
-                calls: Arc::new(AtomicUsize::new(0)),
-            })
+            .add_hook(stop_first_billed_response_entry(phase))
             .build()
             .extract_with_usage("John")
             .await
@@ -842,7 +821,7 @@ mod tests {
 
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
             .retries(1)
-            .add_hook(counts.clone())
+            .add_hook(lifecycle_counts_entry(counts.clone()))
             .build()
             .extract_with_usage("John")
             .await
@@ -863,7 +842,7 @@ mod tests {
         )]);
 
         let error = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(StopOnInvalidToolCall)
+            .add_hook(stop_on_invalid_tool_call_entry())
             .build()
             .extract("John")
             .await
@@ -888,7 +867,7 @@ mod tests {
         )]);
 
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(RepairUnexpectedAsSubmit)
+            .add_hook(repair_unexpected_as_submit_entry())
             .build()
             .extract("John")
             .await
@@ -908,7 +887,7 @@ mod tests {
         )]);
 
         let response = ExtractorBuilder::<Person>::new(ProviderConfig::Mock(script))
-            .add_hook(SkipUnexpected)
+            .add_hook(skip_unexpected_entry())
             .build()
             .extract("John")
             .await

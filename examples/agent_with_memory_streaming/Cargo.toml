@@ -10,5 +10,6 @@ workspace = true
 [dependencies]
 rig.workspace = true
 anyhow = { workspace = true }
+tracing = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

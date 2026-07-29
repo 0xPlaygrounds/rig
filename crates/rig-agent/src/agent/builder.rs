@@ -2,12 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use schemars::{JsonSchema, Schema, schema_for};
 
-use rig_core::{memory::ConversationMemory, message::ToolChoice};
+use rig_core::message::ToolChoice;
 
 use crate::{
-    agent::hook::{AgentHook, HookStack},
     completion::Document,
     executor::ToolExecutor,
+    hooks::{HookEntry, Hooks},
     provider::{ProviderConfig, Runtime},
     tool::{PortableDynamicTool, PortableTool},
 };
@@ -71,15 +71,11 @@ pub struct AgentBuilder {
     /// The executable tool records registered on this builder.
     executor: ToolExecutor,
     /// Default hook stack applied to every prompt request from the built agent.
-    hooks: HookStack,
+    hooks: Hooks,
     /// Optional JSON Schema for structured output
     output_schema: Option<schemars::Schema>,
     /// How `output_schema` is enforced (tool vs native vs prompted; see #1928)
     output_mode: OutputMode,
-    /// Optional conversation memory backend that loads/saves history per conversation id.
-    memory: Option<Arc<dyn ConversationMemory>>,
-    /// Optional default conversation id used when none is set per-request.
-    default_conversation_id: Option<String>,
 }
 
 impl AgentBuilder {
@@ -99,11 +95,9 @@ impl AgentBuilder {
             tool_choice: None,
             default_max_turns: None,
             executor: ToolExecutor::new(),
-            hooks: HookStack::new(),
+            hooks: Hooks::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
-            memory: None,
-            default_conversation_id: None,
         }
     }
 
@@ -225,30 +219,6 @@ impl AgentBuilder {
         self
     }
 
-    /// Attach a [`ConversationMemory`] backend.
-    ///
-    /// When set, the agent will automatically load prior conversation history before
-    /// each prompt and append the new turn after a successful response. A
-    /// `conversation_id` must be supplied either via [`AgentBuilder::conversation`]
-    /// or per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
-    /// If neither is set, memory is silently bypassed.
-    pub fn memory<B>(mut self, memory: B) -> Self
-    where
-        B: ConversationMemory + 'static,
-    {
-        self.memory = Some(Arc::new(memory));
-        self
-    }
-
-    /// Set a default conversation id used when none is provided per-request.
-    ///
-    /// Most agents are reused across users or threads; prefer setting the id
-    /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
-    pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.default_conversation_id = Some(id.into());
-        self
-    }
-
     /// Attach a default hook to the agent. Each call appends to the agent's hook
     /// stack; hooks run for every prompt request (unless more are added per
     /// request) in registration order. How their results compose is
@@ -256,11 +226,8 @@ impl AgentBuilder {
     /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
     /// observe-only/recovery events use first-non-`Continue`-wins. See the
     /// [`hook`](crate::agent::hook) module docs.
-    pub fn add_hook<H>(mut self, hook: H) -> Self
-    where
-        H: AgentHook + 'static,
-    {
-        self.hooks.push(hook);
+    pub fn add_hook(mut self, hook: HookEntry) -> Self {
+        self.hooks.add(hook);
         self
     }
 
@@ -313,8 +280,6 @@ impl AgentBuilder {
             hooks: self.hooks,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
         }
     }
 }
@@ -322,6 +287,7 @@ impl AgentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hooks::HookDecision;
     use crate::provider::MockScript;
     use crate::test_utils::MockAddTool;
     use crate::tool::{ToolExecutionError, ToolOutput};
@@ -338,16 +304,18 @@ mod tests {
         )]))
     }
 
-    #[derive(Clone)]
-    struct BuilderHook;
-
-    impl AgentHook for BuilderHook {}
+    /// A no-op hook entry: registration must survive tool configuration.
+    fn builder_hook() -> HookEntry {
+        HookEntry::new("builder-hook", |_| {
+            Box::pin(async { HookDecision::Continue })
+        })
+    }
 
     #[test]
     fn hook_can_be_set_after_tool_configuration() {
         let _agent = AgentBuilder::new(mock_text("ok"))
             .tool(MockAddTool)
-            .add_hook(BuilderHook)
+            .add_hook(builder_hook())
             .build();
     }
 

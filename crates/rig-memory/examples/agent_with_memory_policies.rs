@@ -1,79 +1,111 @@
-//! Demonstrates `rig-memory` history-shaping policies on top of a Rig agent.
+//! Demonstrates `rig-memory` history-shaping policies around a Rig agent.
 //!
-//! Two backends are configured against the same prompt:
+//! Two policies are exercised against the same host recipe:
 //!
-//! * `SlidingWindowMemory` — keeps the most recent fixed number of messages.
-//! * `TokenWindowMemory` — keeps the most recent messages that fit within a
-//!   token budget supplied by a [`TokenCounter`].
+//! * `MemoryPolicy::SlidingWindow` — keeps the most recent fixed number of
+//!   messages.
+//! * `MemoryPolicy::TokenWindow` — keeps the most recent messages that fit
+//!   within a token budget, counted by a `TokenCounter`.
 //!
-//! Both policies are converted into a `MessageFilter` via
-//! [`IntoFilter::into_filter`] and attached to an
-//! [`InMemoryConversationMemory`] backend with `with_filter`.
+//! Policies are data, not callbacks: `PolicyMemory::load` returns the shaped
+//! history and `PolicyMemory::append` hands back an `AppendOutcome` naming
+//! what fell out of the active window, so the host decides what to archive
+//! and when to compact.
 //!
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
+use rig_agent::agent::Agent;
 use rig_agent::prelude::*;
 use rig_core::client::ProviderClient;
-use rig_core::completion::Message;
 use rig_core::providers::openai;
-use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory, TokenWindowMemory};
+use rig_memory::{
+    Compactor, HeuristicTokenCounter, InMemoryConversationMemory, MemoryPolicy, PolicyMemory,
+    TokenCounter,
+};
 
-fn approx_token_count(message: &Message) -> usize {
-    let text = match message {
-        Message::User { content, .. } => content
-            .iter()
-            .filter_map(|c| match c {
-                rig_core::completion::message::UserContent::Text(t) => Some(t.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        Message::Assistant { content, .. } => content
-            .iter()
-            .filter_map(|c| match c {
-                rig_core::completion::message::AssistantContent::Text(t) => Some(t.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        Message::System { content } => content.clone(),
-    };
-    text.split_whitespace().count().max(1)
+/// One turn: load-before, run, append-after, then act on the outcome.
+async fn ask(
+    agent: &Agent,
+    memory: &PolicyMemory,
+    conversation_id: &str,
+    prompt: &str,
+) -> Result<String> {
+    // Load-before: the policy-shaped history (plus any rolling summary).
+    let history = memory.load(conversation_id)?;
+
+    let response = agent
+        .prompt(prompt)
+        .history(history)
+        .extended_details()
+        .await?;
+
+    // Append-after: warn and proceed on failure, then act on the outcome.
+    if let Some(messages) = &response.messages {
+        match memory.append(conversation_id, messages.clone()) {
+            Ok(outcome) => {
+                for demoted in &outcome.demoted {
+                    // Archive into a long-tail store (vector RAG, episodic
+                    // recall, ...) — nothing is lost when the window slides.
+                    tracing::debug!(?demoted, "message demoted out of the active window");
+                }
+                if let Some(request) = &outcome.compaction {
+                    // A compactor is configured: fold the evicted prefix into
+                    // the conversation's rolling summary.
+                    memory.compact(request);
+                }
+            }
+            Err(error) => tracing::warn!(
+                %error,
+                conversation_id,
+                "conversation memory append failed; surfacing final response anyway"
+            ),
+        }
+    }
+
+    Ok(response.output)
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
-
-    let sliding_memory = InMemoryConversationMemory::new()
-        .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
-
-    let sliding_agent = client
+    let agent = client
         .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant. Keep responses short.")
-        .memory(sliding_memory)
         .build();
 
-    let reply = sliding_agent
-        .prompt("Remember: my favorite color is teal.")
-        .conversation("alice")
-        .await?;
+    // Sliding window: keep the last 20 messages, roll the rest into a summary.
+    let sliding_memory = PolicyMemory::new(
+        InMemoryConversationMemory::new(),
+        MemoryPolicy::sliding_window(20),
+    )
+    .with_compactor(Compactor::template());
+
+    let reply = ask(
+        &agent,
+        &sliding_memory,
+        "alice",
+        "Remember: my favorite color is teal.",
+    )
+    .await?;
     println!("[sliding] {reply}");
 
-    let token_memory = InMemoryConversationMemory::new()
-        .with_filter(TokenWindowMemory::new(256, approx_token_count).into_filter());
+    // Token window: keep whatever fits in ~256 tokens of recent history.
+    let token_memory = PolicyMemory::new(
+        InMemoryConversationMemory::new(),
+        MemoryPolicy::token_window(
+            256,
+            TokenCounter::Heuristic(HeuristicTokenCounter::openai()),
+        ),
+    );
 
-    let token_agent = client
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful assistant. Keep responses short.")
-        .memory(token_memory)
-        .build();
-
-    let reply = token_agent
-        .prompt("Plan a 3-day trip to Kyoto.")
-        .conversation("alice")
-        .await?;
+    let reply = ask(
+        &agent,
+        &token_memory,
+        "alice",
+        "Plan a 3-day trip to Kyoto.",
+    )
+    .await?;
     println!("[token]   {reply}");
 
     Ok(())

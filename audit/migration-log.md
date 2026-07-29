@@ -575,11 +575,65 @@ workspace check 0; rig-core/rig-agent/rig-derive suites green; full facade
 suite + bedrock replay green single-threaded; doctests green; cassettes
 untouched.
 
-## R3 — status: NOT STARTED in the committed tree (2026-07-30)
+## R3 — Hooks machinery deletion + memory inversion (COMPLETE)
 
-R3 (hook-machinery deletion + memory inversion) was launched and then
-deliberately interrupted by the maintainer mid-edit; the half-applied
-changes were reverted. The committed tree ends at R2, fully green. R1's
-concrete `Hooks` layer, `ToolExecutor`, and `SessionAgent` are in place,
-so R3 can restart cleanly from the specs in the hand-off prompt
-(`~/Desktop/code/many_rigs/rig-single-architecture-handoff.md`).
+(An earlier R3 attempt was interrupted mid-edit and reverted; this is the
+clean run from the hand-off specs.)
+
+**Hooks — mechanism deleted, capability kept.** The classic runner now
+dispatches through R1's concrete `Hooks`/`HookEntry` records;
+`agent/hook.rs` shrank 2625 → 1013 lines and is now the decision
+vocabulary only (`RequestPatch` + merge law, every Action/Resolution type,
+the `fold_*` helpers, `RunId`, `InvalidToolCallContext` — all paths
+preserved). Deleted: `AgentHook` (+ `()` impl + `impl for HookStack`),
+`DynAgentHook`, `HookStack`, `HookContext`, `Scratchpad`,
+`StepEventKind`, `ToolCallRewriteFrames`, all eight borrowed event
+structs, and `src/type_map.rs`. `.add_hook(HookEntry)` keeps
+attach-and-forget ergonomics on every builder.
+- Delta gating is data: `HookEntry::observing_deltas()` +
+  `Hooks::observes_deltas()` replace the `observes(StepEventKind)` trait
+  method (now opt-in rather than opt-out).
+- `HookEvent` gained owned `StreamResponseFinish`/`TextDelta`/
+  `ToolCallDelta` variants, `prompt` on `CompletionResponse`, and
+  `internal_call_id` on the tool events.
+- **Three deliberate capability changes**: `HookContext` run identity
+  (`run_id`/`is_streaming`/`agent_name`/`turn`) is gone — closures own
+  their state and `turn` rides the events; the run-scoped `Scratchpad` is
+  host-owned state (cross-hook sharing survives; per-concurrent-run
+  isolation of a single shared hook instance does not); tool-call argument
+  rewrites chain as `serde_json::Value`, not JSON-encoded strings.
+  All three are cassette-neutral.
+- Fidelity gate: the gemini hook_stress cassettes (which encode hook
+  ordering) replayed byte-identically.
+
+**Memory — inverted to host calls.** rig-agent dropped every memory field,
+setter (`memory`/`conversation`/`without_memory`) and the load/append
+orchestration; the exact classic semantics (explicit history bypasses both
+load and save, load failure fatal, append failure warn-and-proceed, flat
+key, nothing clears) are now the documented recipe on `agent_api.rs` and
+the classic `Agent`. rig-core deleted `ConversationMemory` (+ forwards),
+`MessageFilter`, `DemotionHook`, `NoopDemotionHook`, `Compactor`, and
+`MemoryError::Policy`; `InMemoryConversationMemory` is a concrete store
+with plain synchronous methods (memory.rs 525 → ~200 lines).
+rig-memory went 3275 → ~1100 lines: `MemoryPolicy`/`TokenCounter`/
+`Compactor` are exhaustive enums, and the three behavior-generic wrappers
+collapsed into one concrete `PolicyMemory` whose `append` returns an owned
+`AppendOutcome { stored, demoted, compaction }`. Because demotions are
+reported as an append-delta rather than a callback that must fire exactly
+once, the entire watermark / in-flight-reservation / RAII-guard
+concurrency layer was deleted with no behavior loss.
+
+**Consumer sweep**: 26 provider-test files (10 `request_hook` + 10
+`permission_control` + 6 unique shapes) and 17 examples migrated; zero
+examples deleted. rig-agent's 22 memory integration tests were replaced by
+six `host_recipe_*` tests carrying their intents (load feeds the request,
+one append per run, no append on error/stop, explicit history bypasses the
+store, load failure precedes provider IO). Deleted tests were all
+machinery-subject (nested HookStack composition, erased-dispatch frames,
+`observes()` dispatch, Scratchpad identity, watermark/in-flight
+serialization, trait-forwarding impls) — each logged by its slice.
+
+**Verification**: fmt ok; clippy 0 warnings (`--all-features
+--all-targets`); workspace check 0 errors; rig-core 1103, rig-agent 399,
+rig-memory 44, rig-derive, full facade suite single-threaded and bedrock
+replay all green; doctests green; cassettes untouched.

@@ -1,8 +1,7 @@
 use anyhow::Result;
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-};
+use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
@@ -109,31 +108,37 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl AgentHook for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-        if count == 0 {
-            ToolCallAction::skip(format!(
-                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
-                event.tool_name
-            ))
-        } else {
-            ToolCallAction::run()
-        }
+impl PermissionHook {
+    /// The hook record: vetoes the first tool call with a redirect reason, then
+    /// records every tool result's normalized presentation.
+    fn entry(&self) -> HookEntry {
+        let hook = self.clone();
+        HookEntry::new("permission-control", move |event| {
+            let decision = hook.decide(event);
+            Box::pin(async move { decision })
+        })
     }
 
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let normalized = event.presentation.render();
-        *self.last_result.lock().expect("lock last_result") = Some(normalized);
-        ToolResultAction::keep()
+    fn decide(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::ToolCall { call, .. } => {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+                if count == 0 {
+                    HookDecision::ToolCall(ToolCallAction::skip(format!(
+                        "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
+                        call.function.name
+                    )))
+                } else {
+                    HookDecision::ToolCall(ToolCallAction::run())
+                }
+            }
+            HookEvent::ToolResult { presentation, .. } => {
+                let normalized = presentation.render();
+                *self.last_result.lock().expect("lock last_result") = Some(normalized);
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
@@ -162,7 +167,7 @@ async fn permission_control_prompt_example() -> Result<()> {
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
-        .add_hook(hook)
+        .add_hook(hook.entry())
         .await?;
 
     assert_nonempty_response(&response);
@@ -199,7 +204,7 @@ async fn permission_control_streaming_example() -> Result<()> {
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
-        .add_hook(hook)
+        .add_hook(hook.entry())
         .await;
 
     let observation = collect_stream_observation(&mut stream).await;

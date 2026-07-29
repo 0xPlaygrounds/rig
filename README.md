@@ -79,7 +79,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 Rig separates portable provider/backend contracts from agent orchestration:
 
 - `rig-core` contains provider-neutral messages, completion models, portable tools,
-  memory contracts, the shared vector-store data types (pre-embedded search
+  the in-process conversation store, the shared vector-store data types (pre-embedded search
   requests and hits; each store crate exposes its own concrete methods), and
   built-in provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
@@ -178,10 +178,12 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | SQLite | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 
-`rig::memory` is available without the `memory` feature; it contains the core
-conversation memory traits and in-memory backend re-exported from `rig-core`.
-Enabling `features = ["memory"]` adds reusable history-shaping policy types from
-the `rig-memory` companion crate to the same module.
+`rig::memory` is available without the `memory` feature; it contains the
+concrete in-process conversation store re-exported from `rig-core`. Memory is
+host-owned: load history before a run, append the run's committed transcript
+after it. Enabling `features = ["memory"]` adds the `rig-memory` companion
+crate's history-shaping policy data (sliding window, token budget, rolling
+summaries) to the same module.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

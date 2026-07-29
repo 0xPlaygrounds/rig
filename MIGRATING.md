@@ -344,6 +344,64 @@ agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
 clients bridge only credentials that are already cached (non-interactively);
 interactive OAuth flows still work through the classic clients themselves.
 
+### Hooks are records; memory is host-owned (single-architecture R3)
+
+The `AgentHook` trait, `HookStack`, `HookContext`, `Scratchpad`, and
+`StepEventKind` are gone. Hooks remain attach-and-forget, but a hook is now
+a `HookEntry` record instead of a trait impl:
+
+```rust
+// before
+struct Logger;
+impl AgentHook for Logger {
+    async fn on_completion_call(&self, ctx: &HookContext, e: CompletionCall<'_>)
+        -> CompletionCallAction { ... }
+}
+agent_builder.add_hook(Logger)
+// after — one entry, matching owned events
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
+fn logger() -> HookEntry {
+    HookEntry::new("logger", |event| Box::pin(async move {
+        match event {
+            HookEvent::BeforeModelCall { turn, prompt, .. } => { /* … */
+                HookDecision::Continue }
+            _ => HookDecision::Continue,
+        }
+    }))
+}
+agent_builder.add_hook(logger())
+```
+
+The decision vocabulary (`RequestPatch`, `ToolCallAction`,
+`InvalidToolCallAction`, …) is unchanged and still lives at
+`rig::agent::hook`. Three behavior notes: delta observers must opt in with
+`HookEntry::new(..).observing_deltas()` or they never fire; run identity
+(`ctx.run_id()`/`is_streaming()`/`agent_name()`) and the run-scoped
+scratchpad are gone — capture your own state in the closure (`turn` is a
+field on the events that have it); and tool-call argument rewrites chain as
+`serde_json::Value` rather than JSON-encoded strings.
+
+**Memory** is no longer wired into the agent. `ConversationMemory`,
+`MessageFilter`, `DemotionHook`, and `Compactor` are deleted along with
+`AgentBuilder::memory`/`conversation` and `AgentRunner::without_memory`.
+Load before the run and append after it:
+
+```rust
+let memory = InMemoryConversationMemory::new();
+let history = memory.load(conversation_id)?;          // fatal if it fails
+let response = agent.runner(prompt).history(history).run().await?;
+if let Err(error) = memory.append(conversation_id, response.messages.clone()) {
+    tracing::warn!(%error, "memory append failed");   // warn and proceed
+}
+```
+
+`InMemoryConversationMemory` is a concrete store with plain synchronous
+`load`/`append`/`clear`. `rig-memory`'s policies are now enums
+(`MemoryPolicy`, `TokenCounter`, `Compactor`) over one concrete
+`PolicyMemory`, whose `append` returns an owned
+`AppendOutcome { stored, demoted, compaction }` for the host to act on —
+replacing the demotion-hook and compactor callbacks.
+
 ### The tool system is records, not traits (single-architecture R2)
 
 `ToolContext`, `ToolSet`, `ToolServer`, `DynamicTool`, `ToolEmbedding`, and

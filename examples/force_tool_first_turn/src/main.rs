@@ -1,19 +1,26 @@
 //! # Forcing a tool on the first turn: a `RequestPatch` footgun and its fix
 //!
-//! A hook can steer a single model turn by returning [`CompletionCallAction::patch`] on
-//! the [`CompletionCallEvent`] event. A common wish is "make the model call
+//! A hook is an attach-and-forget record — a [`HookEntry`] wrapping a closure
+//! over owned [`HookEvent`] values — and it can steer a single model turn by
+//! returning [`CompletionCallAction::patch`] for the
+//! [`HookEvent::BeforeModelCall`] event. A common wish is "make the model call
 //! a tool *first*", done by patching `tool_choice = Required`.
 //!
-//! **The footgun.** A [`RequestPatch`] is **per-turn and non-sticky**: the
-//! `CompletionCall` event re-fires on *every* turn, so a hook that patches
+//! **The footgun.** A [`RequestPatch`] is **per-turn and non-sticky**:
+//! `BeforeModelCall` re-fires on *every* turn, so a hook that patches
 //! `Required` unconditionally forces a tool call on *every* turn. The model never
 //! reaches a turn where it is free to stop calling tools and write the final
 //! answer, so the run loops until `max_turns` and fails with
 //! [`PromptError::MaxTurnsError`].
 //!
-//! **The fix.** Gate the patch on the turn index — force `Required` only on the
-//! first turn (`ctx.turn() == 1`). The model is nudged to call the tool up front;
-//! later turns inherit the agent's baseline (`auto`), so it can stop and answer.
+//! **The fix.** Gate the patch on the event's own `turn` field — force
+//! `Required` only on the first turn. The model is nudged to call the tool up
+//! front; later turns inherit the agent's baseline (`auto`), so it can stop and
+//! answer.
+//!
+//! (Only the turn-scoped events are delivered by default: an entry that wants to
+//! watch streaming `TextDelta` / `ToolCallDelta` events must opt in with
+//! `HookEntry::observing_deltas`.)
 //!
 //! This example runs the footgun first (and catches the resulting
 //! `MaxTurnsError`), then runs the fix.
@@ -21,8 +28,9 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::{Prompt, PromptError};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -81,38 +89,37 @@ impl Tool for Add {
 // The footgun: force `Required` on EVERY completion call.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-struct ForceToolEveryTurn;
-
-impl AgentHook for ForceToolEveryTurn {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required))
-    }
+fn force_tool_every_turn() -> HookEntry {
+    HookEntry::new("force-tool-every-turn", |event| {
+        let decision = match event {
+            HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
+                CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
+            ),
+            // Every other event is none of this entry's business.
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 // ---------------------------------------------------------------------------
-// The fix: force `Required` on the FIRST turn only.
+// The fix: force `Required` on the FIRST turn only, by matching the event's
+// own `turn` field.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-struct ForceToolOnFirstTurn;
-
-impl AgentHook for ForceToolOnFirstTurn {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if ctx.turn() == 1 {
-            CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required))
-        } else {
-            CompletionCallAction::continue_run()
-        }
-    }
+fn force_tool_on_first_turn() -> HookEntry {
+    HookEntry::new("force-tool-on-first-turn", |event| {
+        let decision = match event {
+            HookEvent::BeforeModelCall { turn: 1, .. } => HookDecision::CompletionCall(
+                CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
+            ),
+            HookEvent::BeforeModelCall { .. } => {
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[tokio::main]
@@ -134,7 +141,7 @@ async fn main() -> Result<()> {
     match agent
         .prompt(PROMPT)
         .max_turns(4)
-        .add_hook(ForceToolEveryTurn)
+        .add_hook(force_tool_every_turn())
         .await
     {
         Ok(answer) => println!("(unexpected) got a final answer: {answer}\n"),
@@ -152,7 +159,7 @@ async fn main() -> Result<()> {
     let answer = agent
         .prompt(PROMPT)
         .max_turns(4)
-        .add_hook(ForceToolOnFirstTurn)
+        .add_hook(force_tool_on_first_turn())
         .await?;
     println!("final answer: {answer}");
 

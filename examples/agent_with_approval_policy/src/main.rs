@@ -1,10 +1,13 @@
 //! Policy-based (non-interactive) human-in-the-loop: approval *rules* decided up
-//! front, evaluated per tool call by an `AgentHook` — no human prompt in the
+//! front, evaluated per tool call by a hook record — no human prompt in the
 //! loop. This mirrors the OpenAI Agents SDK's `needs_approval(fn)`, Vercel AI
 //! SDK's `needsApproval(({input}) => ...)`, and LangGraph's `interrupt_on`
 //! predicates: a person encodes the policy once, and the agent runs within it.
 //!
-//! The [`ApprovalPolicy`] hook fires on [`ToolCallEvent`] and returns:
+//! Hooks are attach-and-forget records: [`approval_policy`] is a plain function
+//! that captures its rules and returns a [`HookEntry`] whose closure decides
+//! each event. It only cares about [`HookEvent::ToolCall`] — every other event
+//! falls through to [`HookDecision::Continue`] — and returns:
 //! - [`ToolCallAction::run`] to allow a tool that is on the safe allow-list, or a
 //!   guarded tool whose arguments satisfy the rule;
 //! - [`ToolCallAction::skip`] to **deny** otherwise — the denial reason is fed back to the
@@ -20,8 +23,9 @@
 use std::collections::HashSet;
 
 use anyhow::Result;
-use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
+use rig::agent::ToolCallAction;
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -102,46 +106,49 @@ impl Tool for TransferFunds {
 // The approval policy, evaluated on every tool call.
 // ---------------------------------------------------------------------------
 
-struct ApprovalPolicy {
-    /// Tools allowed to run unconditionally (read-only / low risk).
-    auto_approve: HashSet<&'static str>,
-    /// Transfers at or below this amount are auto-approved; above it they are
-    /// denied (a real app would route those to a human instead).
-    max_auto_transfer: u64,
-}
+/// Builds the policy hook record.
+///
+/// - `auto_approve`: tools allowed to run unconditionally (read-only / low risk).
+/// - `max_auto_transfer`: transfers at or below this amount are auto-approved;
+///   above it they are denied (a real app would route those to a human instead).
+fn approval_policy(auto_approve: HashSet<&'static str>, max_auto_transfer: u64) -> HookEntry {
+    HookEntry::new("approval-policy", move |event| {
+        let HookEvent::ToolCall { call, .. } = event else {
+            return Box::pin(async { HookDecision::Continue });
+        };
 
-impl AgentHook for ApprovalPolicy {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let tool_name = event.tool_name;
-        if self.auto_approve.contains(tool_name) {
+        let tool_name = call.function.name;
+        let action = if auto_approve.contains(tool_name.as_str()) {
             println!("[policy] auto-approve `{tool_name}` (safe)");
-            return ToolCallAction::run();
-        }
-        if tool_name == TransferFunds::NAME {
-            let amount = serde_json::from_str::<serde_json::Value>(event.args)
-                .ok()
-                .and_then(|value| value.get("amount").and_then(|amount| amount.as_u64()));
-            return match amount {
-                Some(amount) if amount <= self.max_auto_transfer => {
-                    println!(
-                        "[policy] approve transfer ${amount} (<= ${})",
-                        self.max_auto_transfer
-                    );
+            ToolCallAction::run()
+        } else if tool_name == TransferFunds::NAME {
+            // Hook events carry parsed arguments, so the policy reads the field
+            // straight off the JSON value.
+            let amount = call
+                .function
+                .arguments
+                .get("amount")
+                .and_then(|amount| amount.as_u64());
+            match amount {
+                Some(amount) if amount <= max_auto_transfer => {
+                    println!("[policy] approve transfer ${amount} (<= ${max_auto_transfer})");
                     ToolCallAction::run()
                 }
                 Some(amount) => ToolCallAction::skip(format!(
-                    "denied by policy: transfers over ${} require human approval; ${amount} exceeds the limit",
-                    self.max_auto_transfer
+                    "denied by policy: transfers over ${max_auto_transfer} require human approval; ${amount} exceeds the limit"
                 )),
                 None => {
                     ToolCallAction::skip("denied by policy: could not read the transfer amount")
                 }
-            };
-        }
-        ToolCallAction::skip(format!(
-            "denied by policy: `{tool_name}` is not on the approved tool list"
-        ))
-    }
+            }
+        } else {
+            ToolCallAction::skip(format!(
+                "denied by policy: `{tool_name}` is not on the approved tool list"
+            ))
+        };
+
+        Box::pin(async move { HookDecision::ToolCall(action) })
+    })
 }
 
 #[tokio::main]
@@ -156,10 +163,7 @@ async fn main() -> Result<()> {
         .tool(TransferFunds)
         .build();
 
-    let policy = ApprovalPolicy {
-        auto_approve: HashSet::from([SearchWeb::NAME]),
-        max_auto_transfer: 1000,
-    };
+    let policy = approval_policy(HashSet::from([SearchWeb::NAME]), 1000);
 
     let prompt = "Look up how much I should send, then transfer $5000 to account B-2.";
     println!("User: {prompt}\n");

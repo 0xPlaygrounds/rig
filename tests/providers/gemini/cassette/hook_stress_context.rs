@@ -1,7 +1,7 @@
-//! Hook-system stress suite: `HookContext` identity, the shared `Scratchpad`
-//! threaded across hooks and turns, and `HookStack` composition (multiple hooks,
-//! observe-only both-fire, `add_hook` append, `CompletionCall` patch
-//! accumulation, `active_tools` intersection). Recorded against real Gemini.
+//! Hook-system stress suite: turn advancement, host state shared across hooks
+//! and turns, and `Hooks` composition (multiple entries, observe-only both-fire,
+//! `add_hook` append, `CompletionCall` patch accumulation, `active_tools`
+//! intersection). Recorded against real Gemini.
 //!
 //! Assertions are loose for model-shaped values and exact only for
 //! rig-synthesized values (see `tools_support`'s note).
@@ -11,7 +11,7 @@ use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{
-    ApplyPatch, CHAIN_PREAMBLE, CountingMultiply, EventTap, ScratchpadReader, fact_doc,
+    CHAIN_PREAMBLE, CountingMultiply, EventTap, TallyReader, apply_patch, fact_doc, tally_reader,
 };
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract};
@@ -20,7 +20,7 @@ use crate::support::assert_nonempty_response;
 use rig::agent::RequestPatch;
 
 // ---------------------------------------------------------------------------
-// HookContext identity + turn advancement.
+// Turn advancement across a dependent multi-turn chain.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -29,6 +29,7 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
     let subtract = CountingSubtract::default();
     let tap = EventTap::default();
     let probe = tap.clone();
+    let tap_entry = tap.entry();
 
     with_gemini_cassette(
         "hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking",
@@ -48,14 +49,15 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
-                .add_hook(tap)
+                .add_hook(tap_entry)
                 .await
                 .expect("dependent chain should succeed");
 
             assert_nonempty_response(&response);
-            assert_eq!(probe.distinct_run_ids(), 1, "run_id must be stable");
-            assert_eq!(probe.is_streaming(), Some(false));
-            assert_eq!(probe.agent_name().as_deref(), Some("stress-agent"));
+            // The blocking surface's medium-specific observation fires, and the
+            // streamed response-finish never does.
+            assert!(probe.count("CompletionResponse") >= 1);
+            assert_eq!(probe.count("StreamResponseFinish"), 0);
 
             let turns = probe.distinct_turns();
             assert_eq!(
@@ -73,10 +75,15 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
 }
 
 #[tokio::test]
-async fn agent_name_absent_when_unconfigured_blocking() {
+async fn unnamed_agent_still_dispatches_every_hook_event_blocking() {
+    // The classic hook context exposed the configured agent name; hooks are
+    // closures now and capture whatever identity they need, so what is left to
+    // pin here is that an agent with no `.name(..)` still dispatches the full
+    // event set. Same recorded request bytes as before.
     let add = CountingAdd::default();
     let tap = EventTap::default();
     let probe = tap.clone();
+    let tap_entry = tap.entry();
 
     with_gemini_cassette(
         "hook_stress_context/agent_name_absent_when_unconfigured_blocking",
@@ -92,23 +99,30 @@ async fn agent_name_absent_when_unconfigured_blocking() {
             let response = agent
                 .prompt("Use the add tool to add 3 and 4, then report the result.")
                 .max_turns(4)
-                .add_hook(tap)
+                .add_hook(tap_entry)
                 .await
                 .expect("run should succeed");
 
             assert_nonempty_response(&response);
-            assert_eq!(
-                probe.agent_name(),
-                None,
-                "agent_name() must be None when the agent has no configured name"
-            );
+            for tag in [
+                "CompletionCall",
+                "CompletionResponse",
+                "ToolCall",
+                "ToolResult",
+                "ModelTurnFinished",
+            ] {
+                assert!(
+                    probe.count(tag) >= 1,
+                    "an unnamed agent must still dispatch {tag}"
+                );
+            }
         },
     )
     .await;
 }
 
 // ---------------------------------------------------------------------------
-// Scratchpad: shared across two hooks and growing across turns.
+// Shared host state: read by two hooks and growing across turns.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -118,9 +132,11 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
     let add_calls = add.counter.clone();
     let subtract_calls = subtract.counter.clone();
     let tap = EventTap::default();
-    let reader = ScratchpadReader::default();
+    let reader = TallyReader::default();
     let tap_probe = tap.clone();
     let reader_probe = reader.clone();
+    let tap_entry = tap.entry();
+    let reader_entry = tally_reader(&reader, tap.tally());
 
     with_gemini_cassette(
         "hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
@@ -140,10 +156,10 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
-                // Writer (tap) bumps the scratchpad tally on each ToolCall; the
+                // Writer (tap) bumps the shared tally on each ToolCall; the
                 // reader (a *different* hook) reads it on each ModelTurnFinished.
-                .add_hook(tap)
-                .add_hook(reader)
+                .add_hook(tap_entry)
+                .add_hook(reader_entry)
                 .await
                 .expect("dependent chain should succeed");
 
@@ -156,7 +172,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
             );
             assert!(
                 tallies.windows(2).all(|w| w[0] <= w[1]),
-                "the shared scratchpad tally must be non-decreasing, saw {tallies:?}"
+                "the shared tally must be non-decreasing, saw {tallies:?}"
             );
             assert!(
                 tallies.first() < tallies.last(),
@@ -187,6 +203,7 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
     let subtract = CountingSubtract::default();
     let tap = EventTap::default();
     let probe = tap.clone();
+    let tap_entry = tap.entry();
 
     with_gemini_cassette(
         "hook_stress_context/internal_call_id_correlates_tool_call_and_result_blocking",
@@ -206,7 +223,7 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
-                .add_hook(tap)
+                .add_hook(tap_entry)
                 .await
                 .expect("dependent chain should succeed");
 
@@ -228,7 +245,7 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
 }
 
 // ---------------------------------------------------------------------------
-// HookStack composition: multiple observe-only hooks, add_hook append.
+// Hooks composition: multiple observe-only entries, add_hook append.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -238,6 +255,8 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
     let second = EventTap::default();
     let first_probe = first.clone();
     let second_probe = second.clone();
+    let first_entry = first.entry();
+    let second_entry = second.entry();
 
     with_gemini_cassette(
         "hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking",
@@ -253,8 +272,8 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
             let response = agent
                 .prompt("Use the add tool to add 8 and 8, then report the result.")
                 .max_turns(4)
-                .add_hook(first)
-                .add_hook(second)
+                .add_hook(first_entry)
+                .add_hook(second_entry)
                 .await
                 .expect("run should succeed");
 
@@ -285,6 +304,8 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
     let request_hook = EventTap::default();
     let builder_probe = builder_hook.clone();
     let request_probe = request_hook.clone();
+    let builder_entry = builder_hook.entry();
+    let request_entry = request_hook.entry();
 
     with_gemini_cassette(
         "hook_stress_context/add_hook_appends_across_builder_and_request_blocking",
@@ -297,13 +318,13 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
                 .preamble(CHAIN_PREAMBLE)
                 .temperature(0.0)
                 .tool(add)
-                .add_hook(builder_hook)
+                .add_hook(builder_entry)
                 .build();
 
             let response = agent
                 .prompt("Use the add tool to add 5 and 6, then report the result.")
                 .max_turns(4)
-                .add_hook(request_hook)
+                .add_hook(request_entry)
                 .await
                 .expect("run should succeed");
 
@@ -348,12 +369,12 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
             let response = agent
                 .prompt("Tell me both the harbor code and the orchard code.")
                 .max_turns(4)
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .context(fact_doc("harbor", "The harbor code is ALPHA-11."))
                         .temperature(0.0),
                 ))
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .context(fact_doc("orchard", "The orchard code is BETA-22.")),
                 ))
@@ -405,12 +426,12 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
                      obtain.",
                 )
                 .max_turns(5)
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new()
                         .active_tools(["add", "subtract"])
                         .temperature(0.0),
                 ))
-                .add_hook(ApplyPatch(
+                .add_hook(apply_patch(
                     RequestPatch::new().active_tools(["add", "multiply"]),
                 ))
                 .await

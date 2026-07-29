@@ -1,5 +1,6 @@
 use anyhow::Result;
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -13,49 +14,61 @@ use rig::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
 
 /// Selects which registered tools the model sees on each turn by similarity
 /// between the turn's query and the tools' embedded documentation
 /// (`RequestPatch::active_tools` is the successor of index-backed dynamic
 /// tool retrieval).
-struct ToolRetrievalHook {
+///
+/// A hook is an attach-and-forget record: a named [`HookEntry`] whose closure
+/// captures everything it needs (here the embedding model and the tool store,
+/// shared through an `Arc` so the callback is `'static`).
+fn tool_retrieval_hook(
     embedding_model: openai::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
-}
+) -> HookEntry {
+    let state = Arc::new((embedding_model, store, samples));
+    HookEntry::new("tool-retrieval", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples) = state.as_ref();
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
 
-impl AgentHook for ToolRetrievalHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n_ids(request).await {
-            Ok(hits) => CompletionCallAction::patch(
-                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
-            ),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n_ids(request).await {
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 #[derive(Deserialize)]
@@ -315,11 +328,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(Multiply)
         .tool(Divide)
         // Advertise up to 4 retrieved tools per turn.
-        .add_hook(ToolRetrievalHook {
-            embedding_model,
-            store: vector_store,
-            samples: 4,
-        })
+        .add_hook(tool_retrieval_hook(embedding_model, vector_store, 4))
         .build();
 
     // Create a CLI chatbot from the agent

@@ -24,10 +24,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::OneOrMany;
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-};
+use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::completion::ToolDefinition;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{ImageMediaType, ToolResultContent};
 use rig::tool::{PortableToolEmbedding, Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
@@ -388,78 +387,66 @@ impl ToolEventRecorder {
             .expect("results lock should not be poisoned")
             .clone()
     }
-}
 
-impl AgentHook for ToolEventRecorder {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        self.calls
-            .lock()
-            .expect("calls lock should not be poisoned")
-            .push((event.tool_name.to_string(), event.args.to_string()));
-        ToolCallAction::run()
-    }
-
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.results
-            .lock()
-            .expect("results lock should not be poisoned")
-            .push((
-                event.tool_name.to_string(),
-                event.args.to_string(),
-                event.presentation.render(),
-            ));
-        ToolResultAction::keep()
+    /// The observe-only hook record for this recorder.
+    pub(crate) fn entry(&self) -> HookEntry {
+        let calls = self.calls.clone();
+        let results = self.results.clone();
+        HookEntry::new("tool-event-recorder", move |event| {
+            let decision = match event {
+                HookEvent::ToolCall { call, .. } => {
+                    calls
+                        .lock()
+                        .expect("calls lock should not be poisoned")
+                        .push((call.function.name, call.function.arguments.to_string()));
+                    HookDecision::ToolCall(ToolCallAction::run())
+                }
+                HookEvent::ToolResult {
+                    call, presentation, ..
+                } => {
+                    results
+                        .lock()
+                        .expect("results lock should not be poisoned")
+                        .push((
+                            call.function.name,
+                            call.function.arguments.to_string(),
+                            presentation.render(),
+                        ));
+                    HookDecision::ToolResult(ToolResultAction::keep())
+                }
+                _ => HookDecision::Continue,
+            };
+            Box::pin(async move { decision })
+        })
     }
 }
 
 /// Hook that skips a named tool with a fixed reason instead of executing it.
-#[derive(Clone)]
-pub(crate) struct SkipToolHook {
-    pub(crate) tool_name: &'static str,
-    pub(crate) reason: &'static str,
-}
-
-impl AgentHook for SkipToolHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::skip(self.reason)
-        } else {
-            ToolCallAction::run()
-        }
-    }
+pub(crate) fn skip_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
+    HookEntry::new("skip-tool", move |event| {
+        let decision = match event {
+            HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+                HookDecision::ToolCall(ToolCallAction::skip(reason))
+            }
+            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 /// Hook that terminates the run when a named tool is about to execute.
-#[derive(Clone)]
-pub(crate) struct TerminateOnToolHook {
-    pub(crate) tool_name: &'static str,
-    pub(crate) reason: &'static str,
-}
-
-impl AgentHook for TerminateOnToolHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::stop(self.reason)
-        } else {
-            ToolCallAction::run()
-        }
-    }
+pub(crate) fn terminate_on_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
+    HookEntry::new("terminate-on-tool", move |event| {
+        let decision = match event {
+            HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+                HookDecision::ToolCall(ToolCallAction::stop(reason))
+            }
+            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -5,24 +5,32 @@
 //! carries typed failure metadata on the error itself; it does not decide
 //! whether the agent may continue.
 //!
-//! A narrow completion-call hook reliably invokes `system_probe` on turn 1,
-//! while the prompt requests the desired operation. It does nothing on later
-//! turns, leaving the recoverable run free to produce a final answer. Two tool-result
-//! hooks then run in registration order:
+//! Hooks are attach-and-forget records — a named `HookEntry` wrapping a closure
+//! over owned `HookEvent` values — so policy lives in plain functions, not in a
+//! trait impl. A narrow completion-call hook reliably invokes `system_probe` on
+//! turn 1, while the prompt requests the desired operation. It does nothing on
+//! later turns, leaving the recoverable run free to produce a final answer. Two
+//! tool-result hooks then run in registration order:
 //!
-//! 1. `FailureRecorder` copies the event's call ID, structured error, and typed
-//!    failure metadata into a run-scoped scratchpad ledger.
-//! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
+//! 1. `failure_recorder` copies the event's call ID, structured error, and typed
+//!    failure metadata into a shared ledger.
+//! 2. `fatal_failure_policy` looks up that same call ID, terminating on `Other`/`EIO`
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `ToolResultEvent` carries facts about one execution: `raw_result` contains
+//! `HookEvent::ToolResult` carries facts about one execution: `result` contains
 //! the standard classification (kind, code, model feedback), and the concrete
 //! tool error attached via `with_source` can be recovered with
 //! `ToolExecutionError::downcast_ref` for tool-specific typed metadata that is
-//! never sent to the model. The scratchpad is different: it is shared,
-//! run-scoped hook state. Here it lets one hook record facts for the next
-//! hook without coupling either hook to model-visible result text.
+//! never sent to the model. The ledger is different: it is state the *host*
+//! owns and both closures capture (an `Arc<Mutex<_>>`): run-scoped hook state
+//! now lives with the host, not inside the hook system. Here it lets one hook
+//! record facts for the next hook without coupling either hook to
+//! model-visible result text.
+//!
+//! (Neither hook observes streaming deltas; an entry that wants
+//! `HookEvent::TextDelta` / `ToolCallDelta` must be built with
+//! `.observing_deltas()` or it never receives them.)
 //!
 //! Live commands (require `OPENAI_API_KEY`):
 //!
@@ -35,15 +43,14 @@
 //! lets the network failure return to the model. `--help` requires no credentials.
 
 use anyhow::{Result, bail};
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
-    ToolResultAction, ToolResultEvent,
-};
+use rig::agent::{CompletionCallAction, RequestPatch, ToolResultAction};
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolErrorKind, ToolExecutionError, ToolResult};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -146,8 +153,6 @@ impl Tool for SystemProbe {
     }
 }
 
-struct ForceSystemProbeOnFirstTurn;
-
 fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     (turn == 1).then(|| {
         RequestPatch::new().tool_choice(ToolChoice::Specific {
@@ -156,17 +161,20 @@ fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     })
 }
 
-impl AgentHook for ForceSystemProbeOnFirstTurn {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        match system_probe_patch(event.turn) {
-            Some(patch) => CompletionCallAction::patch(patch),
-            None => CompletionCallAction::continue_run(),
-        }
-    }
+/// Forces `system_probe` on turn 1 only; every other event is left alone.
+fn force_system_probe_on_first_turn() -> HookEntry {
+    HookEntry::new("force-system-probe", |event| {
+        let decision = match event {
+            HookEvent::BeforeModelCall { turn, .. } => {
+                HookDecision::CompletionCall(match system_probe_patch(turn) {
+                    Some(patch) => CompletionCallAction::patch(patch),
+                    None => CompletionCallAction::continue_run(),
+                })
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,10 +187,14 @@ struct FailureRecord {
     resource: &'static str,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 struct FailureLedger(Vec<FailureRecord>);
 
-struct FailureRecorder;
+/// The ledger the two hooks share. The host owns it and both closures capture a
+/// clone, which is how run-scoped hook state works now that hooks are plain
+/// records rather than trait objects.
+#[derive(Clone, Default)]
+struct SharedLedger(Arc<Mutex<FailureLedger>>);
 
 fn failure_record(
     internal_call_id: &str,
@@ -204,29 +216,37 @@ fn failure_record(
     })
 }
 
-impl AgentHook for FailureRecorder {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let Some(record) =
-            failure_record(event.internal_call_id, event.tool_name, event.raw_result)
-        else {
-            return ToolResultAction::keep();
+/// Records structured failures into the shared ledger; never steers the run.
+fn failure_recorder(ledger: SharedLedger) -> HookEntry {
+    HookEntry::new("failure-recorder", move |event| {
+        let decision = match event {
+            HookEvent::ToolResult {
+                call,
+                internal_call_id,
+                result,
+                ..
+            } => {
+                if let Some(record) =
+                    failure_record(&internal_call_id, &call.function.name, &result)
+                {
+                    println!(
+                        "[recorder] {} {} failed: kind={}, code={}, resource={}",
+                        record.tool_name,
+                        record.operation.as_str(),
+                        record.kind,
+                        record.code.as_deref().unwrap_or("none"),
+                        record.resource
+                    );
+                    if let Ok(mut ledger) = ledger.0.lock() {
+                        ledger.0.push(record);
+                    }
+                }
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
         };
-        println!(
-            "[recorder] {} {} failed: kind={}, code={}, resource={}",
-            record.tool_name,
-            record.operation.as_str(),
-            record.kind,
-            record.code.as_deref().unwrap_or("none"),
-            record.resource
-        );
-        ctx.scratchpad()
-            .update(|ledger: &mut FailureLedger| ledger.0.push(record));
-        ToolResultAction::keep()
-    }
+        Box::pin(async move { decision })
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -267,21 +287,32 @@ fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Tool
     }
 }
 
-struct FatalFailurePolicy;
-
-impl AgentHook for FatalFailurePolicy {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.raw_result.error().is_none() {
-            return ToolResultAction::keep();
-        }
-
-        let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_action(ledger.as_ref(), event.internal_call_id)
-    }
+/// Reads the ledger the recorder wrote, correlating by `internal_call_id`, and
+/// terminates the run on a fatal classification.
+fn fatal_failure_policy(ledger: SharedLedger) -> HookEntry {
+    HookEntry::new("fatal-failure-policy", move |event| {
+        let decision = match event {
+            HookEvent::ToolResult {
+                internal_call_id,
+                result,
+                ..
+            } => {
+                let action = if result.error().is_none() {
+                    ToolResultAction::keep()
+                } else {
+                    match ledger.0.lock() {
+                        Ok(ledger) => policy_action(Some(&*ledger), &internal_call_id),
+                        // A poisoned ledger means the recorder panicked; fall
+                        // back to the no-record path (keep the result).
+                        Err(_) => policy_action(None, &internal_call_id),
+                    }
+                };
+                HookDecision::ToolResult(action)
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -332,12 +363,15 @@ async fn main() -> Result<()> {
         .tool(SystemProbe)
         .build();
 
+    // The recorder must see the result before the policy reads its ledger, so
+    // the entries are registered in that order.
+    let ledger = SharedLedger::default();
     let response = agent
         .prompt(prompt)
         .max_turns(2)
-        .add_hook(ForceSystemProbeOnFirstTurn)
-        .add_hook(FailureRecorder)
-        .add_hook(FatalFailurePolicy)
+        .add_hook(force_system_probe_on_first_turn())
+        .add_hook(failure_recorder(ledger.clone()))
+        .add_hook(fatal_failure_policy(ledger))
         .await?;
     println!("\nFinal response:\n{response}");
     Ok(())

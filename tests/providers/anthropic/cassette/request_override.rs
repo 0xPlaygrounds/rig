@@ -12,8 +12,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -108,24 +109,23 @@ impl Tool for GetTime {
 /// A hook that, on the first turn only, narrows the advertised tools to
 /// `get_weather` and forces a tool call. Later turns are left untouched (the
 /// override is per-turn and non-sticky), so the model can answer with text.
-struct ForceWeatherOnlyOnFirstTurn;
-
-impl AgentHook for ForceWeatherOnlyOnFirstTurn {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if event.turn == 1 {
-            CompletionCallAction::patch(
-                RequestPatch::new()
-                    .active_tools([GetWeather::NAME])
-                    .tool_choice(ToolChoice::Required),
-            )
-        } else {
-            CompletionCallAction::continue_run()
-        }
-    }
+fn force_weather_only_on_first_turn() -> HookEntry {
+    HookEntry::new("force-weather-only-on-first-turn", |event| {
+        let decision = match event {
+            HookEvent::BeforeModelCall { turn: 1, .. } => {
+                HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new()
+                        .active_tools([GetWeather::NAME])
+                        .tool_choice(ToolChoice::Required),
+                ))
+            }
+            HookEvent::BeforeModelCall { .. } => {
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 /// Read the first recorded Anthropic request and assert the override hit the
@@ -197,7 +197,7 @@ async fn request_overridden_by_hook_blocking() {
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .add_hook(force_weather_only_on_first_turn())
                 .build();
 
             let response = agent
@@ -231,7 +231,7 @@ async fn request_overridden_by_hook_streaming() {
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .add_hook(force_weather_only_on_first_turn())
                 .build();
 
             let mut stream = agent.stream_prompt(PROMPT).max_turns(5).await;

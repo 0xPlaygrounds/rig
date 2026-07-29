@@ -238,6 +238,7 @@ dependencies = [
  "anyhow",
  "rig",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -248,6 +249,7 @@ dependencies = [
  "futures",
  "rig",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

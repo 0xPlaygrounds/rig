@@ -1,9 +1,7 @@
 use std::vec;
 
-use rig_agent::agent::hook::{
-    AgentHook, CompletionCall as CompletionCallEvent, CompletionCallAction, HookContext,
-    RequestPatch,
-};
+use rig_agent::agent::hook::{CompletionCallAction, RequestPatch};
+use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
 use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
@@ -26,49 +24,61 @@ struct WordDefinition {
     definitions: Vec<String>,
 }
 
-/// Passive RAG as a hook: on every model call, embed the prompt, search the
-/// vector store, and inject the best matches as per-turn context.
-struct RagHook {
+/// Passive RAG as a hook entry: on every model call, embed the prompt, search
+/// the vector store, and inject the best matches as per-turn context.
+///
+/// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
+/// closure over owned `HookEvent`s that returns a `HookDecision`; the
+/// embedding model, the store, and the sample count are captured behind an
+/// `Arc` so the returned future stays `'static + Send + Sync`.
+fn rag_hook(
     embedding_model: rig_bedrock::embedding::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
-}
-
-impl AgentHook for RagHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n(request).await {
-            Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                hits.into_iter().map(|hit| Document {
-                    id: hit.id,
-                    text: hit.payload.to_string(),
-                    additional_props: Default::default(),
-                }),
-            )),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+) -> HookEntry {
+    let state = std::sync::Arc::new((embedding_model, store, samples));
+    HookEntry::new("rag", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples) = state.as_ref();
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n(request).await {
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
+                        id: hit.id,
+                        text: hit.payload.to_string(),
+                        additional_props: Default::default(),
+                    })),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 #[tokio::main]
@@ -125,11 +135,7 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .add_hook(RagHook {
-            embedding_model,
-            store: vector_store,
-            samples: 1,
-        })
+        .add_hook(rag_hook(embedding_model, vector_store, 1))
         .build();
 
     // Prompt the agent and print the response

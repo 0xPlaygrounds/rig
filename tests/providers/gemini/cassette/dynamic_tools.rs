@@ -8,9 +8,10 @@
 //! per model call, and per-turn tool declarations), so they remain the
 //! contract this migration satisfies.
 
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::{Chat, Message};
 use rig::embeddings::{EmbeddingsBuilder, ToolSchema};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::vector_store::VectorSearchRequest;
@@ -46,49 +47,56 @@ async fn build_tool_store(
 /// The dynamic-tools hook recipe: on every completion call, embed the query,
 /// retrieve the best-matching tool names from the store, and advertise those
 /// names (plus the always-exposed static ones) for the turn.
-struct ToolRetrievalHook {
+fn tool_retrieval_hook(
     embedding_model: gemini::embedding::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
     always_exposed: Vec<String>,
-}
+) -> HookEntry {
+    let state = std::sync::Arc::new((embedding_model, store, samples, always_exposed));
+    HookEntry::new("tool-retrieval", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples, always_exposed) = state.as_ref();
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
 
-impl AgentHook for ToolRetrievalHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n_ids(request).await {
-            Ok(hits) => CompletionCallAction::patch(
-                RequestPatch::new().active_tools(
-                    hits.into_iter()
-                        .map(|(_score, name)| name)
-                        .chain(self.always_exposed.iter().cloned()),
-                ),
-            ),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n_ids(request).await {
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().active_tools(
+                        hits.into_iter()
+                            .map(|(_score, name)| name)
+                            .chain(always_exposed.iter().cloned()),
+                    ),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 #[tokio::test]
@@ -116,12 +124,12 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
                 .tool(subtract)
                 .tool(EmbedMultiply::default())
                 .tool(add)
-                .add_hook(ToolRetrievalHook {
+                .add_hook(tool_retrieval_hook(
                     embedding_model,
                     store,
-                    samples: 1,
-                    always_exposed: vec![CountingAdd::NAME.to_string()],
-                })
+                    1,
+                    vec![CountingAdd::NAME.to_string()],
+                ))
                 .default_max_turns(3)
                 .build();
 
@@ -167,12 +175,7 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 .temperature(0.0)
                 .tool(add)
                 .tool(EmbedSubtract::default())
-                .add_hook(ToolRetrievalHook {
-                    embedding_model,
-                    store,
-                    samples: 1,
-                    always_exposed: Vec::new(),
-                })
+                .add_hook(tool_retrieval_hook(embedding_model, store, 1, Vec::new()))
                 .default_max_turns(3)
                 .build();
 

@@ -10,8 +10,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
+use rig::agent::ToolCallAction;
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
@@ -103,24 +104,24 @@ impl Tool for GetWeather {
 /// call before it runs — the parameter-normalization use case for `ToolCallAction::Rewrite`
 /// exists for. It reads the model's emitted arguments, adds the field, and
 /// returns the rewritten object via [`ToolCallAction::rewrite`].
-struct PinUnitsToCelsius;
-
-impl AgentHook for PinUnitsToCelsius {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name != GetWeather::NAME {
-            return ToolCallAction::run();
-        }
-        let mut value: serde_json::Value =
-            serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
-        if let Some(object) = value.as_object_mut() {
-            object.insert("units".to_string(), json!("celsius"));
-        }
-        ToolCallAction::rewrite(value)
-    }
+fn pin_units_to_celsius() -> HookEntry {
+    HookEntry::new("pin-units-to-celsius", |event| {
+        let decision = match event {
+            HookEvent::ToolCall { call, .. } if call.function.name == GetWeather::NAME => {
+                let mut value = call.function.arguments;
+                if !value.is_object() {
+                    value = json!({});
+                }
+                if let Some(object) = value.as_object_mut() {
+                    object.insert("units".to_string(), json!("celsius"));
+                }
+                HookDecision::ToolCall(ToolCallAction::rewrite(value))
+            }
+            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 fn assert_units_were_injected(observations: &[ObservedCall]) {
@@ -148,7 +149,7 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)
-                .add_hook(PinUnitsToCelsius)
+                .add_hook(pin_units_to_celsius())
                 .build();
 
             let response = agent
@@ -177,7 +178,7 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)
-                .add_hook(PinUnitsToCelsius)
+                .add_hook(pin_units_to_celsius())
                 .build();
 
             let mut stream = agent.stream_prompt(WEATHER_PROMPT).max_turns(5).await;

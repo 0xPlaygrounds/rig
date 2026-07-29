@@ -230,12 +230,20 @@ pub mod tool_router {
     pub use rig_derive::ToolRouter;
 }
 
-/// Conversation memory APIs and optional memory policy helpers.
+/// Host-owned conversation memory, plus optional history-shaping policies.
 ///
-/// This module is always available and re-exports the core memory traits and
-/// in-process backend from `rig_core::memory`. Enabling the `memory` feature
-/// additionally re-exports policy types from the `rig-memory` companion crate
-/// into this same module.
+/// Memory is not an agent slot: the host loads history before a run and
+/// appends the run's committed transcript afterwards (see the
+/// `rig_agent::agent_api` module docs for the exact recipe and failure
+/// semantics).
+///
+/// This module is always available and re-exports the concrete in-process
+/// store (`InMemoryConversationMemory`) and `MemoryError` from
+/// `rig_core::memory`. Enabling the `memory` feature additionally re-exports
+/// the `rig-memory` companion crate's policy data — `MemoryPolicy`,
+/// `TokenCounter`, `Compactor`, and the concrete `PolicyMemory` whose
+/// `append` returns an `AppendOutcome { stored, demoted, compaction }` — into
+/// this same module.
 pub mod memory {
     pub use rig_core::memory::*;
 

@@ -6,12 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction,
-    ToolResultEvent,
-};
+use rig::agent::{CompletionCallAction, ObservationAction, ToolCallAction, ToolResultAction};
 use rig::completion::TypedPrompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::tool::Tool;
 
@@ -59,58 +56,64 @@ impl StepLogger {
     }
 }
 
-impl AgentHook for StepLogger {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let call_no = self.next_completion_call();
-        println!("\n=== completion call #{call_no}: model input ===");
-        println!("history:\n{}", pretty_json(event.history));
-        println!("prompt:\n{}", pretty_json(event.prompt));
-        CompletionCallAction::continue_run()
+impl StepLogger {
+    /// The hook record: prints every model input, normalized response, tool call
+    /// and tool result, in dispatch order.
+    fn entry(&self) -> HookEntry {
+        let logger = self.clone();
+        HookEntry::new("step-logger", move |event| {
+            let decision = logger.log(event);
+            Box::pin(async move { decision })
+        })
     }
 
-    async fn on_completion_response(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        let call_no = self.current_completion_call();
-        println!("\n=== completion response #{call_no}: normalized choice ===");
-        println!("{}", pretty_json(event.content));
-        println!("usage: {:?}", event.usage);
-        println!("message_id: {:?}", event.message_id);
-        ObservationAction::continue_run()
-    }
-
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        let tool_no = self.next_tool_call();
-        println!("\n=== tool call #{tool_no}: model requested tool ===");
-        println!("tool_name: {}", event.tool_name);
-        println!("tool_call_id: {:?}", event.tool_call_id);
-        println!("internal_call_id: {}", event.internal_call_id);
-        println!("args: {}", event.args);
-        ToolCallAction::run()
-    }
-
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        println!("\n=== tool result: tool returned ===");
-        println!("tool_name: {}", event.tool_name);
-        println!("tool_call_id: {:?}", event.tool_call_id);
-        println!("internal_call_id: {}", event.internal_call_id);
-        println!("args: {}", event.args);
-        println!("result: {}", event.presentation.render());
-        ToolResultAction::keep()
+    fn log(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } => {
+                let call_no = self.next_completion_call();
+                println!("\n=== completion call #{call_no}: model input ===");
+                println!("history:\n{}", pretty_json(&history));
+                println!("prompt:\n{}", pretty_json(&prompt));
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            HookEvent::CompletionResponse { response, .. } => {
+                let call_no = self.current_completion_call();
+                println!("\n=== completion response #{call_no}: normalized choice ===");
+                println!("{}", pretty_json(&response.choice));
+                println!("usage: {:?}", response.usage);
+                println!("message_id: {:?}", response.message_id);
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::ToolCall {
+                call,
+                internal_call_id,
+            } => {
+                let tool_no = self.next_tool_call();
+                println!("\n=== tool call #{tool_no}: model requested tool ===");
+                println!("tool_name: {}", call.function.name);
+                println!("tool_call_id: {:?}", call.call_id);
+                println!("internal_call_id: {internal_call_id}");
+                println!("args: {}", call.function.arguments);
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            HookEvent::ToolResult {
+                call,
+                internal_call_id,
+                presentation,
+                ..
+            } => {
+                println!("\n=== tool result: tool returned ===");
+                println!("tool_name: {}", call.function.name);
+                println!("tool_call_id: {:?}", call.call_id);
+                println!("internal_call_id: {internal_call_id}");
+                println!("args: {}", call.function.arguments);
+                println!("result: {}", presentation.render());
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
@@ -181,7 +184,7 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
 
     let result = agent
         .prompt_typed::<WeatherResponse>("Hello, whats the weather in London?")
-        .add_hook(hook)
+        .add_hook(hook.entry())
         .await;
 
     println!("prompt_typed result: {result:#?}");

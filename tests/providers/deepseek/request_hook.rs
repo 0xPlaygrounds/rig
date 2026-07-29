@@ -4,11 +4,9 @@ use anyhow::{Result, anyhow};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction,
-};
+use rig::agent::{CompletionCallAction, ObservationAction};
 use rig::completion::{Message, Prompt};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
@@ -17,53 +15,64 @@ use super::support::with_deepseek_cassette_result;
 use crate::support::assert_nonempty_response;
 
 #[derive(Clone)]
-struct SessionIdHook<'a> {
-    session_id: &'a str,
+struct SessionIdHook {
+    session_id: &'static str,
     prompt_calls: Arc<AtomicUsize>,
     response_calls: Arc<AtomicUsize>,
     seen_prompt: Arc<Mutex<Option<String>>>,
     seen_response: Arc<Mutex<Option<String>>>,
 }
 
-impl AgentHook for SessionIdHook<'_> {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let Message::User { content } = event.prompt else {
-            return CompletionCallAction::stop("expected a user message");
-        };
-        let prompt_text = content
-            .iter()
-            .filter_map(|content| match content {
-                UserContent::Text(text) => Some(text.text.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        self.prompt_calls.fetch_add(1, Ordering::SeqCst);
-        match self.seen_prompt.lock() {
-            Ok(mut seen_prompt) => {
-                *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
-                CompletionCallAction::continue_run()
-            }
-            Err(_) => CompletionCallAction::stop("prompt hook state unavailable"),
-        }
+impl SessionIdHook {
+    /// The hook record: records the outbound prompt and the normalized response.
+    fn entry(&self) -> HookEntry {
+        let hook = self.clone();
+        HookEntry::new("session-id", move |event| {
+            let decision = hook.decide(event);
+            Box::pin(async move { decision })
+        })
     }
 
-    async fn on_completion_response(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.response_calls.fetch_add(1, Ordering::SeqCst);
-        match self.seen_response.lock() {
-            Ok(mut seen_response) => {
-                *seen_response = Some(format!("{:?}", event.content));
-                ObservationAction::continue_run()
+    fn decide(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::BeforeModelCall { prompt, .. } => {
+                let Message::User { content } = prompt else {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "expected a user message",
+                    ));
+                };
+                let prompt_text = content
+                    .iter()
+                    .filter_map(|content| match content {
+                        UserContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.prompt_calls.fetch_add(1, Ordering::SeqCst);
+                match self.seen_prompt.lock() {
+                    Ok(mut seen_prompt) => {
+                        *seen_prompt = Some(format!("{}:{prompt_text}", self.session_id));
+                        HookDecision::CompletionCall(CompletionCallAction::continue_run())
+                    }
+                    Err(_) => HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "prompt hook state unavailable",
+                    )),
+                }
             }
-            Err(_) => ObservationAction::stop("response hook state unavailable"),
+            HookEvent::CompletionResponse { response, .. } => {
+                self.response_calls.fetch_add(1, Ordering::SeqCst);
+                match self.seen_response.lock() {
+                    Ok(mut seen_response) => {
+                        *seen_response = Some(format!("{:?}", response.choice));
+                        HookDecision::Observation(ObservationAction::continue_run())
+                    }
+                    Err(_) => HookDecision::Observation(ObservationAction::stop(
+                        "response hook state unavailable",
+                    )),
+                }
+            }
+            _ => HookDecision::Continue,
         }
     }
 }
@@ -86,7 +95,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
                 seen_response: Arc::new(Mutex::new(None)),
             };
 
-            let response = agent.prompt("Entertain me!").add_hook(hook.clone()).await?;
+            let response = agent.prompt("Entertain me!").add_hook(hook.entry()).await?;
 
             assert_nonempty_response(&response);
             anyhow::ensure!(

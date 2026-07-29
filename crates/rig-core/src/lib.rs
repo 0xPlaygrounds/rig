@@ -78,15 +78,17 @@
 //! Stores can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
-//! Runtimes can load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. The classic
-//! `rig-agent` runtime integrates this portable backend contract.
-//! The default in-process backend
-//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
-//! for tests and single-process agents; reusable history-shaping policies (sliding
-//! window, token budget) live in the [`rig-memory`](https://crates.io/crates/rig-memory)
-//! companion crate. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
-//! for a runnable end-to-end example.
+//! Conversation history is host-owned data: nothing in Rig loads or saves it
+//! behind your back. The in-process store
+//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) has
+//! plain `load`/`append`/`clear` methods and is suitable for tests and
+//! single-process agents; hosts with a database implement whatever store they
+//! like and report failures as
+//! [MemoryError](crate::memory::MemoryError). Reusable history-shaping
+//! policies (sliding window, token budget, rolling summaries) live in the
+//! [`rig-memory`](https://crates.io/crates/rig-memory) companion crate as
+//! plain data. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
+//! for the runnable load-before / append-after recipe.
 //!
 //! # Integrations
 //! ## Model Providers

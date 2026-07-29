@@ -1,8 +1,9 @@
 //! **Durable** human-in-the-loop tool-call approval.
 //!
 //! Unlike `agent_with_human_in_the_loop` (which `.await`s the human *inline*
-//! inside an `AgentHook`, so the approval only lives as long as the running
-//! task), this example pauses the run **across a serialization boundary**: when
+//! inside a `rig::hooks::HookEntry` closure, so the approval only lives as long
+//! as the running task), this example pauses the run **across a serialization
+//! boundary**: when
 //! the model wants to run tools, the entire [`AgentRun`] state machine is written
 //! to a JSON file and then reconstructed from that file before the decision is
 //! taken. Everything between the write and the reload could be a *different

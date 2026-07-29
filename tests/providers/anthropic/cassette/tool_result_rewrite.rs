@@ -10,8 +10,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
+use rig::agent::ToolResultAction;
 use rig::completion::Prompt;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
@@ -107,20 +108,19 @@ fn redact_ssn(record: &str) -> String {
 /// A guardrail hook that redacts the SSN from `get_user_record` output on the
 /// `ToolResult` event, before the model ever sees it — the post-tool redaction
 /// use case `ToolResultAction::Rewrite` exists for.
-struct RedactSsnFromResult;
-
-impl AgentHook for RedactSsnFromResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == GetUserRecord::NAME {
-            ToolResultAction::rewrite(redact_ssn(&event.presentation.render()))
-        } else {
-            ToolResultAction::keep()
-        }
-    }
+fn redact_ssn_from_result() -> HookEntry {
+    HookEntry::new("redact-ssn-from-result", |event| {
+        let decision = match event {
+            HookEvent::ToolResult {
+                call, presentation, ..
+            } if call.function.name == GetUserRecord::NAME => HookDecision::ToolResult(
+                ToolResultAction::rewrite(redact_ssn(&presentation.render())),
+            ),
+            HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 fn assert_answer_hides_secret(answer: &str, tool_produced_secret: bool) {
@@ -146,7 +146,7 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
                 .tool(tool)
-                .add_hook(RedactSsnFromResult)
+                .add_hook(redact_ssn_from_result())
                 .build();
 
             let response = agent
@@ -179,7 +179,7 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
                 .tool(tool)
-                .add_hook(RedactSsnFromResult)
+                .add_hook(redact_ssn_from_result())
                 .build();
 
             let mut stream = agent.stream_prompt(LOOKUP_PROMPT).max_turns(5).await;

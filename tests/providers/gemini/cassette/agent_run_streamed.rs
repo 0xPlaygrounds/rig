@@ -10,11 +10,9 @@ use rig::agent::run::{
     AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
     StreamedTurnEvent,
 };
-use rig::agent::{
-    AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction,
-};
+use rig::agent::{InvalidToolCallAction, MultiTurnStreamItem, StreamingError, ToolCallAction};
 use rig::completion::{PromptError, Usage};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -515,17 +513,17 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
     .await;
 }
 
-#[derive(Clone)]
-struct CancelOnToolCall;
-
-impl AgentHook for CancelOnToolCall {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        _event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        ToolCallAction::stop("cancelled by test hook")
-    }
+/// Cancels the run from the pre-execution tool event.
+fn cancel_on_tool_call() -> HookEntry {
+    HookEntry::new("cancel-on-tool-call", |event| {
+        let decision = match event {
+            HookEvent::ToolCall { .. } => {
+                HookDecision::ToolCall(ToolCallAction::stop("cancelled by test hook"))
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[tokio::test]
@@ -542,7 +540,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
 
             let mut stream = agent
                 .stream_prompt("What is 21 + 21? Use the add tool.")
-                .add_hook(CancelOnToolCall)
+                .add_hook(cancel_on_tool_call())
                 .max_turns(2)
                 .await;
 

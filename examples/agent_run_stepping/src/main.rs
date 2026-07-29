@@ -9,9 +9,11 @@
 //!
 //! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
 //!
-//! For the common case you don't need that level of control: attach an
-//! [`AgentHook`] to observe tool calls (and every other event) without
-//! hand-driving the loop. Use `agent.runner(prompt).add_hook(h).run().await`.
+//! For the common case you don't need that level of control: attach a
+//! [`rig::hooks::HookEntry`] to observe tool calls (and every other event)
+//! without hand-driving the loop. Hooks are attach-and-forget records — a name
+//! plus a closure over owned [`rig::hooks::HookEvent`] values — so there is no
+//! trait to implement. Use `agent.runner(prompt).add_hook(entry).run().await`.
 //!
 //! Both approaches are demonstrated in `main` below.
 //!
@@ -22,11 +24,10 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
-};
+use rig::agent::{InvalidToolCallAction, ToolCallAction};
 use rig::completion::CompletionModel;
 use rig::executor::ToolExecutor;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -73,17 +74,26 @@ impl Tool for Add {
 }
 
 // ---------------------------------------------------------------------------
-// A minimal AgentHook that logs every tool call routed through the runner.
-// Used in Part 2 below to show the high-level hook-based path.
+// A minimal hook record that logs every tool call routed through the runner.
+// Used in Part 2 below to show the high-level hook-based path. A hook is just a
+// named closure over `HookEvent`; events it has no opinion about answer
+// `HookDecision::Continue`.
 // ---------------------------------------------------------------------------
 
-struct ToolLoggerHook;
-
-impl AgentHook for ToolLoggerHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        println!("[hook] tool call: {}({})", event.tool_name, event.args);
-        ToolCallAction::run()
-    }
+fn tool_logger_hook() -> HookEntry {
+    HookEntry::new("tool-logger", |event| {
+        let decision = match event {
+            HookEvent::ToolCall { call, .. } => {
+                println!(
+                    "[hook] tool call: {}({})",
+                    call.function.name, call.function.arguments
+                );
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            _ => HookDecision::Continue,
+        };
+        Box::pin(async move { decision })
+    })
 }
 
 #[tokio::main]
@@ -199,8 +209,11 @@ async fn main() -> Result<()> {
     //
     // Most use-cases don't need the manual stepping above. `agent.runner(…)`
     // returns an `AgentRunner` that drives the same machine internally while
-    // firing an `AgentHook` at every observable point. Attach hooks with
-    // `.add_hook(h)`; each call appends another hook to the stack.
+    // dispatching a `HookEvent` at every observable point. Attach hooks with
+    // `.add_hook(entry)`; each call appends another record to the list, and they
+    // are dispatched in registration order. (An entry that wants the streaming
+    // `TextDelta` / `ToolCallDelta` events must be built with
+    // `.observing_deltas()`, or it never sees them.)
     // -----------------------------------------------------------------------
 
     println!("\n--- Part 2: AgentRunner with ToolLoggerHook ---");
@@ -208,7 +221,7 @@ async fn main() -> Result<()> {
     let resp = agent
         .runner("What is 2 + 5?")
         .max_turns(2)
-        .add_hook(ToolLoggerHook)
+        .add_hook(tool_logger_hook())
         .run()
         .await?;
 

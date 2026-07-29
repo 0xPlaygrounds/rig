@@ -6,8 +6,12 @@
 //! completion-call hook that embeds each prompt, retrieves the best-matching
 //! tool names, and narrows the advertised set for that turn via
 //! `RequestPatch::active_tools`.
+//!
+//! A hook is an attach-and-forget record: a named `HookEntry` wrapping a
+//! closure over owned `HookEvent`s that returns a `HookDecision`.
 use anyhow::Result;
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
@@ -130,47 +134,56 @@ impl PortableToolEmbedding for Subtract {
 }
 
 /// Selects which registered tools the model sees on each turn by similarity
-/// between the prompt and the tools' embedded documentation.
-struct ToolRetrievalHook {
+/// between the prompt and the tools' embedded documentation. The embedding
+/// model, store, and sample count are captured behind an `Arc` so the hook's
+/// future stays `'static + Send + Sync`.
+fn tool_retrieval_hook(
     embedding_model: openai::EmbeddingModel,
     store: InMemoryVectorStore,
     samples: u64,
-}
+) -> HookEntry {
+    let state = std::sync::Arc::new((embedding_model, store, samples));
+    HookEntry::new("tool-retrieval", move |event| {
+        let state = state.clone();
+        Box::pin(async move {
+            let HookEvent::BeforeModelCall {
+                prompt, history, ..
+            } = event
+            else {
+                return HookDecision::Continue;
+            };
+            let (embedding_model, store, samples) = state.as_ref();
+            let query = prompt
+                .rag_text()
+                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+            let Some(query) = query else {
+                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+            };
 
-impl AgentHook for ToolRetrievalHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let query = event.prompt.rag_text().or_else(|| {
-            event
-                .history
-                .iter()
-                .rev()
-                .find_map(|message| message.rag_text())
-        });
-        let Some(query) = query else {
-            return CompletionCallAction::continue_run();
-        };
-
-        let embedded = match self.embedding_model.embed_text(&query).await {
-            Ok(embedding) => embedding,
-            Err(error) => return CompletionCallAction::stop(error.to_string()),
-        };
-        let request = VectorSearchRequest::builder()
-            .query(embedded)
-            .samples(self.samples)
-            .build();
-        match self.store.top_n_ids(request).await {
-            // The store is keyed by tool name; narrow this turn's advertised
-            // tools to the retrieved names.
-            Ok(hits) => CompletionCallAction::patch(
-                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
-            ),
-            Err(error) => CompletionCallAction::stop(error.to_string()),
-        }
-    }
+            let embedded = match embedding_model.embed_text(&query).await {
+                Ok(embedding) => embedding,
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+            let request = VectorSearchRequest::builder()
+                .query(embedded)
+                .samples(*samples)
+                .build();
+            match store.top_n_ids(request).await {
+                // The store is keyed by tool name; narrow this turn's
+                // advertised tools to the retrieved names.
+                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                    RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+                )),
+                Err(error) => {
+                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+                }
+            }
+        })
+    })
 }
 
 #[tokio::main]
@@ -207,11 +220,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         .tool(Add)
         .tool(Subtract)
-        .add_hook(ToolRetrievalHook {
-            embedding_model,
-            store: vector_store,
-            samples: 1,
-        })
+        .add_hook(tool_retrieval_hook(embedding_model, vector_store, 1))
         .default_max_turns(2)
         .build();
 

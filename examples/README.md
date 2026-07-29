@@ -20,12 +20,12 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_run_stepping` | Drives the agent loop by hand with the sans-IO [`AgentRun`] state machine. |
 | `agent_stream_chat` | Demonstrates `stream_chat` with prior conversation history. |
 | `agent_with_agent_tool` | See source. |
-| `agent_with_approval_policy` | Demonstrates a non-interactive, policy-based HITL gate: an `AgentHook` auto-approves an allow-list, denies the rest (fail-closed), and applies an arg-based rule (mirrors `needs_approval`/`interrupt_on` predicates). |
+| `agent_with_approval_policy` | Demonstrates a non-interactive, policy-based HITL gate: a `HookEntry` closure auto-approves an allow-list, denies the rest (fail-closed), and applies an arg-based rule (mirrors `needs_approval`/`interrupt_on` predicates). |
 | `agent_with_context` | Demonstrates adding small context documents directly to an agent. |
 | `agent_with_default_max_turns` | Demonstrates extending the default agent loop budget for tool-heavy prompts. |
 | `agent_with_durable_approval` | Demonstrates **durable** HITL: the hand-driven `AgentRun` is serialized while tool calls are pending and resumed from JSON (as another process would), so approval can happen out-of-process / later. |
 | `agent_with_echochambers` | See source. |
-| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto typed `ToolCallAction` values (`Run`/`Skip`/`Rewrite`/`Stop`). |
+| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: a `HookEntry` closure pauses on each tool call so a human can approve/deny/edit/abort, mapped onto typed `ToolCallAction` values (`Run`/`Skip`/`Rewrite`/`Stop`). |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
 | `agent_with_memory_streaming` | Demonstrates Rig-managed conversation memory with streaming. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend. |
@@ -40,7 +40,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `discord_bot` | See source. |
 | `enum_dispatch` | See source. |
 | `extractor` | Demonstrates typed extraction and extraction with usage metadata. |
-| `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so an `AgentHook` gates the patch on `ctx.turn() == 1` to force the tool only up front. |
+| `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so a `HookEntry` closure gates the patch on the event's `turn == 1` to force the tool only up front. |
 | `gemini_deep_research` | See source. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
 | `gemini_extractor_with_rag` | See source. |
@@ -61,7 +61,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `rag_ollama` | See source. |
 | `rag` | See source. |
 | `reasoning_loop` | See source. |
-| `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking two `AgentHook`s with `add_hook`. |
+| `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking several attach-and-forget `HookEntry` records with `add_hook` (delta events additionally require `.observing_deltas()`). |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
 | `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
