@@ -1,0 +1,15 @@
+[package]
+name = "rig-core-telemetry-macro-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Keep this compile-only consumer out of Rig's workspace so release and
+# versioning tools cannot mistake it for a package that should be published.
+[workspace]
+
+# This must remain the only dependency and must remain renamed. The fixture
+# verifies that exported rig-core macros do not require consumers to depend on
+# tracing directly or to use rig-core's canonical crate name.
+[dependencies]
+rig_runtime_core = { package = "rig-core", path = "../../..", default-features = false }

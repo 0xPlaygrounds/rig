@@ -10,14 +10,6 @@ git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
 
-# Compile-only tripwire, never published and never versioned. `publish = false`
-# already keeps release-plz off it; this is belt-and-braces so it can't show up
-# in a release PR.
-[[package]]
-name = "rig-core-macro-hygiene"
-release = false
-publish = false
-
 [changelog]
 body = """
 ## [{{ version }}]\

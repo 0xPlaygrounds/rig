@@ -6,6 +6,10 @@ license = "MIT"
 readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
 repository = "https://github.com/0xPlaygrounds/rig"
+exclude = [
+    "tests/macro_hygiene.rs",
+    "tests/fixtures/telemetry_macro_consumer",
+]
 
 [package.metadata.docs.rs]
 all-features = true
