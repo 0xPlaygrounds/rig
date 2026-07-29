@@ -37,6 +37,15 @@ branch `docs/migrating-0.30-onward` (rig 0.41.0).
 > `ToolExecutionError` public downcast API is dropped at P7 unless the test
 > port proves a need; §14's phase table is rewritten below to match this
 > revision.
+>
+> **Revision 2.1.** A reverted P1 reconnaissance pass validated the §5.4 and
+> §9.1 signatures against the compiler; three details are amended in place:
+> `CompletionResponse.provider` is `String` (a `&'static str` field cannot
+> satisfy `Deserialize`); `StreamFinal` additionally carries `provider` and
+> `model` so the stream→response conversion can fill the normalized fields;
+> and the `GetTokenUsage` deletion's full dependent set plus the
+> shared-conversion provider-stamping pattern are recorded on the §3.2 row
+> and the §14 P1 row.
 
 **Mandate.** `rig-core` and `rig-agent` become data-oriented libraries with no
 polymorphism in their public or internal architecture: no `dyn`, no hand-rolled
@@ -182,7 +191,7 @@ justifies it).
 | `MessageFilter` / `DemotionHook` / `Compactor` | `memory.rs:178, 220, 296` | **MOVE** with their module to `rig-memory` |
 | `TurnSource<M>` (`type Raw`; 2 impls) | `agent/prompt_request/streaming.rs:405-470` | **DEL** — the blocking/streaming seam becomes two concrete session types sharing free functions (§9) |
 | `PortableTool` / `PortableToolEmbedding` + blanket bridges | `rig-core/src/tool/portable.rs:19-46`, `tool/mod.rs:206-272` | **DEL** — one `Tool` contract remains, in rig-core, context-free (§7.2) |
-| `GetTokenUsage` | `rig-core/src/completion` (bound at `streaming.rs:236`) | **DEL** — usage becomes a field on the concrete stream-final record (§9.1) |
+| `GetTokenUsage` | `rig-core/src/completion/request.rs:229` (bound at `streaming.rs:236`) | **DEL** — usage becomes a field on the concrete stream-final record (§9.1). Full dependent set (Revision 2.1, compiler-verified): ~31 provider impl files; `telemetry/mod.rs:776-795` (`record_token_usage<U: GetTokenUsage>` → takes `&Usage`); the `OpenAICompatibleProvider` bounds (`openai/completion/mod.rs:1440-1456`, call sites `:1208`/`:1363`/`:2000`) and `internal/openai_chat_completions_compatible.rs:159-161` — wire usage types retarget to `Into<Usage>` bounds (allowed `From`/`Into` capability machinery); `test_utils` mocks (`streaming.rs:38`, `completion.rs`) |
 | `InsertDocuments` (generic method over `Embed`) | `vector_store/mod.rs:75-81` | **DATA** — insertion takes `Vec<(serde_json::Value, OneOrMany<Embedding>)>`-shaped concrete records; embedding happens before the store boundary (§10.3) |
 | `Embed` (user-implemented text extraction) / `EmbeddingsBuilder<M, D>` | `embeddings/` | **DATA + plain contract** — builder becomes the typed `embed_batches` free fn (§10.1); `#[derive(Embed)]` targets a single sync method with no associated types and no RPITIT — fully compliant, no exception needed (§10.1, §16.1) |
 
@@ -549,7 +558,9 @@ pub struct CompletionResponse {
     pub usage: Usage,
     pub message_id: Option<String>,
     pub finish_reason: Option<FinishReason>,   // closes #2090 / #1886
-    pub provider: &'static str,                // descriptor name
+    pub provider: String,                      // descriptor name (String, not
+                                               // &'static str: the field must
+                                               // Deserialize — Revision 2.1)
     pub model: Option<String>,                 // provider-reported model id
 }
 ```
@@ -1103,6 +1114,9 @@ pub struct StreamFinal {
     pub usage: Usage,
     pub finish_reason: Option<FinishReason>,
     pub message_id: Option<String>,
+    pub provider: String,            // Revision 2.1: needed so the
+    pub model: Option<String>,       // stream→CompletionResponse conversion
+                                     // can fill the normalized fields
 }
 ```
 
@@ -1565,7 +1579,7 @@ wholesale cassette churn destroys reviewability).
 
 | # | Phase | Contents | Breaking? | Reversible? |
 |---|---|---|---|---|
-| P1 | Normalize the payloads | Concrete `CompletionResponse` (+`finish_reason`, closes #2090/#1886); concrete `StreamedAssistantContent`/`StreamFinal`; de-genericize `StreamedTurnAssembler::ingest`; delete `GetTokenUsage`. `CompletionModel` temporarily keeps erased-free signatures by returning the concrete types. | Yes — `raw_response`/`Final(R)` consumers (34 + 20 files, §2; mostly in-repo tests) | No (data-model change) — do first, with the issue-closing payoff |
+| P1 | Normalize the payloads | Concrete `CompletionResponse` (+`finish_reason`, closes #2090/#1886); concrete `StreamedAssistantContent`/`StreamFinal`; de-genericize `StreamedTurnAssembler::ingest`; delete `GetTokenUsage` (dependent set on the §3.2 row). `CompletionModel` temporarily keeps erased-free signatures by returning the concrete types. Transitional pattern while `GenericCompletionModel` survives: shared compat wire conversions fill a placeholder and the generic model stamps `response.provider = Ext::PROVIDER_NAME` post-`try_into` (in-crate field mutation under `#[non_exhaustive]`). Working order: core vocabulary first (`request.rs`, `streaming.rs`), then the provider fleet in dependency-clean waves, with the `openai`/`internal` shared core done attentively before the 17 thin compat files. | Yes — `raw_response`/`Final(R)` consumers (34 + 20 files, §2; mostly in-repo tests) | No (data-model change) — do first, with the issue-closing payoff |
 | P2 | The pure protocol layer | `AgentConfig`, `ToolCatalog`, `prepare_request` in rig-agent; hook fold + resolution-accumulator helpers (§6.2) + serde on action/context types. Existing runner internally rewires `build_prepared_completion_request` onto `prepare_request`. | No (additive) | Yes |
 | P3 | Provider pilot | `openai`: `Config`/`DESCRIPTOR`/`build_request`/`parse_response`/`SseParser`/`complete`/`open_stream` + `HttpRuntime`; existing trait impl becomes a thin delegate. Byte-identical cassettes prove the split total. | No | Yes |
 | P4 | Provider fleet | Remaining 24 in-core providers via `openai_compat` helpers + x-macro; companion crates (`bedrock`/`gemini-grpc`/`candle`) gain `Config` + free fns alongside their trait impls. | No | Yes (mechanical) |

@@ -1,5 +1,14 @@
 # Generic trait bounds in rig — inventory and de-generification options
 
+> **Status note.** This inventory is raw material for
+> `audit/data-oriented-rearchitecture.md`, which verified it and found
+> several counts wrong — read it with that document's §2 corrections (e.g.
+> 25 in-core providers, not ~32; 3 `M: CompletionModel` bound sites in
+> rig-core, not 17). The erasure-based options ranked in §6 below were
+> **not** adopted: the adopted design removes the constructs structurally
+> (enums + data + free functions, no `dyn`). Under that design's Revision 2,
+> the classic runtime is migrated onto the new substrate, never deleted.
+
 Goal: reduce/eliminate generic trait bounds so rig's runtime types become plain,
 concrete, `'static + Send + Sync` values that can be used as ECS components.
 

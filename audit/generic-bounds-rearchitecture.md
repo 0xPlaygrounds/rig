@@ -1,8 +1,17 @@
 # Rearchitecting rig to eliminate model trait bounds (no type erasure)
 
-Companion to `audit/generic-bounds.md`, which inventories the bounds. This
-document is the design for removing them structurally rather than hiding them
-behind `dyn`.
+> **Status note: superseded.** This document handles only the *model*
+> parameter and is kept for its dispatch-mechanism rationale (§2). The full
+> design — covering hooks, tools, memory, streaming, the whole trait
+> surface, and the migration plan — is `audit/data-oriented-rearchitecture.md`,
+> which also corrects several factual claims made here (its §2: provider
+> count is 25, not ~32/~35; `OpenAICompatibleProvider` has 2 associated
+> types + 6 methods, not "five consts + two small functions"; the "~97
+> bound sites" figure is ~83–90). Two of this document's positions were
+> later overturned: the `Custom` fn-pointer arm offered in §2 is a
+> hand-rolled vtable and was rejected outright, and §5's final step
+> ("delete the generic shell") is retired by the full design's Revision 2 —
+> the classic runtime is migrated onto the new substrate, never deleted.
 
 ---
 
