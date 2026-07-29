@@ -21,9 +21,9 @@ pub struct HttpRuntime {
 #[derive(Clone)]
 pub(crate) enum Transport {
     Reqwest(reqwest::Client),
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(test, feature = "test-utils"))]
     Recording(crate::test_utils::RecordingHttpClient),
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(test, feature = "test-utils"))]
     Sequenced(crate::test_utils::SequencedHttpClient),
 }
 
@@ -49,7 +49,7 @@ impl HttpRuntime {
     }
 
     /// A runtime that replays through a recording/replaying test client.
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn recording(client: crate::test_utils::RecordingHttpClient) -> Self {
         Self {
             transport: Transport::Recording(client),
@@ -57,7 +57,7 @@ impl HttpRuntime {
     }
 
     /// A runtime that replays a scripted sequence of test responses.
-    #[cfg(feature = "test-utils")]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn sequenced(client: crate::test_utils::SequencedHttpClient) -> Self {
         Self {
             transport: Transport::Sequenced(client),
@@ -83,9 +83,9 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(client) => client.send::<Vec<u8>, bytes::Bytes>(request).await,
         };
         Self::flatten_bytes_response(sent).await
@@ -100,9 +100,9 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send_multipart::<bytes::Bytes>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send_multipart::<bytes::Bytes>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(client) => client.send_multipart::<bytes::Bytes>(request).await,
         };
         Self::flatten_bytes_response(sent).await
@@ -139,9 +139,9 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, String), CompletionError> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(client) => client.send::<Vec<u8>, Vec<u8>>(request).await,
         };
         match sent {
@@ -165,9 +165,9 @@ impl std::fmt::Debug for HttpRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let transport = match &self.transport {
             Transport::Reqwest(_) => "reqwest",
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(_) => "recording",
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(_) => "sequenced",
         };
         formatter

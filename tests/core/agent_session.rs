@@ -273,6 +273,195 @@ async fn suspend_and_resume_mid_tools_round_trips() {
 }
 
 #[tokio::test]
+async fn resume_reconstitutes_pending_invalid_tool_call() {
+    let script = MockScript::from_responses(vec![
+        tool_call_response("call_1", "bogus", serde_json::json!({})),
+        text_response("recovered", 2),
+    ]);
+    let mut config = AgentConfig::new();
+    config.max_turns = Some(3);
+    let mut session = AgentSession::new(
+        config.clone(),
+        mock_provider(script.clone()),
+        Arc::new(Runtime::new()),
+        "hello",
+    )
+    .with_tools(adder_catalog());
+
+    match session.advance().await.expect("first advance") {
+        SessionEvent::InvalidToolCall(context) => assert_eq!(context.tool_name, "bogus"),
+        other => panic!("expected InvalidToolCall, got {other:?}"),
+    }
+
+    // Suspend on the invalid-call decision itself.
+    let serialized =
+        serde_json::to_string(session.run_state()).expect("run state should serialize");
+    drop(session);
+
+    let run = serde_json::from_str(&serialized).expect("run state should deserialize");
+    let mut resumed =
+        AgentSession::resume(config, mock_provider(script), Arc::new(Runtime::new()), run)
+            .with_tools(adder_catalog());
+
+    // The pending decision is re-derived: advance re-surfaces the invalid
+    // call and resolve_invalid answers it, instead of bricking the run.
+    let context = match resumed.advance().await.expect("resumed advance") {
+        SessionEvent::InvalidToolCall(context) => context,
+        other => panic!("expected InvalidToolCall after resume, got {other:?}"),
+    };
+    assert_eq!(context.tool_name, "bogus");
+    resumed
+        .resolve_invalid(InvalidToolCallAction::skip("not available"))
+        .expect("skip should resolve after resume");
+
+    let calls = match resumed.advance().await.expect("post-skip advance") {
+        SessionEvent::ToolCallsReady(calls) => calls,
+        other => panic!("expected ToolCallsReady, got {other:?}"),
+    };
+    let preresolved = calls[0]
+        .preresolved_result
+        .clone()
+        .expect("skipped call should carry a preresolved result");
+    resumed
+        .provide_tool_results(vec![preresolved])
+        .expect("preresolved result should be accepted");
+    let done = match resumed.advance().await.expect("final advance") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "recovered");
+}
+
+#[tokio::test]
+async fn transient_provider_error_recovers_on_next_advance() {
+    let script = MockScript::from_responses(vec![
+        text_response("unused", 0),
+        text_response("recovered", 5),
+    ])
+    .with_errors(vec![Some("boom".to_string())]);
+    let mut session = session(script);
+
+    let error = session
+        .advance()
+        .await
+        .expect_err("first advance must surface the provider error");
+    assert!(error.to_string().contains("boom"));
+
+    // The run returned to the pre-call state: the next advance re-issues the
+    // model call (with the failed attempt's budget refunded — max_turns is 1)
+    // instead of raising a protocol violation.
+    let done = match session.advance().await.expect("second advance") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "recovered");
+}
+
+#[tokio::test]
+async fn resume_recovers_run_serialized_awaiting_model() {
+    use rig_agent::agent::run::{AgentRun, AgentRunStep};
+
+    // Hand-drive a run into AwaitingModel (a provider call in flight) and
+    // serialize it there — what a crash between CallModel and its response
+    // leaves behind.
+    let mut run = AgentRun::new("hello");
+    assert!(matches!(
+        run.next_step().expect("next_step"),
+        AgentRunStep::CallModel { .. }
+    ));
+    let serialized = serde_json::to_string(&run).expect("run should serialize");
+
+    let run: AgentRun = serde_json::from_str(&serialized).expect("run should deserialize");
+    let script = MockScript::from_responses(vec![text_response("resumed", 1)]);
+    let mut resumed = AgentSession::resume(
+        AgentConfig::new(),
+        mock_provider(script),
+        Arc::new(Runtime::new()),
+        run,
+    );
+
+    // resume() abandons the in-flight call so advance re-issues it.
+    let done = match resumed.advance().await.expect("resumed advance") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "resumed");
+}
+
+#[tokio::test]
+async fn unanswered_before_model_call_is_a_protocol_violation() {
+    let script = MockScript::from_responses(vec![text_response("answer", 1)]);
+    let mut session = session(script).with_policy(SessionPolicy {
+        surface_model_turns: false,
+        surface_completion_calls: true,
+    });
+
+    match session.advance().await.expect("first advance") {
+        SessionEvent::BeforeModelCall { turn, .. } => assert_eq!(turn, 1),
+        other => panic!("expected BeforeModelCall, got {other:?}"),
+    }
+
+    // Advancing without answering is a protocol violation (matching the
+    // stream driver), not a silent auto-continue.
+    let error = session
+        .advance()
+        .await
+        .expect_err("advance must reject an unanswered BeforeModelCall");
+    assert!(error.to_string().contains("reply_before_call"));
+
+    // Answering afterwards still works.
+    session
+        .reply_before_call(rig_agent::agent::hook::CompletionCallAction::Continue)
+        .expect("continue should be accepted");
+    let done = match session.advance().await.expect("post-reply advance") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "answer");
+}
+
+#[derive(serde::Deserialize, rig::schemars::JsonSchema)]
+struct ExtractedNumber {
+    n: u32,
+}
+
+#[tokio::test]
+async fn extract_retry_history_starts_with_the_original_prompt() {
+    // Attempt 1 burns the run's inner output-retry (two non-JSON turns),
+    // finalizes best-effort, and fails deserialization; attempt 2 succeeds.
+    let script = MockScript::from_responses(vec![
+        text_response("not json", 1),
+        text_response("still not json", 1),
+        text_response(r#"{"n": 7}"#, 1),
+    ]);
+    let value: ExtractedNumber = rig::extract::extract(
+        AgentConfig::new(),
+        mock_provider(script.clone()),
+        Arc::new(Runtime::new()),
+        "extract the number",
+        1,
+    )
+    .await
+    .expect("extraction should succeed on the retry");
+    assert_eq!(value.n, 7);
+
+    // The retry request's history must open with the original user prompt,
+    // not the previous assistant output (strict providers reject histories
+    // that start with an assistant message).
+    let requests = script.requests();
+    assert_eq!(requests.len(), 3);
+    let first_conversation_message = requests[2]
+        .chat_history
+        .iter()
+        .find(|message| !matches!(message, rig::message::Message::System { .. }))
+        .expect("retry request should carry conversation messages");
+    assert_eq!(
+        *first_conversation_message,
+        rig::message::Message::user("extract the number")
+    );
+}
+
+#[tokio::test]
 async fn run_refuses_executable_tools() {
     let script = MockScript::from_responses(vec![text_response("unused", 1)]);
     let session = session(script).with_tools(adder_catalog());

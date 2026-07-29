@@ -409,6 +409,9 @@ impl PostgresVectorStore {
 
     /// Get the top n documents based on the distance to the pre-embedded query.
     /// The result is a list of [`SearchHit`]s carrying each document's JSON payload.
+    ///
+    /// Scores are raw pgvector distances: lower is better. Only the first
+    /// query embedding is used.
     pub async fn top_n(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,

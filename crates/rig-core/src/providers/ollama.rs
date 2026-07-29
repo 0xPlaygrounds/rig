@@ -1487,7 +1487,7 @@ pub mod functions {
                     Box::pin(stream),
                 ))
             }
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => {
                 let response = client.send_streaming(req).await?;
                 let stream = super::consume_chat_streaming_response(response).await?;
@@ -1495,7 +1495,7 @@ pub mod functions {
                     Box::pin(stream),
                 ))
             }
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(client) => {
                 let response = client.send_streaming(req).await?;
                 let stream = super::consume_chat_streaming_response(response).await?;

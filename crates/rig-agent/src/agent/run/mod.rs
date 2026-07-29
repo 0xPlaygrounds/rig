@@ -572,6 +572,24 @@ impl AgentRun {
         Ok(())
     }
 
+    /// Recover from a failed provider call: transition a pending
+    /// [`AgentRunStep::CallModel`] back to the pre-call state so the next
+    /// [`AgentRun::next_step`] re-issues the call instead of returning a
+    /// protocol violation. Refunds the model-call budget the failed attempt
+    /// consumed (the provider never answered, so no turn happened).
+    ///
+    /// Returns `false` (and changes nothing) when no model call is pending.
+    pub fn abandon_pending_model_call(&mut self) -> bool {
+        if !matches!(self.state, RunState::AwaitingModel) {
+            return false;
+        }
+        self.current_turn = self.current_turn.saturating_sub(1);
+        self.rollback_pending = false;
+        self.streamed_completion_call_recorded = false;
+        self.state = RunState::PreparingRequest;
+        true
+    }
+
     /// The full conversation: input history followed by [`Self::messages`].
     pub fn full_history(&self) -> Vec<Message> {
         build_full_history(self.chat_history.as_deref(), self.new_messages.clone())
@@ -2753,5 +2771,30 @@ mod tests {
         );
         let response = expect_done(&mut resumed);
         assert_eq!(response.output, "done");
+    }
+
+    #[test]
+    fn abandon_pending_model_call_reissues_call_model_without_burning_budget() {
+        let mut run = AgentRun::new("hello");
+
+        // No model call pending yet: a no-op.
+        assert!(!run.abandon_pending_model_call());
+
+        let (_, _, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 1);
+
+        // The provider call failed: recover instead of wedging in
+        // AwaitingModel forever.
+        assert!(run.abandon_pending_model_call());
+
+        // next_step re-issues the same call; max_turns is 1 and the failed
+        // attempt was refunded, so this must not be a MaxTurnsError.
+        let (prompt, _, turn) = expect_call_model(&mut run);
+        assert_eq!(prompt, Message::user("hello"));
+        assert_eq!(turn, 1);
+
+        expect_continue(run.model_response(text_turn("hi")).expect("model_response"));
+        assert_eq!(expect_done(&mut run).output, "hi");
+        assert_eq!(run.completion_calls().len(), 1);
     }
 }

@@ -150,7 +150,9 @@ impl QdrantVectorStore {
     /// Search for the top `n` nearest neighbors to the given pre-embedded query
     /// within the Qdrant vector store.
     ///
-    /// Results are sorted by descending similarity score.
+    /// Scores are Qdrant similarity scores: higher is better. Only the first
+    /// query embedding is used (unless a `query` was preconfigured on the
+    /// store's [`QueryPoints`]). Results are sorted by descending score.
     pub async fn top_n(
         &self,
         req: VectorSearchRequest<QdrantFilter>,

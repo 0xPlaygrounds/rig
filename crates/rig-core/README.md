@@ -31,7 +31,7 @@ cargo add rig-core
 ```rust
 use rig_core::{
     client::{CompletionClient, ProviderClient},
-    completion::{AssistantContent, CompletionModel},
+    completion::{AssistantContent, CompletionModel, CompletionRequest},
     providers::openai,
 };
 
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let openai_client = openai::Client::from_env()?;
 
     let model = openai_client.completion_model(openai::GPT_5_2);
-    let request = model.completion_request("Who are you?").build();
+    let request = CompletionRequest::from_prompt("Who are you?");
     let response = model.completion(request).await?;
     for item in response.choice {
         if let AssistantContent::Text(text) = item {

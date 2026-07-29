@@ -64,6 +64,18 @@ macro_rules! define_provider_config {
         /// Deliberately exhaustive (no `#[non_exhaustive]`): a new provider
         /// must fail to compile in every matching host rather than fall
         /// through a wildcard arm.
+        ///
+        /// # Configs may carry credentials
+        ///
+        /// A provider config is connection data, and connection data
+        /// includes secrets: `api_key` may be
+        /// [`ApiKeyLocation::Inline`](rig_core::providers::descriptor::ApiKeyLocation),
+        /// and `extra_headers` copied from a classic client (via
+        /// `ToProviderConfig`) can include an `authorization` /
+        /// `x-api-key` / `api-key` header. `Debug` redacts the inline
+        /// `api_key`, but `extra_headers` print verbatim and serde stays
+        /// faithful by design (resuming a serialized config requires the
+        /// real values) — treat serialized configs as secrets.
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub enum ProviderConfig {
             $(
@@ -390,13 +402,20 @@ impl MockEmbedder {
         &self,
         texts: &[String],
     ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
-        self.requests
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push(texts.to_vec());
-        let index = self
-            .cursor
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // Claim the call index and record the request under the same lock so
+        // `requests()[i]` always pairs with response `i`, even when clones
+        // sharing the cursor are driven concurrently.
+        let index = {
+            let mut requests = self
+                .requests
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let index = self
+                .cursor
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            requests.push(texts.to_vec());
+            index
+        };
         let vectors = self.responses.get(index).cloned().ok_or_else(|| {
             EmbeddingError::ProviderError(format!(
                 "mock embedder exhausted: call {index} has no scripted response"
@@ -464,21 +483,27 @@ impl Runtime {
         }
     }
 
-    /// The Bedrock client for `cfg`, built on first use and rebuilt when
-    /// the configuration changes.
+    /// The Bedrock client for `cfg`, built on first use and rebuilt only
+    /// when the *connection* projection of the configuration changes.
+    ///
+    /// The cache is keyed on [`bedrock_connection_key`] — the inputs
+    /// `rig_bedrock::functions::client_from_config` actually consumes — so
+    /// per-request knobs (model, `prompt_caching`) never rebuild the AWS
+    /// client or evict a seeded one.
     #[cfg(feature = "bedrock")]
     pub async fn bedrock_client(
         &self,
         cfg: &rig_bedrock::functions::Config,
     ) -> aws_sdk_bedrockruntime::Client {
+        let key = bedrock_connection_key(cfg);
         let mut slot = self.bedrock.slot.lock().await;
-        if let Some((cached_cfg, client)) = slot.as_ref()
-            && cached_cfg == cfg
+        if let Some((cached_key, client)) = slot.as_ref()
+            && *cached_key == key
         {
             return client.clone();
         }
         let client = rig_bedrock::functions::client_from_config(cfg).await;
-        *slot = Some((cfg.clone(), client.clone()));
+        *slot = Some((key, client.clone()));
         client
     }
 
@@ -486,8 +511,10 @@ impl Runtime {
     ///
     /// Escape hatch for AWS clients that cannot be rebuilt from plain
     /// configuration (custom endpoints, credential providers, or HTTP
-    /// connectors — e.g. recording transports in tests). Runs matching
-    /// `cfg` use `client` instead of building one from the config.
+    /// connectors — e.g. recording transports in tests). Runs whose config
+    /// shares `cfg`'s connection details (region / profile / endpoint URL)
+    /// use `client` instead of building one from the config, regardless of
+    /// model or prompt-caching settings.
     #[cfg(feature = "bedrock")]
     pub async fn seed_bedrock_client(
         &self,
@@ -495,7 +522,7 @@ impl Runtime {
         client: aws_sdk_bedrockruntime::Client,
     ) {
         let mut slot = self.bedrock.slot.lock().await;
-        *slot = Some((cfg, client));
+        *slot = Some((bedrock_connection_key(&cfg), client));
     }
 
     /// The Gemini gRPC client for `cfg`, built (channel connected) on first
@@ -519,16 +546,26 @@ impl Runtime {
     }
 }
 
+/// The connection-defining projection of a Bedrock config: exactly the
+/// fields `rig_bedrock::functions::client_from_config` reads when building
+/// an AWS client — `(region, profile, endpoint_url)`.
+#[cfg(feature = "bedrock")]
+type BedrockConnectionKey = (Option<String>, Option<String>, Option<String>);
+
+#[cfg(feature = "bedrock")]
+fn bedrock_connection_key(cfg: &rig_bedrock::functions::Config) -> BedrockConnectionKey {
+    (
+        cfg.region.clone(),
+        cfg.profile.clone(),
+        cfg.endpoint_url.clone(),
+    )
+}
+
 #[cfg(feature = "bedrock")]
 #[derive(Debug, Default, Clone)]
 struct BedrockCache {
     slot: std::sync::Arc<
-        tokio::sync::Mutex<
-            Option<(
-                rig_bedrock::functions::Config,
-                aws_sdk_bedrockruntime::Client,
-            )>,
-        >,
+        tokio::sync::Mutex<Option<(BedrockConnectionKey, aws_sdk_bedrockruntime::Client)>>,
     >,
 }
 
@@ -613,11 +650,20 @@ impl MockScript {
             .clone()
     }
 
-    fn record_request(&self, request: &CompletionRequest) {
-        self.requests
+    /// Claim the next call index and record its request as one atomic step
+    /// (both under the requests lock), so `requests()[i]` always pairs with
+    /// scripted response `i` even when clones sharing the cursor are driven
+    /// concurrently.
+    fn record_call(&self, request: &CompletionRequest) -> usize {
+        let mut requests = self
+            .requests
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push(request.clone());
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let index = self
+            .cursor
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        requests.push(request.clone());
+        index
     }
 
     fn scripted_error(&self, index: usize) -> Option<CompletionError> {
@@ -627,17 +673,11 @@ impl MockScript {
             .map(|message| CompletionError::ProviderError(message.clone()))
     }
 
-    fn take_index(&self) -> usize {
-        self.cursor
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-    }
-
     fn next_response(
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.record_request(request);
-        let index = self.take_index();
+        let index = self.record_call(request);
         if let Some(error) = self.scripted_error(index) {
             return Err(error);
         }
@@ -654,8 +694,7 @@ impl MockScript {
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal};
 
-        self.record_request(request);
-        let index = self.take_index();
+        let index = self.record_call(request);
         if let Some(error) = self.scripted_error(index) {
             return Err(error);
         }
@@ -791,6 +830,45 @@ impl MockScript {
 mod tests {
     use super::*;
 
+    /// A seeded Bedrock client must survive requests for configs that share
+    /// its connection details but differ in per-request knobs (model,
+    /// prompt caching) — the cache is keyed on the connection projection,
+    /// not full config equality.
+    #[cfg(feature = "bedrock")]
+    #[tokio::test]
+    async fn bedrock_cache_keeps_seeded_client_across_model_changes() {
+        use aws_sdk_bedrockruntime::config::{BehaviorVersion, Region};
+
+        // A region string no config in this test uses — a rebuild through
+        // `client_from_config` could never produce a client carrying it, so
+        // seeing it on the returned client proves the seeded client survived.
+        const SEEDED_MARKER_REGION: &str = "seeded-marker";
+
+        let seeded = aws_sdk_bedrockruntime::Client::from_conf(
+            aws_sdk_bedrockruntime::config::Builder::new()
+                .behavior_version(BehaviorVersion::latest())
+                .region(Region::new(SEEDED_MARKER_REGION))
+                .endpoint_url("http://seeded.invalid")
+                .build(),
+        );
+
+        let cfg_a = rig_bedrock::functions::Config::new("model-a").with_region("us-east-1");
+        let mut cfg_b = rig_bedrock::functions::Config::new("model-b").with_region("us-east-1");
+        cfg_b.prompt_caching = true;
+
+        let rt = Runtime::new();
+        rt.seed_bedrock_client(cfg_a, seeded).await;
+
+        // Same connection (region/profile/endpoint_url), different model and
+        // prompt-caching flag: the seeded client must be returned, not a
+        // freshly built one (which would carry no custom endpoint).
+        let client = rt.bedrock_client(&cfg_b).await;
+        assert_eq!(
+            client.config().region().map(|region| region.as_ref()),
+            Some(SEEDED_MARKER_REGION)
+        );
+    }
+
     #[tokio::test]
     async fn mock_embedder_scripts_responses_in_order() {
         let script =
@@ -854,6 +932,65 @@ mod tests {
             .map(|e| e.document.clone())
             .collect();
         assert_eq!(second, ["c"]);
+    }
+
+    #[test]
+    fn mock_script_pairs_requests_with_responses_under_concurrency() {
+        use rig_core::OneOrMany;
+        use rig_core::message::{AssistantContent, Message, UserContent};
+
+        let count = 16usize;
+        let responses: Vec<CompletionResponse> = (0..count)
+            .map(|i| {
+                CompletionResponse::new(
+                    OneOrMany::one(AssistantContent::text(format!("r{i}"))),
+                    rig_core::completion::Usage::new(),
+                    "mock",
+                )
+            })
+            .collect();
+        let script = MockScript::from_responses(responses);
+
+        let handles: Vec<_> = (0..count)
+            .map(|thread| {
+                let script = script.clone();
+                std::thread::spawn(move || {
+                    let request = CompletionRequest::from_prompt(format!("q{thread}"));
+                    let response = script.next_response(&request).expect("scripted response");
+                    let text = match response.choice.first() {
+                        AssistantContent::Text(text) => text.text,
+                        other => panic!("expected text, got {other:?}"),
+                    };
+                    (format!("q{thread}"), text)
+                })
+            })
+            .collect();
+        let served: Vec<(String, String)> = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("thread"))
+            .collect();
+
+        // requests()[i] must pair with response i: the response each caller
+        // received is the one scripted at its request's recorded index.
+        let recorded_prompts: Vec<String> = script
+            .requests()
+            .into_iter()
+            .map(|request| match request.chat_history.first() {
+                Message::User { content } => match content.first() {
+                    UserContent::Text(text) => text.text,
+                    other => panic!("expected text prompt, got {other:?}"),
+                },
+                other => panic!("expected user prompt, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(recorded_prompts.len(), count);
+        for (prompt, response_text) in served {
+            let index = recorded_prompts
+                .iter()
+                .position(|recorded| *recorded == prompt)
+                .expect("every request must be recorded");
+            assert_eq!(response_text, format!("r{index}"));
+        }
     }
 
     #[test]

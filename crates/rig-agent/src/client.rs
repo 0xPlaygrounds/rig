@@ -17,6 +17,24 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 /// whose credential is *not* a baked header (ChatGPT and Copilot resolve
 /// OAuth tokens per request) produce a config without a usable credential;
 /// construct their `functions::Config` directly for those flows.
+///
+/// # Configs may carry credentials
+///
+/// A produced config is connection data, and connection data includes
+/// secrets: `extra_headers` copied from a classic client can include an
+/// `authorization` / `x-api-key` header, and some impls carry the key as
+/// [`ApiKeyLocation::Inline`]. `Debug` on `ApiKeyLocation` redacts the
+/// inline key, but serde stays faithful (resuming a serialized config
+/// requires the real value) — treat serialized configs, and any `{:?}`
+/// dump that includes `extra_headers`, as secrets.
+///
+/// # Custom HTTP transports are not carried
+///
+/// Only plain connection data crosses this bridge. A classic client's
+/// custom HTTP transport — proxy, TLS settings, middleware — is NOT part
+/// of the produced config. To keep it, pair the config with
+/// `AgentBuilder::runtime(Arc<Runtime>)` where the [`crate::provider::Runtime`]
+/// was built via `Runtime::with_http` over the same transport.
 pub trait ToProviderConfig {
     /// This client's connection details as a [`ProviderConfig`] targeting `model`.
     fn provider_config(&self, model: &str) -> ProviderConfig;
@@ -24,7 +42,7 @@ pub trait ToProviderConfig {
 
 /// Convert a client's default header map into `(name, value)` config pairs,
 /// dropping `skip` entries (headers the provider's `functions` path derives
-/// from dedicated config fields) and non-UTF8 values (with a debug log).
+/// from dedicated config fields) and non-UTF8 values (with a warning).
 fn header_pairs(headers: &http::HeaderMap, skip: &[&str]) -> Vec<(String, String)> {
     headers
         .iter()
@@ -32,7 +50,7 @@ fn header_pairs(headers: &http::HeaderMap, skip: &[&str]) -> Vec<(String, String
         .filter_map(|(name, value)| match value.to_str() {
             Ok(value) => Some((name.as_str().to_string(), value.to_string())),
             Err(_) => {
-                tracing::debug!(
+                tracing::warn!(
                     header = %name,
                     "skipping non-UTF8 header value while converting a client to provider config"
                 );
@@ -42,12 +60,19 @@ fn header_pairs(headers: &http::HeaderMap, skip: &[&str]) -> Vec<(String, String
         .collect()
 }
 
-/// Look up a single UTF-8 header value by (lowercase) name.
-fn header_value(headers: &http::HeaderMap, name: &str) -> Option<String> {
-    headers
-        .get(name)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string)
+/// Collect every UTF-8 value of a (lowercase) header, comma-joined —
+/// `HeaderMap::get` would silently return only the first appended value.
+fn header_values_joined(headers: &http::HeaderMap, name: &str) -> Option<String> {
+    let values: Vec<&str> = headers
+        .get_all(name)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.join(","))
+    }
 }
 
 /// The uniform mapping shared by every provider whose `functions::Config` is
@@ -92,6 +117,11 @@ impl_to_provider_config_uniform! {
 // through the non-interactive cached path; flows that would need a token
 // refresh or a device-code prompt fall back to the config's
 // `CHATGPT_ACCESS_TOKEN` environment default (see `functions::Config::new`).
+//
+// The transferred token is a point-in-time snapshot: the config does NOT
+// refresh it mid-session the way the classic authenticator would. Long
+// sessions should rebuild the config from the client when the token nears
+// expiry, or rely on the environment-credential fallback instead.
 impl<H> ToProviderConfig for rig_core::providers::chatgpt::Client<H> {
     fn provider_config(&self, model: &str) -> ProviderConfig {
         let mut cfg = rig_core::providers::chatgpt::functions::Config::new(model);
@@ -115,6 +145,11 @@ impl<H> ToProviderConfig for rig_core::providers::chatgpt::Client<H> {
 // credential inline; flows that would need a token exchange or device-code
 // prompt fall back to the config's `GITHUB_COPILOT_API_KEY` environment
 // default (see `functions::Config::new`).
+//
+// As with ChatGPT, the transferred credential is a point-in-time snapshot:
+// Copilot exchange tokens expire and the config does NOT refresh them
+// mid-session. Long sessions should rebuild the config from the client, or
+// rely on the environment-credential fallback instead.
 impl<H> ToProviderConfig for rig_core::providers::copilot::Client<H> {
     fn provider_config(&self, model: &str) -> ProviderConfig {
         let mut cfg = rig_core::providers::copilot::functions::Config::new(model);
@@ -196,23 +231,34 @@ impl<H> ToProviderConfig for rig_core::providers::openai::CompletionsClient<H> {
 /// details — shared by the anthropic client and every anthropic-flavored
 /// alias client (`minimax`/`moonshot`/`xiaomimimo`/`zai::AnthropicClient`),
 /// all of which drive `anthropic::completion::GenericCompletionModel`.
+///
+/// `default_max_tokens` overrides the config's `max_tokens` fallback: the
+/// alias providers classically defaulted to `Some(4096)` for every model
+/// (their `AnthropicCompatibleProvider::default_max_tokens`), while the
+/// canonical anthropic client passes `None` to keep the model-derived
+/// default `Config::new` resolves (which only matches `claude-*` models).
 fn anthropic_config(
     base_url: &str,
     headers: &http::HeaderMap,
     model: &str,
+    default_max_tokens: Option<u64>,
 ) -> rig_core::providers::anthropic::functions::Config {
     // `Config::new` also resolves the per-model `default_max_tokens`
     // fallback, mirroring what the classic model type computes.
     let mut cfg = rig_core::providers::anthropic::functions::Config::new(model);
+    if let Some(max_tokens) = default_max_tokens {
+        cfg.default_max_tokens = Some(max_tokens);
+    }
     cfg.base_url = base_url.to_string();
     cfg.api_key = ApiKeyLocation::None;
     // The classic client bakes `anthropic-version` / `anthropic-beta` into
     // its header map, but the functions path emits them from dedicated
-    // config fields — transfer the values instead of duplicating headers.
-    if let Some(version) = header_value(headers, "anthropic-version") {
+    // config fields — transfer the values (all of them: the builder appends
+    // one `anthropic-beta` header per beta) instead of duplicating headers.
+    if let Some(version) = header_values_joined(headers, "anthropic-version") {
         cfg.anthropic_version = version;
     }
-    if let Some(betas) = header_value(headers, "anthropic-beta") {
+    if let Some(betas) = header_values_joined(headers, "anthropic-beta") {
         cfg.anthropic_betas = betas
             .split(',')
             .map(|beta| beta.trim().to_string())
@@ -225,7 +271,12 @@ fn anthropic_config(
 
 impl<H> ToProviderConfig for rig_core::providers::anthropic::Client<H> {
     fn provider_config(&self, model: &str) -> ProviderConfig {
-        ProviderConfig::Anthropic(anthropic_config(self.base_url(), self.headers(), model))
+        ProviderConfig::Anthropic(anthropic_config(
+            self.base_url(),
+            self.headers(),
+            model,
+            None,
+        ))
     }
 }
 
@@ -242,6 +293,9 @@ macro_rules! impl_to_provider_config_anthropic_alias {
                     self.base_url(),
                     self.headers(),
                     model,
+                    // Alias providers classically defaulted `max_tokens`
+                    // to 4096 for every model.
+                    Some(4096),
                 ))
             }
         }
@@ -312,3 +366,60 @@ pub trait AgentClientExt: ToProviderConfig {
 }
 
 impl<C: ToProviderConfig> AgentClientExt for C {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anthropic_alias_config_defaults_max_tokens_to_4096() {
+        let client = rig_core::providers::minimax::AnthropicClient::new("test-key")
+            .expect("client should build");
+        let ProviderConfig::Anthropic(cfg) = client.provider_config("MiniMax-M2") else {
+            panic!("minimax anthropic alias must bridge to an anthropic config");
+        };
+        // Classic alias models defaulted `max_tokens` to 4096; without this
+        // a bridged alias agent without `.max_tokens(...)` errors out.
+        assert_eq!(cfg.default_max_tokens, Some(4096));
+    }
+
+    #[test]
+    fn canonical_anthropic_config_keeps_model_derived_max_tokens_default() {
+        let client =
+            rig_core::providers::anthropic::Client::new("test-key").expect("client should build");
+        let ProviderConfig::Anthropic(cfg) = client.provider_config("claude-sonnet-4-5") else {
+            panic!("anthropic client must bridge to an anthropic config");
+        };
+        assert_eq!(cfg.default_max_tokens, Some(64_000));
+    }
+
+    #[test]
+    fn anthropic_config_transfers_every_appended_beta_header() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            "anthropic-beta",
+            http::HeaderValue::from_static("token-efficient-tools-2025-02-19"),
+        );
+        headers.append(
+            "anthropic-beta",
+            http::HeaderValue::from_static("output-128k-2025-02-19"),
+        );
+        let cfg = anthropic_config("https://api.anthropic.com", &headers, "claude-3", None);
+        assert_eq!(
+            cfg.anthropic_betas,
+            vec![
+                "token-efficient-tools-2025-02-19".to_string(),
+                "output-128k-2025-02-19".to_string(),
+            ]
+        );
+        // The beta headers were transferred to config fields, so none may
+        // survive as extra headers (which would duplicate them on the wire).
+        assert!(
+            cfg.extra_headers
+                .iter()
+                .all(|(name, _)| name != "anthropic-beta"),
+            "beta headers leaked into extra_headers: {:?}",
+            cfg.extra_headers
+        );
+    }
+}

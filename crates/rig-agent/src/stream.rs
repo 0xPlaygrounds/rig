@@ -327,9 +327,16 @@ impl AgentStream {
         )?;
         self.run
             .set_output_tool_name(prepared.output_tool_name.clone());
-        let stream = provider::open_stream(&self.provider, &self.rt, prepared.request)
-            .await
-            .map_err(PromptError::from)?;
+        let stream = match provider::open_stream(&self.provider, &self.rt, prepared.request).await {
+            Ok(stream) => stream,
+            Err(error) => {
+                // Transient provider failure: return to the pre-call state so
+                // a later next_item() retries the call instead of wedging the
+                // run in AwaitingModel forever.
+                self.run.abandon_pending_model_call();
+                return Err(PromptError::from(error));
+            }
+        };
         self.active = Some(ActiveTurn {
             stream,
             assembler: StreamedTurnAssembler::new(
@@ -417,10 +424,19 @@ impl AgentStream {
                     && let Some(content) = self.run.accepted_turn_choice()
                 {
                     self.pending = Pending::TurnReply;
+                    // Per-turn usage, not the run aggregate: the last recorded
+                    // completion call is this turn's (recorded from the
+                    // stream's terminal event, or as a zero-usage fallback by
+                    // `streamed_turn` when the provider reported none).
+                    let usage = self
+                        .run
+                        .completion_calls()
+                        .last()
+                        .map_or_else(Usage::new, |call| call.usage);
                     self.buffered.push_back(AgentStreamItem::TurnFinished {
                         turn,
                         content,
-                        usage: self.run.usage(),
+                        usage,
                     });
                 }
                 Ok(())
@@ -531,9 +547,20 @@ impl AgentStream {
                             self.last_final = Some(final_record);
                         }
                     }
-                    if let Ok(call) = self.run.record_streamed_completion_call(drained_usage) {
-                        self.buffered
-                            .push_back(AgentStreamItem::CompletionCall(call));
+                    match self.run.record_streamed_completion_call(drained_usage) {
+                        Ok(call) => {
+                            self.buffered
+                                .push_back(AgentStreamItem::CompletionCall(call));
+                        }
+                        Err(error) => {
+                            // The run rejected the record (e.g. one was
+                            // already recorded for this turn); the drained
+                            // usage is dropped rather than double-counted.
+                            tracing::debug!(
+                                %error,
+                                "dropping usage record for abandoned streamed turn"
+                            );
+                        }
                     }
                 }
                 self.buffered
@@ -553,7 +580,17 @@ impl AgentStream {
                 .cancel_error("provide_tool_results without a pending ToolCallsReady item"));
         };
         self.run.tool_results(results.clone())?;
-        // Post-commit surface items in call order.
+        // Post-commit surface items in call order. Results are consumed as a
+        // multiset (mirroring `AgentRun::tool_results`): duplicate provider
+        // tool-call ids within one turn each surface their own result exactly
+        // once, paired positionally.
+        let mut remaining: Vec<Option<rig_core::message::ToolResult>> = results
+            .into_iter()
+            .map(|content| match content {
+                UserContent::ToolResult(result) => Some(result),
+                _ => None,
+            })
+            .collect();
         for call in &calls {
             let internal = call
                 .internal_call_id
@@ -564,11 +601,15 @@ impl AgentStream {
                     tool_call: call.tool_call.clone(),
                     internal_call_id: internal.clone(),
                 });
-            if let Some(result) = results.iter().find_map(|content| match content {
-                UserContent::ToolResult(result) if result.id == call.tool_call.id => {
-                    Some(result.clone())
+            if let Some(result) = remaining.iter_mut().find_map(|slot| {
+                if slot
+                    .as_ref()
+                    .is_some_and(|result| result.id == call.tool_call.id)
+                {
+                    slot.take()
+                } else {
+                    None
                 }
-                _ => None,
             }) {
                 self.buffered
                     .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(

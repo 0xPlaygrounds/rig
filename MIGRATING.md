@@ -360,6 +360,94 @@ Custom HTTP transports injected via `.http_client(...)` do not survive the
 bridge; inject them at the runtime instead:
 `AgentBuilder::new(provider).runtime(Arc::new(Runtime::with_http(HttpRuntime::recording(client))))`.
 
+### Concrete completion and streaming payloads
+
+`CompletionResponse<T>` is now the concrete `CompletionResponse` and the
+provider-typed streaming final is the normalized `StreamFinal`. Consequences:
+
+- **`raw_response` is gone.** If you need wire-typed provider data, call the
+  provider's own conversion on the raw HTTP payload instead of reading it off
+  the Rig response.
+- **`FinishReason` is normalized.** Every provider maps its stop/finish
+  vocabulary onto one shared `FinishReason` enum
+  (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), and responses carry
+  `provider` and `model` metadata.
+- **`GetTokenUsage` is removed.** Usage is a plain field on
+  `CompletionResponse` and `StreamFinal`; read `.usage` directly.
+- The streaming vocabulary lost its type parameters:
+  `RawStreamingChoice`/`StreamingResult`/`StreamingCompletionResponse`/
+  `StreamedAssistantContent`/`MultiTurnStreamItem` are all concrete, and
+  `CompletionModel` no longer has `type Response`/`type StreamingResponse`.
+  Provider-specific streaming-final aliases (deepseek, groq, mistral,
+  openrouter, gemini, copilot) are removed with nothing to replace them.
+
+### `CompletionRequestBuilder` is gone
+
+`CompletionRequestBuilder` and `model.completion_request(...)` were removed.
+`CompletionRequest` is plain data: build it with the
+`CompletionRequest::with_history` / `CompletionRequest::from_prompt`
+constructors plus struct-update syntax for everything else.
+
+```rust
+// before
+let request = model
+    .completion_request("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .build();
+
+// after
+let request = CompletionRequest {
+    temperature: Some(0.5),
+    ..CompletionRequest::with_history(
+        Some("You are a concise assistant."),
+        Vec::new(),          // prior history
+        "Who are you?",
+    )
+};
+let response = model.completion(request).await?;
+```
+
+### Modalities are free functions
+
+Embedding, transcription, image-generation, audio-generation, and rerank calls
+are extracted to per-provider free functions over plain configs: each provider
+exposes a `functions` module (e.g.
+`rig::providers::openai::functions::EmbeddingConfig` with free
+`embed`/`embed_batches` in `rig::provider`). The classic
+`EmbeddingsBuilder`/`EmbeddingModel` client surface still works and now routes
+through the same functions.
+
+### Vector stores: the shared traits are deleted
+
+`VectorStoreIndex`, `VectorStoreIndexDyn`, and `InsertDocuments` are removed,
+and **no shared trait replaces them**. Each store crate now exposes concrete
+inherent async methods — `top_n`, `top_n_ids`, `top_n_as::<T>`, `insert`,
+`insert_as::<T>` — over a *pre-embedded* vocabulary in
+`rig::vector_store`:
+
+- `VectorSearchRequest` now carries query **embeddings**
+  (`OneOrMany<Embedding>`), not text: you embed first, then search.
+- Results are `SearchHit { id, score, payload }`; inserts take
+  `StoreRecord { id, payload, embeddings }`.
+- Backend-specific filter types stay per store; score direction and id
+  handling are store-defined (see each store's docs).
+
+Store constructors no longer take an `EmbeddingModel` parameter. See
+`examples/custom_vector_store` for the canonical pre-embedded pattern.
+
+### `dynamic_context` and `retrieved_tools` are removed (again)
+
+`AgentBuilder::dynamic_context`, `ExtractorBuilder::dynamic_context`, and
+`AgentBuilder::retrieved_tools` — restored in 0.41 — are gone for good along
+with the shared store traits they depended on. Passive RAG is now an explicit
+hook recipe: implement `AgentHook::on_completion_call`, embed the prompt,
+query your concrete store's `top_n`, and inject the hits with
+`RequestPatch::extra_context`. A complete, copy-pasteable hook lives in the
+`rig::agent` module docs (the "Passive RAG agent example") and in
+`examples/rag`. Dynamic tool retrieval is per-turn
+`RequestPatch::active_tools`.
+
 ---
 
 ## 0.40 → 0.41
@@ -455,7 +543,7 @@ with `Agent::into_tool()`.
 | Before | After |
 | --- | --- |
 | `AgentBuilder::tools(Vec<Box<dyn ToolDyn>>)` | repeated `.tool(...)`, or `dynamic_tools(Vec<DynamicTool>)` |
-| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` |
+| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` *(removed again in 0.42 — see above)* |
 | `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` |
 | `ToolSetBuilder::dynamic_tool(...)` (callbacks) | `dynamic_tool(DynamicTool)` |
 
@@ -526,7 +614,9 @@ agent.runner(prompt).history(history).max_turns(3).stream().await;
 The runner consumes tool calls rather than returning the first raw model
 response. For intentionally hook-free transport, start from
 `model.completion_request(prompt).messages(history)` then `.send()` or
-`.stream()`.
+`.stream()`. *(In 0.42 the request builder is removed — use the
+`CompletionRequest::with_history`/`from_prompt` constructors instead; see
+above.)*
 
 `AgentRun::new(prompt).with_history(history)` remains a sans-I/O state machine
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
@@ -539,6 +629,9 @@ raw request API, or construct a separate `Agent`.
 `Extractor` now routes through the full hook lifecycle.
 
 ### 7. `dynamic_context` is back, but it is a hook now
+
+*(Removed again in 0.42 — see the 0.41 → 0.42 section above for the
+replacement hook recipe. The notes below describe the 0.41 behavior.)*
 
 `AgentBuilder::dynamic_context` and `ExtractorBuilder::dynamic_context` were
 removed in #2174 and **restored in #2219**. If you are tracking `main`, you may

@@ -221,8 +221,9 @@ where
 
     /// Returns the top N most similar documents for a pre-embedded query.
     ///
-    /// MongoDB `$vectorSearch` takes a single query vector, so the first
-    /// embedding of the request's query is used.
+    /// MongoDB `$vectorSearch` takes a single query vector, so only the first
+    /// embedding of the request's query is used. Scores are Atlas
+    /// `vectorSearchScore` similarity scores: higher is better.
     ///
     /// Each [`SearchHit`]'s payload is the full MongoDB document (minus the
     /// embedded field), including its `_id` and `score` fields.
@@ -361,6 +362,9 @@ where
     ///
     /// Each embedding of a record becomes one MongoDB document with the shape
     /// `{ "id": ..., "document": <payload>, "embedding": [...], "embedded_text": ... }`.
+    ///
+    /// Note that [`StoreRecord::id`] is stored in the `id` field only; search
+    /// hits identify documents by the MongoDB-assigned `_id`, not this field.
     pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         let mongo_documents = records
             .into_iter()

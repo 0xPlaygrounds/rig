@@ -174,13 +174,13 @@ pub async fn open_stream(
                 .instrument(span)
                 .await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => {
             super::streaming::send_xai_streaming_request(client.clone(), req)
                 .instrument(span)
                 .await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => {
             super::streaming::send_xai_streaming_request(client.clone(), req)
                 .instrument(span)

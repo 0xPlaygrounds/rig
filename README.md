@@ -65,8 +65,8 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Agentic workflows that can handle multi-turn streaming and prompting
 - A classic agent runtime enabled by default
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
-- 20+ model providers, all under one singular unified interface
-- 10+ vector store integrations, all under one singular unified interface
+- 20+ model providers, all speaking one shared completion vocabulary — usable as classic clients or as plain serializable provider configuration
+- 10+ vector store integrations sharing one pre-embedded search vocabulary (`VectorSearchRequest`/`SearchHit`/`StoreRecord`), with concrete per-store surfaces
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
@@ -79,7 +79,9 @@ More information about this crate can be found in the [official](https://rig.rs/
 Rig separates portable provider/backend contracts from agent orchestration:
 
 - `rig-core` contains provider-neutral messages, completion models, portable tools,
-  memory and vector-store contracts, and built-in provider mappings.
+  memory contracts, the shared vector-store data types (pre-embedded search
+  requests and hits; each store crate exposes its own concrete methods), and
+  built-in provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
   contextual tools, extraction, and the serializable `AgentRun` state machine. It
   remains enabled by default.

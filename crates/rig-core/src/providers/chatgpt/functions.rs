@@ -230,7 +230,7 @@ pub async fn open_stream(
                 span,
             ))
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => {
             let event_source =
                 GenericEventSource::new(client.clone(), req).allow_missing_content_type();
@@ -239,7 +239,7 @@ pub async fn open_stream(
                 span,
             ))
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => {
             let event_source =
                 GenericEventSource::new(client.clone(), req).allow_missing_content_type();

@@ -189,7 +189,10 @@ impl InMemoryVectorStore {
 
     /// Returns the top N most similar documents for a pre-embedded query.
     ///
-    /// Results are sorted by descending similarity score.
+    /// Scores are cosine similarities: higher is better. Unlike the external
+    /// backends, all query embeddings are considered: each document's score is
+    /// the maximum cosine similarity over all (query embedding, document
+    /// embedding) pairs. Results are sorted by descending score.
     pub async fn top_n(
         &self,
         req: VectorSearchRequest,

@@ -91,7 +91,12 @@ impl ProviderDescriptor {
 /// A serialized provider config can reference the environment instead of
 /// embedding secrets; `Inline` supports the explicit-key path (serializing
 /// an inline key is the caller's deliberate choice).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` redacts the `Inline` key so credentials never leak through
+/// `{:?}` of a config or agent; `Serialize` stays faithful (resuming a
+/// serialized config requires the real key), so treat serialized configs
+/// as secrets.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiKeyLocation {
     /// Read the key from this environment variable at use time.
     Env(String),
@@ -99,6 +104,18 @@ pub enum ApiKeyLocation {
     Inline(String),
     /// No credential (local or unauthenticated endpoints).
     None,
+}
+
+impl std::fmt::Debug for ApiKeyLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Env(var) => f.debug_tuple("Env").field(var).finish(),
+            // Never print the key itself — configs and agents holding one
+            // are routinely logged via `{:?}`.
+            Self::Inline(_) => f.debug_tuple("Inline").field(&"******").finish(),
+            Self::None => f.write_str("None"),
+        }
+    }
 }
 
 impl ApiKeyLocation {
@@ -124,4 +141,25 @@ pub enum ApiKeyError {
     /// The configured environment variable is unset or empty.
     #[error("environment variable `{0}` is unset or empty")]
     MissingEnv(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiKeyLocation;
+
+    #[test]
+    fn debug_redacts_inline_key() {
+        let rendered = format!("{:?}", ApiKeyLocation::Inline("sk-secret".to_string()));
+        assert!(!rendered.contains("sk-secret"), "leaked key: {rendered}");
+        assert_eq!(rendered, r#"Inline("******")"#);
+    }
+
+    #[test]
+    fn debug_keeps_env_and_none_readable() {
+        assert_eq!(
+            format!("{:?}", ApiKeyLocation::Env("OPENAI_API_KEY".to_string())),
+            r#"Env("OPENAI_API_KEY")"#
+        );
+        assert_eq!(format!("{:?}", ApiKeyLocation::None), "None");
+    }
 }

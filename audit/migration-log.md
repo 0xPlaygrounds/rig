@@ -411,3 +411,76 @@ The maintainer dropped the rig-bevy deliverable before implementation
 started. The migration ends at P8; the bevy_ecs runtime remains a future
 possibility the rearchitecture enables (components-as-data over
 `AgentRun`/`prepare_request`/`ProviderConfig`), not a shipped crate.
+
+## Quality review — store contract notes (2026-07-30)
+
+Documentation-only pass over the de-genericized store surface; no behavior
+changes. Rustdoc updated on `SearchHit`/`StoreRecord` and every affected
+store crate to state the following per-store contracts explicitly:
+
+- **Score direction is store-defined.** `SearchHit.score` is a raw distance
+  (lower is better) for postgres and lancedb, and a similarity (higher is
+  better) for sqlite and the in-memory store (qdrant/mongodb documented per
+  their backend scores). The shared type never normalizes direction; each
+  store's `top_n`/threshold docs now say which way it points.
+- **Multi-query requests.** `VectorSearchRequest` accepts multiple query
+  embeddings, but every external backend uses only `req.query().first()`;
+  documented on each store's `top_n`. The in-memory store is the exception:
+  its score is the max over all (query, document-embedding) pairs — also now
+  documented.
+- **`StoreRecord.id` handling is store-defined.** Documented per store:
+  qdrant keeps your id for single-embedding records (must be UUID/u64
+  shaped) but mints fresh UUIDs for multi-embedding records; sqlite ignores
+  `record.id` — the payload row's `id` column governs; mongodb stores the id
+  in an `id` field while hits return the Mongo `_id`; postgres requires the
+  id to parse as a UUID; lancedb uses `record.id` as the row id and stores
+  only the first embedding.
+
+Previously-unnoted semantic changes from P8, now on the record:
+
+- **In-memory scoring** changed to max-over-all-query/embedding pairs when a
+  request carries multiple queries (single-query behavior unchanged).
+- **lancedb `top_n_ids`** distance-column bug fixed (`"distance"` →
+  `"_distance"`), correcting scores that previously fell back silently.
+- **lancedb insert** stores only the first embedding of a multi-embedding
+  `StoreRecord`.
+- **postgres threshold/filter SQL** has pre-existing breakage on `main`
+  (missing WHERE spacing, alias mismatch, inverted comparison direction for
+  distance thresholds) — NOT fixed in this pass; flagged for a follow-up
+  issue.
+- **mongodb threshold filter** likewise has pre-existing breakage on `main`;
+  flagged for the same follow-up, not fixed here.
+
+## Quality review — fixes applied (2026-07-30)
+
+Four parallel reviews (protocol/drivers, bridge fidelity, stores/embeddings,
+docs coherence) produced ranked findings; all high/medium code findings are
+fixed with regression tests:
+
+- **Resume + recovery**: `AgentSession::resume` reconstitutes a pending
+  invalid-tool-call decision; new `AgentRun::abandon_pending_model_call`
+  lets both drivers recover from transient provider errors (budget
+  refunded, next advance re-issues CallModel) and un-wedges runs
+  serialized in AwaitingModel; unanswered `BeforeModelCall` is now a
+  protocol violation in both drivers (was a silent auto-continue in the
+  session).
+- **extract()** retries now open with the original user prompt (strict
+  providers rejected assistant-first conversations).
+- **AgentStream**: `TurnFinished.usage` is per-turn (was run-aggregate);
+  duplicate provider tool-call ids consume results as a multiset (one
+  result no longer surfaces twice while another is dropped).
+- **Bridge**: `ApiKeyLocation` Debug redacts inline keys (serde stays
+  faithful — documented as secrets); anthropic-alias clients keep their
+  classic 4096 default max_tokens; `anthropic-beta`/`anthropic-version`
+  transfer all header values; Bedrock cache keys on the connection triple
+  (region/profile/endpoint) so model changes never evict a seeded client;
+  token-snapshot and custom-transport caveats documented.
+- **MockScript/MockEmbedder**: request log and cursor advance atomically.
+- **Docs**: MIGRATING 0.42 chapter covers P1/P7/P8 + dynamic_context
+  removal with forward-pointers from stale 0.41 advice; CHANGELOG
+  Unreleased curated; rig-core README quickstart fixed; facade prelude
+  exports `ToProviderConfig`; store id/score/multi-query contracts
+  documented per store (see "store contract notes" above).
+- `test-utils` gates widened to `any(test, feature)` across
+  http_runtime/provider functions so ungated `cargo clippy -p rig-core
+  --all-targets` is clean.

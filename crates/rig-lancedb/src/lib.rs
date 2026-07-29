@@ -384,7 +384,8 @@ impl LanceDbVectorIndex {
     /// columns), serialized to JSON.
     ///
     /// LanceDB searches a single vector: the *first* embedding of the request's
-    /// query is used.
+    /// query is used. Scores are raw distances (LanceDB's `_distance` column):
+    /// lower is better.
     ///
     /// # Example
     /// ```ignore

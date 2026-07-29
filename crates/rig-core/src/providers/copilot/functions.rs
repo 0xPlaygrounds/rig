@@ -269,12 +269,12 @@ pub async fn open_stream(
                 GenericEventSource::new(client.clone(), req),
                 span,
             ),
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => stream_copilot_responses_from_event_source(
                 GenericEventSource::new(client.clone(), req),
                 span,
             ),
-            #[cfg(feature = "test-utils")]
+            #[cfg(any(test, feature = "test-utils"))]
             Transport::Sequenced(client) => stream_copilot_responses_from_event_source(
                 GenericEventSource::new(client.clone(), req),
                 span,
@@ -285,11 +285,11 @@ pub async fn open_stream(
         Transport::Reqwest(client) => {
             send_copilot_chat_streaming_request(client.clone(), req).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => {
             send_copilot_chat_streaming_request(client.clone(), req).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => {
             send_copilot_chat_streaming_request(client.clone(), req).await
         }

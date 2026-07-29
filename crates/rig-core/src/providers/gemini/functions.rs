@@ -181,14 +181,14 @@ pub async fn open_stream(
                 req,
             )),
         )),
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
             Box::pin(super::streaming::generate_content_stream(
                 client.clone(),
                 req,
             )),
         )),
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
             Box::pin(super::streaming::generate_content_stream(
                 client.clone(),

@@ -5,7 +5,11 @@
 //! until the next event the [`SessionPolicy`] surfaces, and every decision
 //! flows back in as a plain value through a decision inbox — a `match` in
 //! the host's loop replaces callback registration. The whole session except
-//! its [`Runtime`] handle is serializable between events.
+//! its [`Runtime`] handle is serializable between events. One caveat:
+//! [`SessionEvent::BeforeModelCall`] is not a durable suspension point — a
+//! run serialized there (or while any model call was in flight) is resumed
+//! by [`AgentSession::resume`] re-issuing the model call from the pre-call
+//! state, so the call is re-prepared rather than picked up mid-flight.
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,6 +108,11 @@ enum Pending {
     BeforeCall {
         prompt: Message,
         history: Vec<Message>,
+        /// Whether [`AgentSession::reply_before_call`] answered the event.
+        /// Until it does, [`AgentSession::advance`] is a protocol violation
+        /// (matching the [`AgentStream`](crate::stream::AgentStream)
+        /// contract); once answered, the next advance resumes the call.
+        answered: bool,
     },
     TurnReply,
     Invalid {
@@ -171,12 +180,25 @@ impl AgentSession {
     /// configuration and a fresh runtime. The run re-emits its pending step
     /// idempotently ([`AgentRun::next_step`] semantics), so a process can
     /// serialize mid-tools and pick up exactly where it left off.
+    ///
+    /// A run suspended on an invalid tool-call decision re-derives its
+    /// pending context: the next [`AgentSession::advance`] re-surfaces
+    /// [`SessionEvent::InvalidToolCall`] for [`AgentSession::resolve_invalid`].
+    /// A run serialized while a model call was in flight (for example after
+    /// a transient provider error) recovers by re-issuing that call.
     pub fn resume(
         config: AgentConfig,
         provider: ProviderConfig,
         rt: Arc<Runtime>,
-        run: AgentRun,
+        mut run: AgentRun,
     ) -> Self {
+        run.abandon_pending_model_call();
+        let pending = match run.pending_invalid_tool_call() {
+            Some(context) => Pending::Invalid {
+                next: Some(context),
+            },
+            None => Pending::None,
+        };
         Self {
             config,
             provider,
@@ -185,7 +207,7 @@ impl AgentSession {
             run,
             rt,
             next_patch: None,
-            pending: Pending::None,
+            pending,
             last_response: None,
         }
     }
@@ -255,6 +277,13 @@ impl AgentSession {
                     .run
                     .cancel_error("advance called while tool results are awaited"));
             }
+            Pending::BeforeCall {
+                answered: false, ..
+            } => {
+                return Err(self.run.cancel_error(
+                    "advance called while a BeforeModelCall event awaits reply_before_call",
+                ));
+            }
             Pending::None | Pending::BeforeCall { .. } | Pending::Invalid { .. } => {}
         }
 
@@ -262,7 +291,9 @@ impl AgentSession {
             // Resume a pre-build pause answered by reply_before_call.
             let (step, before_call_answered) =
                 match std::mem::replace(&mut self.pending, Pending::None) {
-                    Pending::BeforeCall { prompt, history } => (
+                    Pending::BeforeCall {
+                        prompt, history, ..
+                    } => (
                         AgentRunStep::CallModel {
                             prompt,
                             history,
@@ -287,6 +318,7 @@ impl AgentSession {
                         self.pending = Pending::BeforeCall {
                             prompt: prompt.clone(),
                             history: history.clone(),
+                            answered: false,
                         };
                         return Ok(SessionEvent::BeforeModelCall {
                             prompt,
@@ -308,8 +340,23 @@ impl AgentSession {
                     self.run
                         .set_output_tool_name(prepared.output_tool_name.clone());
 
-                    let response =
-                        provider::complete(&self.provider, &self.rt, prepared.request).await?;
+                    let response = match provider::complete(
+                        &self.provider,
+                        &self.rt,
+                        prepared.request,
+                    )
+                    .await
+                    {
+                        Ok(response) => response,
+                        Err(error) => {
+                            // Transient provider failure: return to the
+                            // pre-call state so a later advance() retries
+                            // the call instead of wedging the run in
+                            // AwaitingModel forever.
+                            self.run.abandon_pending_model_call();
+                            return Err(error.into());
+                        }
+                    };
                     let model_turn = ModelTurn::new(
                         response.message_id.clone(),
                         response.choice.clone(),
@@ -362,10 +409,15 @@ impl AgentSession {
     /// [`CompletionCallAction::Stop`] cancels the run; calling without a
     /// pending pre-build event is a protocol violation.
     pub fn reply_before_call(&mut self, action: CompletionCallAction) -> Result<(), PromptError> {
-        if !matches!(self.pending, Pending::BeforeCall { .. }) {
-            return Err(self
-                .run
-                .cancel_error("reply_before_call without a pending BeforeModelCall event"));
+        match &mut self.pending {
+            Pending::BeforeCall { answered, .. } if !*answered => {
+                *answered = true;
+            }
+            _ => {
+                return Err(self
+                    .run
+                    .cancel_error("reply_before_call without a pending BeforeModelCall event"));
+            }
         }
         match action {
             CompletionCallAction::Continue => Ok(()),

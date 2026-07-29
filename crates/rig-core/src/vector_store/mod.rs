@@ -73,7 +73,11 @@ pub enum VectorStoreError {
 pub struct SearchHit {
     /// Document ID as stored in the backend.
     pub id: String,
-    /// Similarity score for this hit.
+    /// Score for this hit. The metric *and* direction are store-defined: some
+    /// stores return a raw distance where lower is better (e.g. `rig-postgres`,
+    /// `rig-lancedb`), others a similarity where higher is better (e.g.
+    /// `rig-sqlite`, `rig-qdrant`, `rig-mongodb`, the in-memory store). See
+    /// each store's `top_n` docs.
     pub score: f64,
     /// Serialized document payload.
     pub payload: serde_json::Value,
@@ -87,9 +91,14 @@ impl SearchHit {
 }
 
 /// One record to insert into a vector store.
+///
+/// How the `id` is handled is store-defined: some backends require a specific
+/// shape (e.g. a UUID string for `rig-postgres`, UUID- or u64-shaped for
+/// `rig-qdrant`), and some ignore or replace it (e.g. `rig-sqlite` uses the
+/// payload row's own `id` column). See each store's `insert` docs.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StoreRecord {
-    /// Document ID.
+    /// Document ID. Interpretation is store-defined; see the struct docs.
     pub id: String,
     /// Serialized document payload.
     pub payload: serde_json::Value,

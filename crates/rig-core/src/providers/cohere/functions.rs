@@ -163,13 +163,13 @@ pub async fn open_stream(
             req,
             span,
         )),
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => Ok(super::streaming::stream_cohere_sse(
             client.clone(),
             req,
             span,
         )),
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => Ok(super::streaming::stream_cohere_sse(
             client.clone(),
             req,

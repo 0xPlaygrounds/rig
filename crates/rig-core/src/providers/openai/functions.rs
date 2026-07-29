@@ -185,11 +185,11 @@ pub async fn open_stream(
         Transport::Reqwest(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }
@@ -758,11 +758,11 @@ where
         Transport::Reqwest(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Recording(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }
-        #[cfg(feature = "test-utils")]
+        #[cfg(any(test, feature = "test-utils"))]
         Transport::Sequenced(client) => {
             compat::send_compatible_streaming_request(client.clone(), req, profile).await
         }

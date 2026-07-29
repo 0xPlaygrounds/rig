@@ -58,13 +58,17 @@ where
         config.max_turns = Some(2);
     }
 
-    let prompt = prompt.into();
+    let mut next_prompt = prompt.into();
     let mut history: Vec<Message> = Vec::new();
     let mut last_error: Option<(serde_json::Error, String)> = None;
 
     for _attempt in 0..=retries {
-        let mut session =
-            AgentSession::new(config.clone(), provider.clone(), rt.clone(), prompt.clone());
+        let mut session = AgentSession::new(
+            config.clone(),
+            provider.clone(),
+            rt.clone(),
+            next_prompt.clone(),
+        );
         if !history.is_empty() {
             session = session.with_history(history.clone());
         }
@@ -72,11 +76,16 @@ where
         match serde_json::from_str::<T>(done.output.trim()) {
             Ok(value) => return Ok(value),
             Err(error) => {
+                // Commit this attempt's exchange to the retry history —
+                // prompt first, so the next request's history never opens
+                // with an assistant message (strict providers reject that) —
+                // and make the corrective feedback the next attempt's prompt.
+                history.push(next_prompt);
                 history.push(Message::assistant(done.output.clone()));
-                history.push(Message::user(format!(
+                next_prompt = Message::user(format!(
                     "The previous output did not match the required schema ({error}). \
                      Answer again with ONLY a JSON object satisfying the schema."
-                )));
+                ));
                 last_error = Some((error, done.output));
             }
         }

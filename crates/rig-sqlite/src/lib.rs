@@ -1965,7 +1965,11 @@ impl<T: SqliteVectorStoreTable + 'static> SqliteVectorStore<T> {
     /// Returns the top N most similar documents for a pre-embedded query.
     ///
     /// Each [`SearchHit`]'s payload is a JSON object mapping the row's schema
-    /// columns to their values. Searches use the first query embedding.
+    /// columns to their values. Only the first query embedding is used.
+    ///
+    /// Scores are similarities: higher is better (see
+    /// [`SqliteDistanceMetric`]; cosine is `1 - distance`, L1/L2 are negated
+    /// distances).
     pub async fn top_n(
         &self,
         req: VectorSearchRequest<SqliteSearchFilter>,

@@ -33,7 +33,7 @@
 //!
 //! Depend on the `rig-core` package directly when you only need the core Rig
 //! implementation crate, including provider abstractions, built-in core
-//! providers, tools, memory traits, and vector-store traits, without the root
+//! providers, tools, memory traits, and vector-store types, without the root
 //! facade's companion integration feature surface.
 
 pub use rig_core::*;
@@ -62,8 +62,8 @@ pub mod agent {
 /// Provider clients plus classic agent/extractor constructors.
 pub mod client {
     // Classic-runtime construction extensions: `agent()` / `extractor()` on any
-    // completion client (`AgentClientExt`) and `into_agent_builder()` on any
-    // completion model (`AgentModelExt`).
+    // completion client (`AgentClientExt`), plus `ToProviderConfig` for
+    // capturing a client's connection details as plain configuration.
     #[cfg(feature = "agent")]
     pub use rig_agent::client::{AgentClientExt, ToProviderConfig};
 
@@ -100,18 +100,22 @@ pub mod integrations {
 /// The bundled provider set as plain configuration, plus the live-handle
 /// runtime — the data-oriented fulfilment layer.
 #[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::provider;
 
 /// The blocking session driver over the sans-IO run protocol.
 #[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::session;
 
 /// The streaming session driver over the sans-IO run protocol.
 #[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::stream;
 
 /// Structured extraction over the session runtime.
 #[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::extract;
 
 /// Common portable imports plus additive classic-runtime conveniences.
@@ -129,7 +133,8 @@ pub mod prelude {
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
         Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError, StreamingChat,
-        StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet, TypedPrompt,
+        StreamingPrompt, StreamingResult, StructuredOutputError, ToProviderConfig, ToolSet,
+        TypedPrompt,
     };
     pub use rig_core::prelude::*;
 }
