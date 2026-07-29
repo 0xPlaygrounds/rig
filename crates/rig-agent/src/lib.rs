@@ -25,9 +25,12 @@
 //! supported with no feature flags to set — the relaxed async bounds follow
 //! from the target alone.
 //!
-//! The `rmcp` feature is unavailable on wasm: rmcp's `ClientHandler` requires
-//! `Send + Sync` unconditionally, which this crate's wasm tool registry cannot
-//! satisfy, so asking for it there raises a targeted `compile_error!`. WASI
+//! The `rmcp` feature is unavailable on wasm: rmcp ships no wasm-capable client
+//! transport (its streamable-HTTP client calls reqwest APIs that do not exist
+//! there; every other transport is native by construction or blocked by rmcp's
+//! unconditional `Send` transport bounds), so asking for it raises a targeted
+//! `compile_error!`. rmcp core itself is wasm-clean since 3.0
+//! gated the `ClientHandler` bound behind its `local` feature. WASI
 //! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
 //! not build for it. See the crate README for the full matrix and the
 //! reasoning.

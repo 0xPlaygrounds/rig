@@ -31,17 +31,18 @@
 //!
 //! # Per-call metadata
 //!
-//! Rig's MCP adapter forwards an [`rmcp::model::Meta`] (re-exported here as
-//! [`Meta`]) placed in a [`ToolContext`] as the MCP request's `_meta`
-//! (SEP-1319) — the idiomatic channel for per-call values such as auth tokens,
-//! session ids, or A2A `context_id`/`task_id`, which the model never sees:
+//! Rig's MCP adapter forwards an [`rmcp::model::RequestMetaObject`]
+//! (re-exported here as [`RequestMetaObject`]) placed in a [`ToolContext`] as
+//! the MCP request's `_meta` (SEP-1319) — the idiomatic channel for per-call
+//! values such as auth tokens, session ids, or A2A `context_id`/`task_id`,
+//! which the model never sees:
 //!
 //! ```rust,ignore
-//! use rig_agent::tool::rmcp::Meta;
+//! use rig_agent::tool::rmcp::RequestMetaObject;
 //! use rig_agent::tool::ToolContext;
 //!
-//! let mut meta = Meta::new();
-//! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
+//! let mut meta = RequestMetaObject::new();
+//! meta.insert("authorization".into(), serde_json::json!("Bearer …"));
 //! let mut context = ToolContext::new();
 //! context.insert(meta);
 //! let answer = agent.prompt("…").tool_context(context).await?;
@@ -52,9 +53,15 @@
 //! MCP responses retain their protocol data in the per-dispatch
 //! [`ToolContext`]. Result hooks can inspect the untouched
 //! [`rmcp::model::CallToolResult`], its `structuredContent` as a
-//! [`serde_json::Value`], and response [`Meta`] with
+//! [`serde_json::Value`], and response [`MetaObject`] with
 //! `event.tool_context.result::<T>()`. These values are host-only; only the
 //! response's ordered presentation content is sent to the model.
+//!
+//! Request and response `_meta` are distinct types in MCP: a request carries a
+//! [`RequestMetaObject`] (which additionally reserves keys such as
+//! `progressToken`), a result carries a plain [`MetaObject`]. Both deref
+//! through to the underlying JSON map ([`RequestMetaObject`] via
+//! [`MetaObject`]), so the key-level API is the same.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -67,7 +74,7 @@ use std::time::Duration;
 use rmcp::ServiceExt;
 use rmcp::model::{
     CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ListToolsRequest,
-    PaginatedRequestParams, ResourceContents, ServerResult,
+    PaginatedRequestParams, ResourceContents, ResultType, ServerResult,
 };
 use rmcp::service::PeerRequestOptions;
 use tokio::sync::{Mutex, RwLock};
@@ -79,9 +86,10 @@ use rig_core::OneOrMany;
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in a [`ToolContext`] to have
-/// Rig's MCP registration methods forward it as a call's `_meta`.
-pub use rmcp::model::Meta;
+/// Re-exports of MCP's two `_meta` shapes. Place a [`RequestMetaObject`] in a
+/// [`ToolContext`] to have Rig's MCP registration methods forward it as a
+/// call's `_meta`; a response's `_meta` is preserved as a [`MetaObject`].
+pub use rmcp::model::{MetaObject, RequestMetaObject};
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
 ///
@@ -206,7 +214,23 @@ async fn call_mcp_tool(
     .await?;
 
     match response {
-        ServerResult::CallToolResult(result) => Ok(result),
+        // The `resultType` guard closes an untagged-union hole: `ServerResult`
+        // tries `CallToolResult` before SEP-2322's `InputRequiredResult`, and
+        // `CallToolResult`'s lenient deserializer captures any payload carrying
+        // `_meta` — so an input-required response can land in this variant as
+        // an empty result labelled `"input_required"`. Rig dispatches over the
+        // low-level request API rather than `RunningService::call_tool`'s
+        // retrying helper, so it cannot drive multi round-trip rounds; reject
+        // every non-complete outcome (input-required, task, unknown) instead of
+        // reporting a silent empty success.
+        ServerResult::CallToolResult(result)
+            if result
+                .result_type
+                .as_ref()
+                .is_none_or(ResultType::is_complete) =>
+        {
+            Ok(result)
+        }
         _ => Err(rmcp::ServiceError::UnexpectedResponse),
     }
 }
@@ -285,12 +309,12 @@ impl McpTool {
     /// `meta`, when present, is attached as the MCP request's `_meta`
     /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
-    /// caller that places an [`rmcp::model::Meta`] into the
+    /// caller that places an [`rmcp::model::RequestMetaObject`] into the
     /// [`ToolContext`]; otherwise the call behaves exactly as before.
     fn execute_mcp(
         &self,
         args: String,
-        meta: Option<rmcp::model::Meta>,
+        meta: Option<RequestMetaObject>,
     ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
@@ -483,7 +507,7 @@ impl ErasedTool for McpTool {
         args: String,
         context: &'a mut ToolContext,
     ) -> WasmBoxedFuture<'a, ToolResult> {
-        let meta = context.get::<rmcp::model::Meta>().cloned();
+        let meta = context.get::<RequestMetaObject>().cloned();
         Box::pin(async move {
             match self.execute_mcp(args, meta).await {
                 Ok(result) => {
@@ -826,19 +850,27 @@ mod tests {
         ServiceError,
         ToolReportedError,
         ImageToolReportedError,
+        InputRequired,
     }
 
     #[derive(Clone)]
     struct ScenarioServer {
         scenario: Scenario,
-        seen: Arc<RwLock<Option<Meta>>>,
+        seen: Arc<RwLock<Option<RequestMetaObject>>>,
         cancelled: Arc<Notify>,
     }
 
     impl ServerHandler for ScenarioServer {
         fn get_info(&self) -> ServerInfo {
+            // MRTR results exist only on `2026-07-28`+ sessions; rmcp's
+            // server-side gate refuses to send them to older peers, so the
+            // input-required scenario must negotiate the draft version.
+            let protocol_version = match self.scenario {
+                Scenario::InputRequired => ProtocolVersion::V_2026_07_28,
+                _ => ProtocolVersion::LATEST,
+            };
             ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                .with_protocol_version(ProtocolVersion::LATEST)
+                .with_protocol_version(protocol_version)
                 .with_server_info(Implementation::new("rig-mcp-test", "0.1.0"))
         }
 
@@ -846,10 +878,12 @@ mod tests {
             &self,
             _request: CallToolRequestParams,
             context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
+        ) -> Result<CallToolResponse, ErrorData> {
             *self.seen.write().await = Some(context.meta.clone());
             match self.scenario {
-                Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
+                Scenario::Success => {
+                    Ok(CallToolResult::success(vec![ContentBlock::text("ok")]).into())
+                }
                 Scenario::StructuredSuccess => {
                     let mut response = CallToolResult::success(vec![
                         ContentBlock::text("before"),
@@ -860,15 +894,15 @@ mod tests {
                         "answer": 42,
                         "source": "fixture"
                     }));
-                    let mut meta = Meta::new();
-                    meta.0.insert("response-id".into(), json!("response-123"));
+                    let mut meta = MetaObject::new();
+                    meta.insert("response-id".into(), json!("response-123"));
                     response.meta = Some(meta);
-                    Ok(response)
+                    Ok(response.into())
                 }
                 Scenario::StructuredOnly => {
                     let mut response = CallToolResult::structured(json!({"answer": 42}));
                     response.content.clear();
-                    Ok(response)
+                    Ok(response.into())
                 }
                 Scenario::Hang => {
                     context.ct.cancelled().await;
@@ -880,12 +914,25 @@ mod tests {
                 }
                 Scenario::ToolReportedError => Ok(CallToolResult::error(vec![ContentBlock::text(
                     "tool reported exact failure",
-                )])),
+                )])
+                .into()),
                 Scenario::ImageToolReportedError => {
                     Ok(CallToolResult::error(vec![ContentBlock::image(
                         "ZXJyb3ItaW1hZ2U=",
                         "image/png",
-                    )]))
+                    )])
+                    .into())
+                }
+                Scenario::InputRequired => {
+                    // `_meta` is what lets this result tunnel through the
+                    // untagged `ServerResult` union as a lenient
+                    // `CallToolResult` on the client side — the exact shape
+                    // `call_mcp_tool`'s `resultType` guard exists to reject.
+                    let mut result = InputRequiredResult::from_request_state("fixture-state");
+                    let mut meta = MetaObject::new();
+                    meta.insert("hint".into(), json!("supply-input"));
+                    result.meta = Some(meta);
+                    Ok(result.into())
                 }
             }
         }
@@ -893,13 +940,19 @@ mod tests {
 
     struct Fixture {
         handle: ToolServerHandle,
-        seen: Arc<RwLock<Option<Meta>>>,
+        seen: Arc<RwLock<Option<RequestMetaObject>>>,
         cancelled: Arc<Notify>,
         _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
     async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+        let client_info = match scenario {
+            Scenario::InputRequired => {
+                ClientInfo::default().with_protocol_version(ProtocolVersion::V_2026_07_28)
+            }
+            _ => ClientInfo::default(),
+        };
         let seen = Arc::new(RwLock::new(None));
         let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
@@ -916,7 +969,7 @@ mod tests {
                 .expect("server start");
             running.waiting().await.expect("server error");
         });
-        let client = ClientInfo::default()
+        let client = client_info
             .serve((client_from_server, client_to_server))
             .await
             .expect("client connect");
@@ -1124,8 +1177,8 @@ mod tests {
     #[tokio::test]
     async fn canonical_dispatch_forwards_context_meta() {
         let fixture = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
-        let mut meta = Meta::new();
-        meta.0.insert("authorization".into(), json!("Bearer test"));
+        let mut meta = RequestMetaObject::new();
+        meta.insert("authorization".into(), json!("Bearer test"));
         let mut context = ToolContext::new();
         context.insert(meta);
 
@@ -1138,7 +1191,6 @@ mod tests {
                 .await
                 .as_ref()
                 .expect("server observed metadata")
-                .0
                 .get("authorization"),
             Some(&json!("Bearer test"))
         );
@@ -1171,6 +1223,28 @@ mod tests {
         let output = result.output().render();
         assert!(output.contains("MCP tool 'fixture_tool' request failed"));
         assert!(output.contains("fixture service failed"));
+        fixture.server_task.abort();
+    }
+
+    /// An `InputRequiredResult` that carries `_meta` deserializes into
+    /// `ServerResult::CallToolResult` (untagged-union ordering plus
+    /// `CallToolResult`'s lenient deserializer), so without the `resultType`
+    /// guard in `call_mcp_tool` it would surface as a silent empty success.
+    #[tokio::test]
+    async fn canonical_dispatch_rejects_input_required_results() {
+        let fixture = fixture(Scenario::InputRequired, Some(Duration::from_secs(1))).await;
+        let result = execute(&fixture, "{}", &mut ToolContext::new()).await;
+        let error = result
+            .error()
+            .expect("input-required must surface as an error, not an empty success");
+        assert_eq!(error.kind(), ToolErrorKind::Provider);
+        assert!(error.is::<rmcp::ServiceError>());
+        assert!(
+            result
+                .output()
+                .render()
+                .contains("MCP tool 'fixture_tool' request failed")
+        );
         fixture.server_task.abort();
     }
 
@@ -1250,8 +1324,8 @@ mod tests {
         );
         assert_eq!(
             context
-                .result::<Meta>()
-                .and_then(|meta| meta.0.get("response-id")),
+                .result::<MetaObject>()
+                .and_then(|meta| meta.get("response-id")),
             Some(&json!("response-123"))
         );
         fixture.server_task.abort();
@@ -1360,11 +1434,12 @@ mod migrated_tests {
             &self,
             request: CallToolRequestParams,
             _: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
+        ) -> Result<CallToolResponse, ErrorData> {
             Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "called {}",
                 request.name
-            ))]))
+            ))])
+            .into())
         }
     }
 

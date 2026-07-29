@@ -132,33 +132,25 @@ impl ServerHandler for Counter {
         _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        Ok(ListResourcesResult {
-            resources: vec![
-                self._create_resource_text("str:////Users/to/some/path/", "cwd"),
-                self._create_resource_text("memo://insights", "memo-name"),
-            ],
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListResourcesResult::with_all_items(vec![
+            self._create_resource_text("str:////Users/to/some/path/", "cwd"),
+            self._create_resource_text("memo://insights", "memo-name"),
+        ]))
     }
 
     async fn read_resource(
         &self,
         ReadResourceRequestParams { uri, .. }: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
+    ) -> Result<ReadResourceResponse, ErrorData> {
         match uri.as_str() {
             "str:////Users/to/some/path/" => {
                 let cwd = "/Users/to/some/path/";
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    cwd, uri,
-                )]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(cwd, uri)]).into())
             }
             "memo://insights" => {
                 let memo = "Business Intelligence Memo\n\nAnalysis has revealed 5 key insights ...";
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    memo, uri,
-                )]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(memo, uri)]).into())
             }
             _ => Err(ErrorData::resource_not_found(
                 "resource_not_found",
@@ -174,11 +166,7 @@ impl ServerHandler for Counter {
         _request: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, ErrorData> {
-        Ok(ListResourceTemplatesResult {
-            next_cursor: None,
-            resource_templates: Vec::new(),
-            meta: None,
-        })
+        Ok(ListResourceTemplatesResult::with_all_items(Vec::new()))
     }
 
     async fn initialize(

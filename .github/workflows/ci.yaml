@@ -107,12 +107,12 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
-  # `rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
-  # unconditionally, which rig's wasm tool registry cannot satisfy. Asking for it
-  # on wasm must fail with exactly one actionable sentence rather than a wall of
-  # `dyn ErasedTool` trait errors, so assert both the message *and* the error
-  # count — a new ungated `#[cfg(feature = "rmcp")]` would leak follow-on errors
-  # and is the regression this guards.
+  # `rmcp` is native-only: rmcp ships no wasm-capable client transport (see the
+  # rationale in `crates/rig-agent/src/tool/mod.rs`). Asking for it on wasm must
+  # fail with exactly one actionable sentence rather than a wall of trait
+  # errors, so assert both the message *and* the error count — a new ungated
+  # `#[cfg(feature = "rmcp")]` would leak follow-on errors and is the regression
+  # this guards.
   check-rmcp-native-only:
     name: stable / rmcp rejected on wasm
     runs-on: ubuntu-latest

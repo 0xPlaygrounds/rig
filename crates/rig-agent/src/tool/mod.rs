@@ -125,22 +125,46 @@ use crate::completion::{self, ToolDefinition};
 
 pub(crate) mod extensions;
 
-// MCP is native-only. rmcp's `ClientHandler` is declared
-// `Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
-// the future bounds (`MaybeSendFuture`) but not the handler itself — and this
-// crate's handler owns the tool registry, whose `Arc<dyn ErasedTool>` is
-// deliberately neither `Send` nor `Sync` on wasm because `rig-core`'s
-// `WasmCompatSend`/`WasmCompatSync` are no-op markers there. The two
-// maybe-`Send` abstractions cannot be reconciled from this side.
+// MCP is native-only, but no longer for the reason this comment carried through
+// 2.x. That one — rmcp's `ClientHandler` demanding `Send + Sync` that this
+// crate's wasm tool registry cannot supply, its `Arc<dyn ErasedTool>` being
+// deliberately neither (`rig-core`'s `WasmCompatSend`/`WasmCompatSync` are
+// no-op markers there) — was fixed upstream in rmcp 3.0: `local` now gates the
+// handler bound (`Sized + 'static`) as it already gated the future bound
+// (`MaybeSendFuture`). rmcp core with `client` + `local` (and default features
+// off — the default `server` feature drags `uuid/v4` → `getrandom` in) compiles
+// for wasm32-unknown-unknown.
 //
-// Raise that as one sentence instead of a page of `dyn ErasedTool` trait errors.
-// Upstream fix would be making rmcp's handler bound conditional on `local`, as
-// its future bound already is.
+// The blocker moved downstream, to the transport:
+//
+//   - `transport-streamable-http-client-reqwest` — the only browser-plausible
+//     one — does not build for wasm. `default_http_client()` calls
+//     `reqwest::redirect::Policy::none()` and `pool_max_idle_per_host(0)`
+//     ungated; reqwest's wasm backend has neither (no `redirect` module, no
+//     such `ClientBuilder` method).
+//   - No other transport is usable there either. The generic ones
+//     (`SinkStreamTransport`, `AsyncRwTransport`, `WorkerTransport`) compile,
+//     but `Transport<R>: Send` with `Send` futures is unconditional — `local`
+//     relaxes handlers, never transports — and browser futures (`JsFuture`)
+//     are `!Send`. The rest are native by construction: child process, unix
+//     socket, stdio.
+//   - rmcp's `local` swaps `tokio::spawn` for `tokio::task::spawn_local`, which
+//     wants a tokio `LocalSet` — single-threaded *native* tokio, not a browser
+//     event loop. This crate has no spawn abstraction to bridge that; it never
+//     spawns on wasm outside the MCP adapter's cancellation delivery.
+//
+// So a wasm MCP client needs upstream `Send`-bound relaxations on rmcp's
+// transport layer, a hand-written `Transport` over fetch/EventSource, and a
+// spawn shim — a feature project, not a `cfg` fix. Until then `rmcp` is
+// declared only under `[target.'cfg(not(target_family = "wasm"))'.dependencies]`
+// and this gate raises one sentence instead of a page of trait errors.
 #[cfg(all(feature = "rmcp", target_family = "wasm"))]
 compile_error!(
-    "the `rmcp` feature is native-only: rmcp's `ClientHandler` requires \
-     `Send + Sync` unconditionally (its `local` feature relaxes only futures), \
-     which rig's wasm tool registry cannot satisfy. Disable `rmcp` for wasm targets."
+    "the `rmcp` feature is native-only: rmcp ships no wasm-capable client \
+     transport (its streamable-HTTP client calls reqwest APIs that do not \
+     exist on wasm; every other transport is native by construction or \
+     blocked by rmcp's unconditional `Send` bounds). Disable `rmcp` for \
+     wasm targets."
 );
 
 #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
