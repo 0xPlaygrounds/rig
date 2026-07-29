@@ -160,3 +160,43 @@ pure path provably produces byte-identical requests.
   parser and `HttpModelStream` move to P5, where `ModelStream`'s
   no-`Box<dyn>` shape actually requires them; P3's `open_stream` rides the
   (already concrete) compat streaming machinery via a transport match.
+
+## P4 — Provider fleet: configs + free functions everywhere (COMPLETE)
+
+Every in-core provider and the three non-HTTP companions now carry the
+openai-pilot face (`Config` + `DESCRIPTOR` + pure `build_request_body`/
+`build_request`/`parse_response` + async `complete`/`open_stream`):
+
+- **16 OpenAI-compatible providers** via shared `pub(crate)` helpers in
+  openai/functions.rs (`compatible_request_body`/`compatible_request`/
+  `compatible_parse_response::<Ext>`/`compatible_open_stream`) +
+  `stream_profile_for<Ext>(ext)`. Azure's Config models its deployment URL
+  scheme (endpoint + api_version, `api-key` header); llamafile ships
+  `ApiKeyLocation::None` (local endpoint); huggingface keeps its
+  sub-provider ext default (documented).
+- **Standalone providers** (anthropic, cohere, xai, chatgpt, gemini,
+  ollama, copilot): request bodies delegate to the exact typed conversions
+  the trait impls use, and the SSE machinery was genuinely EXTRACTED with
+  the trait impls rewired through it (`stream_anthropic_sse`,
+  `stream_cohere_sse`, gemini `generate_content_stream`, ollama
+  `consume_chat_streaming_response`, chatgpt `build_codex_responses_request`
+  + `parse_codex_sse_response`) — single source of truth per provider.
+- **Companions**: bedrock/gemini-grpc `Config` describes client
+  construction (region/profile/endpoint; endpoint/key) with
+  `client_from_config` builders; candle's `Config` + `ModelArtifacts`
+  preserve the crate's no-fs invariant; all trait impls rewired through
+  extracted free functions.
+- `ProviderDescriptor` gained const `with_*` builders (its
+  `#[non_exhaustive]` blocks companion struct literals); openai's
+  `max_embedding_documents` corrected 2048→1024 (the code's actual
+  `MAX_DOCUMENTS`).
+
+**Documented deferrals**: gemini Interactions API face; copilot
+`/responses` routing + OAuth flows (Config carries a resolved token —
+interactive auth cannot be plain data); anthropic caching knobs not yet in
+Config; bedrock's `"aws_bedrock"` (telemetry) vs `"bedrock"` (stream-final)
+naming discrepancy noted for unification.
+
+**Verification**: workspace check 0 errors; clippy clean; rig-core 1079
+tests (68 new provider-function tests); full facade cassette suite green
+(totals below); cassettes untouched.

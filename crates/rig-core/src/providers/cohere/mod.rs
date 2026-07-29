@@ -15,6 +15,7 @@
 pub mod client;
 pub mod completion;
 pub mod embeddings;
+pub mod functions;
 pub mod streaming;
 
 pub use client::{ApiErrorResponse, ApiResponse, Client};

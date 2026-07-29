@@ -20,6 +20,7 @@
 
 pub mod client;
 pub mod completion;
+pub mod functions;
 pub mod embedding;
 pub mod image;
 pub mod streaming;

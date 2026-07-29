@@ -52,27 +52,14 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let request = create_grpc_request(self.model.clone(), completion_request)?;
-
-        let mut grpc_client = self
-            .client
-            .grpc_client()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-
-        let response = grpc_client
-            .generate_content(request)
-            .await
-            .map_err(rpc_error)?
-            .into_inner();
-
-        response.try_into()
+        crate::functions::complete(&self.client, &self.model, completion_request).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
-        super::streaming::stream(self.client.clone(), self.model.clone(), request).await
+        crate::functions::open_stream(&self.client, &self.model, request).await
     }
 }
 

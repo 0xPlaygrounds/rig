@@ -737,10 +737,30 @@ where
             .send_streaming(req)
             .instrument(span.clone())
             .await?;
-        let status = response.status();
-        let mut byte_stream = response.into_body();
 
-        if !status.is_success() {
+        let stream = consume_chat_streaming_response(response)
+            .await?
+            .instrument(span);
+
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
+    }
+}
+
+/// Consume a native `/api/chat` streaming response (NDJSON) as a raw
+/// streaming-choice stream. Shared by the [`completion::CompletionModel`]
+/// trait path and the data-oriented [`functions::open_stream`] path.
+pub(crate) async fn consume_chat_streaming_response(
+    response: http_client::StreamingResponse,
+) -> Result<
+    impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>,
+    CompletionError,
+> {
+    let status = response.status();
+    let mut byte_stream = response.into_body();
+
+    if !status.is_success() {
             let mut body = Vec::new();
             while let Some(chunk) = byte_stream.next().await {
                 match chunk {
@@ -813,12 +833,9 @@ where
                     }
                 }
             }
-        }.instrument(span);
+        };
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
+    Ok(stream)
 }
 
 // ---------- Model Listing  ----------
@@ -1270,6 +1287,283 @@ pub struct ImageUrl {
     pub url: String,
     #[serde(default)]
     pub detail: ImageDetail,
+}
+
+// ---------- Data-oriented face ----------
+
+/// Ollama native `/api/chat` as config + pure functions.
+///
+/// The data-oriented face of the Ollama provider: a serde [`Config`], a
+/// [`DESCRIPTOR`](functions::DESCRIPTOR) capability sheet, and free functions
+/// — [`build_request`](functions::build_request) (data → HTTP request, no IO)
+/// and [`parse_response`](functions::parse_response) (bytes → normalized
+/// [`completion::CompletionResponse`], no IO) — plus the async
+/// [`complete`](functions::complete) and [`open_stream`](functions::open_stream)
+/// wrappers over [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+///
+/// The pure functions delegate to the same typed conversion
+/// (`OllamaCompletionRequest` / [`CompletionResponse`]`::try_into`) the
+/// [`completion::CompletionModel`] trait path uses, so both paths produce
+/// byte-identical request bodies.
+pub mod functions {
+    use http::header::{AUTHORIZATION, CONTENT_TYPE};
+    use serde::{Deserialize, Serialize};
+
+    use super::{CompletionResponse, OllamaCompletionRequest};
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_client::HttpClientExt as _;
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+
+    /// Default Ollama API base URL (local instance).
+    pub const DEFAULT_BASE_URL: &str = super::OLLAMA_API_BASE_URL;
+
+    /// Ollama's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "ollama",
+        supports_tools: true,
+        // `output_schema` maps to the native `format` field.
+        supports_response_format: true,
+        // The native NDJSON stream always reports counts on the final chunk;
+        // there is no OpenAI-style `stream_options` opt-in.
+        stream_include_usage: false,
+        // Ollama emits whole tool calls in a single NDJSON chunk.
+        emits_complete_single_chunk_tool_calls: true,
+        // `format` and `tools` are sent together without gating.
+        composes_native_output_with_tools: true,
+        max_embedding_documents: Some(1024),
+    };
+
+    /// Plain-data Ollama provider configuration.
+    ///
+    /// Ollama requires no authentication by default
+    /// ([`ApiKeyLocation::None`]); proxied or secured deployments may carry a
+    /// Bearer token via `Env`/`Inline`, mirroring [`super::OllamaApiKey`].
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+        pub base_url: String,
+        /// Credential location ([`ApiKeyLocation::None`] by default).
+        pub api_key: ApiKeyLocation,
+        /// Model identifier requests are built for.
+        pub model: String,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl Config {
+        /// Config for `model` against a local unauthenticated Ollama.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                base_url: DEFAULT_BASE_URL.to_string(),
+                api_key: ApiKeyLocation::None,
+                model: model.into(),
+                extra_headers: Vec::new(),
+            }
+        }
+
+        /// Config for `model` with an explicit Bearer token (proxied
+        /// deployments).
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the serialized native `/api/chat` request body for `request`.
+    ///
+    /// Pure: the exact bytes the wire sees. `stream` sets the body's
+    /// `stream` flag.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed = OllamaCompletionRequest::try_from((cfg.model.as_str(), request.clone()))?;
+        typed.stream = stream;
+        Ok(serde_json::to_vec(&typed)?)
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads
+    /// the environment). A resolved key becomes a Bearer `Authorization`
+    /// header; [`ApiKeyLocation::None`] sends no credential.
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        let url = format!("{}/api/chat", cfg.base_url.trim_end_matches('/'));
+        let body = build_request_body(cfg, request, stream)?;
+
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))
+    }
+
+    /// Parse a native `/api/chat` response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        if !status.is_success() {
+            return Err(CompletionError::from_http_response(
+                status,
+                body.to_string(),
+            ));
+        }
+        let response: CompletionResponse = serde_json::from_str(body)?;
+        response.try_into()
+    }
+
+    /// Open a streaming completion for `request` over the native NDJSON
+    /// `/api/chat` stream, reusing the provider's stream machinery.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        use crate::http_runtime::Transport;
+
+        let req = build_request(cfg, &request, true)?;
+        match rt.transport() {
+            Transport::Reqwest(client) => {
+                let response = client.send_streaming(req).await?;
+                let stream = super::consume_chat_streaming_response(response).await?;
+                Ok(crate::streaming::StreamingCompletionResponse::stream(
+                    Box::pin(stream),
+                ))
+            }
+            #[cfg(feature = "test-utils")]
+            Transport::Recording(client) => {
+                let response = client.send_streaming(req).await?;
+                let stream = super::consume_chat_streaming_response(response).await?;
+                Ok(crate::streaming::StreamingCompletionResponse::stream(
+                    Box::pin(stream),
+                ))
+            }
+        }
+    }
+
+    /// Send `request` to Ollama and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+        use crate::message::Message;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::one(Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_without_auth_by_default() {
+            let cfg = Config::new("llama3.2");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "http://localhost:11434/api/chat");
+            assert!(req.headers().get(http::header::AUTHORIZATION).is_none());
+        }
+
+        #[test]
+        fn build_request_adds_bearer_when_key_configured() {
+            let cfg = Config::new("llama3.2").with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(
+                req.headers()
+                    .get(http::header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok()),
+                Some("Bearer secret")
+            );
+        }
+
+        #[test]
+        fn build_request_body_injects_model_and_stream_flag() {
+            let cfg = Config::new("llama3.2");
+            let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+            let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            assert_eq!(value["model"], "llama3.2");
+            assert_eq!(value["stream"], false);
+            // temperature / max_tokens are model options in the native API.
+            assert_eq!(value["options"]["temperature"], 0.5);
+            assert_eq!(value["options"]["num_predict"], 64);
+
+            let mut request = sample_request();
+            request.model = Some("qwen3:8b".to_string());
+            let body = build_request_body(&cfg, &request, true).expect("build");
+            let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            assert_eq!(value["model"], "qwen3:8b");
+            assert_eq!(value["stream"], true);
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": {"role": "assistant", "content": "hi"},
+                "done": true,
+                "done_reason": "stop",
+                "prompt_eval_count": 3,
+                "eval_count": 2
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "ollama");
+            assert_eq!(response.model.as_deref(), Some("llama3.2"));
+            assert_eq!(response.finish_reason, Some(completion::FinishReason::Stop));
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
+        }
+
+        #[test]
+        fn parse_response_surfaces_http_errors() {
+            let err = parse_response(http::StatusCode::NOT_FOUND, "model missing")
+                .expect_err("non-success status must error");
+            assert!(matches!(err, CompletionError::HttpError(_)));
+        }
+    }
 }
 
 // =================================================================

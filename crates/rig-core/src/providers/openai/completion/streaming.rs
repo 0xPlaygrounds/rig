@@ -217,8 +217,25 @@ pub(crate) fn openai_stream_profile()
     OpenAICompatibleProfile::default()
 }
 
+/// The streaming profile for any OpenAI-compatible `ext`, for the
+/// per-provider free-function streaming paths. Compile-time provider
+/// plumbing; retired with the generic path later in the migration.
+pub(crate) fn stream_profile_for<Ext>(ext: Ext) -> OpenAICompatibleProfile<Ext, Ext::StreamingUsage>
+where
+    Ext: OpenAICompatibleProvider,
+{
+    OpenAICompatibleProfile {
+        provider: ext,
+        emits_complete_single_chunk_tool_calls: Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
+        usage: std::marker::PhantomData,
+    }
+}
+
 #[derive(Clone, Copy, Default)]
-pub(crate) struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletionsExt, U = Usage> {
+pub(crate) struct OpenAICompatibleProfile<
+    Ext = crate::providers::openai::OpenAICompletionsExt,
+    U = Usage,
+> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,

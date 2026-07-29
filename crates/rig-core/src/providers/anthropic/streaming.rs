@@ -30,7 +30,7 @@ use std::collections::HashMap;
 /// streaming-only difference — an explicit `tool_choice: auto` when tools are
 /// advertised but the caller left the choice unset — is re-applied below so the
 /// streaming request bytes stay stable.
-fn create_streaming_request_body(
+pub(super) fn create_streaming_request_body(
     request_model: String,
     mut completion_request: CompletionRequest,
     max_tokens: u64,
@@ -253,10 +253,34 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let stream = GenericEventSource::new(self.client.clone(), req);
+        Ok(stream_anthropic_sse(
+            self.client.clone(),
+            req,
+            Ext::PROVIDER_NAME,
+            span,
+        ))
+    }
+}
 
-        // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: StreamingResult = Box::pin(stream! {
+/// Drive a fully built Anthropic streaming request over `client`, returning
+/// the normalized streaming response.
+///
+/// Extracted from [`GenericCompletionModel::stream`] so the data-oriented
+/// [`super::functions`] face reuses the exact same SSE machinery; both paths
+/// route through this single function.
+pub(super) fn stream_anthropic_sse<H>(
+    client: H,
+    req: http::Request<Vec<u8>>,
+    provider_name: &'static str,
+    span: tracing::Span,
+) -> streaming::StreamingCompletionResponse
+where
+    H: HttpClientExt + Clone + 'static,
+{
+    let stream = GenericEventSource::new(client, req);
+
+    // Use our SSE decoder to directly handle Server-Sent Events format
+    let stream: StreamingResult = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
@@ -340,7 +364,7 @@ where
             sse_stream.close();
 
             let mut final_response = streaming::StreamFinal::new(
-                Ext::PROVIDER_NAME,
+                provider_name,
                 final_usage.unwrap_or_default().token_usage(),
             );
             if let Some(finish_reason) = finish_reason {
@@ -355,8 +379,7 @@ where
             yield Ok(RawStreamingChoice::FinalResponse(final_response))
         }.instrument(span));
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
-    }
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 fn handle_event(

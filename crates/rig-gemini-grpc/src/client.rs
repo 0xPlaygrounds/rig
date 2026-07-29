@@ -68,6 +68,12 @@ impl Client {
         Ok(Self { api_key, channel })
     }
 
+    /// Assemble a client from an already-resolved API key and connected
+    /// channel (used by [`crate::functions::client_from_config`]).
+    pub(crate) fn from_parts(api_key: String, channel: Channel) -> Self {
+        Self { api_key, channel }
+    }
+
     /// Get a gRPC client with API key interceptor
     pub(crate) fn grpc_client(
         &self,

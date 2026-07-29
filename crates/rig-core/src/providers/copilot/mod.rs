@@ -21,6 +21,7 @@
 //! ```
 
 mod auth;
+pub mod functions;
 
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,

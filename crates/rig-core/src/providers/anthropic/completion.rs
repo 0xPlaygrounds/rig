@@ -1692,7 +1692,7 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
@@ -2596,13 +2596,13 @@ where
 }
 
 #[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
+pub(super) struct ApiErrorResponse {
+    pub(super) message: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ApiResponse<T> {
+pub(super) enum ApiResponse<T> {
     Message(T),
     Error(ApiErrorResponse),
 }

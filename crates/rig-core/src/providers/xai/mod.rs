@@ -17,6 +17,7 @@ mod api;
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
+pub mod functions;
 #[cfg(feature = "image")]
 pub mod image_generation;
 mod streaming;

@@ -1,0 +1,292 @@
+//! xAI Responses API as config + pure functions.
+//!
+//! The data-oriented face of the xAI provider: a serde [`Config`], a
+//! [`DESCRIPTOR`] capability sheet, and free functions decomposing a
+//! completion into pure parts — [`build_request_body`] / [`build_request`]
+//! (data → HTTP request, no IO) and [`parse_response`] (bytes → normalized
+//! [`completion::CompletionResponse`], no IO) — plus async [`complete`] and
+//! [`open_stream`] wrappers over [`HttpRuntime`].
+//!
+//! The pure functions delegate to the same typed conversion the
+//! [`CompletionModel`](super::completion::CompletionModel) trait path uses
+//! (`XAICompletionRequest`'s `TryFrom` plus the shared stream-flag helper),
+//! so both paths produce byte-identical request bodies. [`open_stream`]
+//! drives the exact SSE machinery the trait path uses
+//! (`send_xai_streaming_request`).
+
+use http::header::{AUTHORIZATION, CONTENT_TYPE};
+use serde::{Deserialize, Serialize};
+use tracing_futures::Instrument;
+
+use super::api::ApiResponse;
+use super::completion::{XAICompletionRequest, apply_stream_flag};
+use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::http_runtime::HttpRuntime;
+use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+
+/// Default xAI API base URL.
+pub const DEFAULT_BASE_URL: &str = "https://api.x.ai";
+
+/// xAI's capability sheet.
+///
+/// `supports_response_format` is `false`: the request conversion warns and
+/// drops `output_schema` ("Structured outputs currently not supported for
+/// xAI").
+pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+    name: "xai",
+    supports_tools: true,
+    supports_response_format: false,
+    stream_include_usage: false,
+    emits_complete_single_chunk_tool_calls: false,
+    composes_native_output_with_tools: false,
+    max_embedding_documents: None,
+};
+
+/// Plain-data xAI provider configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Config {
+    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+    pub base_url: String,
+    /// Credential location; sent as a bearer `Authorization` header.
+    pub api_key: ApiKeyLocation,
+    /// Model identifier requests are built for.
+    pub model: String,
+    /// Extra headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl Config {
+    /// Config for `model` reading `XAI_API_KEY` from the environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            api_key: ApiKeyLocation::Env("XAI_API_KEY".to_string()),
+            model: model.into(),
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Config for `model` with an explicit API key.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the API base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+}
+
+/// Build the serialized Responses API request body for `request`.
+///
+/// Pure: the exact bytes the wire sees. Delegates to the same typed
+/// conversion as the trait path; `stream` merges the top-level
+/// `stream: true` flag exactly as the trait streaming path does.
+pub fn build_request_body(
+    cfg: &Config,
+    request: &CompletionRequest,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let mut typed = XAICompletionRequest::try_from((cfg.model.as_str(), request.clone()))?;
+    if stream {
+        apply_stream_flag(&mut typed);
+    }
+    Ok(serde_json::to_vec(&typed)?)
+}
+
+/// Build the complete HTTP request (URL, headers, body) for `request`.
+///
+/// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+/// environment).
+pub fn build_request(
+    cfg: &Config,
+    request: &CompletionRequest,
+    stream: bool,
+) -> Result<http::Request<Vec<u8>>, CompletionError> {
+    let url = format!("{}/v1/responses", cfg.base_url.trim_end_matches('/'));
+    let body = build_request_body(cfg, request, stream)?;
+
+    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+    if let Some(key) = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+    {
+        builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+    }
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(body)
+        .map_err(|e| CompletionError::RequestError(Box::new(e)))
+}
+
+/// Parse a Responses API response body into the normalized
+/// [`completion::CompletionResponse`]. Pure.
+pub fn parse_response(
+    status: http::StatusCode,
+    body: &str,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    if !status.is_success() {
+        return Err(CompletionError::from_http_response(
+            status,
+            body.to_string(),
+        ));
+    }
+    match serde_json::from_str::<ApiResponse<super::completion::CompletionResponse>>(body)? {
+        ApiResponse::Ok(response) => response.try_into(),
+        ApiResponse::Error(error) => {
+            tracing::warn!(message = %error.message(), "provider returned an error response");
+            Err(CompletionError::from_http_response(
+                status,
+                body.to_string(),
+            ))
+        }
+    }
+}
+
+/// Open a streaming completion for `request`, driving the same SSE machinery
+/// as the trait path.
+pub async fn open_stream(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: CompletionRequest,
+) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    use crate::http_runtime::Transport;
+
+    let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
+    let span =
+        CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
+            .system_instructions(
+                request.preamble.as_deref(),
+                request.record_telemetry_content,
+            )
+            .build();
+    let req = build_request(cfg, &request, true)?;
+    match rt.transport() {
+        Transport::Reqwest(client) => {
+            super::streaming::send_xai_streaming_request(client.clone(), req)
+                .instrument(span)
+                .await
+        }
+        #[cfg(feature = "test-utils")]
+        Transport::Recording(client) => {
+            super::streaming::send_xai_streaming_request(client.clone(), req)
+                .instrument(span)
+                .await
+        }
+    }
+}
+
+/// Send `request` to xAI and return the normalized response.
+pub async fn complete(
+    cfg: &Config,
+    rt: &HttpRuntime,
+    request: CompletionRequest,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    let req = build_request(cfg, &request, false)?;
+    let (status, body) = rt.send(req).await?;
+    parse_response(status, &body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::OneOrMany;
+    use crate::message::Message;
+
+    fn sample_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: Some(0.7),
+            max_tokens: Some(32),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    #[test]
+    fn build_request_body_matches_typed_conversion() {
+        let cfg = Config::new("grok-4-0709").with_api_key("k");
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["model"], "grok-4-0709");
+        assert_eq!(value["temperature"], 0.7);
+        assert_eq!(value["max_output_tokens"], 32);
+        assert!(value.get("stream").is_none());
+
+        let streaming = build_request_body(&cfg, &sample_request(), true).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&streaming).expect("json");
+        assert_eq!(value["stream"], true);
+    }
+
+    #[test]
+    fn build_request_honors_model_override() {
+        let cfg = Config::new("grok-4-0709").with_api_key("k");
+        let mut request = sample_request();
+        request.model = Some("grok-3".to_string());
+        let body = build_request_body(&cfg, &request, false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["model"], "grok-3");
+    }
+
+    #[test]
+    fn build_request_sets_url_and_auth() {
+        let cfg = Config::new("grok-4-0709").with_api_key("secret");
+        let req = build_request(&cfg, &sample_request(), false).expect("build");
+        assert_eq!(req.uri(), "https://api.x.ai/v1/responses");
+        assert_eq!(
+            req.headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("Bearer secret")
+        );
+    }
+
+    #[test]
+    fn parse_response_normalizes() {
+        let body = serde_json::json!({
+            "id": "resp_1",
+            "model": "grok-4-0709",
+            "output": [{
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {"type": "output_text", "text": "hi", "annotations": []}
+                ]
+            }],
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": 2,
+                "total_tokens": 5
+            }
+        })
+        .to_string();
+        let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+        assert_eq!(response.provider, "xai");
+        assert_eq!(response.model.as_deref(), Some("grok-4-0709"));
+        assert_eq!(response.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(response.usage.input_tokens, 3);
+        assert_eq!(response.usage.total_tokens, 5);
+    }
+
+    #[test]
+    fn parse_response_surfaces_provider_error_envelope() {
+        let body = r#"{"error":"boom","code":"503"}"#;
+        let error = parse_response(http::StatusCode::OK, body).expect_err("should error");
+        assert!(error.to_string().contains("boom"));
+    }
+}

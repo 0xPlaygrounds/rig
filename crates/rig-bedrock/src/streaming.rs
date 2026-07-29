@@ -1,6 +1,6 @@
 use crate::types::completion_request::AwsCompletionRequest;
 use crate::{
-    completion::{CompletionModel, resolve_request_model},
+    completion::resolve_request_model,
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
 };
 use async_stream::stream;
@@ -86,17 +86,22 @@ fn finalize_reasoning(state: ReasoningState) -> Option<RawStreamingChoice> {
     })
 }
 
-impl CompletionModel {
-    pub(crate) async fn stream(
-        &self,
-        completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
+/// Streaming Converse implementation shared by the `CompletionModel` trait
+/// impl and [`crate::functions::open_stream`]. Extracted unchanged from the
+/// former `CompletionModel::stream` inherent method.
+pub(crate) async fn stream_converse(
+    client: &aws_sdk_bedrockruntime::Client,
+    default_model: &str,
+    prompt_caching: bool,
+    completion_request: rig_core::completion::CompletionRequest,
+) -> Result<StreamingCompletionResponse, CompletionError> {
+    {
+        let request_model = resolve_request_model(default_model, &completion_request);
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = AwsCompletionRequest {
             inner: completion_request,
-            prompt_caching: self.prompt_caching,
+            prompt_caching,
         };
         let span = CompletionSpanBuilder::new(
             "aws_bedrock",
@@ -106,12 +111,7 @@ impl CompletionModel {
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
-        let mut converse_builder = self
-            .client
-            .get_inner()
-            .await
-            .converse_stream()
-            .model_id(request_model);
+        let mut converse_builder = client.converse_stream().model_id(request_model);
 
         let tool_config = request.tools_config()?;
         let prompt_with_history = request.messages()?;

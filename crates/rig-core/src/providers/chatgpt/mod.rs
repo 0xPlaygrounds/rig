@@ -17,6 +17,7 @@
 //! ```
 
 mod auth;
+pub mod functions;
 
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
@@ -370,6 +371,9 @@ where
         self
     }
 
+    // Only exercised by the conversion tests since `create_request` moved to
+    // the shared `build_codex_responses_request` free function.
+    #[cfg(test)]
     fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPTExt, H> {
         let mut model = responses_api::GenericResponsesCompletionModel::new(
             self.client.clone(),
@@ -384,40 +388,13 @@ where
         &self,
         request: completion::CompletionRequest,
     ) -> Result<ResponsesRequest, CompletionError> {
-        let mut request = self.openai_model().create_completion_request(request)?;
-
-        if let Some(default_instructions) = &self.client.ext().default_instructions {
-            request.instructions = Some(merge_instructions(
-                default_instructions,
-                request.instructions.as_deref(),
-            ));
-        }
-
-        request.temperature = None;
-        request.max_output_tokens = None;
-        request.stream = Some(true);
-
-        let include = request
-            .additional_parameters
-            .include
-            .get_or_insert_with(Vec::new);
-        if !include
-            .iter()
-            .any(|item| matches!(item, Include::ReasoningEncryptedContent))
-        {
-            include.push(Include::ReasoningEncryptedContent);
-        }
-
-        request.additional_parameters.background = None;
-        request.additional_parameters.metadata.clear();
-        request.additional_parameters.parallel_tool_calls = None;
-        request.additional_parameters.service_tier = None;
-        request.additional_parameters.store = Some(false);
-        request.additional_parameters.text = None;
-        request.additional_parameters.top_p = None;
-        request.additional_parameters.user = None;
-
-        Ok(request)
+        build_codex_responses_request(
+            self.model.clone(),
+            &self.tools,
+            self.strict_tools,
+            self.client.ext().default_instructions.as_deref(),
+            request,
+        )
     }
 
     fn add_auth_headers(
@@ -460,24 +437,7 @@ where
         let response = self.client.send(req).await?;
         let status = response.status();
         let text = http_client::text(response).await?;
-        if !status.is_success() {
-            return Err(CompletionError::from_http_response(status, text));
-        }
-
-        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
-
-        let span = tracing::Span::current();
-        span.record("gen_ai.response.id", raw_response.id.as_str());
-        span.record("gen_ai.response.model", raw_response.model.as_str());
-
-        match raw_response.clone().try_into() {
-            Ok(response) => Ok(response),
-            Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
-                responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
-                    .await
-            }
-            Err(error) => Err(error),
-        }
+        parse_codex_sse_response(status, &text).await
     }
 }
 
@@ -587,6 +547,102 @@ where
             event_source,
             span,
         ))
+    }
+}
+
+/// Build the ChatGPT Codex Responses request as plain data.
+///
+/// The single source of truth for ChatGPT request bodies: the trait path
+/// ([`ResponsesCompletionModel`]) and the data-oriented [`functions`] face
+/// both route through this function. The ChatGPT backend rejects the
+/// `system` role in `input`, so system instructions always use
+/// [`responses_api::SystemInstructionsPlacement::AllInstructions`], and the
+/// backend requires SSE — `stream` is always `Some(true)`, even for blocking
+/// completions.
+pub(crate) fn build_codex_responses_request(
+    model: String,
+    default_tools: &[responses_api::ResponsesToolDefinition],
+    strict_tools: bool,
+    default_instructions: Option<&str>,
+    request: completion::CompletionRequest,
+) -> Result<ResponsesRequest, CompletionError> {
+    let mut request = ResponsesRequest::try_from(responses_api::ResponsesRequestParams {
+        model,
+        request,
+        system_instructions_placement: responses_api::SystemInstructionsPlacement::AllInstructions,
+    })?;
+    request.tools.extend(default_tools.iter().cloned());
+    if strict_tools {
+        request.tools = request
+            .tools
+            .into_iter()
+            .map(responses_api::ResponsesToolDefinition::normalize)
+            .collect();
+    }
+
+    if let Some(default_instructions) = default_instructions {
+        request.instructions = Some(merge_instructions(
+            default_instructions,
+            request.instructions.as_deref(),
+        ));
+    }
+
+    request.temperature = None;
+    request.max_output_tokens = None;
+    request.stream = Some(true);
+
+    let include = request
+        .additional_parameters
+        .include
+        .get_or_insert_with(Vec::new);
+    if !include
+        .iter()
+        .any(|item| matches!(item, Include::ReasoningEncryptedContent))
+    {
+        include.push(Include::ReasoningEncryptedContent);
+    }
+
+    request.additional_parameters.background = None;
+    request.additional_parameters.metadata.clear();
+    request.additional_parameters.parallel_tool_calls = None;
+    request.additional_parameters.service_tier = None;
+    request.additional_parameters.store = Some(false);
+    request.additional_parameters.text = None;
+    request.additional_parameters.top_p = None;
+    request.additional_parameters.user = None;
+
+    Ok(request)
+}
+
+/// Parse a ChatGPT Codex SSE completion body into the normalized response,
+/// including the streamed-text fallback for empty `response.completed`
+/// payloads.
+///
+/// Shared by the trait path and the data-oriented [`functions`] face. Async
+/// only because the empty-output fallback reuses the async SSE accumulator.
+pub(crate) async fn parse_codex_sse_response(
+    status: http::StatusCode,
+    text: &str,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    if !status.is_success() {
+        return Err(CompletionError::from_http_response(
+            status,
+            text.to_string(),
+        ));
+    }
+
+    let raw_response = responses_api::streaming::parse_sse_completion_body(text, "ChatGPT")?;
+
+    let span = tracing::Span::current();
+    span.record("gen_ai.response.id", raw_response.id.as_str());
+    span.record("gen_ai.response.model", raw_response.model.as_str());
+
+    match raw_response.clone().try_into() {
+        Ok(response) => Ok(response),
+        Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
+            responses_api::streaming::completion_response_from_sse_body(text, raw_response).await
+        }
+        Err(error) => Err(error),
     }
 }
 

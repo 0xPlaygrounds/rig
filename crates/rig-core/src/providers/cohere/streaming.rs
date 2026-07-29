@@ -98,12 +98,7 @@ where
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
-
-        request.additional_params = Some(params);
+        super::completion::apply_stream_flag(&mut request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -121,9 +116,27 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
+        Ok(stream_cohere_sse(self.client.clone(), req, span))
+    }
+}
 
-        let stream = stream! {
+/// Drive a fully built Cohere streaming request over `client`, returning the
+/// normalized streaming response.
+///
+/// Extracted from [`CompletionModel::stream`] so the data-oriented
+/// [`super::functions`] face reuses the exact same SSE machinery; both paths
+/// route through this single function.
+pub(super) fn stream_cohere_sse<H>(
+    client: H,
+    req: http::Request<Vec<u8>>,
+    span: tracing::Span,
+) -> streaming::StreamingCompletionResponse
+where
+    H: HttpClientExt + Clone + 'static,
+{
+    let mut event_source = GenericEventSource::new(client, req);
+
+    let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
 
@@ -234,10 +247,7 @@ where
             )))
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
+    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
 }
 
 #[cfg(test)]

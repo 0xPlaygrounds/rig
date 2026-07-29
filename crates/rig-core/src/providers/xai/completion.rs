@@ -112,6 +112,21 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
+/// Merge the top-level `stream: true` flag into `request`'s
+/// `additional_params` — the single place the xAI streaming flag is applied,
+/// shared by the trait streaming path and the data-oriented
+/// [`super::functions`] face.
+pub(super) fn apply_stream_flag(request: &mut XAICompletionRequest) {
+    let params = crate::json_utils::merge(
+        request
+            .additional_params
+            .take()
+            .unwrap_or(serde_json::json!({})),
+        serde_json::json!({"stream": true}),
+    );
+    request.additional_params = Some(params);
+}
+
 // ================================================================
 // Response Types
 // ================================================================

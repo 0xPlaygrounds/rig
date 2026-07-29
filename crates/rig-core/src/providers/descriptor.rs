@@ -48,6 +48,42 @@ impl ProviderDescriptor {
             max_embedding_documents: None,
         }
     }
+
+    /// Set tool-calling support (const builder for out-of-crate descriptors).
+    pub const fn with_tools(mut self, value: bool) -> Self {
+        self.supports_tools = value;
+        self
+    }
+
+    /// Set native structured-output support.
+    pub const fn with_response_format(mut self, value: bool) -> Self {
+        self.supports_response_format = value;
+        self
+    }
+
+    /// Set OpenAI-style streaming usage-chunk requests.
+    pub const fn with_stream_include_usage(mut self, value: bool) -> Self {
+        self.stream_include_usage = value;
+        self
+    }
+
+    /// Set whole-tool-call-per-chunk streaming behavior.
+    pub const fn with_single_chunk_tool_calls(mut self, value: bool) -> Self {
+        self.emits_complete_single_chunk_tool_calls = value;
+        self
+    }
+
+    /// Set whether native structured output composes with tools (#1928).
+    pub const fn with_composes_native_output_with_tools(mut self, value: bool) -> Self {
+        self.composes_native_output_with_tools = value;
+        self
+    }
+
+    /// Set the embedding batch limit.
+    pub const fn with_max_embedding_documents(mut self, value: usize) -> Self {
+        self.max_embedding_documents = Some(value);
+        self
+    }
 }
 
 /// Where a provider credential comes from.

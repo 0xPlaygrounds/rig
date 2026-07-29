@@ -814,7 +814,7 @@ impl ResponsesToolDefinition {
         self
     }
 
-    fn normalize(self) -> Self {
+    pub(crate) fn normalize(self) -> Self {
         self.with_strict()
     }
 }
@@ -2369,15 +2369,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .output
             .iter()
             .any(|item| matches!(item, Output::FunctionCall(_)));
-        let finish_reason = match finish_reason_from_status(
-            &response.status,
-            response.incomplete_details.as_ref(),
-        ) {
-            Some(completion::FinishReason::Stop) if has_tool_calls => {
-                Some(completion::FinishReason::ToolCalls)
-            }
-            other => other,
-        };
+        let finish_reason =
+            match finish_reason_from_status(&response.status, response.incomplete_details.as_ref())
+            {
+                Some(completion::FinishReason::Stop) if has_tool_calls => {
+                    Some(completion::FinishReason::ToolCalls)
+                }
+                other => other,
+            };
 
         let mut normalized = completion::CompletionResponse::new(choice, usage, "openai")
             .with_model(response.model.clone());

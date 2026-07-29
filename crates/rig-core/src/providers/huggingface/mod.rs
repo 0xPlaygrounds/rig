@@ -18,6 +18,7 @@
 
 pub mod client;
 pub mod completion;
+pub mod functions;
 
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]

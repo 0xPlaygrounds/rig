@@ -10,7 +10,6 @@ use tracing_futures::Instrument;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
-use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
     ResponsesStreamOptions, stream_from_event_source_with_options,
 };
@@ -30,12 +29,7 @@ where
         let mut request =
             XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
 
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
-
-        request.additional_params = Some(params);
+        super::completion::apply_stream_flag(&mut request);
 
         if enabled!(Level::TRACE) {
             tracing::trace!(target: "rig::completions",

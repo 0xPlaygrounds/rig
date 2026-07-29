@@ -1147,3 +1147,222 @@ mod azure_tests {
             .expect("Client::builder() failed");
     }
 }
+
+pub mod functions {
+    //! Azure OpenAI chat completions as config + pure functions.
+    //!
+    //! The data-oriented face of the Azure OpenAI provider, mirroring
+    //! [`crate::providers::openai::functions`]. Azure does not fit the
+    //! simple `base_url + path` shape: the deployment (model) is routed
+    //! through the URL and the API is versioned via a query parameter, so
+    //! [`Config`] carries `endpoint` + `api_version` instead of a
+    //! `base_url`, and [`build_request`] uses the same absolute URL
+    //! [`AzureExt::completion_path`](super::AzureExt) produces.
+    //!
+    //! Authentication mirrors the client's `AzureOpenAIAuth::ApiKey` arm:
+    //! the resolved key is sent in the `api-key` header. The Entra
+    //! bearer-token arm (`AzureOpenAIAuth::Token`) is not modeled here; use
+    //! `extra_headers` with an `authorization` header for token auth.
+
+    use serde::{Deserialize, Serialize};
+
+    use super::AzureExt;
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+    use crate::providers::openai::functions as openai_functions;
+
+    /// Default Azure OpenAI API version (GA).
+    pub const DEFAULT_API_VERSION: &str = "2024-10-21";
+
+    /// Azure OpenAI's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "azure.openai",
+        supports_tools: true,
+        supports_response_format: true,
+        stream_include_usage: true,
+        emits_complete_single_chunk_tool_calls: false,
+        composes_native_output_with_tools: true,
+        max_embedding_documents: Some(1024),
+    };
+
+    /// Plain-data Azure OpenAI provider configuration.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// Resource endpoint, e.g. `https://my-resource.openai.azure.com`.
+        pub endpoint: String,
+        /// API version query parameter (defaults to [`DEFAULT_API_VERSION`]).
+        pub api_version: String,
+        /// Credential location; sent as the `api-key` header.
+        pub api_key: ApiKeyLocation,
+        /// Deployment identifier requests are built for (routed through the URL).
+        pub model: String,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl Config {
+        /// Config for `model` on `endpoint`, reading `AZURE_API_KEY` from the
+        /// environment.
+        pub fn new(endpoint: impl Into<String>, model: impl Into<String>) -> Self {
+            Self {
+                endpoint: endpoint.into(),
+                api_version: DEFAULT_API_VERSION.to_string(),
+                api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
+                model: model.into(),
+                extra_headers: Vec::new(),
+            }
+        }
+
+        /// Config with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API version.
+        pub fn with_api_version(mut self, api_version: impl Into<String>) -> Self {
+            self.api_version = api_version.into();
+            self
+        }
+    }
+
+    fn ext_for(cfg: &Config) -> AzureExt {
+        AzureExt {
+            endpoint: cfg.endpoint.trim_end_matches('/').to_string(),
+            api_version: cfg.api_version.clone(),
+        }
+    }
+
+    /// Build the serialized chat-completions request body for `request`. Pure.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        openai_functions::compatible_request_body(&ext_for(cfg), &cfg.model, request, stream)
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+    /// environment).
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        let ext = ext_for(cfg);
+        // Absolute deployment-scoped URL, e.g.
+        // `{endpoint}/openai/deployments/{model}/chat/completions?api-version={v}`.
+        let url = ext.completion_path(&cfg.model);
+        let body = build_request_body(cfg, request, stream)?;
+
+        let mut builder =
+            http::Request::post(url).header(http::header::CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+        {
+            builder = builder.header("api-key", key);
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))
+    }
+
+    /// Parse a chat-completions response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        openai_functions::compatible_parse_response::<AzureExt>(status, body)
+    }
+
+    /// Open a streaming completion for `request`.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, true)?;
+        openai_functions::compatible_open_stream(ext_for(cfg), rt, req).await
+    }
+
+    /// Send `request` to Azure OpenAI and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::one(crate::message::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_and_model() {
+            let cfg = Config::new("https://my-resource.openai.azure.com", "gpt-4o-deploy")
+                .with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(
+                req.uri(),
+                "https://my-resource.openai.azure.com/openai/deployments/gpt-4o-deploy/chat/completions?api-version=2024-10-21"
+            );
+            assert_eq!(
+                req.headers().get("api-key").and_then(|v| v.to_str().ok()),
+                Some("secret")
+            );
+            let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+            assert_eq!(value["model"], "gpt-4o-deploy");
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "id": "chatcmpl-1",
+                "model": "gpt-4o-2024",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "azure.openai");
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
+        }
+    }
+}

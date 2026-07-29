@@ -100,7 +100,7 @@ use crate::types::*;
 #[cfg(test)]
 use crate::validation::*;
 
-const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
+pub(crate) const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
@@ -422,20 +422,15 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
+/// Buffered completion over a loaded [`CandleModel`], shared by the
+/// `CompletionModel` trait impl and [`crate::functions::complete`].
+/// Extracted unchanged from the former trait-impl body.
+pub(crate) async fn complete_request(
+    model: &CandleModel,
+    request: CompletionRequest,
+) -> Result<CompletionResponse, CompletionError> {
+    {
+        let ModelState::Ready(loaded) = &model.state else {
             return Err(CandleError::UnsupportedMake.into());
         };
 
@@ -468,12 +463,17 @@ impl CompletionModel for CandleModel {
                 .map_err(CompletionError::from)
         }
     }
+}
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
+/// Streaming completion over a loaded [`CandleModel`], shared by the
+/// `CompletionModel` trait impl and [`crate::functions::open_stream`].
+/// Extracted unchanged from the former trait-impl body.
+pub(crate) async fn open_stream_request(
+    model: &CandleModel,
+    request: CompletionRequest,
+) -> Result<StreamingCompletionResponse, CompletionError> {
+    {
+        let ModelState::Ready(loaded) = &model.state else {
             return Err(CandleError::UnsupportedMake.into());
         };
 
@@ -522,6 +522,30 @@ impl CompletionModel for CandleModel {
             let stream: StreamingResult = Box::pin(futures::stream::iter(events));
             Ok(StreamingCompletionResponse::stream(stream))
         }
+    }
+}
+
+impl CompletionModel for CandleModel {
+    type Client = ();
+
+    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
+        Self {
+            state: ModelState::UnsupportedMake,
+        }
+    }
+
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        complete_request(self, request).await
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        open_stream_request(self, request).await
     }
 }
 

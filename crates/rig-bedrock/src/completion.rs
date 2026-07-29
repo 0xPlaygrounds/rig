@@ -1,17 +1,9 @@
 //! All supported models <https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html>
 
-use crate::{
-    client::Client,
-    types::{
-        assistant_content::AwsConverseOutput, completion_request::AwsCompletionRequest,
-        converse_output::InternalConverseOutput, errors::AwsSdkConverseError,
-    },
-};
+use crate::client::Client;
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use tracing::Instrument;
 
 /// `ai21.jamba-1-5-large-v1:0`
 pub const AI21_JAMBA_1_5_LARGE: &str = "ai21.jamba-1-5-large-v1:0";
@@ -220,58 +212,12 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-
-        let span =
-            CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
-                .system_instructions(
-                    completion_request.preamble.as_deref(),
-                    completion_request.record_telemetry_content,
-                )
-                .build();
-
-        let request = AwsCompletionRequest {
-            inner: completion_request,
-            prompt_caching: self.prompt_caching,
-        };
-
-        let mut converse_builder = self
-            .client
-            .get_inner()
-            .await
-            .converse()
-            .model_id(request_model.clone());
-
-        let tool_config = request.tools_config()?;
-        let messages = request.messages()?;
-        let output_config = request.output_config()?;
-        converse_builder = converse_builder
-            .set_additional_model_request_fields(request.additional_params())
-            .set_inference_config(request.inference_config())
-            .set_tool_config(tool_config)
-            .set_system(request.system_prompt()?)
-            .set_messages(Some(messages))
-            .set_output_config(output_config);
-
-        async move {
-            let response = converse_builder.send().await.map_err(|sdk_error| {
-                Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
-            })?;
-
-            let response: InternalConverseOutput = response.try_into().map_err(|x| {
-                CompletionError::ProviderError(format!("Type conversion error: {x}"))
-            })?;
-
-            let aws_output = AwsConverseOutput(response);
-
-            let span = tracing::Span::current();
-            span.record_response_metadata(&aws_output);
-            let response: completion::CompletionResponse = aws_output.try_into()?;
-            span.record_token_usage(&response.usage);
-
-            Ok(response)
-        }
-        .instrument(span)
+        crate::functions::complete_with_options(
+            self.client.get_inner().await,
+            &self.model,
+            self.prompt_caching,
+            completion_request,
+        )
         .await
     }
 
@@ -279,6 +225,12 @@ impl completion::CompletionModel for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
+        crate::functions::open_stream_with_options(
+            self.client.get_inner().await,
+            &self.model,
+            self.prompt_caching,
+            request,
+        )
+        .await
     }
 }

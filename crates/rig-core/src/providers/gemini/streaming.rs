@@ -116,9 +116,27 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
+        let stream = generate_content_stream(self.client.clone(), req).instrument(span);
 
-        let stream = stream! {
+        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
+            stream,
+        )))
+    }
+}
+
+/// Consume a `streamGenerateContent` SSE exchange as a raw streaming-choice
+/// stream. Shared by the [`CompletionModel`] trait path and the
+/// data-oriented [`super::functions::open_stream`] path.
+pub(crate) fn generate_content_stream<T>(
+    client: T,
+    req: http::Request<Vec<u8>>,
+) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    let mut event_source = GenericEventSource::new(client, req);
+
+    stream! {
             let mut final_usage = None;
             let mut final_finish_reason: Option<FinishReason> = None;
             let mut final_model_version: Option<String> = None;
@@ -287,12 +305,7 @@ where
                 }
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
             }
-        }.instrument(span);
-
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
+        }
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod functions;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
