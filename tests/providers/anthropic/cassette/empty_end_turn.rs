@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use rig::{
-    completion::{CompletionModel, Prompt, ToolDefinition},
+    completion::{CompletionModel, CompletionRequest, Prompt, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
     prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -143,12 +143,17 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
         |client| async move {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
 
+            let first_request = CompletionRequest {
+                max_tokens: Some(1024),
+                tools: vec![notify_tool_definition()],
+                ..CompletionRequest::with_history(
+                    Some(TERMINAL_NOTIFY_PREAMBLE),
+                    Vec::new(),
+                    TERMINAL_NOTIFY_PROMPT,
+                )
+            };
             let first_turn = model
-                .completion_request(TERMINAL_NOTIFY_PROMPT)
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .tool(notify_tool_definition())
-                .send()
+                .completion(first_request)
                 .await
                 .expect("first Anthropic turn should succeed");
 
@@ -161,19 +166,23 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 })
                 .expect("first Anthropic turn should emit a notify tool call");
 
+            let followup_request = CompletionRequest {
+                max_tokens: Some(1024),
+                ..CompletionRequest::with_history(
+                    Some(TERMINAL_NOTIFY_PREAMBLE),
+                    vec![Message::Assistant {
+                        id: first_turn.message_id.clone(),
+                        content: first_turn.choice.clone(),
+                    }],
+                    Message::tool_result_with_call_id(
+                        tool_call.id.clone(),
+                        tool_call.call_id.clone(),
+                        "sent: deploy finished",
+                    ),
+                )
+            };
             let followup = model
-                .completion_request(Message::tool_result_with_call_id(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    "sent: deploy finished",
-                ))
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
+                .completion(followup_request)
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 

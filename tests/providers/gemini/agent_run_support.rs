@@ -3,6 +3,7 @@
 //! [`AgentRun`](rig::agent::run::AgentRun) state machine.
 #![allow(dead_code)]
 
+use rig::completion::CompletionRequest;
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
@@ -15,7 +16,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub(crate) struct GeminiAgent {
-    model: gemini::completion::CompletionModel,
+    pub(crate) model: gemini::completion::CompletionModel,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -46,21 +47,12 @@ impl GeminiAgent {
         }
     }
 
-    pub(crate) fn request(
-        &self,
-        prompt: Message,
-        history: Vec<Message>,
-    ) -> CompletionRequestBuilder<gemini::completion::CompletionModel> {
-        let mut request = self
-            .model
-            .completion_request(prompt)
-            .messages(history)
-            .preamble(self.preamble.clone())
-            .tools(self.tools.clone());
-        if let Some(tool_choice) = &self.tool_choice {
-            request = request.tool_choice(tool_choice.clone());
+    pub(crate) fn request(&self, prompt: Message, history: Vec<Message>) -> CompletionRequest {
+        CompletionRequest {
+            tools: self.tools.clone(),
+            tool_choice: self.tool_choice.clone(),
+            ..CompletionRequest::with_history(Some(&self.preamble), history, prompt)
         }
-        request
     }
 }
 
@@ -225,8 +217,8 @@ pub(crate) async fn call_model(
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
     let response = agent
-        .request(prompt, history)
-        .send()
+        .model
+        .completion(agent.request(prompt, history))
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(

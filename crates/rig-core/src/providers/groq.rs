@@ -542,7 +542,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("llama-3.3-70b-versatile");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

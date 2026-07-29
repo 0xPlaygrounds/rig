@@ -466,6 +466,42 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// A request for `prompt` with `preamble` and prior `history`: the
+    /// canonical hand-built request shape (history first, prompt last, every
+    /// other field defaulted for functional-update syntax).
+    pub fn with_history(
+        preamble: Option<&str>,
+        history: Vec<Message>,
+        prompt: impl Into<Message>,
+    ) -> Self {
+        let prompt = prompt.into();
+        let chat_history = match OneOrMany::many(history) {
+            Ok(mut messages) => {
+                messages.push(prompt);
+                messages
+            }
+            Err(_) => OneOrMany::one(prompt),
+        };
+        Self {
+            model: None,
+            preamble: preamble.map(str::to_string),
+            chat_history,
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// A request for a bare `prompt` with no preamble or history.
+    pub fn from_prompt(prompt: impl Into<Message>) -> Self {
+        Self::with_history(None, Vec::new(), prompt)
+    }
+
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
     /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {

@@ -511,12 +511,14 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
-    use crate::completion::{CompletionRequestBuilder, ToolDefinition as RigToolDefinition};
+    use crate::completion::{
+        CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDefinition,
+    };
     use crate::message::ToolChoice as RigToolChoice;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
-    use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
+    use crate::test_utils::RecordingHttpClient;
 
     fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
@@ -585,30 +587,33 @@ mod tests {
 
     #[test]
     fn deepseek_request_serializes_specific_tool_choice_as_chat_completions_object() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(RigToolDefinition {
-                name: "alpha".to_string(),
-                description: "Alpha tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool(RigToolDefinition {
-                name: "beta".to_string(),
-                description: "Beta tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool_choice(RigToolChoice::Specific {
+        let request = RigCompletionRequest {
+            tools: vec![
+                RigToolDefinition {
+                    name: "alpha".to_string(),
+                    description: "Alpha tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+                RigToolDefinition {
+                    name: "beta".to_string(),
+                    description: "Beta tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+            ],
+            tool_choice: Some(RigToolChoice::Specific {
                 function_names: vec!["beta".to_string()],
-            })
-            .additional_params(serde_json::json!({"thinking": {"type": "disabled"}}))
-            .build();
+            }),
+            additional_params: Some(serde_json::json!({"thinking": {"type": "disabled"}})),
+            ..RigCompletionRequest::from_prompt("Use a tool.")
+        };
 
         let body = finalized_body(request);
 
@@ -620,8 +625,8 @@ mod tests {
 
     #[test]
     fn deepseek_request_suppresses_required_tool_choice_when_thinking_is_not_disabled() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(RigToolDefinition {
+        let request = RigCompletionRequest {
+            tools: vec![RigToolDefinition {
                 name: "alpha".to_string(),
                 description: "Alpha tool".to_string(),
                 parameters: serde_json::json!({
@@ -629,9 +634,10 @@ mod tests {
                     "properties": {},
                     "required": []
                 }),
-            })
-            .tool_choice(RigToolChoice::Required)
-            .build();
+            }],
+            tool_choice: Some(RigToolChoice::Required),
+            ..RigCompletionRequest::from_prompt("Use a tool.")
+        };
 
         let body = finalized_body(request);
 
@@ -646,9 +652,8 @@ mod tests {
 
     #[test]
     fn deepseek_request_flattens_message_content_to_strings() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello!")
-            .preamble("You are helpful.".to_string())
-            .build();
+        let request =
+            RigCompletionRequest::with_history(Some("You are helpful."), Vec::new(), "Hello!");
 
         let body = finalized_body(request);
 

@@ -1,6 +1,6 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
 use rig::providers::openai;
 use std::future::Future;
@@ -32,10 +32,10 @@ async fn responses_api_accepts_null_metadata() {
     const SCENARIO: &str = "vllm/responses_api_accepts_null_metadata";
     with_openai_vllm_cassette("vllm/responses_api_accepts_null_metadata", |client| async move {
         let model = client.completion_model("Qwen/Qwen3-0.6B");
-        let request = model
-            .completion_request("Reply with a short acknowledgement.")
-            .max_tokens(8)
-            .build();
+        let request = CompletionRequest {
+            max_tokens: Some(8),
+            ..CompletionRequest::from_prompt("Reply with a short acknowledgement.")
+        };
 
         let response = model
             .completion(request)

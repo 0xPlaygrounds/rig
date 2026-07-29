@@ -6,7 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -25,11 +25,14 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
             let model = client.completion_model(openai::GPT_4O).with_strict_tools();
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&Adder)],
+                ..CompletionRequest::with_history(
+                    Some(TOOLS_PREAMBLE),
+                    Vec::new(),
+                    "Use the add tool to add 7 and 5.",
+                )
+            };
 
             let response = model
                 .completion(request)
@@ -75,13 +78,14 @@ async fn incomplete_response_surfaces_partial_output() {
     const SCENARIO: &str = "responses_behaviors/incomplete_response_surfaces_partial_output";
     with_openai_cassette("responses_behaviors/incomplete_response_surfaces_partial_output", |client| async move {
             let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                max_tokens: Some(16),
+                ..CompletionRequest::with_history(
+                    Some("You are a storyteller."),
+                    Vec::new(),
                     "Write a story of at least 150 words about a lighthouse keeper.",
                 )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(16)
-                .build();
+            };
 
             let response = model
                 .completion(request)

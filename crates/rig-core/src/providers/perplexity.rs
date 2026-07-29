@@ -156,8 +156,6 @@ mod tests {
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
-    use crate::test_utils::MockCompletionModel;
-
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -270,17 +268,15 @@ mod tests {
 
     #[test]
     fn perplexity_prepare_request_drops_tools() {
-        let request = crate::completion::CompletionRequestBuilder::new(
-            MockCompletionModel::default(),
-            "What's new today?",
-        )
-        .tool(crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: "Lookup".to_string(),
-            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-        })
-        .tool_choice(crate::message::ToolChoice::Required)
-        .build();
+        let request = crate::completion::CompletionRequest {
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Lookup".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            }],
+            tool_choice: Some(crate::message::ToolChoice::Required),
+            ..crate::completion::CompletionRequest::from_prompt("What's new today?")
+        };
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: SONAR.to_string(),
