@@ -153,11 +153,23 @@ drop `_context`).
 *Deps: R1 (tool execution layer). Risk: rmcp push→poll behavior change (§6).*
 
 **R3 — Hooks and memory inversion.**
-Delete `AgentHook`/`DynAgentHook`/`HookStack`/`HookContext`/`Scratchpad`/
-`StepEventKind`/rewrite-frames; keep and re-export the decision vocabulary +
-fold helpers. Migrate the 44 test `impl AgentHook`s and 17 examples onto
-`SessionPolicy` + `SessionEvent` matching (semantic work: the gemini
-hook_stress cassettes encode ordering — replay must stay byte-identical).
+**Capability-preserving by mandate** (maintainer: rig-agent must stay
+useful; "remove" means the mechanism, not the feature). The hook system's
+*capability* — attach reusable cross-cutting behaviors to an agent — is
+kept via a concrete, non-generic hook layer: a plain `Hooks` struct owned
+by the session driver whose slots hold the existing serde decision data
+(default policies) plus, for genuinely open-ended behaviors, entries built
+on the same sanctioned callback-record shape as `PortableDynamicTool`
+(one seam, no trait hierarchy, no `Any` scratchpad, no `dyn` vtable
+stack). `.add_hook()`-style attach-and-forget ergonomics survive; a
+policy crate exports a constructor for a `HookEntry` record instead of a
+trait impl. What is deleted is only the machinery: the `AgentHook` trait,
+`DynAgentHook`, `HookStack`'s `Vec<Arc<dyn …>>`, `HookContext`/`Scratchpad`
+(TypeId map), `StepEventKind`, and the rewrite-frame side-channel. The
+decision vocabulary + `fold_*` helpers are kept and re-exported. Migrate
+the 44 test `impl AgentHook`s and 17 examples onto the new layer or plain
+`SessionEvent` matching (semantic work: the gemini hook_stress cassettes
+encode ordering — replay must stay byte-identical).
 Invert memory: drop `Arc<dyn ConversationMemory>` from Agent; rig-memory
 re-ships its policies as concrete structs the host calls around the run
 (design decision, §6); delete `MessageFilter`/`DemotionHook`/`Compactor`
@@ -248,6 +260,11 @@ typestate/builders/misc ~3k), against ~3–4k added in R1.
    with inherent methods (gap 8). Alternative: delete it and bless
    `AgentSession` as the only entry point — cheaper, but turns ~270 files of
    mechanical migration into rewrites.
+5. **Hook seam width.** R3's concrete hook layer (maintainer-mandated) keeps
+   one callback-record seam for open-ended hook behaviors. The narrower
+   alternative — pure `SessionEvent` matching with no attachable hooks —
+   deletes more but loses shippable hook packages; rejected per the
+   maintainer's "rig-agent must still be useful" direction.
 
 ## 7. What would make complete removal impossible
 
