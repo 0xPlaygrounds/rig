@@ -423,6 +423,15 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents: Vec<String> = documents.into_iter().collect();
+        let response = self.embed_texts_with_usage(documents).await?;
+        Ok(response.embeddings)
+    }
+
+    async fn embed_texts_with_usage(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
         let mut body = json!({
@@ -465,7 +474,8 @@ where
                         ));
                     }
 
-                    Ok(response
+                    let usage = response.usage.token_usage();
+                    let embeddings = response
                         .data
                         .into_iter()
                         .zip(documents.into_iter())
@@ -473,7 +483,9 @@ where
                             document,
                             vec: embedding.embedding,
                         })
-                        .collect())
+                        .collect();
+
+                    Ok(embeddings::EmbeddingResponse { embeddings, usage })
                 }
                 ApiResponse::Err(err) => {
                     tracing::warn!(message = %err.message, "provider returned an error response");
