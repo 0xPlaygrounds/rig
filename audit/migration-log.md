@@ -574,3 +574,12 @@ The classic tool machinery is gone; tools are records:
 workspace check 0; rig-core/rig-agent/rig-derive suites green; full facade
 suite + bedrock replay green single-threaded; doctests green; cassettes
 untouched.
+
+## R3 — status: NOT STARTED in the committed tree (2026-07-30)
+
+R3 (hook-machinery deletion + memory inversion) was launched and then
+deliberately interrupted by the maintainer mid-edit; the half-applied
+changes were reverted. The committed tree ends at R2, fully green. R1's
+concrete `Hooks` layer, `ToolExecutor`, and `SessionAgent` are in place,
+so R3 can restart cleanly from the specs in the hand-off prompt
+(`~/Desktop/code/many_rigs/rig-single-architecture-handoff.md`).
