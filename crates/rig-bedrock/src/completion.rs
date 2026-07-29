@@ -210,9 +210,6 @@ pub(crate) fn resolve_request_model(
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Response = AwsConverseOutput;
-    type StreamingResponse = crate::streaming::BedrockStreamingResponse;
-
     type Client = Client;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -222,7 +219,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
         let span =
@@ -269,9 +266,10 @@ impl completion::CompletionModel for CompletionModel {
 
             let span = tracing::Span::current();
             span.record_response_metadata(&aws_output);
-            span.record_token_usage(&aws_output);
+            let response: completion::CompletionResponse = aws_output.try_into()?;
+            span.record_token_usage(&response.usage);
 
-            aws_output.try_into()
+            Ok(response)
         }
         .instrument(span)
         .await
@@ -280,7 +278,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }

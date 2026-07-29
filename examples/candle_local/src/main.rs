@@ -39,31 +39,25 @@ async fn main() -> anyhow::Result<()> {
                 print!("{}", fragment.text);
                 std::io::stdout().flush()?;
             }
-            StreamedAssistantContent::Final(raw) => final_response = Some(raw),
+            StreamedAssistantContent::Final(final_metadata) => {
+                final_response = Some(final_metadata)
+            }
             _ => {}
         }
     }
     println!();
-    let raw = final_response.context("Candle stream ended without final metadata")?;
-    let usage = response.usage();
+    let final_response =
+        final_response.context("Candle stream ended without final metadata")?;
+    let usage = final_response.usage;
     println!(
         "tokens: prompt={}, generated={}, total={}",
         usage.input_tokens, usage.output_tokens, usage.total_tokens
     );
-    let throughput = match raw.tokens_per_second {
-        Some(value) => format!("{value:.2} tokens/s"),
-        None => "n/a".to_string(),
-    };
     println!(
-        "finish: {:?}; requested max: {}; effective max: {}; prefill: {} ms; time to first token: {} ms; total: {} ms; throughput: {}",
-        raw.finish_reason,
-        raw.requested_max_tokens,
-        raw.effective_max_tokens,
-        raw.prefill_duration_ms,
-        raw.time_to_first_token_ms
-            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
-        raw.generation_duration_ms,
-        throughput
+        "finish: {:?}; provider: {}; model: {}",
+        final_response.finish_reason,
+        final_response.provider,
+        final_response.model.as_deref().unwrap_or("n/a"),
     );
     Ok(())
 }

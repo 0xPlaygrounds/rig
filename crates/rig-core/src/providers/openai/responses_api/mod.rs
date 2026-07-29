@@ -14,8 +14,7 @@
 //! # }
 //! ```
 use super::InputAudio;
-use super::responses_api::streaming::StreamingCompletionResponse;
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::CompletionError;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -960,20 +959,20 @@ impl ResponsesUsage {
     }
 }
 
-impl GetTokenUsage for ResponsesUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<ResponsesUsage> for crate::completion::Usage {
+    fn from(value: ResponsesUsage) -> crate::completion::Usage {
         crate::completion::Usage {
-            input_tokens: self.input_tokens,
-            output_tokens: self.output_tokens,
-            total_tokens: self.total_tokens,
-            cached_input_tokens: self
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            total_tokens: value.total_tokens,
+            cached_input_tokens: value
                 .input_tokens_details
                 .as_ref()
                 .map(|details| details.cached_tokens)
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: self
+            reasoning_tokens: value
                 .output_tokens_details
                 .as_ref()
                 .map(|details| details.reasoning_tokens)
@@ -1090,6 +1089,26 @@ pub enum ResponseStatus {
     Cancelled,
     Queued,
     Incomplete,
+}
+
+/// Map a terminal Responses API status (plus any incomplete-details reason)
+/// onto the normalized [`crate::completion::FinishReason`]. Non-terminal
+/// statuses map to `None`.
+pub(crate) fn finish_reason_from_status(
+    status: &ResponseStatus,
+    incomplete_details: Option<&IncompleteDetailsReason>,
+) -> Option<crate::completion::FinishReason> {
+    use crate::completion::FinishReason;
+    match status {
+        ResponseStatus::Completed => Some(FinishReason::Stop),
+        ResponseStatus::Incomplete => Some(match incomplete_details.map(|d| d.reason.as_str()) {
+            Some("max_output_tokens") | Some("max_tokens") => FinishReason::Length,
+            Some("content_filter") => FinishReason::ContentFilter,
+            Some(other) => FinishReason::Other(other.to_string()),
+            None => FinishReason::Other("incomplete".to_string()),
+        }),
+        _ => None,
+    }
 }
 
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
@@ -2215,9 +2234,6 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
     type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -2234,7 +2250,7 @@ where
     async fn completion(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_completion_request(completion_request)?;
@@ -2262,7 +2278,7 @@ where
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
-                let response = serde_json::from_str::<Self::Response>(&t)?;
+                let response = serde_json::from_str::<CompletionResponse>(&t)?;
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
@@ -2297,15 +2313,12 @@ where
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericResponsesCompletionModel::stream(self, request).await
     }
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -2348,15 +2361,29 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .cloned()
+            .map(Into::into)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id,
-        })
+        let has_tool_calls = response
+            .output
+            .iter()
+            .any(|item| matches!(item, Output::FunctionCall(_)));
+        let finish_reason = match finish_reason_from_status(
+            &response.status,
+            response.incomplete_details.as_ref(),
+        ) {
+            Some(completion::FinishReason::Stop) if has_tool_calls => {
+                Some(completion::FinishReason::ToolCalls)
+            }
+            other => other,
+        };
+
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "openai")
+            .with_model(response.model.clone());
+        normalized.message_id = message_id;
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -3739,7 +3766,7 @@ mod tests {
             total_tokens: 150,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(usage);
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -3762,7 +3789,7 @@ mod tests {
 
         assert!(usage.output_tokens_details.is_none());
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(usage);
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -3811,7 +3838,7 @@ mod tests {
             json!("thinking through the answer")
         );
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
+        let completion: completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert!(matches!(
@@ -3867,7 +3894,7 @@ mod tests {
         }))
         .expect("reasoning-only response should deserialize");
 
-        let completion: completion::CompletionResponse<CompletionResponse> = response
+        let completion: completion::CompletionResponse = response
             .try_into()
             .expect("reasoning-only response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
@@ -3892,7 +3919,7 @@ mod tests {
         }))
         .expect("empty response shape should deserialize");
 
-        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+        let err = completion::CompletionResponse::try_from(response)
             .expect_err("empty response without reasoning should be rejected");
 
         assert!(
@@ -3952,7 +3979,7 @@ mod tests {
             })
         );
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
+        let completion: completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
@@ -4158,7 +4185,7 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
+        let completion: completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let reasoning_count = completion
             .choice
@@ -4519,7 +4546,7 @@ mod tests {
         };
 
         let usage = lhs + rhs;
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(usage);
 
         assert_eq!(token_usage.input_tokens, 13);
         assert_eq!(token_usage.cached_input_tokens, 2);

@@ -187,8 +187,20 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 &first_turn_text,
                 &["safety", "speed", "concurrency"],
             );
+            // The rig response no longer carries the provider wire struct, so
+            // re-check the wire-level text against the recorded first-turn body.
+            let recorded_bodies = crate::cassettes::recorded_response_bodies(
+                "anthropic",
+                "plaintext_document/document_citations_followup_preserves_history",
+            );
+            let first_wire: anthropic_completion::CompletionResponse = serde_json::from_str(
+                recorded_bodies
+                    .first()
+                    .expect("cassette should record the first citation turn"),
+            )
+            .expect("recorded first-turn body should deserialize as a Messages response");
             assert_eq!(
-                first_turn.raw_response.get_text_response().as_deref(),
+                first_wire.get_text_response().as_deref(),
                 Some(first_turn_text.as_str())
             );
 

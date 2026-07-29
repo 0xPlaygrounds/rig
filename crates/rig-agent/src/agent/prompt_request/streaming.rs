@@ -20,7 +20,6 @@ use crate::{
         append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
-    completion::GetTokenUsage,
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
@@ -41,17 +40,17 @@ use rig_core::message::{Message, Text};
 // predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
 // also drop `Send` on WASI, where `rig-core` still requires it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send>>;
+pub type StreamingResult =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult<R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>>>;
+pub type StreamingResult =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[non_exhaustive]
-pub enum MultiTurnStreamItem<R> {
+pub enum MultiTurnStreamItem {
     /// A streamed assistant content item — the content the **model emitted**:
     /// text/reasoning deltas, tool-call deltas, and, when the model turn is
     /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
@@ -67,7 +66,7 @@ pub enum MultiTurnStreamItem<R> {
     /// which finalizes the run directly — its structured result is surfaced in
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
     /// `ToolCall` item.
-    StreamAssistantItem(StreamedAssistantContent<R>),
+    StreamAssistantItem(StreamedAssistantContent),
     /// Confirmation that Rig **executed and committed** a tool call. This is not
     /// a real-time start notification: it is surfaced together with its
     /// `ToolResult` only after the whole batch settles successfully. Use tool
@@ -143,8 +142,8 @@ fn final_response_from_content(
     response
 }
 
-impl<R> MultiTurnStreamItem<R> {
-    pub(crate) fn stream_item(item: StreamedAssistantContent<R>) -> Self {
+impl MultiTurnStreamItem {
+    pub(crate) fn stream_item(item: StreamedAssistantContent) -> Self {
         Self::StreamAssistantItem(item)
     }
 
@@ -190,16 +189,13 @@ impl<R> MultiTurnStreamItem<R> {
 
 /// Drain a provider stream abandoned by invalid tool-call recovery so the
 /// reported usage for the recovered completion call is not lost.
-async fn drain_stream_usage<R>(
-    stream: &mut crate::streaming::StreamingCompletionResponse<R>,
-) -> Result<crate::completion::Usage, StreamingError>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
+async fn drain_stream_usage(
+    stream: &mut crate::streaming::StreamingCompletionResponse,
+) -> Result<crate::completion::Usage, StreamingError> {
     while let Some(content) = stream.next().await {
         match content {
             Ok(StreamedAssistantContent::Final(final_resp)) => {
-                return Ok(final_resp.token_usage());
+                return Ok(final_resp.usage);
             }
             Ok(_) => {}
             Err(err) => return Err(err.into()),
@@ -299,7 +295,6 @@ where
 impl<M> StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
     /// Create a new `StreamingPromptRequest` from an agent, including its
     /// default hooks.
@@ -356,7 +351,7 @@ where
 
     forward_prompt_setters!(runner);
 
-    async fn send(self) -> StreamingResult<M::StreamingResponse> {
+    async fn send(self) -> StreamingResult {
         self.runner.stream().await
     }
 }
@@ -366,12 +361,12 @@ where
 /// per-step future leaking into the engine's own (`Send`) inference.
 // Same browser-wasm predicate as `StreamingResult` above, for the same reason.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub(crate) type DriveStream<'a, R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + Send + 'a>>;
+pub(crate) type DriveStream<'a> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send + 'a>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub(crate) type DriveStream<'a, R> =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>> + 'a>>;
+pub(crate) type DriveStream<'a> =
+    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + 'a>>;
 
 /// One item emitted by the shared engine [`drive_agent`].
 ///
@@ -384,11 +379,11 @@ pub(crate) type DriveStream<'a, R> =
 // which the streaming path is specifically tuned to avoid. `Done` is yielded
 // once per run, so the wasted space on that rare variant is irrelevant.
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum DriveItem<R> {
+pub(crate) enum DriveItem {
     /// An intermediate stream item (assistant delta, tool call/result, a
     /// per-call `CompletionCall`, or — last, for the streaming surface — the
     /// final response item).
-    Item(MultiTurnStreamItem<R>),
+    Item(MultiTurnStreamItem),
     /// The run finished; carries the canonical response the blocking fold
     /// returns. The streaming surface has already received the final item as the
     /// preceding `Item` and ignores this.
@@ -406,9 +401,6 @@ pub(crate) trait TurnSource<M>: WasmCompatSend
 where
     M: CompletionModel,
 {
-    /// The raw provider response carried on per-delta stream items.
-    type Raw: WasmCompatSend;
-
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
     fn open_chat_span(
@@ -430,7 +422,7 @@ where
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         prompt: Message,
-    ) -> DriveStream<'a, Self::Raw>;
+    ) -> DriveStream<'a>;
 
     /// Execute a turn's tool calls, feeding the results into the machine and
     /// yielding any intermediate items.
@@ -441,7 +433,7 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a, Self::Raw>;
+    ) -> DriveStream<'a>;
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
     /// `created_agent_span` so a caller-supplied outer span is never polluted.
@@ -454,7 +446,7 @@ where
 
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
-    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem<Self::Raw>>;
+    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -491,7 +483,7 @@ pub(crate) fn drive_agent<M, S>(
     created_agent_span: bool,
     memory_handle: Option<(Arc<dyn rig_core::memory::ConversationMemory>, String)>,
     is_streaming: bool,
-) -> impl Stream<Item = Result<DriveItem<S::Raw>, StreamingError>>
+) -> impl Stream<Item = Result<DriveItem, StreamingError>>
 where
     M: CompletionModel,
     S: TurnSource<M>,
@@ -695,7 +687,7 @@ where
 /// but the collect/commit and fail-fast behavior is identical, so `run()` and
 /// `stream()` return the same terminal reason. `chain_tool_span` lets the
 /// blocking surface chain spans into its linear `follows_from` sequence.
-pub(crate) fn drive_tool_calls<'a, M, R, F>(
+pub(crate) fn drive_tool_calls<'a, M, F>(
     runner: &'a AgentRunner<M>,
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
@@ -703,10 +695,9 @@ pub(crate) fn drive_tool_calls<'a, M, R, F>(
     tool_snapshot: Arc<ToolRegistrySnapshot>,
     chain_tool_span: F,
     forward_items: bool,
-) -> DriveStream<'a, R>
+) -> DriveStream<'a>
 where
     M: CompletionModel,
-    R: WasmCompatSend + 'a,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
     // Per-call working state: a stable internal_call_id and the execute span,
@@ -925,7 +916,7 @@ where
         // turn) but is still committed. Every non-dropped slot is filled; a
         // dropped slot only occurs after a termination, handled above.
         let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
-        let mut surface_items: Vec<MultiTurnStreamItem<R>> =
+        let mut surface_items: Vec<MultiTurnStreamItem> =
             Vec::with_capacity(call_count.saturating_mul(2));
         for slot in collected {
             let CollectedToolResult { content, internal_call_id, surface } = match slot {
@@ -1026,10 +1017,7 @@ impl StreamingTurnSource {
 impl<M> TurnSource<M> for StreamingTurnSource
 where
     M: CompletionModel,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
-    type Raw = M::StreamingResponse;
-
     fn open_chat_span(
         &self,
         runner: &AgentRunner<M>,
@@ -1047,7 +1035,7 @@ where
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         current_prompt: Message,
-    ) -> DriveStream<'a, M::StreamingResponse> {
+    ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
             let mut stream = match prepared
                 .builder
@@ -1435,7 +1423,7 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a, M::StreamingResponse> {
+    ) -> DriveStream<'a> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
         drive_tool_calls(
@@ -1460,10 +1448,7 @@ where
         }
     }
 
-    fn final_item(
-        &self,
-        response: &PromptResponse,
-    ) -> Option<MultiTurnStreamItem<M::StreamingResponse>> {
+    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // Tool output mode (#1928): when the finishing turn made the output-tool
         // call, surface the run's structured output as the final content.
         let final_choice = finalize_streamed_choice(&self.last_final_choice, &response.output)
@@ -1493,7 +1478,6 @@ where
 impl<M> AgentRunner<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend + GetTokenUsage,
 {
     /// Drive the agent loop, streaming assistant content, tool activity, and a
     /// final response. Hooks fire at every observable point, including streamed
@@ -1504,7 +1488,7 @@ where
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
+    pub async fn stream(self) -> StreamingResult {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1573,9 +1557,8 @@ where
 impl<M> IntoFuture for StreamingPromptRequest<M>
 where
     M: CompletionModel + 'static,
-    <M as CompletionModel>::StreamingResponse: WasmCompatSend,
 {
-    type Output = StreamingResult<M::StreamingResponse>; // what `.await` returns
+    type Output = StreamingResult; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
@@ -1591,8 +1574,8 @@ where
 /// metadata is returned on the [`PromptResponse`] via accessors such as
 /// [`PromptResponse::completion_calls`]. A model-turn retry prints a visible
 /// boundary because text already written to stdout cannot be retracted.
-pub async fn stream_to_stdout<R>(
-    stream: &mut StreamingResult<R>,
+pub async fn stream_to_stdout(
+    stream: &mut StreamingResult,
 ) -> Result<PromptResponse, std::io::Error> {
     let mut final_res = PromptResponse::empty();
     print!("Response: ");
@@ -1646,7 +1629,7 @@ mod migrated_tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-        MockContextProbeTool, MockResponse, MockStreamEvent, MockSubtractTool, MockToolError,
+        MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError,
         MockTurn, SessionId,
     };
     use crate::tool::{Tool, ToolContext};
@@ -2257,7 +2240,7 @@ mod migrated_tests {
 
         let hook_context = HookContext::new(true, None);
         hook_context.set_turn(1);
-        let mut stream = drive_tool_calls::<MockCompletionModel, MockResponse, _>(
+        let mut stream = drive_tool_calls::<MockCompletionModel, _>(
             &runner,
             &hook_context,
             &mut run,
@@ -3038,7 +3021,7 @@ mod migrated_tests {
 
     #[test]
     fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
-        let item: MultiTurnStreamItem<MockResponse> =
+        let item: MultiTurnStreamItem =
             MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, usage(3, 4)));
 
         let value = serde_json::to_value(&item).expect("serialize completion call event");
@@ -3060,7 +3043,7 @@ mod migrated_tests {
             })
         );
 
-        let item: MultiTurnStreamItem<MockResponse> =
+        let item: MultiTurnStreamItem =
             serde_json::from_value(value).expect("deserialize completion call event");
         match item {
             MultiTurnStreamItem::CompletionCall(call_usage) => {
@@ -3069,7 +3052,7 @@ mod migrated_tests {
             other => panic!("expected completion call event, got {other:?}"),
         }
 
-        let item: MultiTurnStreamItem<MockResponse> =
+        let item: MultiTurnStreamItem =
             MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::new()));
         let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
@@ -3094,7 +3077,7 @@ mod migrated_tests {
 
         // Stream items serialized before the Option encoding was dropped used
         // `"usage": null`; they must still deserialize.
-        let legacy: MultiTurnStreamItem<MockResponse> = serde_json::from_value(serde_json::json!({
+        let legacy: MultiTurnStreamItem = serde_json::from_value(serde_json::json!({
             "type": "completionCall",
             "call_index": 3,
             "usage": null
@@ -3110,7 +3093,7 @@ mod migrated_tests {
 
     #[test]
     fn final_response_serializes_completion_calls_with_missing_usage() {
-        let item: MultiTurnStreamItem<MockResponse> =
+        let item: MultiTurnStreamItem =
             MultiTurnStreamItem::final_response_with_completion_calls(
                 OneOrMany::one(AssistantContent::text("done")),
                 usage(3, 4),

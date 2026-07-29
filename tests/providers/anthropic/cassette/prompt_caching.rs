@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, GetTokenUsage,
-    ToolDefinition, Usage,
+    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, ToolDefinition,
+    Usage,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -142,7 +142,7 @@ async fn send_cache_probe(
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
-) -> RigCompletionResponse<anthropic::completion::CompletionResponse> {
+) -> RigCompletionResponse {
     model
         .completion_request(prompt)
         .preamble(preamble)
@@ -185,7 +185,7 @@ async fn send_streaming_cache_probe(
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
             StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
             StreamedAssistantContent::Final(response) => {
-                usage = Some(response.token_usage());
+                usage = Some(response.usage);
             }
             _ => {}
         }
@@ -197,10 +197,7 @@ async fn send_streaming_cache_probe(
     }
 }
 
-fn assert_response_contains_cache_probe(
-    response: &RigCompletionResponse<anthropic::completion::CompletionResponse>,
-    expected: &str,
-) {
+fn assert_response_contains_cache_probe(response: &RigCompletionResponse, expected: &str) {
     let text = response_text(response);
     assert_text_contains_cache_probe(&text, expected);
 }
@@ -220,9 +217,7 @@ fn assert_cache_created_or_read(usage: &Usage, context: &str) {
     );
 }
 
-fn response_text(
-    response: &RigCompletionResponse<anthropic::completion::CompletionResponse>,
-) -> String {
+fn response_text(response: &RigCompletionResponse) -> String {
     response
         .choice
         .iter()

@@ -8,11 +8,11 @@ use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
 use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
-    streaming_endpoint,
+    CompletionModel, create_request_body, function_call_finish_reason_error, map_finish_reason,
+    resolve_request_model, streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
@@ -45,8 +45,10 @@ pub struct PartialUsage {
     pub traffic_type: Option<TrafficType>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl PartialUsage {
+    /// Normalizes Gemini streaming usage metadata into Rig's
+    /// [`crate::completion::Usage`].
+    pub fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_token_count as u64;
@@ -71,23 +73,6 @@ pub struct StreamGenerateContentResponse {
     pub usage_metadata: Option<PartialUsage>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse {
-    pub usage_metadata: PartialUsage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<FinishReason>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_version: Option<String>,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage_metadata.token_usage()
-    }
-}
-
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
     let reason = choice.finish_reason.as_ref()?;
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
@@ -100,8 +85,7 @@ where
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
@@ -137,8 +121,8 @@ where
         let stream = stream! {
             let mut final_usage = None;
             let mut final_finish_reason: Option<FinishReason> = None;
-            let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
+            let mut final_response_id: Option<String> = None;
             let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -165,13 +149,14 @@ where
                         let span = tracing::Span::current();
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
+                            final_response_id = Some(response_id.to_string());
                         }
                         if let Some(model_version) = &data.model_version {
                             span.record("gen_ai.response.model", model_version.as_str());
                             final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
-                            span.record_token_usage(usage);
+                            span.record_token_usage(&usage.token_usage());
                             final_usage = Some(usage.clone());
                         }
 
@@ -186,10 +171,6 @@ where
                         if let Some(fr) = &choice.finish_reason {
                             final_finish_reason = Some(fr.clone());
                         }
-                        if let Some(message) = &choice.finish_message {
-                            final_finish_message = Some(message.clone());
-                        }
-
                         if let Some(err) = tool_protocol_finish_reason_error(&choice) {
                             stream_failed = true;
                             yield Err(err);
@@ -293,12 +274,18 @@ where
             event_source.close();
 
             if !stream_failed {
-                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                    usage_metadata: final_usage.unwrap_or_default(),
-                    finish_reason: final_finish_reason,
-                    finish_message: final_finish_message,
-                    model_version: final_model_version,
-                }));
+                let usage = final_usage.unwrap_or_default().token_usage();
+                let mut final_response = streaming::StreamFinal::new("gemini", usage);
+                if let Some(finish_reason) = final_finish_reason.as_ref() {
+                    final_response = final_response.with_finish_reason(map_finish_reason(finish_reason));
+                }
+                if let Some(message_id) = final_response_id {
+                    final_response = final_response.with_message_id(message_id);
+                }
+                if let Some(model_version) = final_model_version {
+                    final_response = final_response.with_model(model_version);
+                }
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
             }
         }.instrument(span);
 
@@ -434,7 +421,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(PartialUsage::token_usage)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -728,66 +715,69 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_completion_response_has_finish_reason_and_model_version() {
-        use super::super::completion::gemini_api_types::FinishReason;
+    fn test_stream_final_has_finish_reason_and_model_version() {
+        use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let response = StreamingCompletionResponse {
-            usage_metadata: PartialUsage::default(),
-            finish_reason: Some(FinishReason::Stop),
-            finish_message: None,
-            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-        };
+        let response = streaming::StreamFinal::new(
+            "gemini",
+            PartialUsage::default().token_usage(),
+        )
+        .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+        .with_model("gemini-2.5-pro-preview-05-06");
 
-        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert!(matches!(
+            response.finish_reason,
+            Some(NormalizedFinishReason::Stop)
+        ));
         assert_eq!(
-            response.model_version.as_deref(),
+            response.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
 
         let json = serde_json::to_string(&response).unwrap();
-        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: streaming::StreamFinal = serde_json::from_str(&json).unwrap();
         assert!(matches!(
             deserialized.finish_reason,
-            Some(FinishReason::Stop)
+            Some(NormalizedFinishReason::Stop)
         ));
         assert_eq!(
-            deserialized.model_version.as_deref(),
+            deserialized.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
     }
 
     #[test]
-    fn test_streaming_completion_response_token_usage() {
-        let response = StreamingCompletionResponse {
-            usage_metadata: PartialUsage {
-                total_token_count: 150,
-                cached_content_token_count: None,
-                candidates_token_count: Some(75),
-                thoughts_token_count: None,
-                prompt_token_count: 75,
-                prompt_tokens_details: None,
-                cache_tokens_details: None,
-                candidates_tokens_details: None,
-                tool_use_prompt_token_count: None,
-                tool_use_prompt_tokens_details: None,
-                traffic_type: None,
-            },
-            finish_reason: Some(FinishReason::Stop),
-            finish_message: None,
-            model_version: Some("gemini-2.0-flash-001".to_string()),
-        };
+    fn test_stream_final_token_usage() {
+        use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let token_usage = response.token_usage();
+        let usage = PartialUsage {
+            total_token_count: 150,
+            cached_content_token_count: None,
+            candidates_token_count: Some(75),
+            thoughts_token_count: None,
+            prompt_token_count: 75,
+            prompt_tokens_details: None,
+            cache_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_token_count: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
+        };
+        let response = streaming::StreamFinal::new("gemini", usage.token_usage())
+            .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+            .with_model("gemini-2.0-flash-001");
+
+        let token_usage = response.usage;
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
-        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
-        assert_eq!(
-            response.model_version.as_deref(),
-            Some("gemini-2.0-flash-001")
-        );
+        assert!(matches!(
+            response.finish_reason,
+            Some(NormalizedFinishReason::Stop)
+        ));
+        assert_eq!(response.model.as_deref(), Some("gemini-2.0-flash-001"));
     }
 
     #[test]

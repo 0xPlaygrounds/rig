@@ -4,7 +4,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -110,8 +110,6 @@ impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    type Response = Interaction;
-    type StreamingResponse = streaming::StreamingCompletionResponse;
     type Client = InteractionsClient<T>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -121,7 +119,7 @@ where
     async fn completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
             &self.model,
@@ -173,7 +171,7 @@ where
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
-                span.record_token_usage(&response);
+                span.record_token_usage(&response.token_usage());
 
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -204,10 +202,7 @@ where
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         InteractionsCompletionModel::stream(self, request).await
     }
 }
@@ -461,7 +456,7 @@ fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&st
     )
 }
 
-impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
+impl TryFrom<Interaction> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
@@ -498,12 +493,15 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             .map(|usage| usage.token_usage())
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "gemini");
+        if !response.id.is_empty() {
+            converted = converted.with_message_id(response.id.clone());
+        }
+        if let Some(model) = response.model.as_deref() {
+            converted = converted.with_model(model);
+        }
+
+        Ok(converted)
     }
 }
 
@@ -632,7 +630,7 @@ fn split_data_uri(
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
-    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -740,8 +738,9 @@ pub mod interactions_api_types {
         pub input: Option<InteractionInput>,
     }
 
-    impl GetTokenUsage for Interaction {
-        fn token_usage(&self) -> Usage {
+    impl Interaction {
+        /// Normalizes the interaction's usage into Rig's [`Usage`].
+        pub fn token_usage(&self) -> Usage {
             self.usage
                 .as_ref()
                 .map(|usage| usage.token_usage())
@@ -1292,8 +1291,9 @@ pub mod interactions_api_types {
         pub total_tokens: Option<u64>,
     }
 
-    impl GetTokenUsage for InteractionUsage {
-        fn token_usage(&self) -> Usage {
+    impl InteractionUsage {
+        /// Normalizes Interactions API usage into Rig's [`Usage`].
+        pub fn token_usage(&self) -> Usage {
             let mut usage = Usage::new();
             usage.input_tokens = self.total_input_tokens.unwrap_or_default();
             usage.output_tokens = self.total_output_tokens.unwrap_or_default();
@@ -2839,7 +2839,7 @@ mod tests {
             ..Default::default()
         };
 
-        let response: completion::CompletionResponse<Interaction> =
+        let response: completion::CompletionResponse =
             interaction.try_into().expect("conversion should succeed");
 
         let choice = response.choice.first();

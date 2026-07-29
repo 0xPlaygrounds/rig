@@ -42,8 +42,6 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = super::streaming::StreamingCompletionResponse;
     type Client = super::Client;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -53,7 +51,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let request = create_grpc_request(self.model.clone(), completion_request)?;
 
         let mut grpc_client = self
@@ -73,10 +71,7 @@ impl completion::CompletionModel for CompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -391,8 +386,31 @@ fn rig_assistant_content_to_grpc_part(
     }
 }
 
+/// Map a Gemini proto finish reason code onto rig's normalized finish reason.
+/// `FINISH_REASON_UNSPECIFIED` (0) means the provider reported nothing.
+pub(crate) fn map_finish_reason(code: i32) -> Option<completion::FinishReason> {
+    let reason = proto::candidate::FinishReason::try_from(code)
+        .unwrap_or(proto::candidate::FinishReason::Unspecified);
+    match reason {
+        proto::candidate::FinishReason::Unspecified => None,
+        proto::candidate::FinishReason::Stop => Some(completion::FinishReason::Stop),
+        proto::candidate::FinishReason::MaxTokens => Some(completion::FinishReason::Length),
+        proto::candidate::FinishReason::Safety
+        | proto::candidate::FinishReason::Blocklist
+        | proto::candidate::FinishReason::ProhibitedContent
+        | proto::candidate::FinishReason::Spii
+        | proto::candidate::FinishReason::ImageSafety
+        | proto::candidate::FinishReason::ImageProhibitedContent => {
+            Some(completion::FinishReason::ContentFilter)
+        }
+        other => Some(completion::FinishReason::Other(
+            other.as_str_name().to_owned(),
+        )),
+    }
+}
+
 // Convert gRPC GenerateContentResponse to Rig CompletionResponse
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -495,12 +513,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut completion_response =
+            completion::CompletionResponse::new(choice, usage, "gemini-grpc");
+        if let Some(finish_reason) = map_finish_reason(candidate.finish_reason) {
+            completion_response = completion_response.with_finish_reason(finish_reason);
+        }
+        if !response.response_id.is_empty() {
+            completion_response = completion_response.with_message_id(response.response_id.clone());
+        }
+        if !response.model_version.is_empty() {
+            completion_response = completion_response.with_model(response.model_version.clone());
+        }
+
+        Ok(completion_response)
     }
 }
 

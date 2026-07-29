@@ -26,7 +26,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
@@ -569,29 +569,6 @@ fn route_for_model(model: &str) -> CompletionRoute {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "api", rename_all = "snake_case")]
-pub enum CopilotCompletionResponse {
-    Chat(Box<ChatCompletionResponse>),
-    Responses(Box<responses_api::CompletionResponse>),
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "api", rename_all = "snake_case")]
-pub enum CopilotStreamingResponse {
-    Chat(openai::completion::streaming::StreamingCompletionResponse),
-    Responses(responses_api::streaming::StreamingCompletionResponse),
-}
-
-impl GetTokenUsage for CopilotStreamingResponse {
-    fn token_usage(&self) -> completion::Usage {
-        match self {
-            Self::Chat(response) => response.token_usage(),
-            Self::Responses(response) => response.token_usage(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionResponse {
     pub id: String,
     #[serde(default)]
@@ -614,15 +591,28 @@ pub struct ChatChoice {
     pub finish_reason: Option<String>,
 }
 
-impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatCompletionResponse> {
+/// Maps an OpenAI-style `finish_reason` string onto the normalized
+/// [`completion::FinishReason`] vocabulary, carrying unmapped values
+/// verbatim in `Other`.
+fn map_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "stop" => completion::FinishReason::Stop,
+        "length" => completion::FinishReason::Length,
+        "tool_calls" => completion::FinishReason::ToolCalls,
+        "content_filter" => completion::FinishReason::ContentFilter,
+        other => completion::FinishReason::Other(other.to_string()),
+    }
+}
+
+impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: ChatCompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
+        let first_choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
 
-        let content = match &choice.message {
+        let content = match &first_choice.message {
             openai::completion::Message::Assistant {
                 content,
                 tool_calls,
@@ -686,12 +676,16 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "copilot")
+            .with_model(response.model.clone());
+        if !response.id.is_empty() {
+            converted = converted.with_message_id(response.id.clone());
+        }
+        if let Some(finish_reason) = first_choice.finish_reason.as_deref() {
+            converted = converted.with_finish_reason(map_finish_reason(finish_reason));
+        }
+
+        Ok(converted)
     }
 }
 
@@ -820,7 +814,7 @@ where
     async fn completion_chat(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CopilotCompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -869,12 +863,7 @@ where
                             );
                         }
 
-                        Ok(completion::CompletionResponse {
-                            choice: core.choice,
-                            usage: core.usage,
-                            raw_response: CopilotCompletionResponse::Chat(Box::new(response)),
-                            message_id: core.message_id,
-                        })
+                        Ok(core)
                     }
                     ChatApiResponse::Err(err) => {
                         tracing::warn!(
@@ -896,7 +885,7 @@ where
     async fn completion_responses(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CopilotCompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -922,7 +911,8 @@ where
             if status.is_success() {
                 let body = http_client::text(response).await?;
                 let response = serde_json::from_str::<responses_api::CompletionResponse>(&body)?;
-                let core = completion::CompletionResponse::try_from(response.clone())?;
+                let mut core = completion::CompletionResponse::try_from(response.clone())?;
+                core.provider = "copilot".to_string();
 
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", response.id.as_str());
@@ -940,12 +930,7 @@ where
                     );
                 }
 
-                Ok(completion::CompletionResponse {
-                    choice: core.choice,
-                    usage: core.usage,
-                    raw_response: CopilotCompletionResponse::Responses(Box::new(response)),
-                    message_id: core.message_id,
-                })
+                Ok(core)
             } else {
                 let body = http_client::text(response).await?;
                 Err(CompletionError::from_http_response(status, body))
@@ -958,7 +943,7 @@ where
     async fn stream_chat(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -1001,7 +986,7 @@ where
     async fn stream_responses(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -1032,9 +1017,9 @@ where
         let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
-                let mut reasoning_metadata = None;
-                let mut reasoning_context = None;
-                let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
+                let mut final_response_id: Option<String> = None;
+                let mut final_model: Option<String> = None;
+                let mut tool_calls: Vec<streaming::RawStreamingChoice> = Vec::new();
                 let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
                 let span = tracing::Span::current();
 
@@ -1142,14 +1127,14 @@ where
                                     responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
                                         span.record("gen_ai.response.id", response.id.as_str());
                                         span.record("gen_ai.response.model", response.model.as_str());
+                                        if !response.id.is_empty() {
+                                            final_response_id = Some(response.id.clone());
+                                        }
+                                        if !response.model.is_empty() {
+                                            final_model = Some(response.model.clone());
+                                        }
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
-                                        }
-                                        if response.reasoning_metadata.is_some() {
-                                            reasoning_metadata = response.reasoning_metadata;
-                                        }
-                                        if response.reasoning_context.is_some() {
-                                            reasoning_context = response.reasoning_context;
                                         }
                                     }
                                     responses_api::streaming::ResponseChunkKind::ResponseFailed
@@ -1211,15 +1196,31 @@ where
                         .unwrap_or(0),
                 );
 
-                yield Ok(RawStreamingChoice::FinalResponse(
-                    CopilotStreamingResponse::Responses(
-                        responses_api::streaming::StreamingCompletionResponse {
-                            usage: final_usage,
-                            reasoning_metadata,
-                            reasoning_context,
-                        }
-                    )
-                ));
+                let usage = completion::Usage {
+                    input_tokens: final_usage.input_tokens,
+                    output_tokens: final_usage.output_tokens,
+                    total_tokens: final_usage.total_tokens,
+                    cached_input_tokens: final_usage
+                        .input_tokens_details
+                        .as_ref()
+                        .map(|details| details.cached_tokens)
+                        .unwrap_or(0),
+                    cache_creation_input_tokens: 0,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: final_usage
+                        .output_tokens_details
+                        .as_ref()
+                        .map(|details| details.reasoning_tokens)
+                        .unwrap_or(0),
+                };
+                let mut final_response = streaming::StreamFinal::new("copilot", usage);
+                if let Some(message_id) = final_response_id {
+                    final_response = final_response.with_message_id(message_id);
+                }
+                if let Some(model) = final_model {
+                    final_response = final_response.with_model(model);
+                }
+                yield Ok(RawStreamingChoice::FinalResponse(final_response));
             },
             span,
         );
@@ -1233,8 +1234,6 @@ where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CopilotCompletionResponse;
-    type StreamingResponse = CopilotStreamingResponse;
     type Client = Client<H>;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self {
@@ -1244,7 +1243,7 @@ where
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         match self.route() {
             CompletionRoute::ChatCompletions => self.completion_chat(completion_request).await,
             CompletionRoute::Responses => self.completion_responses(completion_request).await,
@@ -1254,7 +1253,7 @@ where
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         match self.route() {
             CompletionRoute::ChatCompletions => self.stream_chat(completion_request).await,
             CompletionRoute::Responses => self.stream_responses(completion_request).await,
@@ -1577,7 +1576,6 @@ struct CopilotChatCompatibleProfile;
 impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
     type Usage = openai::completion::Usage;
     type Detail = ();
-    type FinalResponse = CopilotStreamingResponse;
 
     fn normalize_chunk(
         &self,
@@ -1614,10 +1612,8 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
-            usage,
-        })
+    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal {
+        crate::streaming::StreamFinal::new("copilot", usage.into())
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -1628,7 +1624,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
 async fn send_copilot_chat_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
-) -> Result<StreamingCompletionResponse<CopilotStreamingResponse>, CompletionError>
+) -> Result<StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
@@ -2157,7 +2153,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn responses_stream_preserves_reasoning_metadata_on_final_response() {
+    async fn responses_stream_populates_final_response_metadata() {
         let metadata = serde_json::json!({
             "context": "all_turns",
             "effort": "ultra",
@@ -2196,12 +2192,12 @@ mod tests {
         let mut stream = model.stream(request).await.expect("stream should start");
 
         while let Some(item) = stream.next().await {
-            if let StreamedAssistantContent::Final(super::CopilotStreamingResponse::Responses(
-                response,
-            )) = item.expect("completed stream should not error")
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("completed stream should not error")
             {
-                assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
-                assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+                assert_eq!(response.provider, "copilot");
+                assert_eq!(response.message_id.as_deref(), Some("resp_123"));
+                assert_eq!(response.model.as_deref(), Some("gpt-5.3-codex"));
                 return;
             }
         }

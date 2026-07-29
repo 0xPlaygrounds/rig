@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(core)* normalized `finish_reason` on completion and streaming responses — every provider maps its wire stop/finish vocabulary onto a shared `FinishReason` enum (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), closing #2090 and #1886; responses also carry `provider` and `model` metadata
+
+### Other
+
+- *(core,agent)* [**breaking**] concrete completion/streaming payloads: `CompletionResponse<T>` is now the concrete `CompletionResponse` (no `raw_response` — call the provider's own conversion for wire-typed data); the provider-typed streaming final is now the normalized `StreamFinal` (usage is a field; the `GetTokenUsage` trait is removed); `RawStreamingChoice`/`StreamingResult`/`StreamingCompletionResponse`/`StreamedAssistantContent`/`MultiTurnStreamItem` lose their type parameters; `CompletionModel` loses `type Response`/`type StreamingResponse`; `StreamingPrompt`/`StreamingChat` lose their response parameter; provider-specific streaming-final aliases (deepseek, groq, mistral, openrouter, gemini, copilot) are removed
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
 ### Added

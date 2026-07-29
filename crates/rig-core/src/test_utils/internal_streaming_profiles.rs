@@ -1,16 +1,17 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::CompletionError,
+    completion::{CompletionError, Usage},
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleToolCallChunk,
     },
+    streaming::StreamFinal,
 };
 
-use super::MockResponse;
+use super::streaming::MOCK_PROVIDER;
 
-fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<MockResponse, ()> {
+fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
     CompatibleChunk {
         response_id: None,
         response_model: None,
@@ -51,9 +52,8 @@ fn tool_call_chunk(
 pub(crate) struct ErrorAfterPendingToolCallProfile;
 
 impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
 
     fn normalize_chunk(
         &self,
@@ -71,8 +71,8 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, usage)
     }
 }
 
@@ -81,9 +81,8 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
 pub(crate) struct DistinctToolCallEvictionProfile;
 
 impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
 
     fn normalize_chunk(
         &self,
@@ -134,8 +133,8 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, usage)
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -148,9 +147,8 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
 pub(crate) struct FinishReasonCleanupProfile;
 
 impl CompatibleStreamProfile for FinishReasonCleanupProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
 
     fn normalize_chunk(
         &self,
@@ -176,7 +174,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, usage)
     }
 }

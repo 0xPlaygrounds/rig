@@ -18,7 +18,6 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
-use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::openai;
@@ -159,10 +158,6 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<DeepSeekExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying DeepSeek's own usage payload (cache hit/miss counters).
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
-
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;
     type Error = crate::client::ProviderClientError;
@@ -245,13 +240,13 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
         crate::completion::Usage {
-            input_tokens: self.prompt_tokens as u64,
-            output_tokens: self.completion_tokens as u64,
-            total_tokens: self.total_tokens as u64,
-            cached_input_tokens: self
+            input_tokens: value.prompt_tokens as u64,
+            output_tokens: value.completion_tokens as u64,
+            total_tokens: value.total_tokens as u64,
+            cached_input_tokens: value
                 .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
@@ -259,7 +254,7 @@ impl GetTokenUsage for Usage {
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: self
+            reasoning_tokens: value
                 .completion_tokens_details
                 .as_ref()
                 .and_then(|details| details.reasoning_tokens)
@@ -347,13 +342,15 @@ pub enum ToolType {
     Function,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = (!choice.finish_reason.is_empty())
+            .then(|| openai::completion::map_finish_reason(&choice.finish_reason));
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -397,14 +394,21 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        let usage = response.usage.token_usage();
+        let usage = crate::completion::Usage::from(response.usage.clone());
 
-        Ok(completion::CompletionResponse {
+        let mut normalized = completion::CompletionResponse::new(
             choice,
             usage,
-            raw_response: response,
-            message_id: None,
-        })
+            <DeepSeekExt as openai::completion::OpenAICompatibleProvider>::PROVIDER_NAME,
+        );
+        if let Some(model) = response.model.clone() {
+            normalized = normalized.with_model(model);
+        }
+        if let Some(id) = response.id.clone() {
+            normalized = normalized.with_message_id(id);
+        }
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 

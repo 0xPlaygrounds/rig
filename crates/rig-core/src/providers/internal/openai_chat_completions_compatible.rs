@@ -13,7 +13,7 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -156,13 +156,13 @@ where
 }
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+    type Usage: Clone + Default + Into<crate::completion::Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    /// Build the normalized terminal record from the provider's wire usage.
+    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -219,7 +219,7 @@ pub(crate) async fn send_compatible_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
     profile: P,
-) -> Result<streaming::StreamingCompletionResponse<P::FinalResponse>, CompletionError>
+) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
@@ -385,7 +385,8 @@ where
         }
 
         let final_usage = final_usage.unwrap_or_default();
-        record_usage(&span, &final_usage);
+        let normalized_usage: crate::completion::Usage = final_usage.clone().into();
+        record_usage(&span, &normalized_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
             profile.build_final_response(final_usage),
         ));
@@ -397,15 +398,11 @@ where
     )))
 }
 
-fn record_usage<T>(span: &tracing::Span, usage: &T)
-where
-    T: GetTokenUsage,
-{
+fn record_usage(span: &tracing::Span, usage: &crate::completion::Usage) {
     if span.is_disabled() {
         return;
     }
 
-    let usage = usage.token_usage();
     if !usage.has_values() {
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
@@ -576,7 +573,6 @@ fn take_finalized_tool_calls(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::completion::GetTokenUsage;
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -607,14 +603,12 @@ pub(crate) mod test_support {
         )
     }
 
-    pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
-        mut stream: streaming::StreamingCompletionResponse<R>,
+    pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
+        mut stream: streaming::StreamingCompletionResponse,
         expected_id: &str,
         expected_name: &str,
         expect_final_response: bool,
-    ) where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+    ) {
         let mut saw_final = false;
         let mut collected_tool_calls = Vec::new();
 

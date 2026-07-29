@@ -70,7 +70,9 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::{
+    RawStreamingChoice, StreamFinal, StreamingCompletionResponse, StreamingResult,
+};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -370,7 +372,7 @@ fn render_prompt_for(
 }
 
 #[cfg(not(target_family = "wasm"))]
-type CandleStreamItem = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>;
+type CandleStreamItem = Result<RawStreamingChoice, CompletionError>;
 
 #[cfg(not(target_family = "wasm"))]
 struct CandleReceiverStream {
@@ -413,14 +415,14 @@ fn stream_infer(
             .blocking_send(Ok(choice))
             .map_err(|_| CandleError::StreamingChannelClosed)
     })?;
+    let final_response = StreamFinal::new("candle", response.token_usage())
+        .with_finish_reason(response.finish_reason.normalized());
     sender
-        .blocking_send(Ok(RawStreamingChoice::FinalResponse(response)))
+        .blocking_send(Ok(RawStreamingChoice::FinalResponse(final_response)))
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
 impl CompletionModel for CandleModel {
-    type Response = CandleCompletionResponse;
-    type StreamingResponse = CandleCompletionResponse;
     type Client = ();
 
     fn make(_: &Self::Client, _: impl Into<String>) -> Self {
@@ -432,7 +434,7 @@ impl CompletionModel for CandleModel {
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let ModelState::Ready(loaded) = &self.state else {
             return Err(CandleError::UnsupportedMake.into());
         };
@@ -454,19 +456,23 @@ impl CompletionModel for CandleModel {
             .await
             .map_err(|error| CandleError::BlockingTaskJoin(error.to_string()));
             cancel_on_drop.disarm();
-            result?.map_err(CompletionError::from)
+            result?
+                .map(|(response, _)| response)
+                .map_err(CompletionError::from)
         }
 
         #[cfg(target_family = "wasm")]
         {
-            infer(loaded, request, &CancellationSignal).map_err(CompletionError::from)
+            infer(loaded, request, &CancellationSignal)
+                .map(|(response, _)| response)
+                .map_err(CompletionError::from)
         }
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         let ModelState::Ready(loaded) = &self.state else {
             return Err(CandleError::UnsupportedMake.into());
         };
@@ -495,11 +501,10 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(CandleReceiverStream {
-                    receiver,
-                    cancellation,
-                });
+            let stream: StreamingResult = Box::pin(CandleReceiverStream {
+                receiver,
+                cancellation,
+            });
             cancel_on_drop.disarm();
             Ok(StreamingCompletionResponse::stream(stream))
         }
@@ -511,9 +516,10 @@ impl CompletionModel for CandleModel {
                 events.push(Ok(choice));
                 Ok(())
             })?;
-            events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(futures::stream::iter(events));
+            let final_response = StreamFinal::new("candle", response.token_usage())
+                .with_finish_reason(response.finish_reason.normalized());
+            events.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
+            let stream: StreamingResult = Box::pin(futures::stream::iter(events));
             Ok(StreamingCompletionResponse::stream(stream))
         }
     }

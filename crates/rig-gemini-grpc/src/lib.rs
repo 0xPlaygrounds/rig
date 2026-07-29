@@ -36,9 +36,11 @@ pub use proto::{
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
 
-// Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
-impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
+// Normalize the proto usage metadata into rig's usage type for both the unary
+// and streaming completion paths.
+impl proto::GenerateContentResponse {
+    /// Token usage reported by the API, zero-valued when missing.
+    pub fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage_metadata
             .as_ref()
             .map(|u| rig_core::completion::Usage {

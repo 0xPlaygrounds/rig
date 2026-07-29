@@ -60,16 +60,29 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .collect::<String>();
 
             assert_nonempty_response(&text);
+            // The normalized response no longer exposes the raw payload, so the
+            // reasoning-shape assertions deserialize the recorded cassette body
+            // as the OpenAI Responses wire struct.
+            let bodies = crate::cassettes::recorded_response_bodies(
+                "mistralrs",
+                "responses_api/responses_api_reasoning_plus_answer_completes",
+            );
+            let raw_response: rig::providers::openai::responses_api::CompletionResponse =
+                serde_json::from_str(
+                    bodies
+                        .last()
+                        .expect("cassette should contain a recorded response body"),
+                )
+                .expect("recorded mistral.rs Responses body should deserialize as wire response");
             assert!(
-                response
-                    .raw_response
+                raw_response
                     .provider_reasoning
                     .as_deref()
                     .is_some_and(|reasoning| !reasoning.trim().is_empty()),
                 "string-shaped provider reasoning should remain available"
             );
-            assert_eq!(response.raw_response.reasoning_metadata, None);
-            assert_eq!(response.raw_response.reasoning_context, None);
+            assert_eq!(raw_response.reasoning_metadata, None);
+            assert_eq!(raw_response.reasoning_context, None);
         },
     )
     .await;

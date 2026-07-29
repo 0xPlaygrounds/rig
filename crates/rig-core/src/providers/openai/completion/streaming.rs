@@ -1,10 +1,10 @@
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use http::Request;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 use tracing::{Level, enabled};
 
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::openai_chat_completions_compatible::{
@@ -111,24 +111,6 @@ struct StreamingCompletionChunk<U = Usage> {
     usage: Option<U>,
 }
 
-/// Final streaming response. `U` is the provider's streaming usage payload
-/// ([`Usage`] for OpenAI itself; providers with richer usage accounting, e.g.
-/// Mistral and DeepSeek, substitute their own via
-/// [`OpenAICompatibleProvider::StreamingUsage`].
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse<U = Usage> {
-    pub usage: U,
-}
-
-impl<U> GetTokenUsage for StreamingCompletionResponse<U>
-where
-    U: GetTokenUsage,
-{
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage.token_usage()
-    }
-}
-
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
@@ -141,10 +123,7 @@ where
     pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<
-        streaming::StreamingCompletionResponse<StreamingCompletionResponse<Ext::StreamingUsage>>,
-        CompletionError,
-    > {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -244,7 +223,7 @@ where
     Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
     U: Clone
         + Default
-        + GetTokenUsage
+        + Into<crate::completion::Usage>
         + serde::de::DeserializeOwned
         + crate::wasm_compat::WasmCompatSend
         + Unpin
@@ -252,7 +231,6 @@ where
 {
     type Usage = U;
     type Detail = serde_json::Value;
-    type FinalResponse = StreamingCompletionResponse<U>;
 
     fn normalize_chunk(
         &self,
@@ -297,8 +275,8 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal {
+        crate::streaming::StreamFinal::new(Ext::PROVIDER_NAME, usage.into())
     }
 
     fn decorate_tool_call(
@@ -322,7 +300,7 @@ where
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
+) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
@@ -612,7 +590,7 @@ mod tests {
         }
 
         let usage = final_usage.expect("expected a final response with usage");
-        assert_eq!(usage.prompt_tokens, 10);
+        assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
     }
 
@@ -666,10 +644,9 @@ mod tests {
         assert_eq!(text_chunks, vec!["hel".to_string(), "lo".to_string()]);
 
         let usage = final_usage.expect("expected final usage");
-        assert_eq!(usage.prompt_tokens, 4);
+        assert_eq!(usage.input_tokens, 4);
         assert_eq!(usage.total_tokens, 10);
-        let token_usage = usage.token_usage();
-        assert_eq!(token_usage.output_tokens, 6);
+        assert_eq!(usage.output_tokens, 6);
     }
 
     #[tokio::test]
@@ -706,21 +683,12 @@ mod tests {
 
         let res = final_response.expect("expected a final response");
 
-        // Verify provider-level usage has the cached_tokens
-        assert_eq!(
-            res.usage
-                .prompt_tokens_details
-                .as_ref()
-                .unwrap()
-                .cached_tokens,
-            80
-        );
-
-        // Verify core Usage also has cached_input_tokens via GetTokenUsage
-        let core_usage = res.token_usage();
-        assert_eq!(core_usage.cached_input_tokens, 80);
-        assert_eq!(core_usage.input_tokens, 100);
-        assert_eq!(core_usage.total_tokens, 110);
+        // The normalized final carries cached_input_tokens converted from the
+        // wire's prompt_tokens_details.cached_tokens — the same arithmetic the
+        // deleted GetTokenUsage impl performed.
+        assert_eq!(res.usage.cached_input_tokens, 80);
+        assert_eq!(res.usage.input_tokens, 100);
+        assert_eq!(res.usage.total_tokens, 110);
     }
 
     /// Reproduces the bug where a proxy/gateway sends multiple parallel tool

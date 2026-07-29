@@ -72,9 +72,8 @@ async fn strict_tools_opt_in_roundtrip() {
 
 #[tokio::test]
 async fn incomplete_response_surfaces_partial_output() {
-    with_openai_cassette(
-        "responses_behaviors/incomplete_response_surfaces_partial_output",
-        |client| async move {
+    const SCENARIO: &str = "responses_behaviors/incomplete_response_surfaces_partial_output";
+    with_openai_cassette("responses_behaviors/incomplete_response_surfaces_partial_output", |client| async move {
             let model = client.completion_model(openai::GPT_4O);
             let request = model
                 .completion_request(
@@ -89,21 +88,37 @@ async fn incomplete_response_surfaces_partial_output() {
                 .await
                 .expect("an incomplete response should still convert, not error");
 
+            // The provider maps `status: incomplete` + reason
+            // `max_output_tokens` onto the normalized Length finish reason.
             assert_eq!(
-                response.raw_response.status,
-                ResponseStatus::Incomplete,
-                "hitting max_output_tokens should mark the response incomplete"
+                response.finish_reason,
+                Some(rig::completion::FinishReason::Length),
+                "hitting max_output_tokens should surface a Length finish reason"
             );
-            let reason = response
-                .raw_response
-                .incomplete_details
-                .as_ref()
-                .map(|details| details.reason.as_str());
-            assert_eq!(
-                reason,
-                Some("max_output_tokens"),
-                "incomplete_details should carry the truncation reason"
-            );
+            // The exact wire status and truncation reason are provider-typed
+            // data; assert them against the recorded body (replay only: the
+            // cassette file is written after the test body in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
+                assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+                let raw: openai::responses_api::CompletionResponse =
+                    serde_json::from_str(&bodies[0])
+                        .expect("recorded body should deserialize as a Responses API response");
+                assert_eq!(
+                    raw.status,
+                    ResponseStatus::Incomplete,
+                    "hitting max_output_tokens should mark the response incomplete"
+                );
+                let reason = raw
+                    .incomplete_details
+                    .as_ref()
+                    .map(|details| details.reason.as_str());
+                assert_eq!(
+                    reason,
+                    Some("max_output_tokens"),
+                    "incomplete_details should carry the truncation reason"
+                );
+            }
             let text: String = response
                 .choice
                 .iter()
