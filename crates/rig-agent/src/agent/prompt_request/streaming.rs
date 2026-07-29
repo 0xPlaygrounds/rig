@@ -418,7 +418,7 @@ where
         runner: &'a AgentRunner<M>,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         prompt: Message,
@@ -571,9 +571,9 @@ where
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
                     if runner.record_telemetry_content {
-                        let input_messages = prepared.builder.messages_for_telemetry();
+                        let input_messages = prepared.request.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
-                        prepared.builder = prepared.builder.record_content_telemetry(false);
+                        prepared.request.record_telemetry_content = false;
                     }
 
                     let mut turn_stream = source.run_model_turn(
@@ -1031,15 +1031,15 @@ where
         runner: &'a AgentRunner<M>,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            let mut stream = match prepared
-                .builder
-                .stream()
+            let mut stream = match runner
+                .model
+                .stream(prepared.request.clone())
                 .instrument(chat_span.clone())
                 .await
             {

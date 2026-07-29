@@ -914,13 +914,18 @@ where
         runner: &'a AgentRunner<M>,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
+            let resp = match runner
+                .model
+                .completion(prepared.request.clone())
+                .instrument(chat_span.clone())
+                .await
+            {
                 Ok(resp) => resp,
                 Err(err) => {
                     yield Err(StreamingError::from(err));

@@ -102,3 +102,35 @@ unary paths keep wire access via provider structs):
 - Shared wire conversions fill provider placeholder `"openai"`;
   `GenericCompletionModel` overwrites with `Ext::PROVIDER_NAME` (doc §14 P1
   row's transitional pattern).
+
+## P2 — Pure protocol layer (COMPLETE)
+
+- `agent/config.rs`: `AgentConfig` — the model-free, serde agent definition
+  (17 classic fields minus the four behavior slots) with plain `with_*`
+  helpers.
+- `agent/prepare.rs`: `ToolCatalog` (definitions + executable names, plain
+  data with `retain_names`), `PreparedRequest`, and the pure
+  `prepare_request()` — a faithful port of `build_prepared_completion_request`
+  minus IO; the provider capability (`composes_native_output_with_tools`)
+  becomes a plain flag parameter.
+- **The classic driver now runs THROUGH the pure function**:
+  `build_prepared_completion_request` is a thin async wrapper (retrieval
+  query + tool snapshot → catalog → `prepare_request`), and
+  `PreparedCompletionRequest` became **non-generic** (its builder field —
+  the only `M`-bearing one — is now the plain `CompletionRequest`; the
+  driver sends via `model.completion/stream(request)`). Added
+  `CompletionRequest::messages_for_telemetry` to keep input telemetry
+  identical (documents inserted after system messages).
+- `agent/hook.rs`: serde derives on the decision vocabulary (`RequestPatch`,
+  all action enums, `InvalidToolCallContext`); pure composition helpers —
+  `fold_completion_actions`, `fold_observation_actions`,
+  `fold_invalid_resolutions`, and the chained-event accumulators
+  `ToolCallResolution` / `ToolResultResolution` (terminate-with-salvage
+  semantics), with parity tests mirroring the HookStack suites.
+- Deviation (deferred, not dropped): `ToolResultAction`/`ToolOutput` serde
+  waits for P7 — `ToolOutput: Serialize` conflicts with the blanket
+  `IntoToolOutput` impl that P7 deletes.
+
+**Verification**: rig-agent 505 tests green; rig-core 1008; full facade
+cassette suite **1214 passed, 0 failed** with untouched cassettes — the
+pure path provably produces byte-identical requests.

@@ -361,7 +361,7 @@ impl HookContext {
 }
 
 /// Diagnostics for an invalid model-emitted tool call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct InvalidToolCallContext {
     /// Name emitted by the model.
@@ -424,7 +424,7 @@ pub struct ModelTurnFinished<'a> {
 }
 
 /// How an accepted, tool-free model turn should be retried.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RetryRequest {
     /// Discard the rejected response and reuse the same prompt and preceding
     /// history with fresh request preparation.
@@ -443,7 +443,7 @@ pub enum RetryRequest {
 /// run-scoped state in [`HookContext::scratchpad`]. Retrying a turn containing
 /// tool calls is rejected so provider-visible history never contains unanswered
 /// calls. Use tool-call hooks to steer those turns instead.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ModelTurnAction {
     /// Accept the turn and continue the run.
     Continue,
@@ -575,7 +575,7 @@ pub enum StepEventKind {
 ///
 /// The merged patch does not mutate the agent's configured baseline and is not
 /// carried into subsequent turns.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RequestPatch {
     /// Preamble to use instead of the agent's configured preamble for this turn.
@@ -723,7 +723,7 @@ impl RequestPatch {
 }
 
 /// Action for completion-call hooks.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CompletionCallAction {
     /// Send the baseline request.
     Continue,
@@ -751,7 +751,7 @@ impl CompletionCallAction {
 }
 
 /// Action for pre-tool hooks.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ToolCallAction {
     /// Execute with the current arguments.
     Run,
@@ -793,6 +793,8 @@ impl ToolCallAction {
 }
 
 /// Action for post-tool hooks.
+// Serde deferred to P7: `ToolOutput: Serialize` currently conflicts with the
+// blanket `IntoToolOutput` impl that P7 deletes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolResultAction {
     /// Keep the current presentation.
@@ -831,7 +833,7 @@ impl ToolResultAction {
 }
 
 /// Action for invalid-tool-call hooks and manual invalid-call resolution.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InvalidToolCallAction {
     /// Preserve fail-fast behavior.
     Fail,
@@ -893,7 +895,7 @@ impl InvalidToolCallAction {
 }
 
 /// Action for observe-only lifecycle events.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ObservationAction {
     /// Continue the run.
     Continue,
@@ -1378,6 +1380,263 @@ impl AgentHook for HookStack {
     }
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
+    }
+}
+
+// ── Data-protocol composition helpers ────────────────────────────────────
+//
+// Hosts that drive [`AgentRun`](super::run::AgentRun) directly (no
+// `HookStack`) express the same composition semantics over plain decision
+// values. Two kinds of event exist:
+//
+// - *Independent* events (completion-call patches, observations,
+//   invalid-call resolutions): the input each decider sees is the same, so
+//   pre-collected decisions fold faithfully.
+// - *Chained* events (tool-call rewrites, tool-result presentation): each
+//   later decider's input carries the earlier rewrites, so a fold over
+//   pre-collected decisions cannot reproduce `HookStack` behavior. The
+//   accumulators below are driven decision-by-decision instead: compute the
+//   next decision against the accumulator's current value, then `apply` it.
+
+/// Fold completion-call decisions in registration order: patches accumulate
+/// via [`RequestPatch::merge`]'s rules, the first `Stop` wins.
+///
+/// Faithful to `HookStack::on_completion_call`: the event each decider sees
+/// is identical, so decisions may be pre-collected. Note the stack also
+/// stops *invoking* later hooks after a `Stop`; a host folding
+/// pre-collected decisions should likewise stop computing them once one
+/// stops, if its decision sources have side effects.
+pub fn fold_completion_actions(actions: Vec<CompletionCallAction>) -> CompletionCallAction {
+    let mut merged: Option<RequestPatch> = None;
+    for action in actions {
+        match action {
+            CompletionCallAction::Continue => {}
+            CompletionCallAction::Patch(patch) => {
+                merged = Some(merged.map_or(patch.clone(), |value| value.merge(patch)));
+            }
+            stop @ CompletionCallAction::Stop(_) => return stop,
+        }
+    }
+    match merged {
+        Some(patch) if !patch.is_empty() => CompletionCallAction::Patch(patch),
+        _ => CompletionCallAction::Continue,
+    }
+}
+
+/// Fold observation decisions: the first non-`Continue` wins.
+pub fn fold_observation_actions(actions: Vec<ObservationAction>) -> ObservationAction {
+    actions
+        .into_iter()
+        .find(|action| !matches!(action, ObservationAction::Continue))
+        .unwrap_or(ObservationAction::Continue)
+}
+
+/// Fold invalid-tool-call resolutions: the first `Some` wins (`None` from
+/// every source preserves fail-fast behavior).
+pub fn fold_invalid_resolutions(
+    resolutions: Vec<Option<InvalidToolCallAction>>,
+) -> Option<InvalidToolCallAction> {
+    resolutions.into_iter().flatten().next()
+}
+
+/// Decision-by-decision accumulator for pre-execution tool-call steering,
+/// carrying `HookStack::resolve_tool_call`'s exact semantics: rewrites
+/// chain (each later decision is computed against the current effective
+/// arguments), and a terminal `Skip`/`Stop` short-circuits while *keeping*
+/// the accumulated rewrite so the driver can report effective arguments.
+#[derive(Debug, Clone)]
+pub struct ToolCallResolution {
+    original: serde_json::Value,
+    effective: Option<serde_json::Value>,
+    terminal: Option<ToolCallAction>,
+}
+
+impl ToolCallResolution {
+    /// Start resolving a call with the model-emitted arguments.
+    pub fn new(original_args: serde_json::Value) -> Self {
+        Self {
+            original: original_args,
+            effective: None,
+            terminal: None,
+        }
+    }
+
+    /// The arguments the NEXT decision should be computed against
+    /// (original, or the latest rewrite).
+    pub fn args(&self) -> &serde_json::Value {
+        self.effective.as_ref().unwrap_or(&self.original)
+    }
+
+    /// Apply one decision. Returns `false` once a terminal `Skip`/`Stop`
+    /// has been applied — later sources must not be consulted, matching the
+    /// stack's short-circuit.
+    pub fn apply(&mut self, action: ToolCallAction) -> bool {
+        if self.terminal.is_some() {
+            return false;
+        }
+        match action {
+            ToolCallAction::Run => true,
+            ToolCallAction::Rewrite(value) => {
+                self.effective = Some(value);
+                true
+            }
+            terminal => {
+                self.terminal = Some(terminal);
+                false
+            }
+        }
+    }
+
+    /// Finish: the effective action plus, for a terminal action, any
+    /// rewrite accumulated before it (the stack's "salvage" path).
+    pub fn finish(self) -> (ToolCallAction, Option<serde_json::Value>) {
+        match self.terminal {
+            Some(terminal) => (terminal, self.effective),
+            None => match self.effective {
+                Some(value) => (ToolCallAction::Rewrite(value), None),
+                None => (ToolCallAction::Run, None),
+            },
+        }
+    }
+}
+
+/// Decision-by-decision accumulator for post-execution presentation
+/// rewrites, carrying `HookStack::on_tool_result`'s semantics: rewrites
+/// chain, `Stop` short-circuits.
+#[derive(Debug, Clone, Default)]
+pub struct ToolResultResolution {
+    effective: Option<ToolOutput>,
+    stopped: Option<String>,
+}
+
+impl ToolResultResolution {
+    /// Start resolving a tool result.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The presentation the NEXT decision should be computed against, when
+    /// a rewrite has occurred (`None` means the raw presentation).
+    pub fn presentation(&self) -> Option<&ToolOutput> {
+        self.effective.as_ref()
+    }
+
+    /// Apply one decision. Returns `false` once `Stop` has been applied.
+    pub fn apply(&mut self, action: ToolResultAction) -> bool {
+        if self.stopped.is_some() {
+            return false;
+        }
+        match action {
+            ToolResultAction::Keep => true,
+            ToolResultAction::Rewrite(output) => {
+                self.effective = Some(output);
+                true
+            }
+            ToolResultAction::Stop(reason) => {
+                self.stopped = Some(reason);
+                false
+            }
+        }
+    }
+
+    /// Finish: `Stop` if any source stopped, else the accumulated rewrite,
+    /// else `Keep`.
+    pub fn finish(self) -> ToolResultAction {
+        match self.stopped {
+            Some(reason) => ToolResultAction::Stop(reason),
+            None => self
+                .effective
+                .map_or(ToolResultAction::Keep, ToolResultAction::Rewrite),
+        }
+    }
+}
+
+#[cfg(test)]
+mod protocol_helper_tests {
+    use super::*;
+
+    #[test]
+    fn completion_fold_merges_patches_in_order_and_stops_first() {
+        let folded = fold_completion_actions(vec![
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.1)),
+            CompletionCallAction::Continue,
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.2).max_tokens(9)),
+        ]);
+        assert_eq!(
+            folded,
+            CompletionCallAction::Patch(RequestPatch::new().temperature(0.2).max_tokens(9))
+        );
+
+        let stopped = fold_completion_actions(vec![
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.1)),
+            CompletionCallAction::stop("halt"),
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.9)),
+        ]);
+        assert_eq!(stopped, CompletionCallAction::stop("halt"));
+    }
+
+    #[test]
+    fn tool_call_resolution_chains_rewrites_and_salvages_on_terminal() {
+        // Mirrors hook.rs `tool_call_rewrites_chain_in_registration_order`.
+        let mut resolution = ToolCallResolution::new(serde_json::json!({"step": 0}));
+        assert_eq!(resolution.args(), &serde_json::json!({"step": 0}));
+        assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 1}))));
+        assert_eq!(resolution.args(), &serde_json::json!({"step": 1}));
+        assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 2}))));
+        let (action, salvage) = resolution.finish();
+        assert_eq!(action, ToolCallAction::rewrite(serde_json::json!({"step": 2})));
+        assert!(salvage.is_none());
+
+        // Terminal skip keeps the accumulated rewrite (the salvage path).
+        let mut resolution = ToolCallResolution::new(serde_json::json!({"step": 0}));
+        assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 1}))));
+        assert!(!resolution.apply(ToolCallAction::skip("policy")));
+        assert!(!resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 9}))));
+        let (action, salvage) = resolution.finish();
+        assert_eq!(action, ToolCallAction::skip("policy"));
+        assert_eq!(salvage, Some(serde_json::json!({"step": 1})));
+    }
+
+    #[test]
+    fn tool_result_resolution_chains_and_stops() {
+        let mut resolution = ToolResultResolution::new();
+        assert!(resolution.apply(ToolResultAction::rewrite("redacted")));
+        assert_eq!(
+            resolution.presentation().map(ToolOutput::render),
+            Some("redacted".to_string())
+        );
+        assert!(!resolution.apply(ToolResultAction::stop("terminal")));
+        assert_eq!(resolution.finish(), ToolResultAction::stop("terminal"));
+    }
+
+    #[test]
+    fn observation_and_invalid_folds_take_first_decisive() {
+        assert_eq!(
+            fold_observation_actions(vec![
+                ObservationAction::Continue,
+                ObservationAction::stop("late"),
+                ObservationAction::Continue,
+            ]),
+            ObservationAction::stop("late")
+        );
+        assert_eq!(
+            fold_invalid_resolutions(vec![None, Some(InvalidToolCallAction::fail()), None]),
+            Some(InvalidToolCallAction::fail())
+        );
+        assert_eq!(fold_invalid_resolutions(vec![None, None]), None);
+    }
+
+    #[test]
+    fn hook_vocabulary_round_trips_through_serde() {
+        let patch = RequestPatch::new().temperature(0.5).max_tokens(64);
+        let json = serde_json::to_string(&patch).expect("serialize patch");
+        let back: RequestPatch = serde_json::from_str(&json).expect("deserialize patch");
+        assert_eq!(patch, back);
+
+        let action = InvalidToolCallAction::repair("real_tool");
+        let json = serde_json::to_string(&action).expect("serialize action");
+        let back: InvalidToolCallAction = serde_json::from_str(&json).expect("deserialize action");
+        assert_eq!(action, back);
     }
 }
 

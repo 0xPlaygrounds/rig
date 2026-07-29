@@ -101,7 +101,9 @@
 //! ```
 mod builder;
 mod completion;
+pub mod config;
 pub mod hook;
+pub mod prepare;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -113,6 +115,8 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use config::AgentConfig;
+pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,

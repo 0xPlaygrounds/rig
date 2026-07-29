@@ -479,6 +479,22 @@ impl CompletionRequest {
         })
     }
 
+    /// Returns the normalized input messages used by runtime telemetry:
+    /// the chat history (which already carries any system preamble and the
+    /// prompt) with the request's documents inserted as a message after any
+    /// leading system messages.
+    pub fn messages_for_telemetry(&self) -> Vec<Message> {
+        let mut chat_history: Vec<Message> = self.chat_history.clone().into_iter().collect();
+        if let Some(documents) = Self::normalized_documents_from(&self.documents) {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+        chat_history
+    }
+
     /// Returns documents normalized into a message (if any).
     /// Most providers do not accept documents directly as input, so it needs to convert into a
     /// `Message` so that it can be incorporated into `chat_history`.
