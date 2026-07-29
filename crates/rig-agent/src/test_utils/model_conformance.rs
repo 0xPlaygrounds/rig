@@ -21,8 +21,8 @@ use crate::{
     agent::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
         CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
-        NoToolConfig, ObservationAction, OutputMode, RequestPatch, StreamingError,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        ObservationAction, OutputMode, RequestPatch, StreamingError, ToolCall as ToolCallEvent,
+        ToolCallAction, ToolResultAction, ToolResultEvent,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -31,7 +31,7 @@ use crate::{
     },
     provider::{ProviderConfig, Runtime},
     streaming::StreamingPrompt,
-    tool::{Tool, ToolContext},
+    tool::PortableTool,
 };
 use rig_core::message::{ToolChoice, UserContent};
 
@@ -437,7 +437,7 @@ struct OperationArgs {
 #[derive(Clone)]
 struct CountingAdd(Arc<AtomicUsize>);
 
-impl Tool for CountingAdd {
+impl PortableTool for CountingAdd {
     const NAME: &'static str = "add";
     type Error = ConformanceToolError;
     type Args = OperationArgs;
@@ -458,11 +458,7 @@ impl Tool for CountingAdd {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -471,7 +467,7 @@ impl Tool for CountingAdd {
 #[derive(Clone)]
 struct CountingSum(Arc<AtomicUsize>);
 
-impl Tool for CountingSum {
+impl PortableTool for CountingSum {
     const NAME: &'static str = "sum";
     type Error = ConformanceToolError;
     type Args = OperationArgs;
@@ -485,11 +481,7 @@ impl Tool for CountingSum {
         CountingAdd(Arc::new(AtomicUsize::new(0))).parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -498,7 +490,7 @@ impl Tool for CountingSum {
 #[derive(Clone)]
 struct CountingSubtract(Arc<AtomicUsize>);
 
-impl Tool for CountingSubtract {
+impl PortableTool for CountingSubtract {
     const NAME: &'static str = "subtract";
     type Error = ConformanceToolError;
     type Args = OperationArgs;
@@ -519,11 +511,7 @@ impl Tool for CountingSubtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -637,7 +625,7 @@ struct EmptyArgs {}
 #[derive(Clone)]
 struct PingTool(Arc<AtomicUsize>);
 
-impl Tool for PingTool {
+impl PortableTool for PingTool {
     const NAME: &'static str = "ping";
     type Error = ConformanceToolError;
     type Args = EmptyArgs;
@@ -651,11 +639,7 @@ impl Tool for PingTool {
         serde_json::json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(PING_OUTPUT.to_string())
     }
@@ -664,7 +648,7 @@ impl Tool for PingTool {
 #[derive(Clone)]
 struct MottoTool(Arc<AtomicUsize>);
 
-impl Tool for MottoTool {
+impl PortableTool for MottoTool {
     const NAME: &'static str = "fetch_motto";
     type Error = ConformanceToolError;
     type Args = EmptyArgs;
@@ -678,11 +662,7 @@ impl Tool for MottoTool {
         serde_json::json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(MOTTO_OUTPUT.to_string())
     }
@@ -694,10 +674,16 @@ struct ConfigOutput {
     max_retries: u64,
 }
 
+impl crate::tool::IntoToolOutput for ConfigOutput {
+    fn into_tool_output(self) -> Result<crate::tool::ToolOutput, crate::tool::ToolExecutionError> {
+        crate::tool::serialize_to_tool_output(&self)
+    }
+}
+
 #[derive(Clone)]
 struct ConfigTool(Arc<AtomicUsize>);
 
-impl Tool for ConfigTool {
+impl PortableTool for ConfigTool {
     const NAME: &'static str = "fetch_config";
     type Error = ConformanceToolError;
     type Args = EmptyArgs;
@@ -711,11 +697,7 @@ impl Tool for ConfigTool {
         serde_json::json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
@@ -745,6 +727,12 @@ struct ComplexArgs {
     quote: String,
 }
 
+impl crate::tool::IntoToolOutput for ComplexArgs {
+    fn into_tool_output(self) -> Result<crate::tool::ToolOutput, crate::tool::ToolExecutionError> {
+        crate::tool::serialize_to_tool_output(&self)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct ExtractedPerson {
     #[schemars(required)]
@@ -761,7 +749,7 @@ struct CaptureComplexTool {
     captured: Arc<Mutex<Option<ComplexArgs>>>,
 }
 
-impl Tool for CaptureComplexTool {
+impl PortableTool for CaptureComplexTool {
     const NAME: &'static str = "store_profile";
     type Error = ConformanceToolError;
     type Args = ComplexArgs;
@@ -776,11 +764,7 @@ impl Tool for CaptureComplexTool {
         serde_json::to_value(schemars::schema_for!(ComplexArgs)).unwrap_or_default()
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         *lock_recover(&self.captured) = Some(args.clone());
         Ok(args)
@@ -822,7 +806,7 @@ struct RepeatTool {
     calls: Arc<AtomicUsize>,
 }
 
-impl Tool for RepeatTool {
+impl PortableTool for RepeatTool {
     const NAME: &'static str = "repeat_text";
     type Error = ConformanceToolError;
     type Args = RepeatArgs;
@@ -836,11 +820,7 @@ impl Tool for RepeatTool {
         serde_json::to_value(schemars::schema_for!(RepeatArgs)).unwrap_or_default()
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(vec![args.text.as_str(); args.times.unwrap_or(2) as usize].join(" "))
     }
@@ -861,7 +841,7 @@ struct ArithmeticResult {
 #[derive(Clone)]
 struct AddTool(Arc<AtomicUsize>);
 
-impl Tool for AddTool {
+impl PortableTool for AddTool {
     const NAME: &'static str = "add";
     type Error = ConformanceToolError;
     type Args = BinOpArgs;
@@ -875,11 +855,7 @@ impl Tool for AddTool {
         serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.a + args.b)
     }
@@ -888,7 +864,7 @@ impl Tool for AddTool {
 #[derive(Clone)]
 struct MultiplyTool(Arc<AtomicUsize>);
 
-impl Tool for MultiplyTool {
+impl PortableTool for MultiplyTool {
     const NAME: &'static str = "multiply";
     type Error = ConformanceToolError;
     type Args = BinOpArgs;
@@ -902,11 +878,7 @@ impl Tool for MultiplyTool {
         serde_json::to_value(schemars::schema_for!(BinOpArgs)).unwrap_or_default()
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(args.a * args.b)
     }
@@ -988,7 +960,7 @@ pub async fn parallel_tools<F>(
     tool_concurrency: Option<usize>,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
@@ -1082,7 +1054,7 @@ pub async fn zero_argument_tool<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1131,7 +1103,7 @@ pub async fn tool_output_serialization<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();
@@ -1192,7 +1164,7 @@ pub async fn complex_tool_arguments<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
@@ -1388,7 +1360,7 @@ pub async fn invalid_tool_recovery<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
@@ -1578,7 +1550,7 @@ pub async fn hook_rewrites_and_request_patch<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
@@ -1651,7 +1623,7 @@ pub async fn cancellation_and_max_turns<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: Fn(AgentBuilder) -> AgentBuilder,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
     const REASON: &str = "portable result veto";
@@ -1727,7 +1699,7 @@ pub async fn optional_argument<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1764,7 +1736,7 @@ pub async fn sequential_tools<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
@@ -1805,7 +1777,7 @@ pub async fn streaming_tool<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1901,7 +1873,7 @@ pub async fn structured_after_tool<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -2045,7 +2017,7 @@ pub async fn streaming_structured_after_tool<F>(
     configure: F,
 ) -> Result<ScenarioReport, ScenarioError>
 where
-    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+    F: FnOnce(AgentBuilder) -> AgentBuilder,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -2120,7 +2092,7 @@ use crate::agent_api::SessionAgent;
 use crate::executor::ToolExecutor;
 use crate::hooks::{HookDecision, HookEntry, HookEvent, Hooks};
 use crate::stream::{AgentStream, AgentStreamItem};
-use crate::tool::{IntoToolOutput, PortableDynamicTool, ToolExecutionError};
+use crate::tool::PortableDynamicTool;
 
 /// Plain-data configuration overrides a provider suite may apply to a
 /// session-driven conformance scenario.
@@ -2204,30 +2176,13 @@ impl ScenarioOverrides {
     }
 }
 
-/// Wrap a typed conformance [`Tool`] as a [`PortableDynamicTool`] with an
-/// identical provider-facing definition (same name, description, and
-/// parameters — the definition the classic driver advertised), routing
-/// execution through the same `IntoToolOutput` shaping the classic runner
-/// applied.
+/// Erase a typed conformance [`PortableTool`] into a [`PortableDynamicTool`]
+/// record with an identical provider-facing definition.
 fn portable_tool<T>(tool: T) -> PortableDynamicTool
 where
-    T: Tool + Clone + 'static,
+    T: PortableTool + 'static,
 {
-    let description = tool.description();
-    let parameters = tool.parameters();
-    PortableDynamicTool::new(T::NAME, description, parameters, move |arguments| {
-        let tool = tool.clone();
-        Box::pin(async move {
-            let args: T::Args = serde_json::from_value(arguments).map_err(|error| {
-                ToolExecutionError::other(format!("invalid tool arguments: {error}"))
-            })?;
-            let mut context = ToolContext::new();
-            match tool.call(&mut context, args).await {
-                Ok(output) => output.into_tool_output(),
-                Err(error) => Err(tool.map_error(error)),
-            }
-        })
-    })
+    PortableDynamicTool::from_portable(tool)
 }
 
 /// Named hook entry over a synchronous decision function.

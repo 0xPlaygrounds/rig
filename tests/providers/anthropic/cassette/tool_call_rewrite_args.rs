@@ -82,11 +82,7 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.lock().expect("calls lock").push(ObservedCall {
             location: args.location.clone(),
             units: args.units.clone(),

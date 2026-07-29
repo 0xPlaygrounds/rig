@@ -154,11 +154,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -204,11 +200,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -240,11 +232,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -272,11 +260,7 @@ impl Tool for OptionalNullableProbe {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "OPTIONAL-OK name={} note={} nullable={}",
@@ -305,11 +289,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }
@@ -713,7 +693,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&tool)],
+                tools: vec![rig::tool::portable_tool_definition(&tool)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::with_history(
                     Some("Use the requested tool call and no prose before it."),
@@ -759,7 +739,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             let model = client.completion_model(SESSION_MODEL);
             let tool_call_id = "call_REDACTED_1";
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::None),
                 ..CompletionRequest::with_history(
                     Some("You are concise and should rely on the provided chat history."),
@@ -814,7 +794,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
 
             let auto = model
                 .completion(CompletionRequest {
-                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Auto),
                     ..CompletionRequest::from_prompt(
                         "Call lookup_harbor_label exactly once with an empty object.",
@@ -833,7 +813,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
 
             let required = model
                 .completion(CompletionRequest {
-                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Required),
                     ..CompletionRequest::from_prompt(
                         "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
@@ -853,8 +833,8 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
             let specific = model
                 .completion(CompletionRequest {
                     tools: vec![
-                        rig::tool::tool_definition(&AlphaSignal),
-                        rig::tool::tool_definition(&BetaSignal),
+                        rig::tool::portable_tool_definition(&AlphaSignal),
+                        rig::tool::portable_tool_definition(&BetaSignal),
                     ],
                     tool_choice: Some(ToolChoice::Specific {
                         function_names: vec![BetaSignal::NAME.to_string()],
@@ -880,7 +860,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
 
             let none = model
                 .completion(CompletionRequest {
-                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::None),
                     ..CompletionRequest::from_prompt(
                         "Do not call tools. Reply with exactly this phrase: no-tool-answer",

@@ -55,7 +55,7 @@ async fn required_forces_function_call() {
             let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
             let request = CompletionRequest {
                 temperature: Some(0.0),
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::from_prompt("Use the add tool to calculate 20 + 22.")
             };
@@ -95,8 +95,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(specific_add_choice()),
                 ..CompletionRequest::from_prompt(
@@ -151,8 +151,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(specific_add_choice()),
                 ..CompletionRequest::from_prompt(

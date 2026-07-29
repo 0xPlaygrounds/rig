@@ -1,8 +1,9 @@
 //! Classifying tool failures as structured facts and applying policy in hooks.
 //!
 //! `SystemProbe` simulates Erik Tews's two failure cases: disk I/O (`EIO`) and
-//! network unreachable (`ENETUNREACH`). The tool classifies each error and adds
-//! typed operation metadata; it does not decide whether the agent may continue.
+//! network unreachable (`ENETUNREACH`). The tool classifies each error and
+//! carries typed failure metadata on the error itself; it does not decide
+//! whether the agent may continue.
 //!
 //! A narrow completion-call hook reliably invokes `system_probe` on turn 1,
 //! while the prompt requests the desired operation. It does nothing on later
@@ -10,15 +11,17 @@
 //! hooks then run in registration order:
 //!
 //! 1. `FailureRecorder` copies the event's call ID, structured error, and typed
-//!    result metadata into a run-scoped scratchpad ledger.
+//!    failure metadata into a run-scoped scratchpad ledger.
 //! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `ToolResultEvent` carries facts about one execution: `raw_result` contains the
-//! standard classification and `tool_context` holds tool/application-specific typed
-//! metadata that is never sent to the model. The scratchpad is different: it is
-//! shared, run-scoped hook state. Here it lets one hook record facts for the next
+//! `ToolResultEvent` carries facts about one execution: `raw_result` contains
+//! the standard classification (kind, code, model feedback), and the concrete
+//! tool error attached via `with_source` can be recovered with
+//! `ToolExecutionError::downcast_ref` for tool-specific typed metadata that is
+//! never sent to the model. The scratchpad is different: it is shared,
+//! run-scoped hook state. Here it lets one hook record facts for the next
 //! hook without coupling either hook to model-visible result text.
 //!
 //! Live commands (require `OPENAI_API_KEY`):
@@ -40,7 +43,7 @@ use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
+use rig::tool::{Tool, ToolErrorKind, ToolExecutionError, ToolResult};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -63,7 +66,7 @@ struct ProbeArgs {
     operation: Operation,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FailureSite {
     operation: Operation,
     resource: &'static str,
@@ -75,6 +78,22 @@ enum ProbeError {
     DiskIo,
     #[error("network is unreachable for backup.example.net")]
     NetworkUnreachable,
+}
+
+impl ProbeError {
+    /// Typed, model-invisible metadata describing where the failure happened.
+    const fn site(&self) -> FailureSite {
+        match self {
+            Self::DiskIo => FailureSite {
+                operation: Operation::ReadDisk,
+                resource: "/data/archive.bin",
+            },
+            Self::NetworkUnreachable => FailureSite {
+                operation: Operation::ConnectNetwork,
+                resource: "backup.example.net",
+            },
+        }
+    }
 }
 
 struct SystemProbe;
@@ -119,29 +138,11 @@ impl Tool for SystemProbe {
         }
     }
 
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        let (error, site) = match args.operation {
-            Operation::ReadDisk => (
-                ProbeError::DiskIo,
-                FailureSite {
-                    operation: args.operation,
-                    resource: "/data/archive.bin",
-                },
-            ),
-            Operation::ConnectNetwork => (
-                ProbeError::NetworkUnreachable,
-                FailureSite {
-                    operation: args.operation,
-                    resource: "backup.example.net",
-                },
-            ),
-        };
-        context.insert_result(site);
-        Err(error)
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Err(match args.operation {
+            Operation::ReadDisk => ProbeError::DiskIo,
+            Operation::ConnectNetwork => ProbeError::NetworkUnreachable,
+        })
     }
 }
 
@@ -187,11 +188,11 @@ fn failure_record(
     internal_call_id: &str,
     tool_name: &str,
     result: &ToolResult,
-    tool_context: &ToolContext,
 ) -> Option<FailureRecord> {
-    let (Some(error), Some(site)) = (result.error(), tool_context.result::<FailureSite>()) else {
-        return None;
-    };
+    let error = result.error()?;
+    // Tool-specific typed metadata travels on the error source, never to the
+    // model. Downcast recovers it without parsing model-visible text.
+    let site = error.downcast_ref::<ProbeError>().map(ProbeError::site)?;
 
     Some(FailureRecord {
         internal_call_id: internal_call_id.to_string(),
@@ -209,12 +210,9 @@ impl AgentHook for FailureRecorder {
         ctx: &HookContext,
         event: ToolResultEvent<'_>,
     ) -> ToolResultAction {
-        let Some(record) = failure_record(
-            event.internal_call_id,
-            event.tool_name,
-            event.raw_result,
-            event.tool_context,
-        ) else {
+        let Some(record) =
+            failure_record(event.internal_call_id, event.tool_name, event.raw_result)
+        else {
             return ToolResultAction::keep();
         };
         println!(
@@ -348,14 +346,15 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::tool::ToolSet;
+    use rig::tool::PortableDynamicTool;
 
-    async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
-        let tools = ToolSet::from_tools(vec![SystemProbe]);
-        let mut context = ToolContext::new();
-        let args = serde_json::json!({ "operation": operation }).to_string();
-        let result = tools.execute(SystemProbe::NAME, args, &mut context).await;
-        (result, context)
+    async fn structured_failure(operation: Operation) -> ToolResult {
+        let tool = PortableDynamicTool::from_portable(SystemProbe);
+        let args = serde_json::json!({ "operation": operation });
+        match tool.execute(args).await {
+            Ok(output) => ToolResult::success(output),
+            Err(error) => ToolResult::failed(error),
+        }
     }
 
     #[test]
@@ -374,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_network_preserves_classification_and_typed_metadata() {
-        let (result, context) = structured_failure(Operation::ConnectNetwork).await;
+        let result = structured_failure(Operation::ConnectNetwork).await;
         assert!(result.error().is_some(), "probe should fail");
         let Some(error) = result.error() else {
             return;
@@ -383,8 +382,8 @@ mod tests {
         assert_eq!(error.code(), Some("ENETUNREACH"));
         assert_eq!(result.output().as_text(), error.model_feedback());
         assert_eq!(
-            context.result::<FailureSite>(),
-            Some(&FailureSite {
+            error.downcast_ref::<ProbeError>().map(ProbeError::site),
+            Some(FailureSite {
                 operation: Operation::ConnectNetwork,
                 resource: "backup.example.net",
             })
@@ -393,23 +392,13 @@ mod tests {
 
     #[tokio::test]
     async fn recorder_data_drives_fatal_and_recoverable_actions_by_call_id() {
-        let (fatal_result, fatal_context) = structured_failure(Operation::ReadDisk).await;
-        let (recoverable_result, recoverable_context) =
-            structured_failure(Operation::ConnectNetwork).await;
+        let fatal_result = structured_failure(Operation::ReadDisk).await;
+        let recoverable_result = structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
-        let fatal_record = failure_record(
-            "fatal-call",
-            SystemProbe::NAME,
-            &fatal_result,
-            &fatal_context,
-        );
-        let recoverable_record = failure_record(
-            "recoverable-call",
-            SystemProbe::NAME,
-            &recoverable_result,
-            &recoverable_context,
-        );
+        let fatal_record = failure_record("fatal-call", SystemProbe::NAME, &fatal_result);
+        let recoverable_record =
+            failure_record("recoverable-call", SystemProbe::NAME, &recoverable_result);
         assert!(fatal_record.is_some(), "fatal failure record");
         assert!(recoverable_record.is_some(), "recoverable failure record");
         let (Some(fatal_record), Some(recoverable_record)) = (fatal_record, recoverable_record)
@@ -437,16 +426,11 @@ mod tests {
 
     #[tokio::test]
     async fn missing_metadata_cannot_create_a_record_or_reuse_stale_state() {
-        let (result, _context) = structured_failure(Operation::ReadDisk).await;
-        assert!(
-            failure_record(
-                "current-call",
-                SystemProbe::NAME,
-                &result,
-                &ToolContext::new(),
-            )
-            .is_none()
-        );
+        // An error without the tool's typed source carries no failure site, so
+        // no record can be created from it.
+        let untyped =
+            ToolResult::failed(ToolExecutionError::other("disk read failed").with_code("EIO"));
+        assert!(failure_record("current-call", SystemProbe::NAME, &untyped).is_none());
 
         let stale = FailureLedger(vec![FailureRecord {
             internal_call_id: "stale-call".to_string(),

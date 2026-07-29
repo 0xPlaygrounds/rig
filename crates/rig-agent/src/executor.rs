@@ -104,6 +104,15 @@ impl ToolExecutor {
         self
     }
 
+    /// A copy of this executor keeping only the named tools (per-turn
+    /// `active_tools` narrowing), preserving registration order and the
+    /// concurrency bound. Records are `Arc`-backed, so this is cheap.
+    pub fn narrowed(&self, keep: &std::collections::BTreeSet<String>) -> Self {
+        let mut narrowed = self.clone();
+        narrowed.tools.retain(|name, _| keep.contains(name));
+        narrowed
+    }
+
     /// The registered tool with this name, if any.
     pub fn get(&self, name: &str) -> Option<&PortableDynamicTool> {
         self.tools.get(name)

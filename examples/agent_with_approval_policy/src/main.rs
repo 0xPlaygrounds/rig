@@ -57,11 +57,7 @@ impl Tool for SearchWeb {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   🔎 [search_web] -> {}", args.query);
         Ok(format!("top result for '{}': $1000 is plenty.", args.query))
     }
@@ -96,11 +92,7 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
     }

@@ -198,7 +198,7 @@ async fn long_history_replay_nonstreaming() {
             // functionCall and after the functionResponse) must be accepted.
             let request = CompletionRequest {
                 temperature: Some(0.0),
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some("You are a concise assistant with perfect recall of this conversation."),
                     vec![

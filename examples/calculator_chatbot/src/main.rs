@@ -4,9 +4,9 @@ use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::EmbeddingsBuilder,
+    embeddings::{EmbeddingsBuilder, ToolSchema},
     providers::openai::Client,
-    tool::{Tool, ToolEmbedding, ToolSet},
+    tool::{PortableToolEmbedding, Tool},
     vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
@@ -102,17 +102,13 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Add {
+impl PortableToolEmbedding for Add {
     type InitError = InitError;
     type Context = ();
     type State = ();
@@ -158,17 +154,13 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Subtract {
+impl PortableToolEmbedding for Subtract {
     type InitError = InitError;
     type Context = ();
     type State = ();
@@ -213,17 +205,13 @@ impl Tool for Multiply {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Multiply {
+impl PortableToolEmbedding for Multiply {
     type InitError = InitError;
     type Context = ();
     type State = ();
@@ -263,17 +251,13 @@ impl Tool for Divide {
             "required": [ "x", "y" ]
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Divide {
+impl PortableToolEmbedding for Divide {
     type InitError = InitError;
     type Context = ();
     type State = ();
@@ -294,16 +278,16 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
     let openai_client = Client::from_env()?;
 
-    // Create dynamic tools embeddings
-    let toolset = ToolSet::builder()
-        .retrieved_tool(Add)
-        .retrieved_tool(Subtract)
-        .retrieved_tool(Multiply)
-        .retrieved_tool(Divide)
-        .build();
+    // Embed the tools' documentation and index it by tool name.
+    let schemas = vec![
+        ToolSchema::try_from(&Add)?,
+        ToolSchema::try_from(&Subtract)?,
+        ToolSchema::try_from(&Multiply)?,
+        ToolSchema::try_from(&Divide)?,
+    ];
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.schemas()?)?
+        .documents(schemas)?
         .build()
         .await?;
 

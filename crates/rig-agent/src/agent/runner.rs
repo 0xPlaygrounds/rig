@@ -59,11 +59,9 @@ use rig_core::{
 
 use crate::{
     completion::{CompletionError, Document, Message, PromptError, Usage},
+    executor::ToolExecutor,
     json_utils,
-    tool::{
-        ToolContext, ToolDispatch, ToolOutput, ToolResult,
-        server::{ToolRegistrySnapshot, ToolServerHandle},
-    },
+    tool::{ToolOutput, ToolResult, router_support},
 };
 
 use super::UNKNOWN_AGENT_NAME;
@@ -213,9 +211,10 @@ pub struct AgentRunner {
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
     pub(crate) record_telemetry_content: bool,
-    pub(crate) tool_server_handle: ToolServerHandle,
-    /// Typed context cloned freshly for every tool dispatch.
-    pub(crate) tool_context: ToolContext,
+    /// The advertised tool definitions for this run.
+    pub(crate) catalog: super::prepare::ToolCatalog,
+    /// The executable tool records behind the catalog.
+    pub(crate) tool_executor: ToolExecutor,
     pub(crate) tool_choice: Option<ToolChoice>,
     pub(crate) output_schema: Option<schemars::Schema>,
     pub(crate) output_mode: OutputMode,
@@ -248,8 +247,8 @@ impl AgentRunner {
             max_tokens: agent.max_tokens,
             additional_params: agent.additional_params.clone(),
             record_telemetry_content: agent.record_telemetry_content,
-            tool_server_handle: agent.tool_server_handle.clone(),
-            tool_context: ToolContext::new(),
+            catalog: agent.catalog.clone(),
+            tool_executor: agent.executor.clone(),
             tool_choice: agent.tool_choice.clone(),
             output_schema: agent.output_schema.clone(),
             output_mode: agent.output_mode.clone(),
@@ -286,12 +285,6 @@ impl AgentRunner {
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
-        self
-    }
-
-    /// Set the typed context cloned for every tool dispatch in this run.
-    pub fn tool_context(mut self, context: ToolContext) -> Self {
-        self.tool_context = context;
         self
     }
 
@@ -703,13 +696,12 @@ pub(crate) struct ToolCallOutcome {
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
-    tool_snapshot: &ToolRegistrySnapshot,
+    tool_executor: &ToolExecutor,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.hooks;
-    let tool_context = &runner.tool_context;
     let record_content = runner.record_telemetry_content;
     let tool_name = &tool_call.function.name;
     // `mut` so a tool-call hook can rewrite the arguments the tool
@@ -796,20 +788,26 @@ pub(crate) async fn run_single_tool(
     // Resolve the structured execution result and how the call surfaced. A skip
     // produces no execution-commit event; a real execution carries the effective
     // tool call (the model's call with any `ToolCallAction::Rewrite` applied).
-    let (exec, execution, dispatch_context) = match skipped {
-        Some(exec) => (exec, ToolExecution::Skipped, tool_context.for_dispatch()),
+    let (exec, execution) = match skipped {
+        Some(exec) => (exec, ToolExecution::Skipped),
         None => {
             let mut effective_tool_call = tool_call.clone();
-            effective_tool_call.function.arguments = effective_args;
-            let ToolDispatch {
-                result: exec,
-                context: dispatch_context,
-            } = tool_snapshot.dispatch(tool_name, &args, tool_context).await;
-            (
-                exec,
-                ToolExecution::Executed(Box::new(effective_tool_call)),
-                dispatch_context,
-            )
+            effective_tool_call.function.arguments = effective_args.clone();
+            let exec = match tool_executor.get(tool_name) {
+                Some(tool) => {
+                    tracing::debug!(
+                        target: "rig",
+                        tool_name = tool_name,
+                        "calling tool with args:\n{args}"
+                    );
+                    match tool.execute(effective_args).await {
+                        Ok(output) => ToolResult::success(output),
+                        Err(error) => ToolResult::failed(error),
+                    }
+                }
+                None => router_support::not_found(tool_name),
+            };
+            (exec, ToolExecution::Executed(Box::new(effective_tool_call)))
         }
     };
     // Presentation rewrites happen after execution. The raw structured result
@@ -825,7 +823,6 @@ pub(crate) async fn run_single_tool(
                     args: &args,
                     presentation: exec.output(),
                     raw_result: &exec,
-                    tool_context: &dispatch_context,
                 },
             )
             .await,
@@ -1094,7 +1091,7 @@ impl UnaryTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_executor: Arc<ToolExecutor>,
     ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
@@ -1104,7 +1101,7 @@ impl UnaryTurnSource {
             hook_ctx,
             run,
             calls,
-            tool_snapshot,
+            tool_executor,
             |span| self.chain_span(span),
             false,
         )
@@ -1566,108 +1563,33 @@ mod tests {
     use crate::{
         agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
         completion::Document,
-        tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
+        tool::{PortableTool, ToolErrorKind, ToolExecutionError},
     };
     use rig_core::message::ToolChoice;
 
     struct MetadataFailingTool;
 
-    struct SnapshotValue {
-        value: usize,
-        clones: Arc<AtomicUsize>,
-    }
-
-    impl Clone for SnapshotValue {
-        fn clone(&self) -> Self {
-            self.clones.fetch_add(1, Ordering::SeqCst);
-            Self {
-                value: self.value,
-                clones: self.clones.clone(),
-            }
-        }
-    }
-
-    #[derive(Clone, Default)]
-    struct SnapshotMutatingTool(Arc<Mutex<Vec<usize>>>);
-
-    impl Tool for SnapshotMutatingTool {
-        const NAME: &'static str = "snapshot_mutator";
-        type Error = rig::tool::ToolExecutionError;
-        type Args = serde_json::Value;
-        type Output = String;
-
-        fn description(&self) -> String {
-            "Mutates its per-dispatch context snapshot".into()
-        }
-
-        fn parameters(&self) -> serde_json::Value {
-            json!({"type": "object", "properties": {}})
-        }
-
-        async fn call(
-            &self,
-            context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
-            let initial = context.require::<SnapshotValue>()?.value;
-            self.0.lock().expect("observed values").push(initial);
-            let updated = {
-                let value = context
-                    .get_mut::<SnapshotValue>()
-                    .expect("required snapshot value");
-                value.value += 1;
-                value.value
-            };
-            context.insert_result(updated);
-            Ok(updated.to_string())
-        }
-    }
-
-    #[derive(Clone, Default)]
-    struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
-
-    impl AgentHook for SnapshotResults {
-        async fn on_tool_result(
-            &self,
-            _ctx: &HookContext,
-            event: ToolResultEvent<'_>,
-        ) -> ToolResultAction {
-            self.0.lock().expect("result values").push(
-                *event
-                    .tool_context
-                    .require_result::<usize>()
-                    .expect("per-dispatch result metadata"),
-            );
-            ToolResultAction::keep()
-        }
-    }
-
-    impl Tool for MetadataFailingTool {
+    impl PortableTool for MetadataFailingTool {
         const NAME: &'static str = "flaky_tool";
         type Error = rig::tool::ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
         fn description(&self) -> String {
-            "Fails after attaching result metadata".into()
+            "Fails with a raw timeout error".into()
         }
 
         fn parameters(&self) -> serde_json::Value {
             json!({"type": "object", "properties": {}})
         }
 
-        async fn call(
-            &self,
-            context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
-            context.insert_result("shared-result-metadata".to_string());
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
             Err(ToolExecutionError::timeout("raw timeout failure"))
         }
     }
 
     #[derive(Clone, Default)]
-    struct Results(Arc<Mutex<Vec<(ToolErrorKind, String, String)>>>);
+    struct Results(Arc<Mutex<Vec<(ToolErrorKind, String)>>>);
 
     impl AgentHook for Results {
         async fn on_tool_result(
@@ -1676,15 +1598,10 @@ mod tests {
             event: ToolResultEvent<'_>,
         ) -> ToolResultAction {
             if let Some(error) = event.raw_result.error() {
-                self.0.lock().expect("results").push((
-                    error.kind(),
-                    event.raw_result.output().render(),
-                    event
-                        .tool_context
-                        .result::<String>()
-                        .expect("tool result metadata")
-                        .clone(),
-                ));
+                self.0
+                    .lock()
+                    .expect("results")
+                    .push((error.kind(), event.raw_result.output().render()));
             }
             ToolResultAction::rewrite("rewritten for model")
         }
@@ -1934,11 +1851,7 @@ mod tests {
         assert_eq!(*blocking.0.lock().unwrap(), *streaming.0.lock().unwrap());
         assert_eq!(
             *blocking.0.lock().unwrap(),
-            vec![(
-                ToolErrorKind::Timeout,
-                "raw timeout failure".into(),
-                "shared-result-metadata".into()
-            )]
+            vec![(ToolErrorKind::Timeout, "raw timeout failure".into())]
         );
 
         let blocking_history = serde_json::to_value(
@@ -1961,44 +1874,6 @@ mod tests {
         let history = blocking_history.to_string();
         assert!(history.contains("rewritten for model"));
         assert!(!history.contains("raw timeout failure"));
-    }
-
-    #[tokio::test]
-    async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
-        let clones = Arc::new(AtomicUsize::new(0));
-        let mut context = ToolContext::new();
-        context.insert(SnapshotValue {
-            value: 0,
-            clones: clones.clone(),
-        });
-        let tool = SnapshotMutatingTool::default();
-        let results = SnapshotResults::default();
-
-        AgentBuilder::new(
-            MockCompletionModel::from_turns([
-                MockTurn::tool_call("tc1", SnapshotMutatingTool::NAME, json!({})),
-                MockTurn::tool_call("tc2", SnapshotMutatingTool::NAME, json!({})),
-                MockTurn::text("done"),
-            ])
-            .provider(),
-        )
-        .tool(tool.clone())
-        .add_hook(results.clone())
-        .build()
-        .runner("go")
-        .tool_context(context)
-        .max_turns(4)
-        .run()
-        .await
-        .expect("agent run");
-
-        assert_eq!(*tool.0.lock().expect("observed values"), vec![0, 0]);
-        assert_eq!(*results.0.lock().expect("result values"), vec![1, 1]);
-        assert_eq!(
-            clones.load(Ordering::SeqCst),
-            2,
-            "each of the two agent dispatches should clone inbound context once"
-        );
     }
 }
 
@@ -2033,10 +1908,7 @@ mod migrated_tests {
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockOperationArgs, MockSubtractTool, MockToolError,
     };
-    use crate::tool::{
-        Tool, ToolContext, ToolExecutionError,
-        server::{ToolServer, ToolServerHandle},
-    };
+    use crate::tool::{PortableTool, ToolExecutionError};
     use rig_core::OneOrMany;
     use rig_core::embeddings::Embedding;
     use rig_core::message::{
@@ -2880,8 +2752,7 @@ mod migrated_tests {
             ToolResultAction, ToolResultEvent,
         };
         use crate::test_utils::{
-            MockAddTool, MockDeniedTool, MockFailingTool, MockHandledFailureTool, MockMetadataTool,
-            MockRequestId,
+            MockAddTool, MockDeniedTool, MockFailingTool, MockHandledFailureTool,
         };
         use crate::tool::{ToolErrorKind, ToolResult};
 
@@ -3449,95 +3320,6 @@ mod migrated_tests {
             assert_eq!(hook.outcomes(), vec!["error:invalid_args".to_string()]);
         }
 
-        // Result metadata a tool attaches reaches the hook but never appears in the
-        // model-visible output on either execution surface.
-        #[tokio::test]
-        async fn success_result_metadata_reaches_hook_but_not_model() {
-            struct MetadataProbe {
-                seen: Arc<Mutex<Option<String>>>,
-                model_output: Arc<Mutex<Option<String>>>,
-            }
-            impl AgentHook for MetadataProbe {
-                async fn on_tool_result(
-                    &self,
-                    _ctx: &HookContext,
-                    event: ToolResultEvent<'_>,
-                ) -> ToolResultAction {
-                    if let ToolResultEvent {
-                        presentation,
-                        tool_context,
-                        ..
-                    } = event
-                    {
-                        *self.seen.lock().expect("seen") = tool_context
-                            .result::<MockRequestId>()
-                            .map(|id| id.0.clone());
-                        *self.model_output.lock().expect("model_output") =
-                            Some(presentation.render());
-                    }
-                    ToolResultAction::keep()
-                }
-            }
-
-            async fn run_surface(streaming: bool) -> (Option<String>, String) {
-                let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-                let model_output: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-                let probe = MetadataProbe {
-                    seen: seen.clone(),
-                    model_output: model_output.clone(),
-                };
-
-                if streaming {
-                    let mut stream =
-                        AgentBuilder::new(stream_model_one_tool_then_text("with_meta").provider())
-                            .tool(MockMetadataTool)
-                            .add_hook(probe)
-                            .build()
-                            .runner("go")
-                            .max_turns(3)
-                            .stream()
-                            .await;
-                    while let Some(item) = stream.next().await {
-                        if let Err(error) = item {
-                            panic!("stream item errored: {error}");
-                        }
-                    }
-                } else {
-                    AgentBuilder::new(model_one_tool_then_text("with_meta").provider())
-                        .tool(MockMetadataTool)
-                        .add_hook(probe)
-                        .build()
-                        .runner("go")
-                        .max_turns(3)
-                        .run()
-                        .await
-                        .expect("run should succeed");
-                }
-
-                let seen_value = seen.lock().expect("seen").clone();
-                let output = model_output
-                    .lock()
-                    .expect("model_output")
-                    .clone()
-                    .expect("output");
-                (seen_value, output)
-            }
-
-            for streaming in [false, true] {
-                let (seen, output) = run_surface(streaming).await;
-                assert_eq!(
-                    seen,
-                    Some("req-7".to_string()),
-                    "the tool's result metadata must reach the hook (streaming={streaming})"
-                );
-                assert_eq!(output, "done");
-                assert!(
-                    !output.contains("req-7"),
-                    "result metadata must never leak into model output (streaming={streaming})"
-                );
-            }
-        }
-
         // (6) A `ToolResultAction::Rewrite` hook redacts the model-visible text, but a later
         // policy hook still sees the tool's *raw* structured outcome — a rewrite
         // changes only what the model sees, not the classification.
@@ -3703,7 +3485,7 @@ mod migrated_tests {
         use crate::completion::{PromptError, Usage};
         use crate::streaming::StreamedAssistantContent;
         use crate::test_utils::MockAddTool;
-        use crate::tool::{ToolContext, ToolExecutionError};
+        use crate::tool::ToolExecutionError;
 
         use super::{BoundedResponseRetry, StopCompletedModelTurn, TestRetryMode};
 
@@ -4317,7 +4099,7 @@ mod migrated_tests {
         /// A tool that returns a raw marker; a rewrite hook replaces the
         /// effective model and telemetry presentation.
         struct RawOutputTool;
-        impl crate::tool::Tool for RawOutputTool {
+        impl crate::tool::PortableTool for RawOutputTool {
             const NAME: &'static str = "raw_output";
             type Error = rig::tool::ToolExecutionError;
             type Args = serde_json::Value;
@@ -4329,11 +4111,7 @@ mod migrated_tests {
             fn parameters(&self) -> serde_json::Value {
                 serde_json::json!({ "type": "object", "properties": {} })
             }
-            async fn call(
-                &self,
-                _context: &mut ToolContext,
-                _args: Self::Args,
-            ) -> Result<Self::Output, ToolExecutionError> {
+            async fn call(&self, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
                 Ok("RAW_EXECUTION_OUTPUT_42".to_string())
             }
         }
@@ -4610,7 +4388,7 @@ mod migrated_tests {
         order: Arc<AtomicU32>,
     }
 
-    impl Tool for OutOfOrderTool {
+    impl PortableTool for OutOfOrderTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = MockOperationArgs;
@@ -4624,11 +4402,7 @@ mod migrated_tests {
             MockAddTool.parameters()
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
             let nth = self.order.fetch_add(1, SeqCst);
             if nth == 0 {
                 // First call: cannot finish until a later call releases us.
@@ -5016,7 +4790,7 @@ mod migrated_tests {
         slow_started: Arc<tokio::sync::Notify>,
     }
 
-    impl Tool for DrainProbeTool {
+    impl PortableTool for DrainProbeTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = serde_json::Value;
@@ -5030,11 +4804,7 @@ mod migrated_tests {
             MockAddTool.parameters()
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.started.fetch_add(1, SeqCst);
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(2) {
                 // Signal that the slow sibling has started, then stay pending so
@@ -5329,7 +5099,7 @@ mod migrated_tests {
         sibling_started: Arc<tokio::sync::Notify>,
     }
 
-    impl Tool for RecordingArgsTool {
+    impl PortableTool for RecordingArgsTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = serde_json::Value;
@@ -5343,11 +5113,7 @@ mod migrated_tests {
             MockAddTool.parameters()
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             let x = args.get("x").and_then(serde_json::Value::as_i64);
             if let Some(x) = x {
                 self.called.lock().expect("called").push(x);
@@ -5477,7 +5243,7 @@ mod migrated_tests {
         a_ran: Arc<AtomicU32>,
         a_done: Arc<tokio::sync::Notify>,
     }
-    impl Tool for SignalOnRunTool {
+    impl PortableTool for SignalOnRunTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = serde_json::Value;
@@ -5489,11 +5255,7 @@ mod migrated_tests {
         fn parameters(&self) -> serde_json::Value {
             MockAddTool.parameters()
         }
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             if args.get("x").and_then(serde_json::Value::as_i64) == Some(1) {
                 self.a_ran.fetch_add(1, SeqCst);
                 self.a_done.notify_one();
@@ -5839,7 +5601,7 @@ mod migrated_tests {
             max_active: Arc<AtomicU32>,
         }
 
-        impl Tool for ConcurrencyProbe {
+        impl PortableTool for ConcurrencyProbe {
             const NAME: &'static str = "add";
             type Error = MockToolError;
             type Args = serde_json::Value;
@@ -5853,11 +5615,7 @@ mod migrated_tests {
                 json!({"type": "object", "properties": {}})
             }
 
-            async fn call(
-                &self,
-                _context: &mut ToolContext,
-                _args: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
+            async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
                 let now = self.active.fetch_add(1, SeqCst) + 1;
                 self.max_active.fetch_max(now, SeqCst);
                 self.barrier.wait().await;
@@ -5937,7 +5695,7 @@ mod migrated_tests {
     struct CountingAddTool {
         calls: Arc<AtomicU32>,
     }
-    impl Tool for CountingAddTool {
+    impl PortableTool for CountingAddTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = MockOperationArgs;
@@ -5948,13 +5706,9 @@ mod migrated_tests {
         fn parameters(&self) -> serde_json::Value {
             MockAddTool.parameters()
         }
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, SeqCst);
-            MockAddTool.call(_context, args).await
+            MockAddTool.call(args).await
         }
     }
 
@@ -6972,7 +6726,7 @@ mod migrated_tests {
 
     struct EchoStringArgs;
 
-    impl Tool for EchoStringArgs {
+    impl PortableTool for EchoStringArgs {
         const NAME: &'static str = "echo_string_args";
         type Error = rig::tool::ToolExecutionError;
         type Args = String;
@@ -6986,119 +6740,9 @@ mod migrated_tests {
             json!({"type": "string"})
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
             Ok(args)
         }
-    }
-
-    #[derive(serde::Deserialize)]
-    struct FirstGenerationArgs {
-        old: String,
-    }
-
-    struct FirstGenerationTool(Arc<AtomicU32>);
-
-    impl Tool for FirstGenerationTool {
-        const NAME: &'static str = "generation_pinned";
-        type Error = rig::tool::ToolExecutionError;
-        type Args = FirstGenerationArgs;
-        type Output = String;
-
-        fn description(&self) -> String {
-            "first generation schema".to_string()
-        }
-
-        fn parameters(&self) -> serde_json::Value {
-            json!({
-                "type": "object",
-                "properties": {"old": {"type": "string"}},
-                "required": ["old"]
-            })
-        }
-
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
-            self.0.fetch_add(1, SeqCst);
-            Ok(format!("first:{}", args.old))
-        }
-    }
-
-    #[derive(serde::Deserialize)]
-    struct SecondGenerationArgs {
-        new: String,
-    }
-
-    struct SecondGenerationTool(Arc<AtomicU32>);
-
-    impl Tool for SecondGenerationTool {
-        const NAME: &'static str = FirstGenerationTool::NAME;
-        type Error = rig::tool::ToolExecutionError;
-        type Args = SecondGenerationArgs;
-        type Output = String;
-
-        fn description(&self) -> String {
-            "second generation schema".to_string()
-        }
-
-        fn parameters(&self) -> serde_json::Value {
-            json!({
-                "type": "object",
-                "properties": {"new": {"type": "string"}},
-                "required": ["new"]
-            })
-        }
-
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
-            self.0.fetch_add(1, SeqCst);
-            Ok(format!("second:{}", args.new))
-        }
-    }
-
-    /// Registers the second-generation tool as soon as the first model turn
-    /// commits — after the request advertising generation one was built, but
-    /// before that turn's tool calls dispatch — so dispatch must use the pinned
-    /// generation-one snapshot the request advertised.
-    #[derive(Clone)]
-    struct ReplaceGenerationAfterFirstTurn {
-        handle: ToolServerHandle,
-        second_calls: Arc<AtomicU32>,
-    }
-
-    impl AgentHook for ReplaceGenerationAfterFirstTurn {
-        async fn on_model_turn_finished(
-            &self,
-            ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if ctx.turn() == 1 {
-                self.handle
-                    .add_tool(SecondGenerationTool(self.second_calls.clone()))
-                    .await;
-            }
-            ModelTurnAction::continue_run()
-        }
-    }
-
-    /// The description advertised for the generation tool in `request`.
-    fn advertised_generation(request: &crate::completion::CompletionRequest) -> String {
-        request
-            .tools
-            .iter()
-            .find(|definition| definition.name == FirstGenerationTool::NAME)
-            .expect("generation tool must be advertised")
-            .description
-            .clone()
     }
 
     #[test]
@@ -7314,97 +6958,6 @@ mod migrated_tests {
         assert_eq!(final_output.as_deref(), Some("done"));
         assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
         assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
-    }
-
-    #[tokio::test]
-    async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
-        let first_calls = Arc::new(AtomicU32::new(0));
-        let second_calls = Arc::new(AtomicU32::new(0));
-        let handle: ToolServerHandle = ToolServer::new()
-            .tool(FirstGenerationTool(first_calls.clone()))
-            .run();
-        let model = MockCompletionModel::from_turns([
-            MockTurn::tool_call(
-                "tc-generation",
-                FirstGenerationTool::NAME,
-                json!({"old": "payload"}),
-            ),
-            MockTurn::text("done"),
-        ]);
-        let response = AgentBuilder::new(model.provider())
-            .tool_server_handle(handle.clone())
-            .add_hook(ReplaceGenerationAfterFirstTurn {
-                handle,
-                second_calls: second_calls.clone(),
-            })
-            .build()
-            .runner("use the generation tool")
-            .max_turns(3)
-            .run()
-            .await
-            .expect("blocking run should use its pinned tool generation");
-
-        assert_eq!(response.output, "done");
-        // The first-generation tool ran even though generation two replaced it
-        // between the model turn committing and the tool dispatching.
-        assert_eq!(first_calls.load(SeqCst), 1);
-        assert_eq!(second_calls.load(SeqCst), 0);
-        // Each request advertised the registry generation it dispatched against.
-        let requests = model.requests();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(
-            advertised_generation(&requests[0]),
-            "first generation schema"
-        );
-        assert_eq!(
-            advertised_generation(&requests[1]),
-            "second generation schema"
-        );
-    }
-
-    #[tokio::test]
-    async fn streaming_turn_dispatches_the_registry_generation_it_advertised() {
-        let first_calls = Arc::new(AtomicU32::new(0));
-        let second_calls = Arc::new(AtomicU32::new(0));
-        let handle: ToolServerHandle = ToolServer::new()
-            .tool(FirstGenerationTool(first_calls.clone()))
-            .run();
-        let turns = [
-            ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
-                id: "tc-generation",
-                name: FirstGenerationTool::NAME,
-                args: json!({"old": "payload"}),
-            }]),
-            ScriptedTurn::Text("done"),
-        ];
-        let model = MockCompletionModel::from_stream_turns(
-            turns
-                .iter()
-                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-        );
-        let mut stream = AgentBuilder::new(model.provider())
-            .tool_server_handle(handle.clone())
-            .add_hook(ReplaceGenerationAfterFirstTurn {
-                handle,
-                second_calls: second_calls.clone(),
-            })
-            .build()
-            .runner("use the generation tool")
-            .max_turns(3)
-            .stream()
-            .await;
-        let mut final_output = None;
-        while let Some(item) = stream.next().await {
-            if let MultiTurnStreamItem::FinalResponse(response) =
-                item.expect("streaming run should use its pinned tool generation")
-            {
-                final_output = Some(response.output().to_string());
-            }
-        }
-
-        assert_eq!(final_output.as_deref(), Some("done"));
-        assert_eq!(first_calls.load(SeqCst), 1);
-        assert_eq!(second_calls.load(SeqCst), 0);
     }
 
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
@@ -8518,7 +8071,7 @@ mod migrated_tests {
     /// make the picked output-tool name collide with it.
     struct FinalResultTool;
 
-    impl Tool for FinalResultTool {
+    impl PortableTool for FinalResultTool {
         const NAME: &'static str = "final_result";
         type Error = MockToolError;
         type Args = serde_json::Value;
@@ -8532,66 +8085,9 @@ mod migrated_tests {
             json!({ "type": "object", "properties": {} })
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
             Ok("real final_result output".to_string())
         }
-    }
-
-    /// Registers a real `final_result` tool after the first model turn, once the
-    /// run has already reserved that name for structured output. An optional
-    /// second-turn patch lets tests exercise filtering and tool-choice changes
-    /// without changing the collision source.
-    #[derive(Clone)]
-    struct RegisterLateFinalResultTool {
-        handle: ToolServerHandle,
-        second_turn_patch: Option<RequestPatch>,
-    }
-
-    impl AgentHook for RegisterLateFinalResultTool {
-        async fn on_model_turn_finished(
-            &self,
-            ctx: &HookContext,
-            _event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if ctx.turn() == 1 {
-                self.handle.add_tool(FinalResultTool).await;
-            }
-
-            ModelTurnAction::continue_run()
-        }
-
-        async fn on_completion_call(
-            &self,
-            ctx: &HookContext,
-            _event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            if ctx.turn() == 2
-                && let Some(patch) = &self.second_turn_patch
-            {
-                return CompletionCallAction::patch(patch.clone());
-            }
-
-            CompletionCallAction::continue_run()
-        }
-    }
-
-    fn assert_structured_output_collision_error(message: &str) {
-        assert!(
-            message.contains("final_result"),
-            "error should name the conflicting tool: {message}"
-        );
-        assert!(
-            message.contains("structured-output") && message.contains("reserved"),
-            "error should explain the structured-output reservation: {message}"
-        );
-        assert!(
-            message.contains("rename or remove"),
-            "error should provide an actionable resolution: {message}"
-        );
     }
 
     /// An initially effective real `final_result` keeps normal dispatch while
@@ -8652,198 +8148,6 @@ mod migrated_tests {
             )),
             "the real `final_result` call must execute normally and its result must reach the follow-up request"
         );
-    }
-
-    /// Once Tool output mode has committed a name, a real tool registered under
-    /// that name must fail the next request locally for every tool-choice shape.
-    /// Otherwise the provider receives duplicate definitions and the real call
-    /// is intercepted as final output.
-    #[tokio::test]
-    async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choices() {
-        let cases = [
-            ("inherited", None),
-            (
-                "required",
-                Some(RequestPatch::new().tool_choice(ToolChoice::Required)),
-            ),
-            (
-                "none",
-                Some(RequestPatch::new().tool_choice(ToolChoice::None)),
-            ),
-            (
-                "specific",
-                Some(RequestPatch::new().tool_choice(ToolChoice::Specific {
-                    function_names: vec!["final_result".to_string()],
-                })),
-            ),
-        ];
-
-        for (case, second_turn_patch) in cases {
-            let handle = ToolServer::new().tool(MockAddTool).run();
-            let model = MockCompletionModel::from_turns([
-                MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
-                MockTurn::tool_call(
-                    "shadowed",
-                    "final_result",
-                    json!({ "answer": "wrongly finalized" }),
-                ),
-            ]);
-            let probe = model.clone();
-            let err = AgentBuilder::new(model.provider())
-                .tool_server_handle(handle.clone())
-                .output_schema::<Answer>()
-                .output_mode(OutputMode::Tool)
-                .add_hook(RegisterLateFinalResultTool {
-                    handle,
-                    second_turn_patch,
-                })
-                .build()
-                .runner("go")
-                .max_turns(3)
-                .run()
-                .await
-                .unwrap_err();
-
-            assert!(
-                matches!(
-                    &err,
-                    PromptError::CompletionError(CompletionError::RequestError(_))
-                ),
-                "{case}: expected a local completion request error, got {err:?}"
-            );
-            assert_eq!(
-                probe.request_count(),
-                1,
-                "{case}: the colliding second request must not reach the provider"
-            );
-            assert_structured_output_collision_error(&err.to_string());
-        }
-    }
-
-    /// The streaming surface uses the same pre-provider collision check as the
-    /// blocking surface and terminates without starting a second model stream.
-    #[tokio::test]
-    async fn late_output_tool_collision_fails_before_streaming_provider() {
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        let model = MockCompletionModel::from_stream_turns([
-            vec![
-                MockStreamEvent::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
-                MockStreamEvent::final_response_with_total_tokens(0),
-            ],
-            vec![
-                MockStreamEvent::tool_call(
-                    "shadowed",
-                    "final_result",
-                    json!({ "answer": "wrongly finalized" }),
-                ),
-                MockStreamEvent::final_response_with_total_tokens(0),
-            ],
-        ]);
-        let probe = model.clone();
-        let mut stream = AgentBuilder::new(model.provider())
-            .tool_server_handle(handle.clone())
-            .output_schema::<Answer>()
-            .output_mode(OutputMode::Tool)
-            .add_hook(RegisterLateFinalResultTool {
-                handle,
-                second_turn_patch: None,
-            })
-            .build()
-            .runner("go")
-            .max_turns(3)
-            .stream()
-            .await;
-
-        let mut collisions = Vec::new();
-        let mut saw_final_response = false;
-        while let Some(item) = stream.next().await {
-            match item {
-                Err(err) => collisions.push(err),
-                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
-                Ok(_) => {}
-            }
-        }
-        assert_eq!(
-            collisions.len(),
-            1,
-            "the stream should terminate with exactly one collision error"
-        );
-        assert!(
-            !saw_final_response,
-            "a collision error must terminate the stream without a final response"
-        );
-        let err = collisions.pop().expect("one collision error was asserted");
-
-        assert!(
-            matches!(
-                &err,
-                StreamingError::Completion(CompletionError::RequestError(_))
-            ),
-            "expected a local streaming completion request error, got {err:?}"
-        );
-        assert_eq!(
-            probe.request_count(),
-            1,
-            "the colliding second stream must not reach the provider"
-        );
-        assert_structured_output_collision_error(&err.to_string());
-    }
-
-    /// A late colliding tool is harmless while `active_tools` filters it out,
-    /// but the run must fail as soon as the non-sticky filter lifts and the real
-    /// tool becomes effective again.
-    #[tokio::test]
-    async fn late_output_tool_collision_is_checked_after_active_tools_filtering() {
-        let handle = ToolServer::new().tool(MockAddTool).run();
-        let model = MockCompletionModel::from_turns([
-            MockTurn::tool_call("add-1", "add", json!({ "x": 1, "y": 2 })),
-            MockTurn::tool_call("add-2", "add", json!({ "x": 3, "y": 4 })),
-            MockTurn::tool_call(
-                "shadowed",
-                "final_result",
-                json!({ "answer": "wrongly finalized" }),
-            ),
-        ]);
-        let probe = model.clone();
-        let err = AgentBuilder::new(model.provider())
-            .tool_server_handle(handle.clone())
-            .output_schema::<Answer>()
-            .output_mode(OutputMode::Tool)
-            .add_hook(RegisterLateFinalResultTool {
-                handle,
-                second_turn_patch: Some(RequestPatch::new().active_tools(["add"])),
-            })
-            .build()
-            .runner("go")
-            .max_turns(4)
-            .run()
-            .await
-            .expect_err("the exposed third-turn collision should fail locally");
-
-        assert_eq!(
-            probe.request_count(),
-            2,
-            "the filtered second turn may run, but the exposed third turn may not"
-        );
-        let requests = probe.requests();
-        let second_turn_names = requests[1]
-            .tools
-            .iter()
-            .map(|tool| tool.name.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(second_turn_names.len(), 2);
-        for expected in ["add", "final_result"] {
-            assert_eq!(
-                second_turn_names
-                    .iter()
-                    .filter(|name| **name == expected)
-                    .count(),
-                1,
-                "the second request should advertise `{expected}` exactly once: \
-                 {second_turn_names:?}"
-            );
-        }
-        assert_structured_output_collision_error(&err.to_string());
     }
 
     /// Narrows the advertised tools to `add` for the turn, filtering out the real

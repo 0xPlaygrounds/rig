@@ -149,11 +149,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -199,11 +195,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -238,11 +230,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -268,11 +256,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }
@@ -654,7 +638,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&tool)],
+                tools: vec![rig::tool::portable_tool_definition(&tool)],
                 tool_choice: Some(ToolChoice::Required),
                 additional_params: Some(non_thinking_params()),
                 ..CompletionRequest::with_history(
@@ -696,7 +680,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         |client| async move {
             let model = client.completion_model(SESSION_MODEL);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::None),
                 additional_params: Some(non_thinking_params()),
                 ..CompletionRequest::with_history(
@@ -748,7 +732,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
 
             let required = model
                 .completion(CompletionRequest {
-                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Required),
                     additional_params: Some(non_thinking_params()),
                     ..CompletionRequest::from_prompt(
@@ -769,8 +753,8 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let specific = model
                 .completion(CompletionRequest {
                     tools: vec![
-                        rig::tool::tool_definition(&AlphaSignal),
-                        rig::tool::tool_definition(&BetaSignal),
+                        rig::tool::portable_tool_definition(&AlphaSignal),
+                        rig::tool::portable_tool_definition(&BetaSignal),
                     ],
                     tool_choice: Some(ToolChoice::Specific {
                         function_names: vec![BetaSignal::NAME.to_string()],
@@ -797,7 +781,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
 
             let none = model
                 .completion(CompletionRequest {
-                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::None),
                     additional_params: Some(non_thinking_params()),
                     ..CompletionRequest::from_prompt(

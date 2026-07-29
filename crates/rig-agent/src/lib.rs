@@ -87,6 +87,7 @@ pub mod streaming;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
+pub(crate) mod type_map;
 
 pub use agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
 pub use extractor::ExtractionResponse;

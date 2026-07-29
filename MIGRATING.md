@@ -344,6 +344,34 @@ agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
 clients bridge only credentials that are already cached (non-interactively);
 interactive OAuth flows still work through the classic clients themselves.
 
+### The tool system is records, not traits (single-architecture R2)
+
+`ToolContext`, `ToolSet`, `ToolServer`, `DynamicTool`, `ToolEmbedding`, and
+`Agent::into_tool` are gone. `rig::tool::Tool` is now an alias for the
+portable contract:
+
+```rust
+// before
+impl Tool for Adder {
+    async fn call(&self, _context: &mut ToolContext, args: Args) -> ... {}
+}
+// after — drop the context parameter; move state into the struct
+impl Tool for Adder {
+    async fn call(&self, args: Args) -> ... {}
+}
+```
+
+Dynamic tools are `PortableDynamicTool::new(name, desc, params, |args| async
+{...})`; tool collections are `rig::executor::ToolExecutor::new()
+.register(...)`; `#[rig_tool]` functions lose their `&mut ToolContext`
+parameter (a targeted compile error guides you) and gain a `.portable()`
+record constructor; custom `Serialize` outputs need a one-line
+`impl IntoToolOutput` via `serialize_to_tool_output` (the `Any`-based
+blanket impl is gone). Sub-agents-as-tools are a `PortableDynamicTool`
+closing over an inner agent. MCP moved to `rig::tool::mcp` (`McpToolset`,
+host-polled `refresh()` instead of push updates); the `rmcp` cargo feature
+now aliases `mcp`.
+
 ### Mocking moved to `MockScript`
 
 `rig_core::test_utils::MockCompletionModel` no longer plugs into agents. Use

@@ -19,8 +19,8 @@
 //! required: a steering stop intentionally prevents later observers from
 //! running. Tool-result rewrites change the effective `presentation` sent to
 //! the model and recorded as result-content telemetry. The
-//! [`ToolResultEvent::raw_result`] and its [`ToolResultEvent::tool_context`]
-//! remain unchanged for policy decisions and execution-outcome metadata. A
+//! [`ToolResultEvent::raw_result`] remains unchanged for policy decisions and
+//! execution-outcome metadata. A
 //! tool-result stop omits result content from telemetry.
 //!
 //! Blocking and streaming agents share model-turn, request, tool-call, and
@@ -118,7 +118,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{future::Future, sync::Arc};
 
-use crate::tool::extensions::TypeMap;
+use crate::type_map::TypeMap;
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, Message, ToolChoice},
@@ -128,7 +128,7 @@ use rig_core::{
 use crate::{
     completion::{Document, Usage},
     json_utils,
-    tool::{ToolContext, ToolOutput, ToolResult},
+    tool::{ToolOutput, ToolResult},
 };
 
 /// Opaque process-scoped identifier for one agent run.
@@ -491,8 +491,8 @@ pub struct ToolCall<'a> {
 
 /// Post-execution tool event.
 ///
-/// `presentation` contains the running presentation rewrite. `raw_result` and
-/// `tool_context` always contain the original execution data.
+/// `presentation` contains the running presentation rewrite. `raw_result`
+/// always contains the original execution data.
 #[derive(Clone, Copy)]
 pub struct ToolResultEvent<'a> {
     /// Tool name.
@@ -507,8 +507,6 @@ pub struct ToolResultEvent<'a> {
     pub presentation: &'a ToolOutput,
     /// Immutable raw execution result.
     pub raw_result: &'a ToolResult,
-    /// Per-dispatch context containing inbound data and result metadata.
-    pub tool_context: &'a ToolContext,
 }
 
 /// Streaming text delta.
@@ -1789,7 +1787,7 @@ mod tests {
 
     #[derive(Clone)]
     struct ResultRewriter {
-        seen: Arc<std::sync::Mutex<Vec<(String, ToolErrorKind, String)>>>,
+        seen: Arc<std::sync::Mutex<Vec<(String, ToolErrorKind)>>>,
         replacement: String,
     }
 
@@ -1802,14 +1800,13 @@ mod tests {
             self.seen.lock().unwrap().push((
                 event.presentation.render(),
                 event.raw_result.error().unwrap().kind(),
-                event.tool_context.result::<String>().unwrap().clone(),
             ));
             ToolResultAction::rewrite(self.replacement.clone())
         }
     }
 
     #[tokio::test]
-    async fn result_rewrites_chain_without_mutating_raw_result_or_context() {
+    async fn result_rewrites_chain_without_mutating_raw_result() {
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut stack = HookStack::with(ResultRewriter {
             seen: seen.clone(),
@@ -1820,8 +1817,6 @@ mod tests {
             replacement: "truncated".into(),
         });
         let raw = ToolResult::failed(ToolExecutionError::timeout("raw failure"));
-        let mut context = ToolContext::new();
-        context.insert_result("request-metadata".to_string());
 
         let action = stack
             .on_tool_result(
@@ -1833,7 +1828,6 @@ mod tests {
                     args: "{}",
                     presentation: raw.output(),
                     raw_result: &raw,
-                    tool_context: &context,
                 },
             )
             .await;
@@ -1842,23 +1836,11 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             vec![
-                (
-                    "raw failure".into(),
-                    ToolErrorKind::Timeout,
-                    "request-metadata".into()
-                ),
-                (
-                    "redacted".into(),
-                    ToolErrorKind::Timeout,
-                    "request-metadata".into()
-                ),
+                ("raw failure".into(), ToolErrorKind::Timeout),
+                ("redacted".into(), ToolErrorKind::Timeout),
             ]
         );
         assert_eq!(raw.output().as_text(), Some("raw failure"));
-        assert_eq!(
-            context.result::<String>().map(String::as_str),
-            Some("request-metadata")
-        );
     }
 
     struct StopThenCount {
@@ -1893,7 +1875,6 @@ mod tests {
             calls: calls.clone(),
         });
         let raw = ToolResult::success(ToolOutput::text("ok"));
-        let context = ToolContext::new();
         let action = stack
             .on_tool_result(
                 &HookContext::new(false, None),
@@ -1904,7 +1885,6 @@ mod tests {
                     args: "{}",
                     presentation: raw.output(),
                     raw_result: &raw,
-                    tool_context: &context,
                 },
             )
             .await;

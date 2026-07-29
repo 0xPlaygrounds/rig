@@ -72,7 +72,7 @@ async fn raw_stream_emits_tool_call_before_text() {
         |client| async move {
             let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::Specific {
                     function_names: vec!["lookup_harbor_label".to_string()],
                 }),

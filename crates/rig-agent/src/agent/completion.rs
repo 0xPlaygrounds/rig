@@ -7,8 +7,8 @@ use crate::{
     completion::{
         Chat, CompletionError, Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
+    executor::ToolExecutor,
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerHandle},
 };
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
@@ -21,8 +21,9 @@ use super::UNKNOWN_AGENT_NAME;
 /// send time.
 pub(crate) struct PreparedCompletionRequest {
     pub(crate) request: rig_core::completion::CompletionRequest,
-    /// Exact implementations behind this turn's provider definitions.
-    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
+    /// Exact executable records behind this turn's provider definitions,
+    /// narrowed to what was advertised (per-turn `active_tools`).
+    pub(crate) tool_executor: Arc<ToolExecutor>,
     pub(crate) executable_tool_names: BTreeSet<String>,
     pub(crate) allowed_tool_names: BTreeSet<String>,
     /// When Tool output mode is active, the name of the synthetic output tool
@@ -229,7 +230,8 @@ pub(crate) async fn build_prepared_completion_request(
     additional_params: Option<&serde_json::Value>,
     record_telemetry_content: bool,
     tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
+    catalog: &super::prepare::ToolCatalog,
+    executor: &ToolExecutor,
     output_schema: Option<&schemars::Schema>,
     output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
@@ -237,13 +239,6 @@ pub(crate) async fn build_prepared_completion_request(
     augment_output_preamble: bool,
     request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
-    // The async half: snapshot the tool server. Everything else is the pure
-    // `prepare_request` protocol function, shared with hand-rolled drivers and
-    // future runtimes.
-    let mut tool_snapshot = tool_server_handle.snapshot_tool_defs().await;
-
-    let catalog = super::prepare::ToolCatalog::new(tool_snapshot.definitions().to_vec());
-
     let config = super::config::AgentConfig {
         preamble: preamble.map(str::to_owned),
         static_context: static_context.to_vec(),
@@ -261,7 +256,7 @@ pub(crate) async fn build_prepared_completion_request(
 
     let prepared = super::prepare::prepare_request(
         &config,
-        &catalog,
+        catalog,
         provider.descriptor().composes_native_output_with_tools,
         prompt,
         chat_history,
@@ -269,13 +264,13 @@ pub(crate) async fn build_prepared_completion_request(
         request_patch,
     )?;
 
-    // Mirror the per-turn `active_tools` narrowing onto the dispatch snapshot
+    // Mirror the per-turn `active_tools` narrowing onto the dispatch records
     // so execution matches exactly what was advertised this turn.
-    tool_snapshot.retain_names(&prepared.executable_tool_names);
+    let tool_executor = executor.narrowed(&prepared.executable_tool_names);
 
     Ok(PreparedCompletionRequest {
         request: prepared.request,
-        tool_snapshot: Arc::new(tool_snapshot),
+        tool_executor: Arc::new(tool_executor),
         executable_tool_names: prepared.executable_tool_names,
         allowed_tool_names: prepared.allowed_tool_names,
         output_tool_name: prepared.output_tool_name,
@@ -336,7 +331,10 @@ pub struct Agent {
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
-    pub(crate) tool_server_handle: ToolServerHandle,
+    /// The advertised tool definitions (every registered record's definition).
+    pub(crate) catalog: super::prepare::ToolCatalog,
+    /// The executable tool records behind the catalog.
+    pub(crate) executor: ToolExecutor,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub(crate) tool_choice: Option<ToolChoice>,
     /// Default total model-call budget, including the initial call and every
@@ -386,7 +384,7 @@ impl Agent {
     /// narrowing of the advertised set happens through
     /// [`RequestPatch::active_tools`].
     pub async fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tool_server_handle.get_tool_defs().await
+        self.catalog.definitions.clone()
     }
 }
 

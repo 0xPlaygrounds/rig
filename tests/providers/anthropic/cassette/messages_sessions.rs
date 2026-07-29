@@ -271,7 +271,7 @@ async fn long_history_replay_nonstreaming() {
             // id back, the way a caller-owned history would.
             let first_request = CompletionRequest {
                 max_tokens: Some(1024),
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some(preamble),
                     Vec::new(),
@@ -301,7 +301,7 @@ async fn long_history_replay_nonstreaming() {
             // same assistant message) and assistant text after the result.
             let request = CompletionRequest {
                 max_tokens: Some(1024),
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some(preamble),
                     vec![

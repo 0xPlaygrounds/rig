@@ -49,11 +49,7 @@ impl Tool for Add {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -83,11 +79,7 @@ impl Tool for Subtract {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -117,11 +109,7 @@ impl Tool for Multiply {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -151,11 +139,7 @@ impl Tool for Divide {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }

@@ -167,7 +167,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         |client| async move {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some(ORDERED_TOOL_STREAM_PREAMBLE),
                     Vec::new(),

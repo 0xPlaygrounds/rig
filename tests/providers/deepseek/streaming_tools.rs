@@ -82,8 +82,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
             let request = CompletionRequest {
                 tools: vec![
-                    rig::tool::tool_definition(&AlphaSignal),
-                    rig::tool::tool_definition(&BetaSignal),
+                    rig::tool::portable_tool_definition(&AlphaSignal),
+                    rig::tool::portable_tool_definition(&BetaSignal),
                 ],
                 additional_params: Some(non_thinking_params()),
                 ..CompletionRequest::with_history(
@@ -125,8 +125,8 @@ async fn raw_stream_tool_call_arguments_are_objects() {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
             let request = CompletionRequest {
                 tools: vec![
-                    rig::tool::tool_definition(&AlphaSignal),
-                    rig::tool::tool_definition(&BetaSignal),
+                    rig::tool::portable_tool_definition(&AlphaSignal),
+                    rig::tool::portable_tool_definition(&BetaSignal),
                 ],
                 additional_params: Some(non_thinking_params()),
                 ..CompletionRequest::with_history(
@@ -219,7 +219,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         |client| async move {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 additional_params: Some(non_thinking_params()),
                 ..CompletionRequest::with_history(
                     Some(ORDERED_TOOL_STREAM_PREAMBLE),

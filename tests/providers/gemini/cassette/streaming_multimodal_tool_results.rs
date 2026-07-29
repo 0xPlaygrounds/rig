@@ -50,11 +50,7 @@ impl Tool for HybridImageTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let mut content = OneOrMany::one(ToolResultContent::json(json!({
             "instruction": "Use the image part to answer the user's question."
         })));

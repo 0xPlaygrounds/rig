@@ -20,8 +20,8 @@ use crate::{
         acquire_agent_span, append_run_messages, build_chat_span, new_execute_tool_span,
         observe_action, resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
+    executor::ToolExecutor,
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
-    tool::{ToolContext, server::ToolRegistrySnapshot},
 };
 use futures::{Stream, StreamExt, stream};
 use serde::{Deserialize, Serialize};
@@ -445,14 +445,14 @@ impl TurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_executor: Arc<ToolExecutor>,
     ) -> DriveStream<'a> {
         match self {
             TurnSource::Unary(source) => {
-                source.run_tool_calls(runner, hook_ctx, run, calls, tool_snapshot)
+                source.run_tool_calls(runner, hook_ctx, run, calls, tool_executor)
             }
             TurnSource::Streaming(source) => {
-                source.run_tool_calls(runner, hook_ctx, run, calls, tool_snapshot)
+                source.run_tool_calls(runner, hook_ctx, run, calls, tool_executor)
             }
         }
     }
@@ -525,7 +525,7 @@ pub(crate) fn drive_agent(
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
-        let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        let mut pending_tool_executor: Option<Arc<ToolExecutor>> = None;
 
         'outer: loop {
             let step = match run.next_step() {
@@ -539,7 +539,7 @@ pub(crate) fn drive_agent(
 
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
-                    drop(pending_tool_snapshot.take());
+                    drop(pending_tool_executor.take());
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
                     }
@@ -580,7 +580,8 @@ pub(crate) fn drive_agent(
                         runner.additional_params.as_ref(),
                         runner.record_telemetry_content,
                         runner.tool_choice.as_ref(),
-                        &runner.tool_server_handle,
+                        &runner.catalog,
+                        &runner.tool_executor,
                         runner.output_schema.as_ref(),
                         &runner.output_mode,
                         committed_output_tool.as_deref(),
@@ -598,7 +599,7 @@ pub(crate) fn drive_agent(
                         }
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
-                    let turn_tool_snapshot = prepared.tool_snapshot.clone();
+                    let turn_tool_executor = prepared.tool_executor.clone();
                     if runner.record_telemetry_content {
                         let input_messages = prepared.request.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
@@ -630,13 +631,13 @@ pub(crate) fn drive_agent(
                         yield Err(err);
                         break 'outer;
                     }
-                    pending_tool_snapshot = Some(turn_tool_snapshot);
+                    pending_tool_executor = Some(turn_tool_executor);
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let Some(tool_snapshot) = pending_tool_snapshot.take() else {
+                    let Some(tool_executor) = pending_tool_executor.take() else {
                         store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
-                            "agent requested tool execution without a prepared registry snapshot"
+                            "agent requested tool execution without prepared tool records"
                                 .to_string(),
                         )));
                         break 'outer;
@@ -646,7 +647,7 @@ pub(crate) fn drive_agent(
                         &hook_ctx,
                         &mut run,
                         calls,
-                        tool_snapshot,
+                        tool_executor,
                     );
                     let mut tool_error = None;
                     while let Some(item) = tool_stream.next().await {
@@ -721,7 +722,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
-    tool_snapshot: Arc<ToolRegistrySnapshot>,
+    tool_executor: Arc<ToolExecutor>,
     chain_tool_span: F,
     forward_items: bool,
 ) -> DriveStream<'a>
@@ -820,7 +821,7 @@ where
                 let outcome = run_single_tool(
                     runner,
                     hook_ctx,
-                    &tool_snapshot,
+                    &tool_executor,
                     &tool_call,
                     &internal_call_id,
                     &full_history_for_errors,
@@ -857,7 +858,7 @@ where
             let unordered = stream::iter(prepared.into_iter().enumerate())
                 .map(|(index, call)| {
                     let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
-                    let tool_snapshot = &tool_snapshot;
+                    let tool_executor = &tool_executor;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
@@ -878,7 +879,7 @@ where
                         let outcome = run_single_tool(
                             runner,
                             hook_ctx,
-                            tool_snapshot,
+                            tool_executor,
                             &tool_call,
                             &internal_call_id,
                             full_history_for_errors,
@@ -1450,7 +1451,7 @@ impl StreamingTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_executor: Arc<ToolExecutor>,
     ) -> DriveStream<'a> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
@@ -1459,7 +1460,7 @@ impl StreamingTurnSource {
             hook_ctx,
             run,
             calls,
-            tool_snapshot,
+            tool_executor,
             |span| span,
             true,
         )
@@ -1652,10 +1653,10 @@ mod migrated_tests {
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
-        AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockContextProbeTool,
-        MockSubtractTool, MockToolError, SessionId,
+        AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockSubtractTool,
+        MockToolError,
     };
-    use crate::tool::{Tool, ToolContext};
+    use crate::tool::PortableTool;
     use futures::{StreamExt, TryStreamExt};
     use rig_core::client::ProviderClient;
     use rig_core::message::{
@@ -2136,7 +2137,7 @@ mod migrated_tests {
         }
     }
 
-    impl Tool for CountingAddTool {
+    impl PortableTool for CountingAddTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = CountingOperationArgs;
@@ -2150,17 +2151,13 @@ mod migrated_tests {
             arithmetic_tool_definition(Self::NAME, "Add x and y together").parameters
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x + args.y)
         }
     }
 
-    impl Tool for CountingSubtractTool {
+    impl PortableTool for CountingSubtractTool {
         const NAME: &'static str = "subtract";
         type Error = MockToolError;
         type Args = CountingOperationArgs;
@@ -2174,11 +2171,7 @@ mod migrated_tests {
             arithmetic_tool_definition(Self::NAME, "Subtract y from x").parameters
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(args.x - args.y)
         }
@@ -2219,7 +2212,7 @@ mod migrated_tests {
         let runner = agent_builder(MockCompletionModel::default())
             .build()
             .runner("go");
-        let tool_snapshot = Arc::new(runner.tool_server_handle.snapshot_tool_defs().await);
+        let tool_executor = Arc::new(runner.tool_executor.clone());
 
         let mut run = AgentRun::new("go").max_turns(2);
         assert!(matches!(
@@ -2262,7 +2255,7 @@ mod migrated_tests {
             &hook_context,
             &mut run,
             calls,
-            tool_snapshot,
+            tool_executor,
             |span| span,
             true,
         );
@@ -3634,83 +3627,6 @@ mod migrated_tests {
         tokio::time::timeout(Duration::from_secs(5), drive)
             .await
             .expect("streamed tools must run concurrently, not deadlock at the barrier");
-    }
-
-    /// The streaming driver threads the per-call `ToolContext` to executed
-    /// tools, exactly like the blocking path.
-    #[tokio::test]
-    async fn tool_context_reaches_tool_through_streaming_loop() {
-        let model = MockCompletionModel::from_stream_turns([
-            vec![
-                MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
-                    .with_call_id("call_1"),
-                MockStreamEvent::final_response_with_total_tokens(4),
-            ],
-            vec![
-                MockStreamEvent::text("done"),
-                MockStreamEvent::final_response_with_total_tokens(6),
-            ],
-        ]);
-        let probe = MockContextProbeTool::default();
-        let agent = agent_builder(model).tool(probe.clone()).build();
-        let empty_history: &[Message] = &[];
-
-        let mut tool_context = ToolContext::new();
-        tool_context.insert(SessionId("xyz-789".to_string()));
-
-        let mut stream = agent
-            .stream_prompt("do tool work")
-            .tool_context(tool_context)
-            .history(empty_history)
-            .max_turns(3)
-            .await;
-
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-                Err(err) => panic!("unexpected streaming error: {err:?}"),
-                Ok(_) => {}
-            }
-        }
-
-        assert_eq!(probe.observed().as_deref(), Some("session:xyz-789"));
-    }
-
-    /// Streaming counterpart of the blocking empty-context default: when no
-    /// [`ToolContext`] is supplied, the tool still receives a fresh empty
-    /// context (observing `no-session`), not a stale value.
-    #[tokio::test]
-    async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
-        let model = MockCompletionModel::from_stream_turns([
-            vec![
-                MockStreamEvent::tool_call("tool_call_1", "context_probe", serde_json::json!({}))
-                    .with_call_id("call_1"),
-                MockStreamEvent::final_response_with_total_tokens(4),
-            ],
-            vec![
-                MockStreamEvent::text("done"),
-                MockStreamEvent::final_response_with_total_tokens(6),
-            ],
-        ]);
-        let probe = MockContextProbeTool::default();
-        let agent = agent_builder(model).tool(probe.clone()).build();
-        let empty_history: &[Message] = &[];
-
-        let mut stream = agent
-            .stream_prompt("do tool work")
-            .history(empty_history)
-            .max_turns(3)
-            .await;
-
-        while let Some(item) = stream.next().await {
-            match item {
-                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
-                Err(err) => panic!("unexpected streaming error: {err:?}"),
-                Ok(_) => {}
-            }
-        }
-
-        assert_eq!(probe.observed().as_deref(), Some("no-session"));
     }
 
     #[tokio::test]

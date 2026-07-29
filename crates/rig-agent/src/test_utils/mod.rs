@@ -22,8 +22,8 @@ pub use model_conformance::{
 pub use rig_core::test_utils::*;
 pub use rig_memory::test_utils::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use tools::{
-    MockAddTool, MockBarrierTool, MockContextProbeTool, MockControlledTool, MockDeniedTool,
-    MockExampleTool, MockFailingTool, MockFailure, MockHandledFailureTool, MockImageGeneratorTool,
-    MockImageOutputTool, MockMetadataTool, MockObjectOutputTool, MockOperationArgs, MockRequestId,
-    MockStringOutputTool, MockSubtractTool, MockToolError, SessionId, mock_math_toolset,
+    MockAddTool, MockBarrierTool, MockControlledTool, MockDeniedTool, MockExampleTool,
+    MockFailingTool, MockFailure, MockHandledFailureTool, MockImageGeneratorTool,
+    MockImageOutputTool, MockObjectOutputTool, MockOperationArgs, MockStringOutputTool,
+    MockSubtractTool, MockToolError, mock_math_executor,
 };

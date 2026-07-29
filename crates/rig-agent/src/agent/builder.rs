@@ -7,72 +7,20 @@ use rig_core::{memory::ConversationMemory, message::ToolChoice};
 use crate::{
     agent::hook::{AgentHook, HookStack},
     completion::Document,
+    executor::ToolExecutor,
     provider::{ProviderConfig, Runtime},
-    tool::{
-        DynamicTool, PortableDynamicTool, Tool, ToolSet,
-        server::{ToolServer, ToolServerHandle},
-    },
+    tool::{PortableDynamicTool, PortableTool},
 };
-
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-#[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-use crate::tool::rmcp::McpTool as RmcpTool;
 
 use super::{Agent, OutputMode};
 
-/// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
-/// timeout to each (`None` disables it; see issue #1914). Returns
-/// `(tool_name, tool)` pairs.
-#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-fn build_rmcp_tools(
-    tools: Vec<rmcp::model::Tool>,
-    client: rmcp::service::ServerSink,
-    timeout: Option<std::time::Duration>,
-) -> Vec<(String, RmcpTool)> {
-    tools
-        .into_iter()
-        .map(|tool| {
-            let name = tool.name.to_string();
-            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
-            (name, rmcp_tool)
-        })
-        .collect()
-}
-
-/// Marker type indicating no tool configuration has been set yet.
+/// A builder for creating an agent.
 ///
-/// This is the default state for a new `AgentBuilder`. From this state,
-/// you can either:
-/// - Add tools via `.tool()`, `.dynamic_tool()`, or `.dynamic_tools()`
-///   (transitions to `WithBuilderTools`)
-/// - Set a pre-existing `ToolServerHandle` via `.tool_server_handle()` (transitions to `WithToolServerHandle`)
-/// - Call `.build()` to create an agent with no tools
-#[derive(Default)]
-pub struct NoToolConfig;
-
-/// Typestate indicating a pre-existing `ToolServerHandle` has been provided.
-///
-/// In this state, tool-adding methods (`.tool()`, `.dynamic_tool()`, etc.) are not available.
-/// The provided handle will be used directly when building the agent.
-pub struct WithToolServerHandle {
-    handle: ToolServerHandle,
-}
-
-/// Typestate indicating tools are being configured via the builder API.
-///
-/// In this state, you can continue adding tools via `.tool()`,
-/// `.dynamic_tool()`, and `.dynamic_tools()`. When
-/// `.build()` is called, a new `ToolServer`
-/// will be created with all the configured tools.
-pub struct WithBuilderTools {
-    tools: ToolSet,
-}
-
-/// A builder for creating an agent
-///
-/// The builder uses a typestate pattern to enforce that tool configuration
-/// is done in a mutually exclusive way: either provide a pre-existing
-/// `ToolServerHandle`, or add tools via the builder API, but not both.
+/// Tools are plain [`PortableDynamicTool`] records: [`tool`](Self::tool)
+/// erases a typed [`PortableTool`], while [`dynamic_tool`](Self::dynamic_tool)
+/// registers a runtime-built record directly. The built agent holds the
+/// records in a [`ToolExecutor`] and advertises their definitions as a
+/// [`ToolCatalog`](crate::agent::prepare::ToolCatalog).
 ///
 /// # Example
 /// ```no_run
@@ -93,7 +41,7 @@ pub struct WithBuilderTools {
 /// # Ok(())
 /// # }
 /// ```
-pub struct AgentBuilder<ToolState = NoToolConfig> {
+pub struct AgentBuilder {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
@@ -120,8 +68,8 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     tool_choice: Option<ToolChoice>,
     /// Default total model-call budget, including the initial call and retries.
     default_max_turns: Option<usize>,
-    /// Tool configuration state (typestate pattern)
-    tool_state: ToolState,
+    /// The executable tool records registered on this builder.
+    executor: ToolExecutor,
     /// Default hook stack applied to every prompt request from the built agent.
     hooks: HookStack,
     /// Optional JSON Schema for structured output
@@ -134,7 +82,31 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     default_conversation_id: Option<String>,
 }
 
-impl<ToolState> AgentBuilder<ToolState> {
+impl AgentBuilder {
+    /// Create a new agent builder for the given provider configuration
+    pub fn new(provider: ProviderConfig) -> Self {
+        Self {
+            name: None,
+            description: None,
+            provider,
+            runtime: None,
+            preamble: None,
+            static_context: vec![],
+            temperature: None,
+            max_tokens: None,
+            additional_params: None,
+            record_telemetry_content: false,
+            tool_choice: None,
+            default_max_turns: None,
+            executor: ToolExecutor::new(),
+            hooks: HookStack::new(),
+            output_schema: None,
+            output_mode: OutputMode::default(),
+            memory: None,
+            default_conversation_id: None,
+        }
+    }
+
     /// Share live transport handles (HTTP client and feature-gated provider
     /// clients) with other agents instead of building fresh ones at
     /// [`build`](Self::build) time.
@@ -291,372 +263,38 @@ impl<ToolState> AgentBuilder<ToolState> {
         self.hooks.push(hook);
         self
     }
-}
 
-impl AgentBuilder<NoToolConfig> {
-    /// Create a new agent builder for the given provider configuration
-    pub fn new(provider: ProviderConfig) -> Self {
-        Self {
-            name: None,
-            description: None,
-            provider,
-            runtime: None,
-            preamble: None,
-            static_context: vec![],
-            temperature: None,
-            max_tokens: None,
-            additional_params: None,
-            record_telemetry_content: false,
-            tool_choice: None,
-            default_max_turns: None,
-            tool_state: NoToolConfig,
-            hooks: HookStack::new(),
-            output_schema: None,
-            output_mode: OutputMode::default(),
-            memory: None,
-            default_conversation_id: None,
-        }
-    }
-}
-
-impl AgentBuilder<NoToolConfig> {
-    /// Set a pre-existing ToolServerHandle for the agent.
-    ///
-    /// After calling this method, tool-adding methods (`.tool()`, `.dynamic_tool()`, etc.)
-    /// will not be available. Use this when you want to share a `ToolServer`
-    /// between multiple agents or have pre-configured tools.
-    pub fn tool_server_handle(
-        self,
-        handle: ToolServerHandle,
-    ) -> AgentBuilder<WithToolServerHandle> {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            runtime: self.runtime,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: WithToolServerHandle { handle },
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-
-    /// Add a static tool to the agent.
-    ///
-    /// This transitions the builder to the `WithBuilderTools` state, where
-    /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool<T>(self, tool: T) -> AgentBuilder<WithBuilderTools>
-    where
-        T: Tool + 'static,
-    {
-        let mut tools = ToolSet::default();
-        tools.add_tool(tool);
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            runtime: self.runtime,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: WithBuilderTools { tools },
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-
-    /// Add one runtime-defined tool to the agent.
-    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tools(vec![tool])
-    }
-
-    /// Add one context-free dynamic tool through the classic registry adapter.
-    pub fn portable_dynamic_tool(
-        self,
-        tool: PortableDynamicTool,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tool(DynamicTool::from_portable(tool))
-    }
-
-    /// Add runtime-defined tools to the agent.
-    ///
-    /// This is useful when tool definitions and callbacks are constructed at runtime.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
-        let tools = ToolSet::from_dynamic_tools(tools);
-
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            runtime: self.runtime,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools { tools },
-        }
-    }
-
-    /// Add an MCP tool (from `rmcp`) to the agent, bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
-    /// to change or disable it.
-    ///
-    /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tool(
-        self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add an MCP tool (from `rmcp`) with a per-call timeout (see issue #1914).
-    ///
-    /// Pass a [`Duration`](std::time::Duration) to bound the call, or `None` to
-    /// disable the timeout (unbounded). On timeout the call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tool_with_timeout(
-        self,
-        tool: rmcp::model::Tool,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
-    }
-
-    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
-    /// to change or disable it.
-    ///
-    /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
-    /// issue #1914).
-    ///
-    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
-    /// disable the timeout (unbounded). On timeout a call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
-    }
-
-    /// Transition into the `WithBuilderTools` state carrying the given built
-    /// MCP tools.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn with_rmcp_toolset(self, built: Vec<(String, RmcpTool)>) -> AgentBuilder<WithBuilderTools> {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            runtime: self.runtime,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools: {
-                    let mut set = ToolSet::default();
-                    for (_, tool) in built {
-                        set.add_erased(std::sync::Arc::new(tool));
-                    }
-                    set
-                },
-            },
-        }
-    }
-
-    /// Build the agent with no tools configured.
-    ///
-    /// An empty `ToolServer` will be created for the agent.
-    pub fn build(self) -> Agent {
-        let tool_server_handle = ToolServer::new().run();
-
-        Agent {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            rt: self.runtime.unwrap_or_else(|| Arc::new(Runtime::new())),
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice,
-            tool_server_handle,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-}
-
-impl AgentBuilder<WithToolServerHandle> {
-    /// Build the agent using the pre-configured ToolServerHandle.
-    pub fn build(self) -> Agent {
-        Agent {
-            name: self.name,
-            description: self.description,
-            provider: self.provider,
-            rt: self.runtime.unwrap_or_else(|| Arc::new(Runtime::new())),
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice,
-            tool_server_handle: self.tool_state.handle,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-}
-
-impl AgentBuilder<WithBuilderTools> {
-    /// Add another static tool to the agent.
+    /// Add a typed static tool to the agent. The tool is erased into a
+    /// [`PortableDynamicTool`] record; registering the same name again
+    /// replaces the earlier registration in place.
     pub fn tool<T>(mut self, tool: T) -> Self
     where
-        T: Tool + 'static,
+        T: PortableTool + 'static,
     {
-        self.tool_state.tools.add_tool(tool);
+        self.executor = self
+            .executor
+            .register(PortableDynamicTool::from_portable(tool));
         self
     }
 
-    /// Add one runtime-defined tool to the agent.
-    pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
-        self.tool_state.tools.add_dynamic_tool(tool);
+    /// Add one runtime-defined tool record to the agent.
+    pub fn dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
+        self.executor = self.executor.register(tool);
         self
     }
 
-    /// Add one context-free dynamic tool through the classic registry adapter.
-    pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
-        self.tool_state.tools.add_portable_dynamic_tool(tool);
-        self
-    }
-
-    /// Add runtime-defined tools to the agent.
-    pub fn dynamic_tools(mut self, tools: Vec<DynamicTool>) -> Self {
-        let tools = ToolSet::from_dynamic_tools(tools);
-        self.tool_state.tools.add_tools(tools);
-        self
-    }
-
-    /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
-    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
-    /// to change or disable it.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-    ) -> Self {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
-
-    /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
-    /// issue #1914).
+    /// Add runtime-defined tool records to the agent.
     ///
-    /// Pass a [`Duration`](std::time::Duration) to bound calls, or `None` to
-    /// disable the timeout (unbounded). On timeout a call resolves to a tool
-    /// error the agent can recover from instead of blocking forever.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools_with_timeout(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> Self {
-        self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
-    }
-
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
-        for (_, tool) in built {
-            self.tool_state.tools.add_erased(std::sync::Arc::new(tool));
+    /// This is useful when tool definitions and callbacks are constructed at runtime.
+    pub fn dynamic_tools(mut self, tools: impl IntoIterator<Item = PortableDynamicTool>) -> Self {
+        for tool in tools {
+            self.executor = self.executor.register(tool);
         }
-
         self
     }
 
     /// Build the agent with the configured tools.
-    ///
-    /// A new `ToolServer` will be created containing all tools added via
-    /// `.tool()`, `.dynamic_tool()`, and `.dynamic_tools()`.
     pub fn build(self) -> Agent {
-        let tool_server_handle = ToolServer::new().add_tools(self.tool_state.tools).run();
-
         Agent {
             name: self.name,
             description: self.description,
@@ -669,7 +307,8 @@ impl AgentBuilder<WithBuilderTools> {
             additional_params: self.additional_params,
             record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
-            tool_server_handle,
+            catalog: self.executor.catalog(),
+            executor: self.executor,
             default_max_turns: self.default_max_turns,
             hooks: self.hooks,
             output_schema: self.output_schema,
@@ -679,12 +318,13 @@ impl AgentBuilder<WithBuilderTools> {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::provider::MockScript;
     use crate::test_utils::MockAddTool;
-    use crate::tool::{ToolContext, ToolExecutionError};
+    use crate::tool::{ToolExecutionError, ToolOutput};
     use rig_core::OneOrMany;
     use rig_core::completion::{CompletionResponse, Usage};
     use rig_core::message::AssistantContent;
@@ -719,9 +359,9 @@ mod tests {
         }
     }
 
-    impl Tool for NamedTool {
+    impl PortableTool for NamedTool {
         const NAME: &'static str = "registered_named";
-        type Error = rig::tool::ToolExecutionError;
+        type Error = ToolExecutionError;
         type Args = serde_json::Value;
         type Output = String;
 
@@ -733,11 +373,7 @@ mod tests {
             serde_json::json!({"type": "object", "properties": {}})
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, ToolExecutionError> {
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, ToolExecutionError> {
             Ok("ok".to_string())
         }
     }
@@ -753,7 +389,7 @@ mod tests {
                 .tool(NamedTool::new())
                 .build(),
         ] {
-            let definitions = agent.tool_server_handle.get_tool_defs().await;
+            let definitions = agent.tool_definitions().await;
             assert!(
                 definitions
                     .iter()
@@ -761,104 +397,15 @@ mod tests {
                 "the provider definitions dropped the canonical tool name"
             );
 
-            let mut context = ToolContext::new();
-            let result = agent
-                .tool_server_handle
-                .execute(NamedTool::NAME, "{}", &mut context)
-                .await;
-            assert!(result.is_success());
-            assert_eq!(result.output().as_text(), Some("ok"));
+            let tool = agent
+                .executor
+                .get(NamedTool::NAME)
+                .expect("the tool record is registered");
+            let result = tool
+                .execute(serde_json::json!({}))
+                .await
+                .expect("execution succeeds");
+            assert_eq!(result, ToolOutput::text("ok"));
         }
-    }
-
-    /// The builder's shared MCP helper threads the configured timeout (default,
-    /// explicit, or `None`/disabled) onto every built tool, and the threaded
-    /// timeout actually bounds a hanging call. This covers the plumbing behind
-    /// `rmcp_tool[s]` / `rmcp_tool[s]_with_timeout` (see issue #1914).
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    #[tokio::test]
-    async fn build_rmcp_tools_threads_timeout_into_built_tools() {
-        use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
-        use crate::tool::{ToolContext, ToolErrorKind, server::ToolServer};
-        use rmcp::model::{
-            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
-            ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
-        };
-        use rmcp::service::RequestContext;
-        use rmcp::{RoleServer, ServerHandler, ServiceExt};
-        use std::sync::Arc;
-        use std::time::Duration;
-
-        #[derive(Clone)]
-        struct HangingServer;
-        impl ServerHandler for HangingServer {
-            fn get_info(&self) -> ServerInfo {
-                ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-                    .with_protocol_version(ProtocolVersion::LATEST)
-                    .with_server_info(Implementation::new("builder-timeout-test", "0.1.0"))
-            }
-            async fn call_tool(
-                &self,
-                _request: CallToolRequestParams,
-                _context: RequestContext<RoleServer>,
-            ) -> Result<CallToolResult, ErrorData> {
-                std::future::pending::<Result<CallToolResult, ErrorData>>().await
-            }
-        }
-
-        fn tool(name: &str) -> Tool {
-            Tool::new(
-                name.to_string(),
-                String::new(),
-                Arc::new(serde_json::Map::new()),
-            )
-        }
-
-        let (c2s, sfc) = tokio::io::duplex(8192);
-        let (s2c, cfs) = tokio::io::duplex(8192);
-        let server_task = tokio::spawn(async move {
-            let running = HangingServer.serve((sfc, s2c)).await.expect("server start");
-            running.waiting().await.expect("server error");
-        });
-        let client = ClientInfo::default()
-            .serve((cfs, c2s))
-            .await
-            .expect("client connect");
-        let peer = client.peer().clone();
-
-        // The configured timeout (default, explicit, or disabled) is threaded
-        // onto each built tool.
-        let built_default = build_rmcp_tools(
-            vec![tool("a")],
-            peer.clone(),
-            Some(DEFAULT_MCP_TOOL_TIMEOUT),
-        );
-        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
-        let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
-        assert_eq!(built_none[0].1.timeout(), None);
-
-        // ...and the threaded timeout actually bounds a hanging call.
-        let built = build_rmcp_tools(
-            vec![tool("hang_forever")],
-            peer,
-            Some(Duration::from_millis(200)),
-        );
-        assert_eq!(built.len(), 1);
-        assert_eq!(built[0].0, "hang_forever");
-        let handle = ToolServer::new().run();
-        handle
-            .add_erased_tool(Arc::new(built.into_iter().next().unwrap().1))
-            .await;
-        let timed = tokio::time::timeout(Duration::from_secs(5), async {
-            let mut context = ToolContext::new();
-            handle.execute("hang_forever", "{}", &mut context).await
-        })
-        .await;
-        let result = timed.expect("built tool hung past the safety timeout");
-        assert!(result.is_error_kind(ToolErrorKind::Timeout));
-        assert!(result.output().render().contains("timed out"));
-
-        drop(client);
-        server_task.abort();
     }
 }

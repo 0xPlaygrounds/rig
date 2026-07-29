@@ -5,12 +5,12 @@
 //! portable contracts from `rig_core` at their familiar `rig::...` paths and the
 //! classic runtime from `rig_agent` under `rig::agent`.
 //!
-//! `rig::tool` keeps the classic contextual tool API (`Tool`, `ToolContext`,
-//! …) with the default `agent` feature — the same surface as before the runtime
-//! split — and always exposes the runtime-independent contracts explicitly as
-//! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
-//! classic API also lives at [`crate::agent::tool`]. Classic construction
-//! methods such as `client.agent(...)` come from
+//! `rig::tool` exposes the portable, context-free tool contracts —
+//! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool` — and
+//! aliases `Tool` to `PortableTool` so classic `impl Tool for X` sites keep
+//! compiling once their `call` signature drops the removed `ToolContext`
+//! parameter. The same surface also lives at [`crate::agent::tool`]. Classic
+//! construction methods such as `client.agent(...)` come from
 //! [`crate::client::AgentClientExt`]; `use rig::prelude::*;` brings it in
 //! alongside the canonical `CompletionClient`, the same surface as before the
 //! split.
@@ -53,7 +53,7 @@ pub mod core {
 pub mod agent {
     pub use rig_agent::agent::*;
 
-    /// Contextual tools for the classic agent runtime.
+    /// Tool records executed by the classic agent runtime.
     pub mod tool {
         pub use rig_agent::tool::*;
     }
@@ -141,11 +141,10 @@ pub use rig_agent::agent_api::SessionAgent;
 
 /// Common portable imports plus additive classic-runtime conveniences.
 pub mod prelude {
-    // The classic contextual `Tool` and its mutable `ToolContext` — the same
-    // prelude surface as before the runtime split, so `use rig::prelude::*;
-    // impl Tool for X {…}` keeps working.
-    #[cfg(feature = "agent")]
-    pub use crate::tool::{Tool, ToolContext};
+    // `Tool` is an alias for the portable, context-free `PortableTool`, so
+    // `use rig::prelude::*; impl Tool for X {…}` keeps working once the
+    // implementation's `call` drops the removed `ToolContext` parameter.
+    pub use crate::tool::Tool;
     // The classic construction extension `AgentClientExt` (adding `agent()` /
     // `extractor()`) sits alongside the canonical `CompletionClient` brought in
     // by the `rig_core::prelude::*` glob below. The two traits share no method
@@ -154,8 +153,7 @@ pub mod prelude {
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
         Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError, StreamingChat,
-        StreamingPrompt, StreamingResult, StructuredOutputError, ToProviderConfig, ToolSet,
-        TypedPrompt,
+        StreamingPrompt, StreamingResult, StructuredOutputError, ToProviderConfig, TypedPrompt,
     };
     pub use rig_core::prelude::*;
 }
@@ -167,45 +165,32 @@ pub mod streaming {
     pub use rig_core::streaming::*;
 }
 
-/// Tools for the default (classic) runtime.
+/// Portable, context-free tool contracts (used by every Rig runtime).
 ///
-/// With the `agent` feature (on by default), `Tool`, `ToolContext`, and friends
-/// here are the classic *contextual* tool API — the same surface as before the
-/// runtime split, so `use rig::tool::{Tool, ToolContext};` keeps working. The
-/// runtime-independent portable contracts are always exposed explicitly as
-/// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
-/// [`crate::tool::PortableDynamicTool`] (and in full under
-/// [`crate::tool::portable`]). The classic API also lives at
+/// `Tool` is an alias for [`crate::tool::PortableTool`]: classic
+/// `impl Tool for X` sites keep compiling once their `call` signature drops
+/// the removed `ToolContext` parameter. Runtime-defined tools are
+/// [`crate::tool::PortableDynamicTool`] records — close over your state in
+/// the callback instead of threading a context. The full portable surface
+/// also lives under [`crate::tool::portable`], and the same exports are at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
+/// MCP tools live in [`crate::tool::mcp`] (the `rig-mcp` crate).
 pub mod tool {
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
+        serialize_to_tool_output,
     };
     // Runtime-independent portable contracts — explicit, always available.
+    /// The classic name for the one tool-authoring trait. See the module docs
+    /// for the (single) signature change relative to the removed contextual
+    /// trait.
+    pub use rig_core::tool::PortableTool as Tool;
     pub use rig_core::tool::{
         PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;
-
-    // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
-    // the classic contextual trait and its mutable context; none of these
-    // collide with the portable exports above.
-    // Native-only, matching every other `rmcp` gate: the module does not exist
-    // on wasm. Reaching this re-export there needs `rig-agent` to have compiled
-    // first, which its own `compile_error!` prevents, so the predicate is
-    // belt-and-braces — but the CI error-count assertion only builds
-    // `-p rig-agent`, so nothing else would catch this one drifting.
-    #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub use rig_agent::tool::rmcp;
-    #[cfg(feature = "agent")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{
-        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
-        server, tool_definition,
-    };
     /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a
     /// [`ToolCatalog`](rig_agent::agent::prepare::ToolCatalog) with MCP-backed
     /// execution for the data-oriented runtime.

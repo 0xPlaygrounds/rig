@@ -312,7 +312,7 @@ async fn long_history_replay_nonstreaming() {
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
             let first_request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some(preamble),
                     Vec::new(),
@@ -341,7 +341,7 @@ async fn long_history_replay_nonstreaming() {
             // the provider's `fc_...` ID) — the request must still be accepted
             // because non-native IDs are omitted and calls pair by call_id.
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
                     Some(preamble),
                     vec![

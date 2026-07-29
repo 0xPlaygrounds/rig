@@ -76,11 +76,7 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(&self.path)
@@ -116,11 +112,7 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(&self.path)

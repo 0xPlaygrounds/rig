@@ -34,7 +34,7 @@ async fn required_forces_a_tool_call() {
         |client| async move {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::with_history(
                     Some(TOOLS_PREAMBLE),
@@ -70,7 +70,7 @@ async fn none_suppresses_tool_calls() {
         |client| async move {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::None),
                 ..CompletionRequest::with_history(
                     Some(TOOLS_PREAMBLE),
@@ -114,8 +114,8 @@ async fn specific_single_function_targets_named_tool() {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
@@ -178,9 +178,9 @@ async fn specific_multiple_functions_use_allowed_tools() {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
-                    rig::tool::tool_definition(&AlphaSignal),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&AlphaSignal),
                 ],
                 tool_choice: Some(ToolChoice::Specific {
                     function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],

@@ -58,11 +58,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -99,11 +95,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         // Sleep for 1 microsecond to allow simulating a more compute-heavy tool

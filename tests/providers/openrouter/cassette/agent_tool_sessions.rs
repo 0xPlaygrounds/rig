@@ -136,11 +136,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -186,11 +182,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -225,11 +217,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -255,11 +243,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }
@@ -583,7 +567,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&tool)],
+                tools: vec![rig::tool::portable_tool_definition(&tool)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::with_history(
                     Some("Use the requested tool call and no prose before it."),
@@ -641,7 +625,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 Message::assistant("The harbor label is crimson-harbor."),
             ];
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::None),
                 ..CompletionRequest::with_history(
                     Some("You are concise and should rely on the provided chat history."),

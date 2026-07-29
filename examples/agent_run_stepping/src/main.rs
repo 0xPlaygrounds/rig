@@ -26,10 +26,11 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::completion::CompletionModel;
+use rig::executor::ToolExecutor;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -66,11 +67,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -97,8 +94,8 @@ async fn main() -> Result<()> {
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
-    let local_tools = ToolSet::builder().static_tool(Add).build();
-    let tool_definitions = local_tools.get_tool_definitions();
+    let local_tools = ToolExecutor::from_tools([PortableDynamicTool::from_portable(Add)]);
+    let tool_definitions = local_tools.catalog().definitions;
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
 
@@ -167,13 +164,19 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let name = &call.tool_call.function.name;
-                    let args = call.tool_call.function.arguments.to_string();
+                    let args = call.tool_call.function.arguments.clone();
                     println!("→ executing {name}({args})");
-                    let mut context = rig::tool::ToolContext::new();
-                    let result = local_tools.execute(name, args, &mut context).await;
+                    // Failures stay model-visible as tool results, mirroring
+                    // the automatic loop's semantics.
+                    let output = match local_tools.get(name) {
+                        Some(tool) => tool.execute(args).await.unwrap_or_else(|error| {
+                            ToolOutput::text(format!("tool failed: {error}"))
+                        }),
+                        None => ToolOutput::text(format!("unknown tool `{name}`")),
+                    };
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
-                        result.output().clone().into_content(),
+                        output.into_content(),
                     ));
                 }
                 run_resumed.tool_results(results)?;

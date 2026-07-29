@@ -78,11 +78,7 @@ impl Tool for GetUserRecord {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         // Constant (id-independent) so the round-trip is deterministic for replay.
         let record = format!("name=Alice; ssn={SECRET_SSN}; status=active");
         self.raw_outputs

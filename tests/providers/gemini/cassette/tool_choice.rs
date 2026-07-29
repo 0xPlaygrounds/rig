@@ -56,8 +56,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(specific_add_choice()),
                 ..CompletionRequest::from_prompt(
@@ -111,8 +111,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(specific_add_choice()),
                 ..CompletionRequest::from_prompt(

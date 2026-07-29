@@ -37,7 +37,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&AsyncOperation))?
+        serde_json::to_string_pretty(&rig_agent::tool::portable_tool_definition(&AsyncOperation))?
     );
 
     for prompt in [

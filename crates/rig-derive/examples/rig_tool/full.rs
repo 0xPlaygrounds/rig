@@ -40,7 +40,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&StringProcessor))?
+        serde_json::to_string_pretty(&rig_agent::tool::portable_tool_definition(&StringProcessor))?
     );
 
     for prompt in [

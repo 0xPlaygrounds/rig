@@ -1,8 +1,8 @@
 //! Shared fixtures for the tool-pipeline cassette suites: counting tools,
 //! deliberately failing tools, prompt hooks, and embeddable tools. These
-//! suites lock in the externally observable behavior of the handrolled tool
-//! plumbing (`ToolSet`, `ToolServer`, hook dispatch, result shaping) ahead of
-//! the planned migration onto `rmcp`.
+//! suites lock in the externally observable behavior of the tool plumbing
+//! (executor registration, hook dispatch, result shaping) ahead of the
+//! planned migration onto `rmcp`.
 //!
 //! ## On loose assertions
 //!
@@ -29,8 +29,7 @@ use rig::agent::{
 };
 use rig::completion::ToolDefinition;
 use rig::message::{ImageMediaType, ToolResultContent};
-use rig::tool::server::ToolServerHandle;
-use rig::tool::{Tool, ToolEmbedding, ToolOutput};
+use rig::tool::{PortableToolEmbedding, Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -102,11 +101,7 @@ impl Tool for CountingAdd {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x + args.y)
     }
@@ -132,11 +127,7 @@ impl Tool for CountingSubtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x - args.y)
     }
@@ -172,11 +163,7 @@ impl Tool for CountingPing {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(PING_OUTPUT.to_string())
     }
@@ -222,11 +209,7 @@ impl Tool for CodewordLookup {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
@@ -278,11 +261,7 @@ impl Tool for StrictRegister {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(format!("registered {} guests", args.seats))
     }
@@ -309,11 +288,7 @@ impl Tool for MottoTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(MOTTO_OUTPUT.to_string())
     }
 }
@@ -322,6 +297,12 @@ impl Tool for MottoTool {
 pub(crate) struct ConfigOutput {
     pub(crate) service: String,
     pub(crate) max_retries: u64,
+}
+
+impl rig::tool::IntoToolOutput for ConfigOutput {
+    fn into_tool_output(self) -> Result<ToolOutput, rig::tool::ToolExecutionError> {
+        rig::tool::serialize_to_tool_output(&self)
+    }
 }
 
 /// Tool with a structured output: pins that non-string outputs are
@@ -353,11 +334,7 @@ impl Tool for ConfigTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
             max_retries: 3,
@@ -383,11 +360,7 @@ impl Tool for BadgeImageTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
         )))
@@ -489,27 +462,6 @@ impl AgentHook for TerminateOnToolHook {
     }
 }
 
-/// Hook that removes a tool from the shared tool server right before it would
-/// execute, forcing the execution-time `ToolNotFoundError` path.
-#[derive(Clone)]
-pub(crate) struct RemoveToolBeforeExecutionHook {
-    pub(crate) handle: ToolServerHandle,
-    pub(crate) tool_name: &'static str,
-}
-
-impl AgentHook for RemoveToolBeforeExecutionHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            self.handle.remove_tool(self.tool_name).await;
-        }
-        ToolCallAction::run()
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 #[error("init error")]
 pub(crate) struct InitError;
@@ -536,18 +488,14 @@ macro_rules! embeddable_operation {
                 operation_definition(Self::NAME, $description).parameters
             }
 
-            async fn call(
-                &self,
-                _context: &mut rig::tool::ToolContext,
-                args: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
                 self.counter.bump();
                 let op: fn(i64, i64) -> i64 = $op;
                 Ok(op(args.x, args.y))
             }
         }
 
-        impl ToolEmbedding for $name {
+        impl PortableToolEmbedding for $name {
             type InitError = InitError;
             type Context = ();
             type State = ();

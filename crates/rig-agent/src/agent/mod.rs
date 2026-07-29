@@ -171,13 +171,12 @@ pub mod prepare;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
-mod tool;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
 /// configured name.
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
-pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
+pub use builder::AgentBuilder;
 pub use completion::Agent;
 pub use config::AgentConfig;
 pub use hook::CompletionCall as CompletionCallEvent;

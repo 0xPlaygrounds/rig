@@ -18,7 +18,7 @@ pub use crate::completion::{
     TypedPrompt,
 };
 pub use crate::streaming::{StreamingChat, StreamingPrompt};
-pub use crate::tool::{Tool, ToolSet};
+pub use crate::tool::{PortableDynamicTool, PortableTool};
 pub use rig_core::client::completion::CompletionClient;
 
 pub use rig_core::Embed;

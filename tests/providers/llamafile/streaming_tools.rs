@@ -100,8 +100,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     let model = client.completion_model(support::model_name());
     let request = CompletionRequest {
         tools: vec![
-            rig::tool::tool_definition(&AlphaSignal),
-            rig::tool::tool_definition(&BetaSignal),
+            rig::tool::portable_tool_definition(&AlphaSignal),
+            rig::tool::portable_tool_definition(&BetaSignal),
         ],
         ..CompletionRequest::with_history(
             Some(TWO_TOOL_STREAM_PREAMBLE),
@@ -189,7 +189,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     let client = support::client();
     let model = client.completion_model(support::model_name());
     let request = CompletionRequest {
-        tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+        tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
         ..CompletionRequest::with_history(
             Some(ORDERED_TOOL_STREAM_PREAMBLE),
             Vec::new(),

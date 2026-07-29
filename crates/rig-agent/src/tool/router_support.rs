@@ -16,31 +16,54 @@ use futures::{StreamExt, stream};
 
 use rig_core::message::{ToolCall, UserContent};
 
-use super::{IntoToolOutput, Tool, ToolContext, ToolExecutionError, ToolResult, parse_tool_args};
+use serde::Deserialize;
+
+use super::{IntoToolOutput, PortableTool, ToolExecutionError, ToolResult};
 use crate::agent::prompt_request::{tool_result_message, tool_result_output};
 use crate::agent::run::PendingToolCall;
 
+/// Parse model-emitted JSON arguments with the classic dispatch semantics,
+/// including the `null` → `{}` fallback for argument structs whose fields are
+/// all optional (what models send when no arguments are provided).
+fn parse_tool_args<A>(arguments: &serde_json::Value) -> Result<A, ToolExecutionError>
+where
+    A: for<'de> Deserialize<'de>,
+{
+    // Parse from the serialized text (not `from_value`) so parse failures
+    // carry the classic `at line N column M` positions — the error text is
+    // model-visible and recorded in replay cassettes.
+    let raw = arguments.to_string();
+    match serde_json::from_str(&raw) {
+        Ok(parsed) => Ok(parsed),
+        Err(original) if arguments.is_null() => serde_json::from_str("{}").map_err(|_| {
+            ToolExecutionError::invalid_args(format!("failed to parse tool arguments: {original}"))
+                .with_source(original)
+        }),
+        Err(error) => Err(ToolExecutionError::invalid_args(format!(
+            "failed to parse tool arguments: {error}"
+        ))
+        .with_source(error)),
+    }
+}
+
 /// Execute one typed tool against the model-emitted JSON arguments, mirroring
-/// the classic erased-dispatch semantics monomorphically:
+/// the erased-dispatch semantics monomorphically:
 ///
-/// - arguments are serialized to their compact JSON string and parsed with the
-///   classic parser (including the `null` → `{}` fallback for tools whose
-///   argument struct has no required fields);
-/// - the tool runs against a fresh [`ToolContext`];
-/// - the output is normalized through [`IntoToolOutput`];
-/// - typed errors are normalized through [`Tool::map_error`].
+/// - arguments are parsed with the classic parser (including the `null` →
+///   `{}` fallback for tools whose argument struct has no required fields);
+/// - the output is normalized through its concrete (non-blanket)
+///   [`IntoToolOutput`] implementation;
+/// - typed errors are normalized through [`PortableTool::map_error`].
 ///
 /// Every failure becomes a [`ToolResult::failed`], never a panic or a
 /// separate error channel — errors stay model-visible, as in the classic loop.
-pub async fn execute_typed<T: Tool>(tool: &T, arguments: &serde_json::Value) -> ToolResult {
-    let serialized = rig_core::json_utils::serialize_json_value(arguments);
-    let args = match parse_tool_args::<T::Args>(&serialized) {
+pub async fn execute_typed<T: PortableTool>(tool: &T, arguments: &serde_json::Value) -> ToolResult {
+    let args = match parse_tool_args::<T::Args>(arguments) {
         Ok(args) => args,
         Err(error) => return ToolResult::failed(error),
     };
-    let mut context = ToolContext::new();
-    match tool.call(&mut context, args).await {
-        Ok(output) => match output.into_tool_output() {
+    match tool.call(args).await {
+        Ok(output) => match IntoToolOutput::into_tool_output(output) {
             Ok(output) => ToolResult::success(output),
             Err(error) => ToolResult::failed(error),
         },

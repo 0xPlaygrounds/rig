@@ -1,6 +1,14 @@
+//! A complex agentic loop with Claude: an orchestrator agent that delegates to
+//! specialized sub-agents, a knowledge-base tool, and the built-in think tool.
+//!
+//! Each sub-agent is exposed to the orchestrator as a [`PortableDynamicTool`]
+//! whose callback closes over a clone of the agent (`Agent` is `Clone`) and
+//! forwards the prompt to it — see [`agent_as_tool`].
 use anyhow::Result;
+use rig::agent::Agent;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Client};
+use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use rig::{
     Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
@@ -52,6 +60,41 @@ impl rig::tool::PortableTool for KnowledgeBaseTool {
             .build();
         self.store.top_n(req).await
     }
+}
+
+/// Expose a sub-agent as a dynamic tool: the callback closes over a clone of
+/// the agent and forwards the model-provided prompt to it.
+fn agent_as_tool(agent: &Agent, name: &str, description: &str) -> PortableDynamicTool {
+    let inner = agent.clone();
+    PortableDynamicTool::new(
+        name,
+        description,
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The question or task for the sub-agent"
+                }
+            },
+            "required": ["prompt"]
+        }),
+        move |args| {
+            let inner = inner.clone();
+            Box::pin(async move {
+                let prompt = args
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let reply = inner
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ToolExecutionError::other(e.to_string()))?;
+                Ok(ToolOutput::text(reply))
+            })
+        },
+    )
 }
 
 // Define a knowledge base entry for our vector store
@@ -191,9 +234,21 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .tool(ThinkTool)
         .tool(knowledge_base)
-        .dynamic_tool(research_agent.into_tool())
-        .dynamic_tool(analysis_agent.into_tool())
-        .dynamic_tool(recommendation_agent.into_tool())
+        .dynamic_tool(agent_as_tool(
+            &research_agent,
+            "research_agent",
+            "Delegate detailed environmental science research questions to a specialized research agent.",
+        ))
+        .dynamic_tool(agent_as_tool(
+            &analysis_agent,
+            "data_analysis_agent",
+            "Delegate interpretation of environmental data and statistics to a specialized analysis agent.",
+        ))
+        .dynamic_tool(agent_as_tool(
+            &recommendation_agent,
+            "recommendation_agent",
+            "Delegate generation of practical sustainability recommendations to a specialized agent.",
+        ))
         .name("orchestrator_agent")
         .build();
 

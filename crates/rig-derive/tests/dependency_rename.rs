@@ -37,8 +37,8 @@ fn generated_paths_follow_cargo_dependency_renames() -> Result<(), Box<dyn std::
     Ok(())
 }
 
-/// A contextual tool without `rig`/`rig-agent` reachable must fail with the
-/// macro's targeted diagnostic, not an unresolved `::rig_agent` path error.
+/// A contextual tool must fail with the macro's targeted removal diagnostic
+/// (`ToolContext` is gone), not an unresolved path error.
 #[test]
 fn contextual_tool_without_runtime_crate_gets_a_targeted_error()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -50,7 +50,7 @@ fn contextual_tool_without_runtime_crate_gets_a_targeted_error()
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if !stderr.contains(
-        "contextual tools (`&mut ToolContext`) require a dependency on `rig` or `rig-agent`",
+        "ToolContext was removed; close over your state (or use `PortableDynamicTool::new`)",
     ) {
         return Err(format!(
             "fixture `core_only_contextual` failed without the targeted diagnostic:\n{stderr}"

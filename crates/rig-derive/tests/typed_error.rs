@@ -1,4 +1,11 @@
-use rig_agent::tool::{Tool, ToolContext, ToolErrorKind, ToolSet};
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used
+)]
+
+use rig_agent::tool::{PortableTool, ToolErrorKind};
 use rig_derive::rig_tool;
 
 #[derive(Debug)]
@@ -24,46 +31,38 @@ async fn async_typed_failure() -> Result<(), DomainError> {
 
 #[tokio::test]
 async fn derive_preserves_typed_errors_until_dispatch() {
-    let direct = TypedFailure
-        .call(&mut ToolContext::new(), TypedFailureParameters {})
-        .await;
+    let direct = TypedFailure.call(TypedFailureParameters {}).await;
     assert!(direct.is_err());
     if let Err(error) = direct {
         let _: &DomainError = &error;
         assert_eq!(error.to_string(), "typed domain failure");
     }
 
-    let mut tools = ToolSet::default();
-    tools.add_tool(TypedFailure);
-    let result = tools
-        .execute(TypedFailure::NAME, "{}", &mut ToolContext::new())
-        .await;
-    assert!(result.error().is_some());
-    if let Some(error) = result.error() {
-        assert_eq!(error.kind(), ToolErrorKind::Other);
-        assert_eq!(error.message(), "typed domain failure");
-        assert_eq!(error.model_feedback(), Some("the tool failed"));
-        assert!(error.is::<DomainError>());
-    }
+    // Dispatch through the erased portable record normalizes the typed error
+    // exactly like the classic registry dispatch did.
+    let error = TypedFailure
+        .portable()
+        .execute(serde_json::json!({}))
+        .await
+        .expect_err("the tool always fails");
+    assert_eq!(error.kind(), ToolErrorKind::Other);
+    assert_eq!(error.message(), "typed domain failure");
+    assert_eq!(error.model_feedback(), Some("the tool failed"));
+    assert!(error.is::<DomainError>());
 }
 
 #[tokio::test]
 async fn async_derive_preserves_typed_errors_until_dispatch() {
-    let direct = AsyncTypedFailure
-        .call(&mut ToolContext::new(), AsyncTypedFailureParameters {})
-        .await;
+    let direct = AsyncTypedFailure.call(AsyncTypedFailureParameters {}).await;
     assert!(direct.is_err());
     if let Err(error) = direct {
         let _: &DomainError = &error;
     }
 
-    let mut tools = ToolSet::default();
-    tools.add_tool(AsyncTypedFailure);
-    let result = tools
-        .execute(AsyncTypedFailure::NAME, "{}", &mut ToolContext::new())
-        .await;
-    assert!(result.error().is_some());
-    if let Some(error) = result.error() {
-        assert!(error.is::<DomainError>());
-    }
+    let error = AsyncTypedFailure
+        .portable()
+        .execute(serde_json::json!({}))
+        .await
+        .expect_err("the tool always fails");
+    assert!(error.is::<DomainError>());
 }

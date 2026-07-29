@@ -26,7 +26,7 @@ async fn strict_tools_opt_in_roundtrip() {
             // false, all properties required) must be accepted by the API.
             let model = client.completion_model(openai::GPT_4O).with_strict_tools();
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 ..CompletionRequest::with_history(
                     Some(TOOLS_PREAMBLE),
                     Vec::new(),

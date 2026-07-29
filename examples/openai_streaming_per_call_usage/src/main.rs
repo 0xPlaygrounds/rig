@@ -66,11 +66,7 @@ impl Tool for ProjectStatusTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "{} is approved for release after the final usage metrics check.",
             args.ticket

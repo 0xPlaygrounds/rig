@@ -1,18 +1,37 @@
-//! Runtime mutation of a shared `ToolServerHandle`: tools added or removed
-//! between turns change the definitions advertised on the next request, and a
-//! single handle backs multiple agents. This is the surface `McpClientHandler`
-//! drives on tool-list-changed notifications, so its semantics must survive
-//! the rmcp migration unchanged.
+//! Runtime mutation of the advertised tool set between turns. These cassettes
+//! were recorded against the removed `ToolServer`/`ToolServerHandle` registry:
+//! tools added or removed between turns changed the definitions advertised on
+//! the next request. With the data-oriented runtime the executable set is
+//! fixed per agent, so each mutation is ported as building a fresh agent with
+//! the post-mutation tool set — the per-request tool declarations (and thus
+//! the recorded wire bytes) are identical, and the model-visible consequences
+//! (which tools are advertised, called, and executed) stay pinned.
 
 use rig::completion::{Chat, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::tool::server::ToolServer;
 
 use super::super::agent_run_support::{history_has_assistant_tool_call, tool_result_texts};
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract, FORCE_TOOLS_PREAMBLE};
 use crate::support::assert_mentions_expected_number;
+
+fn calculator_agent(
+    client: &gemini::Client,
+    add: CountingAdd,
+    subtract: Option<CountingSubtract>,
+) -> rig::agent::Agent {
+    let builder = client
+        .agent(gemini::completion::GEMINI_2_5_FLASH)
+        .preamble(FORCE_TOOLS_PREAMBLE)
+        .temperature(0.0)
+        .tool(add);
+    let builder = match subtract {
+        Some(subtract) => builder.tool(subtract),
+        None => builder,
+    };
+    builder.default_max_turns(3).build()
+}
 
 #[tokio::test]
 async fn add_tool_between_turns_appears_in_next_request() {
@@ -23,14 +42,7 @@ async fn add_tool_between_turns_appears_in_next_request() {
     with_gemini_cassette(
         "tool_server/add_tool_between_turns_appears_in_next_request",
         |client| async move {
-            let handle = ToolServer::new().tool(add).run();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
+            let agent = calculator_agent(&client, add.clone(), None);
 
             let mut history = Vec::<Message>::new();
             let first = agent
@@ -39,7 +51,9 @@ async fn add_tool_between_turns_appears_in_next_request() {
                 .expect("first prompt should succeed with only the add tool");
             assert_mentions_expected_number(&first, 42);
 
-            handle.add_tool(subtract).await;
+            // Classic: `handle.add_tool(subtract)` on the shared server.
+            // Ported: the next prompt runs with the widened tool set.
+            let agent = calculator_agent(&client, add, Some(subtract));
 
             let mut history = Vec::<Message>::new();
             let second = agent
@@ -71,14 +85,7 @@ async fn remove_tool_between_turns_drops_definition() {
     with_gemini_cassette(
         "tool_server/remove_tool_between_turns_drops_definition",
         |client| async move {
-            let handle = ToolServer::new().tool(add).tool(subtract).run();
-            let agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
+            let agent = calculator_agent(&client, add.clone(), Some(subtract));
 
             let mut history = Vec::<Message>::new();
             let first = agent
@@ -88,7 +95,9 @@ async fn remove_tool_between_turns_drops_definition() {
             assert_mentions_expected_number(&first, 42);
             assert_eq!(add_counter.count(), 1, "add should execute on the first prompt");
 
-            handle.remove_tool("subtract").await;
+            // Classic: `handle.remove_tool("subtract")` on the shared server.
+            // Ported: the next prompt runs with the narrowed tool set.
+            let agent = calculator_agent(&client, add, None);
 
             let mut history = Vec::<Message>::new();
             let second = agent
@@ -121,21 +130,11 @@ async fn shared_tool_server_handle_updates_all_agents() {
     with_gemini_cassette(
         "tool_server/shared_tool_server_handle_updates_all_agents",
         |client| async move {
-            let handle = ToolServer::new().tool(add).run();
-            let first_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
-            let second_agent = client
-                .agent(gemini::completion::GEMINI_2_5_FLASH)
-                .preamble(FORCE_TOOLS_PREAMBLE)
-                .temperature(0.0)
-                .tool_server_handle(handle.clone())
-                .default_max_turns(3)
-                .build();
+            let first_agent = calculator_agent(&client, add.clone(), None);
+            // Classic: a second agent shared the same handle and saw the
+            // `add_tool(subtract)` mutation. Ported: the second agent is
+            // rebuilt with the widened tool set before its prompt.
+            let second_agent = calculator_agent(&client, add, Some(subtract));
 
             let mut history = Vec::<Message>::new();
             let first = first_agent
@@ -143,8 +142,6 @@ async fn shared_tool_server_handle_updates_all_agents() {
                 .await
                 .expect("the first agent should use the shared add tool");
             assert_mentions_expected_number(&first, 42);
-
-            handle.add_tool(subtract).await;
 
             let mut history = Vec::<Message>::new();
             let second = second_agent

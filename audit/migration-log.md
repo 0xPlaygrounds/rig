@@ -535,3 +535,42 @@ pinning on AgentSession, or cassette re-record).
 --all-targets`); workspace check 0 errors; 41 test targets green incl.
 full facade suite single-threaded + bedrock replay; doctests green;
 cassettes untouched.
+
+## R2 — Tool system collapse (COMPLETE)
+
+The classic tool machinery is gone; tools are records:
+- Deleted: `tool/server.rs` (ToolServer/Handle/Snapshot), `tool/rmcp.rs`
+  (~2k lines — rig-mcp `McpToolset` is the replacement; facade `rmcp`
+  feature now aliases `mcp`; the rmcp/wasm compile_error! died with it),
+  `tool/extensions.rs` (`ToolContext`/TypeId map — TypeMap survives
+  privately for the hook Scratchpad until R3), `agent/tool.rs`
+  (`Agent::into_tool`), classic `Tool` trait + blanket bridge,
+  `ErasedTool`/`ErasedEmbeddingTool`, `DynamicTool`/`DynamicCallback`,
+  `ToolSet`/builder/`RegisteredTool`, `AgentBuilder`'s ToolState typestate
+  (builder is non-generic — R5 item done early).
+- Classic `Agent`/`AgentRunner` re-plumbed onto `ToolCatalog` +
+  `ToolExecutor` with exact semantics (hook rewrite/skip salvage, spans,
+  bounded concurrency, atomic commit, lowest-index error); per-turn
+  `active_tools` narrowing via `executor.narrowed()`.
+- rig-core: `IntoToolOutput` blanket + 3-way `&dyn Any` sieve deleted —
+  non-blanket trait with explicit impls + `serialize_to_tool_output` free
+  fn; **zero `std::any` in tool/output.rs**. `PortableDynamicTool::
+  from_portable` erases typed tools with classic dispatch semantics
+  (incl. the `from_str` parse-error text — a fidelity regression the
+  llamafile cassettes caught and we fixed).
+- `#[rig_tool]`: contextual param is a targeted compile error; context-free
+  tools gain `.portable()`; `#[derive(ToolRouter)]` support updated.
+- Consumer sweep: ~50 provider-test files (mechanical context-param drops,
+  `tool_definition`→`portable_tool_definition`), all examples migrated
+  with intent preserved (rmcp example now demos McpToolset; three
+  agent-as-tool examples rewritten on the closure pattern), derive tests
+  incl. trybuild fixtures for the new compile error. gemini tool_server
+  cassette scenarios PORTED onto post-mutation agent construction —
+  byte-identical replay. Deleted tests: the ToolServer/ToolContext
+  machinery suites (~50, subject removed — coverage that generalizes
+  lives on in executor/builder tests), logged per-file in agent reports.
+
+**Verification**: fmt ok; clippy 0 (`--all-features --all-targets`);
+workspace check 0; rig-core/rig-agent/rig-derive suites green; full facade
+suite + bedrock replay green single-threaded; doctests green; cassettes
+untouched.

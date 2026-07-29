@@ -9,7 +9,7 @@ use rig_core::{
 
 use crate::{
     completion::{Message, PromptError, Usage},
-    tool::{ToolContext, ToolOutput},
+    tool::ToolOutput,
 };
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
@@ -24,17 +24,6 @@ use std::{future::IntoFuture, marker::PhantomData};
 /// `$recv` is the field name to delegate through (`runner` or `inner`).
 macro_rules! forward_prompt_setters {
     ($recv:ident) => {
-        /// Attach a per-call [`ToolContext`] for this request.
-        ///
-        /// Every tool the agent executes during this request can read the
-        /// caller-provided values (auth tokens, session IDs, conversation state, …)
-        /// through the tool's [`ToolContext`](crate::tool::ToolContext),
-        /// without the model ever seeing them.
-        pub fn tool_context(mut self, context: ToolContext) -> Self {
-            self.$recv = self.$recv.tool_context(context);
-            self
-        }
-
         /// Add chat history to the prompt request.
         pub fn history<H, Item>(mut self, history: H) -> Self
         where
@@ -1188,10 +1177,10 @@ mod tests {
             StructuredOutputError, TypedPrompt, Usage,
         },
         test_utils::{
-            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockContextProbeTool,
-            MockOperationArgs, MockSubtractTool, MockToolError, SessionId,
+            AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockOperationArgs,
+            MockSubtractTool, MockToolError,
         },
-        tool::{Tool, ToolContext},
+        tool::PortableTool,
     };
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
     use schemars::JsonSchema;
@@ -1384,7 +1373,7 @@ mod tests {
         calls: Arc<AtomicU32>,
     }
 
-    impl Tool for CountingAddTool {
+    impl PortableTool for CountingAddTool {
         const NAME: &'static str = "add";
         type Error = MockToolError;
         type Args = MockOperationArgs;
@@ -1398,11 +1387,7 @@ mod tests {
             MockAddTool.parameters()
         }
 
-        async fn call(
-            &self,
-            _context: &mut crate::tool::ToolContext,
-            _args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(0)
         }
@@ -1775,95 +1760,6 @@ mod tests {
             other => panic!("expected UnknownToolCall, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
-    }
-
-    /// The motivating use-case: a `ToolContext` set on the prompt request is
-    /// threaded all the way to the tool the agent loop executes.
-    #[tokio::test]
-    async fn tool_context_reaches_tool_through_agent_loop() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
-            MockTurn::text("done"),
-        ]);
-        let probe = MockContextProbeTool::default();
-        let agent = agent_builder(model).tool(probe.clone()).build();
-
-        let mut context = ToolContext::new();
-        context.insert(SessionId("abc-123".to_string()));
-
-        let out = agent
-            .prompt("use the tool")
-            .tool_context(context)
-            .max_turns(3)
-            .await
-            .expect("run succeeds");
-
-        assert_eq!(out, "done");
-        assert_eq!(probe.observed().as_deref(), Some("session:abc-123"));
-    }
-
-    /// Context values persist for the whole run, across *multiple* tool-call rounds
-    /// (the headline value prop). The model calls the probe in two consecutive
-    /// rounds; both must observe the same injected value, not just the first.
-    #[tokio::test]
-    async fn tool_context_persists_across_multiple_rounds() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("c1", "context_probe", json!({})),
-            MockTurn::tool_call("c2", "context_probe", json!({})),
-            MockTurn::text("done"),
-        ]);
-        let probe = MockContextProbeTool::default();
-        let agent = agent_builder(model).tool(probe.clone()).build();
-
-        let mut context = ToolContext::new();
-        context.insert(SessionId("abc-123".to_string()));
-
-        let out = agent
-            .prompt("use the tool twice")
-            .tool_context(context)
-            .max_turns(5)
-            .await
-            .expect("run succeeds");
-
-        assert_eq!(out, "done");
-        assert_eq!(
-            probe.observations(),
-            vec!["session:abc-123".to_string(), "session:abc-123".to_string()],
-        );
-    }
-
-    /// Without a context, the same tool runs with an empty one (no panic, no
-    /// stale value) — the backward-compatible default path.
-    #[tokio::test]
-    async fn tool_runs_with_empty_context_when_none_supplied() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("tool_call_1", "context_probe", json!({})),
-            MockTurn::text("done"),
-        ]);
-        let probe = MockContextProbeTool::default();
-        let agent = agent_builder(model).tool(probe.clone()).build();
-
-        let out = agent
-            .prompt("use the tool")
-            .max_turns(3)
-            .await
-            .expect("run succeeds");
-
-        assert_eq!(out, "done");
-        // The single call path receives an empty context and observes no session.
-        assert_eq!(probe.observed().as_deref(), Some("no-session"));
-    }
-
-    /// Direct typed calls use the same context contract as dispatched calls.
-    #[tokio::test]
-    async fn probe_direct_call_uses_context() {
-        let probe = MockContextProbeTool::default();
-        let out = probe
-            .call(&mut ToolContext::new(), json!({}))
-            .await
-            .expect("call succeeds");
-        assert_eq!(out, "no-session");
-        assert_eq!(probe.observed().as_deref(), Some("no-session"));
     }
 
     #[tokio::test]

@@ -69,11 +69,7 @@ impl Tool for PlanTrip {
         plan_trip_parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "Booked {} for {} day(s), {} room(s) at {}, with {} planned activities. \
              Confirmation code SAKURA-77.",
@@ -204,7 +200,7 @@ async fn nested_arguments_streaming() {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
             let request = CompletionRequest {
                 temperature: Some(0.0),
-                tools: vec![rig::tool::tool_definition(&PlanTrip)],
+                tools: vec![rig::tool::portable_tool_definition(&PlanTrip)],
                 ..CompletionRequest::with_history(
                     Some(NESTED_ARGS_PREAMBLE),
                     Vec::new(),

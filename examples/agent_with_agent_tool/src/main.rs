@@ -1,5 +1,13 @@
+//! An agent that uses another agent as a tool.
+//!
+//! `Agent` is `Clone`, so a sub-agent can be exposed as a tool with a
+//! [`PortableDynamicTool`] whose callback closes over the inner agent and
+//! prompts it. The outer agent simply registers that record with
+//! `.dynamic_tool(...)`.
+
 use anyhow::Result;
 use rig::prelude::*;
+use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig::{completion::Prompt, providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -43,11 +51,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -84,11 +88,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         Ok(result)
@@ -115,13 +115,46 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(Subtract)
         .build();
 
-    // Create agent which has the calculator_agent as a tool
+    // Expose the calculator agent as a tool: the dynamic tool's callback
+    // closes over a clone of the inner agent and forwards the prompt to it.
+    let inner = calculator_agent.clone();
+    let calculator_tool = PortableDynamicTool::new(
+        "calculator",
+        "Delegate arithmetic questions to the calculator agent.",
+        json!({
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The arithmetic question for the calculator agent"
+                }
+            },
+            "required": ["prompt"]
+        }),
+        move |args| {
+            let inner = inner.clone();
+            Box::pin(async move {
+                let prompt = args
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let reply = inner
+                    .prompt(prompt)
+                    .await
+                    .map_err(|e| ToolExecutionError::other(e.to_string()))?;
+                Ok(ToolOutput::text(reply))
+            })
+        },
+    );
+
+    // Create agent which has the calculator agent as a tool
     let agent_using_agent = openai_client
         .agent(providers::openai::GPT_4O)
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
-        .dynamic_tool(calculator_agent.into_tool())
+        .dynamic_tool(calculator_tool)
         .build();
 
     // Prompt the agent and print the response

@@ -68,11 +68,7 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "It is 18 degrees Celsius and clear in {}.",
@@ -104,11 +100,7 @@ impl Tool for GetTime {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok("12:00".to_string())
     }
 }

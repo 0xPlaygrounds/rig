@@ -55,7 +55,7 @@ async fn streaming_tools_smoke() {
 async fn raw_streaming_tool_call_smoke() {
     let model = client().completion_model(BEDROCK_COMPLETION_MODEL);
     let request = CompletionRequest {
-        tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+        tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
         tool_choice: Some(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
         }),

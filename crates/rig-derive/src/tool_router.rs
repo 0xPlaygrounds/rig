@@ -49,12 +49,12 @@ pub(crate) fn expand_tool_router(input: &DeriveInput) -> syn::Result<TokenStream
         };
         let ty = &field.ty;
         definitions.push(quote! {
-            #agent::tool::tool_definition(&self.#ident)
+            #agent::tool::portable_tool_definition(&self.#ident)
         });
         // First field with a matching `NAME` wins, mirroring registration
         // order precedence.
         dispatch_arms.push(quote! {
-            if name == <#ty as #agent::tool::Tool>::NAME {
+            if name == <#ty as #agent::tool::PortableTool>::NAME {
                 return #agent::tool::router_support::execute_typed(
                     &self.#ident,
                     &call.function.arguments,

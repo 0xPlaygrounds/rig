@@ -54,11 +54,7 @@ impl Tool for StatusWordTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
     }
 }
@@ -116,7 +112,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         |client| async move {
             let model = client.completion_model(xai::completion::GROK_4);
             let request = CompletionRequest {
-                tools: vec![rig::tool::tool_definition(&StatusWordTool)],
+                tools: vec![rig::tool::portable_tool_definition(&StatusWordTool)],
                 ..CompletionRequest::with_history(
                     Some(XAI_STATUS_TOOL_PREAMBLE),
                     Vec::new(),

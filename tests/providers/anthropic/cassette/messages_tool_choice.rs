@@ -35,7 +35,7 @@ async fn required_maps_to_any_and_forces_tool_use() {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
             let request = CompletionRequest {
                 max_tokens: Some(1024),
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::with_history(
                     Some(TOOLS_PREAMBLE),
@@ -81,7 +81,7 @@ async fn none_suppresses_tool_use() {
             // end_turn message instead of answering in text.
             let request = CompletionRequest {
                 max_tokens: Some(1024),
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::None),
                 ..CompletionRequest::with_history(
                     Some("You are a concise assistant. Answer directly."),
@@ -131,8 +131,8 @@ async fn specific_tool_targets_named_tool() {
             let request = CompletionRequest {
                 max_tokens: Some(1024),
                 tools: vec![
-                    rig::tool::tool_definition(&Adder),
-                    rig::tool::tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
                 ],
                 tool_choice: Some(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],

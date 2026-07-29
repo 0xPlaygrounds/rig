@@ -46,7 +46,7 @@ fn constant() -> Result<i32, rig_core::tool::ToolExecutionError> {
 
 #[tokio::test]
 async fn test_required_defaults_to_all_params() {
-    let def = rig_agent::tool::tool_definition(&AddImplicit);
+    let def = rig_agent::tool::portable_tool_definition(&AddImplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -63,7 +63,7 @@ async fn test_required_defaults_to_all_params() {
 
 #[tokio::test]
 async fn test_explicit_required_overrides_default() {
-    let def = rig_agent::tool::tool_definition(&AddExplicit);
+    let def = rig_agent::tool::portable_tool_definition(&AddExplicit);
     let required = def.parameters["required"].as_array().unwrap();
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
 
@@ -76,7 +76,7 @@ async fn test_explicit_required_overrides_default() {
 
 #[tokio::test]
 async fn test_explicit_empty_required_overrides_default() {
-    let def = rig_agent::tool::tool_definition(&SearchOptional);
+    let def = rig_agent::tool::portable_tool_definition(&SearchOptional);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(
@@ -109,7 +109,7 @@ async fn test_param_listed_in_required_stays_required_for_deserialization() {
 
 #[tokio::test]
 async fn test_no_params_means_empty_required() {
-    let def = rig_agent::tool::tool_definition(&Constant);
+    let def = rig_agent::tool::portable_tool_definition(&Constant);
     let required = def.parameters["required"].as_array().unwrap();
 
     assert!(

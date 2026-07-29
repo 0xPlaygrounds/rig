@@ -1,5 +1,5 @@
-//! Dynamic (RAG) tools re-expressed as the hook recipe: `ToolEmbedding`
-//! toolsets are embedded into a vector store per prompt, and a
+//! Dynamic (RAG) tools re-expressed as the hook recipe: `PortableToolEmbedding`
+//! tool schemas are embedded into a vector store per prompt, and a
 //! completion-call hook embeds the query, retrieves the best-matching tool
 //! names, and narrows the advertised set for the turn with
 //! `RequestPatch::active_tools`. These cassettes were recorded against the
@@ -10,10 +10,9 @@
 
 use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch};
 use rig::completion::{Chat, Message};
-use rig::embeddings::EmbeddingsBuilder;
+use rig::embeddings::{EmbeddingsBuilder, ToolSchema};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::tool::ToolSet;
 use rig::vector_store::VectorSearchRequest;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 
@@ -24,14 +23,17 @@ use super::super::tools_support::{
 };
 use crate::support::assert_mentions_expected_number;
 
-/// Build an in-memory store over the toolset's embeddable schemas, keyed by
+/// Build an in-memory store over the embeddable tool schemas, keyed by
 /// tool name.
-async fn build_tool_store(client: &gemini::Client, toolset: &ToolSet) -> InMemoryVectorStore {
+async fn build_tool_store(
+    client: &gemini::Client,
+    schemas: Vec<ToolSchema>,
+) -> InMemoryVectorStore {
     let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
-    // ToolSet::schemas() returns registration order, so the recorded
-    // embedding batch replays deterministically.
+    // The schemas are supplied in the classic registration order, so the
+    // recorded embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.schemas().expect("tool schemas should build"))
+        .documents(schemas)
         .expect("documents should be added")
         .build()
         .await
@@ -98,11 +100,11 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(EmbedSubtract::default())
-                .retrieved_tool(EmbedMultiply::default())
-                .build();
-            let store = build_tool_store(&client, &toolset).await;
+            let schemas = vec![
+                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
+                ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
+            ];
+            let store = build_tool_store(&client, schemas).await;
             let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
 
             // Retrieval candidates register before the static tool so the
@@ -152,11 +154,11 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(EmbedAdd::default())
-                .retrieved_tool(EmbedSubtract::default())
-                .build();
-            let store = build_tool_store(&client, &toolset).await;
+            let schemas = vec![
+                ToolSchema::try_from(&EmbedAdd::default()).expect("tool schemas should build"),
+                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
+            ];
+            let store = build_tool_store(&client, schemas).await;
             let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
 
             let agent = client
@@ -198,12 +200,12 @@ async fn sample_caps_retrieved_definitions() {
     with_gemini_cassette(
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(EmbedAdd::default())
-                .retrieved_tool(EmbedSubtract::default())
-                .retrieved_tool(EmbedMultiply::default())
-                .build();
-            let store = build_tool_store(&client, &toolset).await;
+            let schemas = vec![
+                ToolSchema::try_from(&EmbedAdd::default()).expect("tool schemas should build"),
+                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
+                ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
+            ];
+            let store = build_tool_store(&client, schemas).await;
             let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
 
             let query = embedding_model

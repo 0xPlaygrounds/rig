@@ -72,11 +72,7 @@ impl Tool for PlanTrip {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "itinerary booked: {} travellers to {} by {} via {}",
             args.travellers,
@@ -117,11 +113,7 @@ impl Tool for LegacyEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!("legacy:{}", args.text))
     }
 }
@@ -149,11 +141,7 @@ impl Tool for ModernEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!("modern:{}", args.text))
     }
 }

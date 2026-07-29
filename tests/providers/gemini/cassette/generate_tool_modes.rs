@@ -24,7 +24,7 @@ async fn required_maps_to_any_and_forces_function_call() {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
             let request = CompletionRequest {
                 temperature: Some(0.0),
-                tools: vec![rig::tool::tool_definition(&Adder)],
+                tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::with_history(
                     Some(TOOLS_PREAMBLE),

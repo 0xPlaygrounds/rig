@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Other
+
+- [**breaking**] *(agent)* the classic tool system collapsed onto portable records: `ToolContext`/`ToolSet`/`ToolServer`/`DynamicTool`/`ToolEmbedding`/`Agent::into_tool` removed; `Tool` is the portable contract (context parameter dropped); tool execution rides `ToolExecutor`; the `IntoToolOutput` blanket impl (and its `Any` dispatch) replaced by explicit impls + `serialize_to_tool_output`; `#[rig_tool]` gains `.portable()`; MCP integration is `rig::tool::mcp` (the `rmcp` feature now aliases `mcp`)
+
 ### Added
 
 - *(core)* normalized `finish_reason` on completion and streaming responses — every provider maps its wire stop/finish vocabulary onto a shared `FinishReason` enum (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), closing #2090 and #1886; responses also carry `provider` and `model` metadata
