@@ -17,9 +17,8 @@ use crate::{
     },
     agent::runner::{
         AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, UnaryTurnSource,
-        acquire_agent_span,
-        append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
-        resolve_completion_call, resolve_model_turn_action, run_single_tool,
+        acquire_agent_span, append_run_messages, build_chat_span, new_execute_tool_span,
+        observe_action, resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},

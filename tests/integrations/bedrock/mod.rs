@@ -22,6 +22,18 @@ pub(crate) fn client() -> Client {
     Client::from_env().expect("client should build")
 }
 
+/// A `ProviderConfig` for `model` using the SDK's default credential chain
+/// and region resolution — the `Client::from_env` equivalent for the
+/// non-generic agent path.
+pub(crate) fn bedrock_config(model: &str) -> rig::provider::ProviderConfig {
+    rig::provider::ProviderConfig::Bedrock(rig::bedrock::functions::Config::new(model))
+}
+
+/// An `AgentBuilder` for `model` over the default-credential Bedrock config.
+pub(crate) fn agent(model: &str) -> rig::agent::AgentBuilder {
+    rig::agent::AgentBuilder::new(bedrock_config(model))
+}
+
 mod adaptive_thinking;
 mod agent;
 mod documents;

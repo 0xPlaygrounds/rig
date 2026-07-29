@@ -5,9 +5,9 @@
 use rig::{
     Embed,
     client::ProviderClient,
+    embeddings::EmbeddingModel,
     embeddings::EmbeddingsBuilder,
     providers::cohere::{self, Client},
-    embeddings::EmbeddingModel,
     vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
 use serde::{Deserialize, Serialize};

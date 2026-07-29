@@ -37,12 +37,12 @@ use super::{
     request_initiator, route_for_model, send_copilot_chat_streaming_request,
     stream_copilot_responses_from_event_source,
 };
-use crate::providers::openai::responses_api;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 use crate::providers::openai;
+use crate::providers::openai::responses_api;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 /// Default GitHub Copilot API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.githubcopilot.com";
@@ -234,7 +234,10 @@ pub fn parse_response(
                 message = %err.error_message(),
                 "provider returned an error response"
             );
-            Err(CompletionError::from_http_response(status, body.to_string()))
+            Err(CompletionError::from_http_response(
+                status,
+                body.to_string(),
+            ))
         }
     }
 }
@@ -256,7 +259,10 @@ pub async fn open_stream(
             &cfg.model,
             CompletionOperation::ChatStreaming,
         )
-        .system_instructions(request.preamble.as_deref(), request.record_telemetry_content)
+        .system_instructions(
+            request.preamble.as_deref(),
+            request.record_telemetry_content,
+        )
         .build();
         return Ok(match rt.transport() {
             Transport::Reqwest(client) => stream_copilot_responses_from_event_source(
@@ -380,9 +386,7 @@ pub fn build_embedding_request(
         .resolve()
         .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
         .ok_or_else(|| {
-            EmbeddingError::ProviderError(
-                "Copilot requires an API key or chat token".to_string(),
-            )
+            EmbeddingError::ProviderError("Copilot requires an API key or chat token".to_string())
         })?;
 
     let base_url = if cfg.base_url == DEFAULT_BASE_URL {

@@ -2609,8 +2609,8 @@ pub(super) enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::completion::CompletionModel as _;
     use super::*;
+    use crate::completion::CompletionModel as _;
     use serde_json::json;
     use serde_path_to_error::deserialize;
 

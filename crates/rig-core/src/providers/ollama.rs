@@ -281,7 +281,10 @@ where
 
 /// Build the serialized `/api/embed` request body. Pure; shared by the
 /// trait path and [`functions::embed`].
-pub(crate) fn build_embedding_body(model: &str, texts: &[String]) -> Result<Vec<u8>, EmbeddingError> {
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+) -> Result<Vec<u8>, EmbeddingError> {
     Ok(serde_json::to_vec(&json!({
         "model": model,
         "input": texts
@@ -781,87 +784,85 @@ where
 /// trait path and the data-oriented [`functions::open_stream`] path.
 pub(crate) async fn consume_chat_streaming_response(
     response: http_client::StreamingResponse,
-) -> Result<
-    impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>,
-    CompletionError,
-> {
+) -> Result<impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>, CompletionError>
+{
     let status = response.status();
     let mut byte_stream = response.into_body();
 
     if !status.is_success() {
-            let mut body = Vec::new();
-            while let Some(chunk) = byte_stream.next().await {
-                match chunk {
-                    Ok(bytes) => body.extend_from_slice(&bytes),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
-                        break;
-                    }
+        let mut body = Vec::new();
+        while let Some(chunk) = byte_stream.next().await {
+            match chunk {
+                Ok(bytes) => body.extend_from_slice(&bytes),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
+                    break;
                 }
             }
-            return Err(CompletionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
         }
+        return Err(CompletionError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ));
+    }
 
-        let stream = try_stream! {
-            let span = tracing::Span::current();
-            let mut line_buf = NdjsonBuffer::new();
+    let stream = try_stream! {
+        let span = tracing::Span::current();
+        let mut line_buf = NdjsonBuffer::new();
 
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
+        while let Some(chunk) = byte_stream.next().await {
+            let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
 
-                for line in line_buf.decode(&bytes) {
-                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
+            for line in line_buf.decode(&bytes) {
+                tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    let response: CompletionResponse = serde_json::from_slice(&line)?;
+                let response: CompletionResponse = serde_json::from_slice(&line)?;
 
-                    if response.done {
-                        span.record("gen_ai.response.model", &response.model);
-                    }
+                if response.done {
+                    span.record("gen_ai.response.model", &response.model);
+                }
 
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: thinking_content,
-                            };
-                        }
-
-                        if !content.is_empty() {
-                            yield RawStreamingChoice::Message(content);
-                        }
-
-                        for tool_call in tool_calls {
-                            yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
-                            );
-                        }
-                    }
-
-                    if response.done {
-                        span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-                        span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        let input_tokens = response.prompt_eval_count.unwrap_or_default();
-                        let output_tokens = response.eval_count.unwrap_or_default();
-                        let usage = Usage {
-                            input_tokens,
-                            output_tokens,
-                            total_tokens: input_tokens + output_tokens,
-                            ..Usage::new()
+                if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                    if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
+                        yield RawStreamingChoice::ReasoningDelta {
+                            id: None,
+                            reasoning: thinking_content,
                         };
-                        let mut final_response = crate::streaming::StreamFinal::new("ollama", usage)
-                            .with_model(response.model.clone());
-                        if let Some(done_reason) = response.done_reason.as_deref() {
-                            final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
-                        }
-                        yield RawStreamingChoice::FinalResponse(final_response);
-                        break;
+                    }
+
+                    if !content.is_empty() {
+                        yield RawStreamingChoice::Message(content);
+                    }
+
+                    for tool_call in tool_calls {
+                        yield RawStreamingChoice::ToolCall(
+                            crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
+                        );
                     }
                 }
+
+                if response.done {
+                    span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+                    span.record("gen_ai.usage.output_tokens", response.eval_count);
+                    let input_tokens = response.prompt_eval_count.unwrap_or_default();
+                    let output_tokens = response.eval_count.unwrap_or_default();
+                    let usage = Usage {
+                        input_tokens,
+                        output_tokens,
+                        total_tokens: input_tokens + output_tokens,
+                        ..Usage::new()
+                    };
+                    let mut final_response = crate::streaming::StreamFinal::new("ollama", usage)
+                        .with_model(response.model.clone());
+                    if let Some(done_reason) = response.done_reason.as_deref() {
+                        final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
+                    }
+                    yield RawStreamingChoice::FinalResponse(final_response);
+                    break;
+                }
             }
-        };
+        }
+    };
 
     Ok(stream)
 }
@@ -1494,7 +1495,7 @@ pub mod functions {
                     Box::pin(stream),
                 ))
             }
-        #[cfg(feature = "test-utils")]
+            #[cfg(feature = "test-utils")]
             Transport::Sequenced(client) => {
                 let response = client.send_streaming(req).await?;
                 let stream = super::consume_chat_streaming_response(response).await?;
@@ -1808,8 +1809,7 @@ mod tests {
 
         let chat_resp: CompletionResponse =
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse =
-            chat_resp.try_into().unwrap();
+        let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"

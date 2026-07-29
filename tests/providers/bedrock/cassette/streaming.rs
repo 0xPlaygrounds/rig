@@ -1,7 +1,6 @@
 //! AWS Bedrock streaming replay smoke tests.
 
 use rig::bedrock;
-use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_bedrock_cassette;
@@ -16,6 +15,7 @@ async fn streaming_smoke() {
     with_bedrock_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -34,6 +34,7 @@ async fn streaming_tools_smoke() {
     with_bedrock_cassette("streaming/streaming_tools_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Subtract)

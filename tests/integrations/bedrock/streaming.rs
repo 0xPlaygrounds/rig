@@ -7,7 +7,7 @@ use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent, client,
     support::{
         Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
         STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
@@ -20,8 +20,7 @@ use super::{
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn streaming_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -36,8 +35,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn streaming_tools_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(1024)
         .tool(Adder)

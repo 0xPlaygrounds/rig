@@ -316,7 +316,9 @@ impl PlatformAuthenticator {
             return None;
         }
         let api_base = record.api_base();
-        record.token.map(|api_key| AuthContext { api_key, api_base })
+        record
+            .token
+            .map(|api_key| AuthContext { api_key, api_base })
     }
 
     fn read_api_key_record(&self) -> Result<ApiKeyRecord, AuthError> {

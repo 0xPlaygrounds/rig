@@ -82,7 +82,12 @@ fn catalog_lists_definitions_in_field_order() {
         vec!["slow_echo", "add", "label"],
         "definitions must follow field declaration order"
     );
-    assert!(catalog.definitions.iter().all(|def| !def.description.is_empty()));
+    assert!(
+        catalog
+            .definitions
+            .iter()
+            .all(|def| !def.description.is_empty())
+    );
     let expected: std::collections::BTreeSet<String> = ["slow_echo", "add", "label"]
         .iter()
         .map(|name| name.to_string())
@@ -104,10 +109,7 @@ async fn dispatch_unknown_name_matches_registry_not_found_shape() {
     let result = router().dispatch(&call("1", "nope", json!({}))).await;
     assert!(result.is_error_kind(ToolErrorKind::NotFound));
     let error = result.error().expect("unknown tool must fail");
-    assert_eq!(
-        error.message(),
-        "no tool named `nope` is registered"
-    );
+    assert_eq!(error.message(), "no tool named `nope` is registered");
     assert_eq!(error.model_feedback(), Some("tool `nope` not found"));
     assert_eq!(result.output().render(), "tool `nope` not found");
 }

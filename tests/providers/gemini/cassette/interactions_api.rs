@@ -83,9 +83,7 @@ async fn followup_with_previous_interaction_id() {
                         })
                         .expect("params should serialize"),
                     ),
-                    ..CompletionRequest::from_prompt(
-                        "Give me one short fact about hummingbirds.",
-                    )
+                    ..CompletionRequest::from_prompt("Give me one short fact about hummingbirds.")
                 })
                 .await
                 .expect("initial completion should succeed");
@@ -144,10 +142,8 @@ async fn google_search_tool_interaction() {
                 "interactions_api/google_search_tool_interaction",
             );
             let interaction: rig::providers::gemini::interactions_api::Interaction =
-                serde_json::from_str(
-                    bodies.first().expect("cassette should record one exchange"),
-                )
-                .expect("recorded body should deserialize as an Interaction");
+                serde_json::from_str(bodies.first().expect("cassette should record one exchange"))
+                    .expect("recorded body should deserialize as an Interaction");
             assert!(
                 !interaction.google_search_exchanges().is_empty(),
                 "expected a search-backed exchange"

@@ -210,7 +210,10 @@ async fn sample_caps_retrieved_definitions() {
                 .embed_text("Multiply two numbers together to get their product.")
                 .await
                 .expect("query embedding should succeed");
-            let request = VectorSearchRequest::builder().query(query).samples(2).build();
+            let request = VectorSearchRequest::builder()
+                .query(query)
+                .samples(2)
+                .build();
             let hits = store
                 .top_n_ids(request)
                 .await
@@ -220,12 +223,16 @@ async fn sample_caps_retrieved_definitions() {
                 hits.len(),
                 2,
                 "the sample size should cap how many dynamic tools are retrieved: {:?}",
-                hits.iter().map(|(_, name)| name.as_str()).collect::<Vec<_>>()
+                hits.iter()
+                    .map(|(_, name)| name.as_str())
+                    .collect::<Vec<_>>()
             );
             assert!(
                 hits.iter().any(|(_, name)| name == "multiply"),
                 "the best-matching tool should be retrieved: {:?}",
-                hits.iter().map(|(_, name)| name.as_str()).collect::<Vec<_>>()
+                hits.iter()
+                    .map(|(_, name)| name.as_str())
+                    .collect::<Vec<_>>()
             );
         },
     )

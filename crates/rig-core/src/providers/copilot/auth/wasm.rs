@@ -35,7 +35,10 @@ impl PlatformAuthenticator {
     }
 
     /// There is no token cache on wasm targets.
-    pub(super) fn cached_auth_context(&self, _bootstrap_token: Option<&str>) -> Option<AuthContext> {
+    pub(super) fn cached_auth_context(
+        &self,
+        _bootstrap_token: Option<&str>,
+    ) -> Option<AuthContext> {
         None
     }
 

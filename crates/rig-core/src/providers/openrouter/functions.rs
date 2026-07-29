@@ -136,10 +136,9 @@ pub async fn transcribe(
         "{}/audio/transcriptions",
         cfg.base_url.trim_end_matches('/')
     );
-    let req =
-        openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
-            .body(body)
-            .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
+    let req = openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+        .body(body)
+        .map_err(|e| TranscriptionError::RequestError(Box::new(e)))?;
     let (status, body) = rt.send_bytes(req).await?;
     super::transcription::parse_transcription_response(status, &body)
 }
@@ -158,10 +157,9 @@ pub async fn generate_audio(
 
     let body = super::audio_generation::build_audio_generation_body(&cfg.model, &request)?;
     let url = format!("{}/audio/speech", cfg.base_url.trim_end_matches('/'));
-    let req =
-        openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
-            .body(body)
-            .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
+    let req = openai_functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
+        .body(body)
+        .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
     let (status, body) = rt.send_bytes(req).await?;
     super::audio_generation::parse_audio_generation_response(status, body)
 }

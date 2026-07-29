@@ -28,8 +28,7 @@ use crate::types::CandleError;
 /// SmolLM2 protocols reject tools per-request). `supports_response_format`
 /// is false because decoding is not grammar constrained and
 /// `output_schema` is rejected. There is no embeddings API.
-pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("candle")
-    .with_tools(true);
+pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("candle").with_tools(true);
 
 /// Plain-data description of how to load a [`CandleModel`] and what
 /// generation defaults to use.

@@ -2,8 +2,8 @@
 
 use rig::Embed;
 use rig::client::{EmbeddingsClient, ProviderClient};
-use rig::embeddings::EmbeddingsBuilder;
 use rig::embeddings::EmbeddingModel;
+use rig::embeddings::EmbeddingsBuilder;
 use rig::providers::mistral;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;

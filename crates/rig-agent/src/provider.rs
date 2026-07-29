@@ -142,7 +142,13 @@ macro_rules! define_provider_config {
                 #[cfg(feature = "bedrock")]
                 ProviderConfig::Bedrock(cfg) => {
                     let client = rt.bedrock_client(cfg).await;
-                    rig_bedrock::functions::complete(&client, &cfg.model, request).await
+                    rig_bedrock::functions::complete_with_options(
+                        &client,
+                        &cfg.model,
+                        cfg.prompt_caching,
+                        request,
+                    )
+                    .await
                 }
                 #[cfg(feature = "gemini-grpc")]
                 ProviderConfig::GeminiGrpc(cfg) => {
@@ -178,7 +184,13 @@ macro_rules! define_provider_config {
                 #[cfg(feature = "bedrock")]
                 ProviderConfig::Bedrock(cfg) => {
                     let client = rt.bedrock_client(cfg).await;
-                    rig_bedrock::functions::open_stream(&client, &cfg.model, request).await
+                    rig_bedrock::functions::open_stream_with_options(
+                        &client,
+                        &cfg.model,
+                        cfg.prompt_caching,
+                        request,
+                    )
+                    .await
                 }
                 #[cfg(feature = "gemini-grpc")]
                 ProviderConfig::GeminiGrpc(cfg) => {
@@ -468,6 +480,22 @@ impl Runtime {
         let client = rig_bedrock::functions::client_from_config(cfg).await;
         *slot = Some((cfg.clone(), client.clone()));
         client
+    }
+
+    /// Seed the Bedrock cache with a caller-built AWS client for `cfg`.
+    ///
+    /// Escape hatch for AWS clients that cannot be rebuilt from plain
+    /// configuration (custom endpoints, credential providers, or HTTP
+    /// connectors — e.g. recording transports in tests). Runs matching
+    /// `cfg` use `client` instead of building one from the config.
+    #[cfg(feature = "bedrock")]
+    pub async fn seed_bedrock_client(
+        &self,
+        cfg: rig_bedrock::functions::Config,
+        client: aws_sdk_bedrockruntime::Client,
+    ) {
+        let mut slot = self.bedrock.slot.lock().await;
+        *slot = Some((cfg, client));
     }
 
     /// The Gemini gRPC client for `cfg`, built (channel connected) on first
@@ -765,10 +793,8 @@ mod tests {
 
     #[tokio::test]
     async fn mock_embedder_scripts_responses_in_order() {
-        let script = MockEmbedder::from_responses(vec![
-            vec![vec![0.1], vec![0.2]],
-            vec![vec![0.3]],
-        ]);
+        let script =
+            MockEmbedder::from_responses(vec![vec![vec![0.1], vec![0.2]], vec![vec![0.3]]]);
         let cfg = EmbedderConfig::Mock(script.clone());
         let rt = Runtime::new();
 

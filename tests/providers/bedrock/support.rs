@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::sync::Arc;
 
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_bedrockruntime::config::Credentials;
@@ -12,7 +13,11 @@ use aws_smithy_runtime_api::client::runtime_components::RuntimeComponents;
 use aws_smithy_runtime_api::http::StatusCode;
 use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
+use rig::agent::AgentBuilder;
 use rig::bedrock::client::Client;
+use rig::bedrock::functions::Config;
+use rig::client::{CompletionClient, EmbeddingsClient};
+use rig::provider::{ProviderConfig, Runtime};
 
 use crate::cassettes::{
     CassetteMode, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
@@ -22,14 +27,69 @@ use crate::cassettes::{
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
 
-async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
-    match CassetteMode::current() {
-        CassetteMode::Replay => replay_bedrock_cassette(spec).await,
-        CassetteMode::Record => record_bedrock_cassette(spec).await,
+/// The per-test Bedrock handle: the classic provider [`Client`] plus a
+/// provider [`Runtime`] whose Bedrock cache is seeded with the same
+/// cassette-wired AWS client, so `ProviderConfig::Bedrock` agents replay
+/// through the recording/replaying transport.
+pub(super) struct BedrockHarness {
+    aws_client: aws_sdk_bedrockruntime::Client,
+    client: Client,
+    runtime: Arc<Runtime>,
+}
+
+impl BedrockHarness {
+    fn new(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
+        Self {
+            client: Client::from(aws_client.clone()),
+            aws_client,
+            runtime: Arc::new(Runtime::new()),
+        }
+    }
+
+    /// An [`AgentBuilder`] over `cfg`, with this harness's AWS client seeded
+    /// into the runtime cache for exactly that config.
+    pub async fn agent_from_config(&self, cfg: Config) -> AgentBuilder {
+        self.runtime
+            .seed_bedrock_client(cfg.clone(), self.aws_client.clone())
+            .await;
+        AgentBuilder::new(ProviderConfig::Bedrock(cfg)).runtime(self.runtime.clone())
+    }
+
+    /// An [`AgentBuilder`] for `model` with default Bedrock configuration.
+    pub async fn agent(&self, model: &str) -> AgentBuilder {
+        self.agent_from_config(Config::new(model)).await
+    }
+
+    /// The classic provider completion model, driving the cassette-wired
+    /// AWS client directly.
+    pub fn completion_model(
+        &self,
+        model: impl Into<String>,
+    ) -> rig::bedrock::completion::CompletionModel {
+        self.client.completion_model(model)
+    }
+
+    /// The classic provider embedding model with fixed dimensions.
+    pub fn embedding_model_with_ndims(
+        &self,
+        model: impl Into<String>,
+        ndims: usize,
+    ) -> rig::bedrock::embedding::EmbeddingModel {
+        self.client.embedding_model_with_ndims(model, ndims)
     }
 }
 
-async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
+async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BedrockHarness) {
+    let (cassette, aws_client) = match CassetteMode::current() {
+        CassetteMode::Replay => replay_bedrock_cassette(spec).await,
+        CassetteMode::Record => record_bedrock_cassette(spec).await,
+    };
+    (cassette, BedrockHarness::new(aws_client))
+}
+
+async fn replay_bedrock_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, aws_sdk_bedrockruntime::Client) {
     let cassette =
         ProviderCassette::start_direct_recording("bedrock", spec, BEDROCK_REAL_BASE_URL).await;
     let sdk_config = aws_config::defaults(BehaviorVersion::latest())
@@ -45,12 +105,13 @@ async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
         .load()
         .await;
     let aws_client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
-    let client = Client::from(aws_client);
 
-    (cassette, client)
+    (cassette, aws_client)
 }
 
-async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
+async fn record_bedrock_cassette(
+    spec: impl Into<CassetteSpec>,
+) -> (ProviderCassette, aws_sdk_bedrockruntime::Client) {
     let cassette =
         ProviderCassette::start_direct_recording("bedrock", spec, BEDROCK_REAL_BASE_URL).await;
     let recorder = cassette
@@ -66,9 +127,8 @@ async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
         .http_client(RecordingBedrockHttpClient::new(recorder))
         .build();
     let aws_client = aws_sdk_bedrockruntime::Client::from_conf(bedrock_config);
-    let client = Client::from(aws_client);
 
-    (cassette, client)
+    (cassette, aws_client)
 }
 
 #[derive(Clone, Debug)]
@@ -195,10 +255,10 @@ impl HttpConnector for RecordingBedrockConnector {
 
 pub(super) async fn with_bedrock_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(Client) -> Fut,
+    F: FnOnce(BedrockHarness) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = bedrock_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, harness) = bedrock_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(harness)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

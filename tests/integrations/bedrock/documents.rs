@@ -3,10 +3,9 @@
 use rig::OneOrMany;
 use rig::completion::Prompt;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
-use rig::prelude::*;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent,
     support::{assert_contains_any_case_insensitive, assert_nonempty_response},
 };
 
@@ -30,8 +29,7 @@ Key Features:
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn plaintext_document_prompt() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble("Summarize the provided document.")
         .temperature(0.5)
         .build();
@@ -53,8 +51,7 @@ async fn plaintext_document_prompt() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn plaintext_document_with_instruction() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble("Answer from the provided document.")
         .temperature(0.5)
         .build();

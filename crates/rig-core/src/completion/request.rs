@@ -37,11 +37,11 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
+use crate::message::{Message, UserContent};
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client};
-use crate::message::{Message, UserContent};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -395,7 +395,8 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend;
 
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same

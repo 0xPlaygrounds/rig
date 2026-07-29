@@ -1874,8 +1874,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(converted.usage.input_tokens, 500);
         assert_eq!(converted.usage.output_tokens, 10);
@@ -1906,8 +1905,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
         assert_eq!(converted.usage.cache_creation_input_tokens, 0);
@@ -1941,8 +1939,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(
             converted.model.as_deref(),
@@ -2832,8 +2829,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
         assert!(items.iter().any(|item| matches!(
@@ -3014,8 +3010,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3342,8 +3337,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3703,8 +3697,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 
@@ -3752,8 +3745,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 

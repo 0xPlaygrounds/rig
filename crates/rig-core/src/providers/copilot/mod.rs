@@ -1053,7 +1053,7 @@ where
     HttpClient: HttpClientExt + Clone + 'static,
 {
     let stream = tracing_futures::Instrument::instrument(
-            stream! {
+        stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
                 let mut final_response_id: Option<String> = None;
                 let mut final_model: Option<String> = None;
@@ -1468,8 +1468,8 @@ where
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
         let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
-        let dimensions = (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002)
-            .then_some(self.ndims);
+        let dimensions =
+            (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
         let body = build_embedding_body(
             &self.model,
             &documents,

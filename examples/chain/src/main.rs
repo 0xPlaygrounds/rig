@@ -21,9 +21,7 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(
-    client: &Client,
-) -> rig::agent::Agent {
+fn build_dictionary_agent(client: &Client) -> rig::agent::Agent {
     client
         .agent(openai::GPT_4)
         .preamble(

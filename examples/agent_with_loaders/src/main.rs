@@ -2,9 +2,9 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see the model identify the example that uses `FileLoader::with_glob`.
 
-use rig::client::ToProviderConfig;
 use anyhow::Result;
 use rig::agent::AgentBuilder;
+use rig::client::ToProviderConfig;
 use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 use rig::prelude::*;

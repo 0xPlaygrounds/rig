@@ -5,8 +5,7 @@ use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
 use rig_core::completion::{
-    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
-    CompletionResponse,
+    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
 use rig_core::streaming::StreamingCompletionResponse;
 

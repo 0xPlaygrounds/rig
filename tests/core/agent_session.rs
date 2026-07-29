@@ -85,8 +85,7 @@ async fn tool_loop_round_trips_results_and_aggregates_usage() {
         tool_call_response("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
         text_response("the sum is 3", 7),
     ]);
-    let mut session = session(script)
-        .with_tools(adder_catalog());
+    let mut session = session(script).with_tools(adder_catalog());
     session.config.max_turns = Some(3);
     // Rebuild the run budget: config is read at construction time.
     let mut session = AgentSession::new(
@@ -252,13 +251,9 @@ async fn suspend_and_resume_mid_tools_round_trips() {
     let run = serde_json::from_str(&serialized).expect("run state should deserialize");
     // The mock script's clone shares its cursor, so the resumed session
     // continues from the recorded position (turn 2 next).
-    let mut resumed = AgentSession::resume(
-        config,
-        mock_provider(script),
-        Arc::new(Runtime::new()),
-        run,
-    )
-    .with_tools(adder_catalog());
+    let mut resumed =
+        AgentSession::resume(config, mock_provider(script), Arc::new(Runtime::new()), run)
+            .with_tools(adder_catalog());
 
     // next_step is idempotent for pending tools: the same calls re-surface.
     let resumed_calls = match resumed.advance().await.expect("resumed advance") {

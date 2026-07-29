@@ -10,10 +10,10 @@ use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use serde_json::json;
 
 use rig::client::EmbeddingsClient;
+use rig::embeddings::EmbeddingModel as _;
 use rig::sqlite::{
     Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
 };
-use rig::embeddings::EmbeddingModel as _;
 use rig::{
     Embed, OneOrMany,
     embeddings::{Embedding, EmbeddingsBuilder},
@@ -250,10 +250,9 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
     let embeddings = create_embeddings(model.clone()).await;
 
-    let vector_store: SqliteVectorStore<Word> =
-        SqliteVectorStore::new(conn.clone(), model.ndims())
-            .await
-            .expect("Could not initialize SQLite vector store");
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), model.ndims())
+        .await
+        .expect("Could not initialize SQLite vector store");
 
     vector_store
         .insert_as(

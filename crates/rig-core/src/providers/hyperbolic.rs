@@ -193,11 +193,10 @@ mod image_generation {
     use crate::http_client::HttpClientExt;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-    
+
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use serde::Deserialize;
-    
 
     pub const SDXL1_0_BASE: &str = "SDXL1.0-base";
     pub const SD2: &str = "SD2";
@@ -318,7 +317,6 @@ mod audio_generation {
     use base64::prelude::BASE64_STANDARD;
     use bytes::Bytes;
     use serde::Deserialize;
-    
 
     #[derive(Clone)]
     pub struct AudioGenerationModel<T> {

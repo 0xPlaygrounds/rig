@@ -126,9 +126,7 @@ pub async fn transcribe(
     rt: &HttpRuntime,
     request: crate::transcription::TranscriptionRequest,
 ) -> Result<
-    crate::transcription::TranscriptionResponse<
-        super::transcription::MistralTranscriptionResponse,
-    >,
+    crate::transcription::TranscriptionResponse<super::transcription::MistralTranscriptionResponse>,
     crate::transcription::TranscriptionError,
 > {
     use crate::transcription::TranscriptionError;

@@ -1,5 +1,5 @@
 use rig_agent::{
-    agent::{stream_to_stdout, AgentBuilder},
+    agent::{AgentBuilder, stream_to_stdout},
     provider::ProviderConfig,
     streaming::StreamingPrompt,
 };
@@ -13,15 +13,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = AgentBuilder::new(ProviderConfig::Bedrock(
         rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
     ))
-        .preamble(
-            "You are a calculator here to help the user perform arithmetic
+    .preamble(
+        "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.
             make your answer long, so we can test the streaming functionality,
             like 20 words",
-        )
-        .max_tokens(1024)
-        .tool(common::Adder)
-        .build();
+    )
+    .max_tokens(1024)
+    .tool(common::Adder)
+    .build();
 
     println!("Calculate 2 + 5");
     let mut stream = agent.stream_prompt("Calculate 2 + 5").await;

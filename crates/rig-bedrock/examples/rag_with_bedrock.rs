@@ -1,16 +1,16 @@
 use std::vec;
 
 use rig_agent::agent::hook::{
-    AgentHook, CompletionCallAction, CompletionCall as CompletionCallEvent, HookContext,
+    AgentHook, CompletionCall as CompletionCallEvent, CompletionCallAction, HookContext,
     RequestPatch,
 };
 use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
-use rig_core::completion::Document;
-use rig_core::vector_store::VectorSearchRequest;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::completion::Document;
+use rig_core::vector_store::VectorSearchRequest;
 use rig_core::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
 use serde::Serialize;
 use tracing::info;

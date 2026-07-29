@@ -1,5 +1,5 @@
 use rig_agent::{
-    agent::{stream_to_stdout, AgentBuilder},
+    agent::{AgentBuilder, stream_to_stdout},
     provider::ProviderConfig,
     streaming::StreamingPrompt,
 };
@@ -11,9 +11,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = AgentBuilder::new(ProviderConfig::Bedrock(
         rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
     ))
-        .preamble("Be precise and concise.")
-        .temperature(0.5)
-        .build();
+    .preamble("Be precise and concise.")
+    .temperature(0.5)
+    .build();
 
     // Stream the response and print chunks as they arrive
     let mut stream = agent

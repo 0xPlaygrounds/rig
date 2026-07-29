@@ -111,7 +111,11 @@ impl RedisVectorStore {
         let results: Vec<(String, f64)> = self
             .conn
             .clone()
-            .vsim_options(&self.key, VectorSimilaritySearchInput::Fp32(&vec_f32), &opts)
+            .vsim_options(
+                &self.key,
+                VectorSimilaritySearchInput::Fp32(&vec_f32),
+                &opts,
+            )
             .await
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 

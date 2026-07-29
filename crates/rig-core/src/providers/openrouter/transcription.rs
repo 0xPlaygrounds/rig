@@ -290,7 +290,10 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(value["model"], WHISPER_1);
         assert_eq!(value["input_audio"]["format"], "mp3");
-        assert_eq!(value["input_audio"]["data"], STANDARD.encode(b"test audio data"));
+        assert_eq!(
+            value["input_audio"]["data"],
+            STANDARD.encode(b"test audio data")
+        );
         assert_eq!(value["language"], "en");
         assert_eq!(value["temperature"], 0.1);
     }

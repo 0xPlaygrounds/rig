@@ -76,7 +76,9 @@ async fn strict_tools_opt_in_roundtrip() {
 #[tokio::test]
 async fn incomplete_response_surfaces_partial_output() {
     const SCENARIO: &str = "responses_behaviors/incomplete_response_surfaces_partial_output";
-    with_openai_cassette("responses_behaviors/incomplete_response_surfaces_partial_output", |client| async move {
+    with_openai_cassette(
+        "responses_behaviors/incomplete_response_surfaces_partial_output",
+        |client| async move {
             let model = client.completion_model(openai::GPT_4O);
             let request = CompletionRequest {
                 max_tokens: Some(16),
@@ -104,7 +106,11 @@ async fn incomplete_response_surfaces_partial_output() {
             // cassette file is written after the test body in record mode).
             if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
                 let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
-                assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+                assert_eq!(
+                    bodies.len(),
+                    1,
+                    "scenario should record a single interaction"
+                );
                 let raw: openai::responses_api::CompletionResponse =
                     serde_json::from_str(&bodies[0])
                         .expect("recorded body should deserialize as a Responses API response");

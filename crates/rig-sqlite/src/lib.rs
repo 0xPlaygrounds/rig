@@ -3144,8 +3144,7 @@ mod tests {
             "file:live_reinsert_same_document_id_removes_stale_vec0_candidates?mode=memory",
         )
         .await?;
-        let vector_store: SqliteVectorStore<TestDocument> =
-            SqliteVectorStore::new(conn, 2).await?;
+        let vector_store: SqliteVectorStore<TestDocument> = SqliteVectorStore::new(conn, 2).await?;
 
         vector_store
             .add_rows(vec![row(
@@ -3199,8 +3198,7 @@ mod tests {
             "file:live_reinsert_preserves_unrelated_multivector_embeddings?mode=memory",
         )
         .await?;
-        let vector_store: SqliteVectorStore<TestDocument> =
-            SqliteVectorStore::new(conn, 2).await?;
+        let vector_store: SqliteVectorStore<TestDocument> = SqliteVectorStore::new(conn, 2).await?;
 
         let multi_document = TestDocument {
             id: "multi".to_string(),
@@ -3326,7 +3324,9 @@ mod tests {
             .samples(2)
             .threshold(1.0)
             .build();
-        let threshold_results = index.top_n_as::<TestDocument>(threshold_req.clone()).await?;
+        let threshold_results = index
+            .top_n_as::<TestDocument>(threshold_req.clone())
+            .await?;
         let threshold_ids = threshold_results
             .iter()
             .map(|(_, id, _)| id.as_str())
@@ -5144,5 +5144,4 @@ mod tests {
             ]
         }
     }
-
 }

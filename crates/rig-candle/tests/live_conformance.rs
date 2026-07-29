@@ -285,7 +285,11 @@ fn check_tool_correlation(name: &str, outcome: &RunOutcome) -> Result<(), TestEr
     Ok(())
 }
 
-fn integer_args(arguments: &serde_json::Value, first: &str, second: &str) -> Result<(i64, i64), String> {
+fn integer_args(
+    arguments: &serde_json::Value,
+    first: &str,
+    second: &str,
+) -> Result<(i64, i64), String> {
     let read = |key: &str| -> Result<i64, String> {
         let value = arguments
             .get(key)
@@ -480,7 +484,10 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
         drive(
             &model,
             &base_config(),
-            &[add_tool(add_calls.clone()), subtract_tool(subtract_calls.clone())],
+            &[
+                add_tool(add_calls.clone()),
+                subtract_tool(subtract_calls.clone()),
+            ],
             "Compute 3 + 4 and 10 - 2. You MUST call the add tool and the subtract tool \
              together in your first response, as two parallel function calls, then report \
              both results.",
@@ -585,8 +592,9 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
             &[ToolSpec {
                 definition: ToolDefinition {
                     name: "store_profile".to_string(),
-                    description: "Store one profile with its nested tags, mode, and exact quoted text."
-                        .to_string(),
+                    description:
+                        "Store one profile with its nested tags, mode, and exact quoted text."
+                            .to_string(),
                     parameters: serde_json::json!({
                         "type": "object",
                         "properties": {
@@ -605,8 +613,9 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
                     }),
                 },
                 run: Box::new(move |arguments| {
-                    *complex_slot.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                        Some(arguments.clone());
+                    *complex_slot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(arguments.clone());
                     Ok(arguments)
                 }),
             }],
@@ -855,7 +864,10 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
         drive(
             &model,
             &base_config(),
-            &[add_tool(seq_add.clone()), multiply_tool(seq_multiply.clone())],
+            &[
+                add_tool(seq_add.clone()),
+                multiply_tool(seq_multiply.clone()),
+            ],
             "Compute (2 + 3) * 4. First use the add tool, then multiply its result by 4 \
              with the multiply tool, then report the final result.",
             6,
@@ -918,7 +930,11 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
         let result: ArithmeticResult = serde_json::from_str(&outcome.output)
             .map_err(|error| format!("{name}: {error}: {:?}", outcome.output))?;
         if calls.load(Ordering::SeqCst) == 0 || result.answer != 7 {
-            return Err(format!("{name}: answer={} output={:?}", result.answer, outcome.output).into());
+            return Err(format!(
+                "{name}: answer={} output={:?}",
+                result.answer, outcome.output
+            )
+            .into());
         }
         print_pass(name, &outcome);
     }

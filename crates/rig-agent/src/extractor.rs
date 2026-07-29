@@ -538,11 +538,13 @@ mod tests {
                 .build();
             match self.store.top_n(request).await {
                 Ok(hits) => CompletionCallAction::patch(RequestPatch::new().extra_context(
-                    hits.into_iter().map(|hit| crate::completion::Document {
-                        id: hit.id,
-                        text: serde_json::to_string_pretty(&hit.payload)
-                            .unwrap_or_else(|_| hit.payload.to_string()),
-                        additional_props: Default::default(),
+                    hits.into_iter().map(|hit| {
+                        crate::completion::Document {
+                            id: hit.id,
+                            text: serde_json::to_string_pretty(&hit.payload)
+                                .unwrap_or_else(|_| hit.payload.to_string()),
+                            additional_props: Default::default(),
+                        }
                     }),
                 )),
                 Err(error) => {

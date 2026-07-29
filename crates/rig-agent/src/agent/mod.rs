@@ -180,7 +180,6 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
 pub use config::AgentConfig;
-pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
@@ -189,6 +188,7 @@ pub use hook::{
     StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
     ToolResultEvent,
 };
+pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };

@@ -137,175 +137,175 @@ where
     let mut event_source = GenericEventSource::new(client, req);
 
     stream! {
-            let mut final_usage = None;
-            let mut final_finish_reason: Option<FinishReason> = None;
-            let mut final_model_version: Option<String> = None;
-            let mut final_response_id: Option<String> = None;
-            let mut stream_failed = false;
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::debug!("SSE connection opened");
+        let mut final_usage = None;
+        let mut final_finish_reason: Option<FinishReason> = None;
+        let mut final_model_version: Option<String> = None;
+        let mut final_response_id: Option<String> = None;
+        let mut stream_failed = false;
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::debug!("SSE connection opened");
+                    continue;
+                }
+                Ok(Event::Message(message)) => {
+                    // Skip heartbeat messages or empty data
+                    if message.data.trim().is_empty() {
                         continue;
                     }
-                    Ok(Event::Message(message)) => {
-                        // Skip heartbeat messages or empty data
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
 
-                        let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
-                            Ok(d) => d,
-                            Err(error) => {
-                                tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                stream_failed = true;
-                                yield Err(CompletionError::JsonError(error));
-                                break;
-                            }
-                        };
-
-                        let span = tracing::Span::current();
-                        if let Some(response_id) = data.response_id.as_deref() {
-                            span.record("gen_ai.response.id", response_id);
-                            final_response_id = Some(response_id.to_string());
-                        }
-                        if let Some(model_version) = &data.model_version {
-                            span.record("gen_ai.response.model", model_version.as_str());
-                            final_model_version = Some(model_version.clone());
-                        }
-                        if let Some(usage) = data.usage_metadata.as_ref() {
-                            span.record_token_usage(&usage.token_usage());
-                            final_usage = Some(usage.clone());
-                        }
-
-                        // Process the response data
-                        let Some(choice) = data.candidates.into_iter().next() else {
-                            tracing::debug!("There is no content candidate");
-                            continue;
-                        };
-
-                        // Capture before partial moves of choice fields
-                        let should_stop = choice.finish_reason.is_some();
-                        if let Some(fr) = &choice.finish_reason {
-                            final_finish_reason = Some(fr.clone());
-                        }
-                        if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                    let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
+                        Ok(d) => d,
+                        Err(error) => {
+                            tracing::error!(?error, message = message.data, "Failed to parse SSE message");
                             stream_failed = true;
-                            yield Err(err);
+                            yield Err(CompletionError::JsonError(error));
                             break;
                         }
+                    };
 
-                        let Some(content) = choice.content else {
-                            tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
-                            // Gemini's final chunk may carry finishReason with no content — break instead of skip
-                            if should_stop {
-                                break;
-                            }
-                            continue;
-                        };
+                    let span = tracing::Span::current();
+                    if let Some(response_id) = data.response_id.as_deref() {
+                        span.record("gen_ai.response.id", response_id);
+                        final_response_id = Some(response_id.to_string());
+                    }
+                    if let Some(model_version) = &data.model_version {
+                        span.record("gen_ai.response.model", model_version.as_str());
+                        final_model_version = Some(model_version.clone());
+                    }
+                    if let Some(usage) = data.usage_metadata.as_ref() {
+                        span.record_token_usage(&usage.token_usage());
+                        final_usage = Some(usage.clone());
+                    }
 
-                        if content.parts.is_empty() {
-                            tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
-                        }
+                    // Process the response data
+                    let Some(choice) = data.candidates.into_iter().next() else {
+                        tracing::debug!("There is no content candidate");
+                        continue;
+                    };
 
-                        for part in content.parts {
-                            match part {
-                                Part {
-                                    part: PartKind::Text(text),
-                                    thought: Some(true),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        if thought_signature.is_some() {
-                                            // Signature arrives on the final chunk of a
-                                            // thinking block; emit a full Reasoning so the
-                                            // core accumulator captures the signature for
-                                            // Gemini 3+ roundtrip.
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: None,
-                                                content: ReasoningContent::Text {
-                                                    text,
-                                                    signature: thought_signature,
-                                                },
-                                            });
-                                        } else {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                id: None,
-                                                reasoning: text,
-                                            });
-                                        }
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::Text(text),
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        yield Ok(streaming::RawStreamingChoice::Message(text));
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::FunctionCall(function_call),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    let tool_call = streaming::RawStreamingToolCall::new(
-                                        function_call.name.clone(),
-                                        function_call.name,
-                                        function_call.args,
-                                    )
-                                    .with_signature(thought_signature);
-                                    let tool_call = if let Some(id) = function_call.id {
-                                        tool_call.with_call_id(id)
-                                    } else {
-                                        tool_call
-                                    };
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall(
-                                        tool_call
-                                    ));
-                                },
-                                part => {
-                                    tracing::warn!(?part, "Unsupported response type with streaming");
-                                }
-                            }
-                        }
+                    // Capture before partial moves of choice fields
+                    let should_stop = choice.finish_reason.is_some();
+                    if let Some(fr) = &choice.finish_reason {
+                        final_finish_reason = Some(fr.clone());
+                    }
+                    if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                        stream_failed = true;
+                        yield Err(err);
+                        break;
+                    }
 
-                        // Check if this is the final response
+                    let Some(content) = choice.content else {
+                        tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
+                        // Gemini's final chunk may carry finishReason with no content — break instead of skip
                         if should_stop {
                             break;
                         }
+                        continue;
+                    };
+
+                    if content.parts.is_empty() {
+                        tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
                     }
-                    Err(crate::http_client::Error::StreamEnded) => {
+
+                    for part in content.parts {
+                        match part {
+                            Part {
+                                part: PartKind::Text(text),
+                                thought: Some(true),
+                                thought_signature,
+                                ..
+                            } => {
+                                if !text.is_empty() {
+                                    if thought_signature.is_some() {
+                                        // Signature arrives on the final chunk of a
+                                        // thinking block; emit a full Reasoning so the
+                                        // core accumulator captures the signature for
+                                        // Gemini 3+ roundtrip.
+                                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                            id: None,
+                                            content: ReasoningContent::Text {
+                                                text,
+                                                signature: thought_signature,
+                                            },
+                                        });
+                                    } else {
+                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            id: None,
+                                            reasoning: text,
+                                        });
+                                    }
+                                }
+                            },
+                            Part {
+                                part: PartKind::Text(text),
+                                ..
+                            } => {
+                                if !text.is_empty() {
+                                    yield Ok(streaming::RawStreamingChoice::Message(text));
+                                }
+                            },
+                            Part {
+                                part: PartKind::FunctionCall(function_call),
+                                thought_signature,
+                                ..
+                            } => {
+                                let tool_call = streaming::RawStreamingToolCall::new(
+                                    function_call.name.clone(),
+                                    function_call.name,
+                                    function_call.args,
+                                )
+                                .with_signature(thought_signature);
+                                let tool_call = if let Some(id) = function_call.id {
+                                    tool_call.with_call_id(id)
+                                } else {
+                                    tool_call
+                                };
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                    tool_call
+                                ));
+                            },
+                            part => {
+                                tracing::warn!(?part, "Unsupported response type with streaming");
+                            }
+                        }
+                    }
+
+                    // Check if this is the final response
+                    if should_stop {
                         break;
                     }
-                    Err(error) => {
-                        tracing::error!(?error, "SSE error");
-                        stream_failed = true;
-                        yield Err(CompletionError::from_stream_transport(error));
-                        break;
-                    }
                 }
-            }
-
-            // Ensure event source is closed when stream ends
-            event_source.close();
-
-            if !stream_failed {
-                let usage = final_usage.unwrap_or_default().token_usage();
-                let mut final_response = streaming::StreamFinal::new("gemini", usage);
-                if let Some(finish_reason) = final_finish_reason.as_ref() {
-                    final_response = final_response.with_finish_reason(map_finish_reason(finish_reason));
+                Err(crate::http_client::Error::StreamEnded) => {
+                    break;
                 }
-                if let Some(message_id) = final_response_id {
-                    final_response = final_response.with_message_id(message_id);
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    stream_failed = true;
+                    yield Err(CompletionError::from_stream_transport(error));
+                    break;
                 }
-                if let Some(model_version) = final_model_version {
-                    final_response = final_response.with_model(model_version);
-                }
-                yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
             }
         }
+
+        // Ensure event source is closed when stream ends
+        event_source.close();
+
+        if !stream_failed {
+            let usage = final_usage.unwrap_or_default().token_usage();
+            let mut final_response = streaming::StreamFinal::new("gemini", usage);
+            if let Some(finish_reason) = final_finish_reason.as_ref() {
+                final_response = final_response.with_finish_reason(map_finish_reason(finish_reason));
+            }
+            if let Some(message_id) = final_response_id {
+                final_response = final_response.with_message_id(message_id);
+            }
+            if let Some(model_version) = final_model_version {
+                final_response = final_response.with_model(model_version);
+            }
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -731,12 +731,9 @@ mod tests {
     fn test_stream_final_has_finish_reason_and_model_version() {
         use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let response = streaming::StreamFinal::new(
-            "gemini",
-            PartialUsage::default().token_usage(),
-        )
-        .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
-        .with_model("gemini-2.5-pro-preview-05-06");
+        let response = streaming::StreamFinal::new("gemini", PartialUsage::default().token_usage())
+            .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+            .with_model("gemini-2.5-pro-preview-05-06");
 
         assert!(matches!(
             response.finish_reason,

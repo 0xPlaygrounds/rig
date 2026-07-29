@@ -1,5 +1,5 @@
-use rig::client::ToProviderConfig;
 use anyhow::Result;
+use rig::client::ToProviderConfig;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;

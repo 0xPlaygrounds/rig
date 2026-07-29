@@ -434,10 +434,7 @@ impl AgentSession {
 
     /// Answer [`SessionEvent::ToolCallsReady`] with one result per pending
     /// call (any order).
-    pub fn provide_tool_results(
-        &mut self,
-        results: Vec<UserContent>,
-    ) -> Result<(), PromptError> {
+    pub fn provide_tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
         if !matches!(self.pending, Pending::Tools) {
             return Err(self
                 .run

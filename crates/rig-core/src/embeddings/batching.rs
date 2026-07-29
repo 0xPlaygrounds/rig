@@ -191,9 +191,6 @@ mod tests {
             .iter()
             .map(|e| e.document.clone())
             .collect();
-        assert_eq!(
-            documents,
-            ["doc-0", "doc-1", "doc-2", "doc-3", "doc-4"]
-        );
+        assert_eq!(documents, ["doc-0", "doc-1", "doc-2", "doc-3", "doc-4"]);
     }
 }

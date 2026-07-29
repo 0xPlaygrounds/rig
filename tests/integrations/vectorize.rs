@@ -23,11 +23,11 @@
 //! cargo test --package rig-vectorize --test integration_tests
 //! ```
 
+use rig::OneOrMany;
 use rig::embeddings::{Embedding, EmbeddingModel};
 use rig::vector_store::StoreRecord;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
-use rig::OneOrMany;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 

@@ -128,8 +128,8 @@ async fn tool_choice_modes_roundtrip() {
             client.provider_config(TOOL_MODEL),
             std::sync::Arc::new(rig_agent::provider::Runtime::new()),
         )
-            .await
-            .expect("tool choice modes should succeed");
+        .await
+        .expect("tool choice modes should succeed");
     })
     .await;
 }

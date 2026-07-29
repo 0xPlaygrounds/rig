@@ -251,10 +251,9 @@ mod tests {
     #[test]
     fn test_tool_call_response_captures_thought_signature() {
         let raw = b"\x00\x01\x02thinking-sig\xff";
-        let response: CompletionResponse =
-            create_signed_tool_call_response("add", raw)
-                .try_into()
-                .unwrap();
+        let response: CompletionResponse = create_signed_tool_call_response("add", raw)
+            .try_into()
+            .unwrap();
         match response.choice.first() {
             AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
             _ => panic!("Expected ToolCall"),
@@ -304,8 +303,7 @@ mod tests {
     #[test]
     fn test_text_response_conversion() {
         let vertex_output = create_text_response("Hello, world!");
-        let completion_response: Result<CompletionResponse, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -324,8 +322,7 @@ mod tests {
             "y": 3
         });
         let vertex_output = create_tool_call_response("add", args.clone());
-        let completion_response: Result<CompletionResponse, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -399,10 +396,11 @@ mod tests {
 
     #[test]
     fn thought_image_only_response_fails_without_visible_assistant_content() {
-        let result =
-            CompletionResponse::try_from(create_parts_response([
-                inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
-            ]));
+        let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+            "image/png",
+            vec![1, 2, 3],
+        )
+        .set_thought(true)]));
 
         let error = match result {
             Err(error) => error,
@@ -419,9 +417,10 @@ mod tests {
     #[test]
     fn inline_audio_and_non_image_media_are_rejected() {
         for mime_type in ["audio/wav", "application/pdf", "application/octet-stream"] {
-            let result = CompletionResponse::try_from(
-                create_parts_response([inline_data_part(mime_type, vec![0])]),
-            );
+            let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+                mime_type,
+                vec![0],
+            )]));
             let error = match result {
                 Err(error) => error,
                 Ok(_) => panic!("unsupported inline media must fail"),
@@ -434,9 +433,10 @@ mod tests {
     #[test]
     fn inline_gif_and_svg_images_are_rejected() {
         for mime_type in ["image/gif", "image/svg+xml"] {
-            let result = CompletionResponse::try_from(
-                create_parts_response([inline_data_part(mime_type, vec![0])]),
-            );
+            let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+                mime_type,
+                vec![0],
+            )]));
             let error = match result {
                 Err(error) => error,
                 Ok(_) => panic!("non-replayable inline image must fail"),
@@ -453,10 +453,7 @@ mod tests {
     #[test]
     fn signed_inline_image_is_rejected() {
         let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
-        let result =
-            CompletionResponse::try_from(create_parts_response([
-                part,
-            ]));
+        let result = CompletionResponse::try_from(create_parts_response([part]));
         let error = match result {
             Err(error) => error,
             Ok(_) => panic!("signed inline image must fail"),
@@ -475,8 +472,7 @@ mod tests {
         response = response.set_usage_metadata(usage_metadata);
 
         let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response: Result<CompletionResponse, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -490,8 +486,7 @@ mod tests {
         // Create a response with no candidates
         let response = vertexai::model::GenerateContentResponse::new();
         let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response: Result<CompletionResponse, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_err());
     }

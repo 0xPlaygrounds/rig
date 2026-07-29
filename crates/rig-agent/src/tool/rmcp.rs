@@ -1730,10 +1730,7 @@ mod migrated_tests {
         let second_control = second_server.clone();
         let (second_client, second_server_task) = connect(second_server, handle.clone()).await;
         let second_running_server = second_server_task.await.unwrap();
-        assert_eq!(
-            handle.get_tool_defs().await[0].description,
-            "Second owner"
-        );
+        assert_eq!(handle.get_tool_defs().await[0].description, "Second owner");
 
         second_control.set_tools(Vec::new()).await;
         second_running_server

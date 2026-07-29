@@ -830,8 +830,6 @@ mod tests {
         ResponsesWebSocketCreateOptions, ResponsesWebSocketDoneEvent, ResponsesWebSocketEvent,
         parse_server_event, terminal_response_result, websocket_url,
     };
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
     use crate::providers::openai::responses_api::{
         CompletionResponse, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
     };
@@ -1139,7 +1137,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1218,7 +1215,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket_builder("gpt-4o")
             .event_timeout(Duration::from_millis(20))
@@ -1324,7 +1320,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1420,7 +1415,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1562,7 +1556,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1649,7 +1642,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1769,7 +1761,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1916,7 +1907,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1960,7 +1950,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await
@@ -1969,7 +1958,9 @@ mod tests {
         session.close().await.expect("close should succeed");
 
         let error = session
-            .send(crate::completion::CompletionRequest::from_prompt("after close"))
+            .send(crate::completion::CompletionRequest::from_prompt(
+                "after close",
+            ))
             .await
             .expect_err("send after close should error");
         assert!(
@@ -2088,7 +2079,6 @@ mod tests {
             .base_url(&base_url)
             .build()
             .expect("client should build");
-        let model = client.completion_model("gpt-4o");
         let mut session = client
             .responses_websocket("gpt-4o")
             .await

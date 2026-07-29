@@ -134,7 +134,11 @@ impl QdrantVectorStore {
     /// Serializes each document and inserts it. Sugar over [`Self::insert`].
     pub async fn insert_as<T: Serialize>(
         &self,
-        docs: Vec<(String, T, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+        docs: Vec<(
+            String,
+            T,
+            rig_core::OneOrMany<rig_core::embeddings::Embedding>,
+        )>,
     ) -> Result<(), VectorStoreError> {
         let records = docs
             .into_iter()

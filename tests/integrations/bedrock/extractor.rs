@@ -1,10 +1,10 @@
 //! AWS Bedrock extractor smoke tests inspired by the provider extractor tests.
 
+use rig::extractor::ExtractorBuilder;
 use rig::message::Message;
-use rig::prelude::*;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, bedrock_config,
     support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response},
 };
 
@@ -27,9 +27,8 @@ fn assert_smoke_person(person: &SmokePerson) {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_smoke() {
-    let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
-        .build();
+    let extractor =
+        ExtractorBuilder::<SmokePerson>::new(bedrock_config(BEDROCK_COMPLETION_MODEL)).build();
 
     let response = extractor
         .extract_with_usage(EXTRACTOR_TEXT)
@@ -43,9 +42,8 @@ async fn extractor_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_with_chat_history_smoke() {
-    let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
-        .build();
+    let extractor =
+        ExtractorBuilder::<SmokePerson>::new(bedrock_config(BEDROCK_COMPLETION_MODEL)).build();
 
     let response = extractor
         .extract_with_chat_history_with_usage(

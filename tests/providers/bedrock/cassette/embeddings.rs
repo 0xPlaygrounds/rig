@@ -1,7 +1,6 @@
 //! AWS Bedrock embeddings replay smoke test.
 
 use rig::bedrock;
-use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 
 use super::super::support::with_bedrock_cassette;

@@ -2,7 +2,6 @@
 
 use rig::bedrock;
 use rig::completion::{CompletionModel, CompletionRequest};
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -38,29 +37,32 @@ fn recorded_raw_text() -> String {
 
 #[tokio::test]
 async fn raw_response_text_matches_normalized_choice_text() {
-    with_bedrock_cassette("raw_completion/raw_response_text_matches_normalized_choice_text", |client| async move {
-        let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
-        let request = CompletionRequest {
-            temperature: Some(0.0),
-            ..CompletionRequest::with_history(
-                Some(RAW_TEXT_RESPONSE_PREAMBLE),
-                Vec::new(),
-                RAW_TEXT_RESPONSE_PROMPT,
-            )
-        };
-        let response = model
-            .completion(request)
-            .await
-            .expect("raw Bedrock request should succeed");
+    with_bedrock_cassette(
+        "raw_completion/raw_response_text_matches_normalized_choice_text",
+        |client| async move {
+            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::with_history(
+                    Some(RAW_TEXT_RESPONSE_PREAMBLE),
+                    Vec::new(),
+                    RAW_TEXT_RESPONSE_PROMPT,
+                )
+            };
+            let response = model
+                .completion(request)
+                .await
+                .expect("raw Bedrock request should succeed");
 
-        let normalized_text = assistant_text_response(&response.choice)
-            .expect("normalized Bedrock response should contain assistant text");
-        let raw_text = recorded_raw_text();
+            let normalized_text = assistant_text_response(&response.choice)
+                .expect("normalized Bedrock response should contain assistant text");
+            let raw_text = recorded_raw_text();
 
-        assert_nonempty_response(&normalized_text);
-        assert_nonempty_response(&raw_text);
-        assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
-        assert_eq!(raw_text.trim(), normalized_text.trim());
-    })
+            assert_nonempty_response(&normalized_text);
+            assert_nonempty_response(&raw_text);
+            assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
+            assert_eq!(raw_text.trim(), normalized_text.trim());
+        },
+    )
     .await;
 }

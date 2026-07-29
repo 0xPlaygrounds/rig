@@ -1,9 +1,7 @@
 //! AWS Bedrock agent completion replay smoke test.
 
-use rig::agent::AgentBuilder;
 use rig::bedrock;
 use rig::completion::Prompt;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -17,6 +15,7 @@ async fn completion_smoke() {
     with_bedrock_cassette("agent/completion_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble(BASIC_PREAMBLE)
             .build();
 
@@ -35,6 +34,7 @@ async fn completion_with_context_smoke() {
     with_bedrock_cassette("agent/completion_with_context_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble("Answer the user using only the supplied context.")
             .context(CONTEXT_DOCS[0])
             .context(CONTEXT_DOCS[1])
@@ -56,6 +56,7 @@ async fn tool_roundtrip_smoke() {
     with_bedrock_cassette("agent/tool_roundtrip_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Adder)
@@ -78,10 +79,14 @@ async fn prompt_caching_completion_smoke() {
     with_bedrock_cassette(
         "agent/prompt_caching_completion_smoke",
         |client| async move {
-            let model = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
-                .with_prompt_caching();
-            let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
+            let config =
+                rig::bedrock::functions::Config::new(bedrock::completion::AMAZON_NOVA_LITE)
+                    .with_prompt_caching();
+            let agent = client
+                .agent_from_config(config)
+                .await
+                .preamble(BASIC_PREAMBLE)
+                .build();
 
             let response = agent
                 .prompt(BASIC_PROMPT)

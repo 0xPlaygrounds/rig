@@ -113,12 +113,9 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
                     "Reply with exactly: tools dropped ok",
                 )
             };
-            let response = model
-                .completion(request)
-                .await
-                .expect(
-                    "unsupported tools and multi-name tool choice should be dropped before validation",
-                );
+            let response = model.completion(request).await.expect(
+                "unsupported tools and multi-name tool choice should be dropped before validation",
+            );
 
             let text = assistant_text_response(&response.choice)
                 .expect("response should contain assistant text");

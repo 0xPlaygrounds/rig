@@ -49,8 +49,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     println!();
-    let final_response =
-        final_response.context("Candle stream ended without final metadata")?;
+    let final_response = final_response.context("Candle stream ended without final metadata")?;
     let usage = final_response.usage;
     println!(
         "tokens: prompt={}, generated={}, total={}",

@@ -60,12 +60,11 @@ fn tool_result_for(call: &ToolCall, content: &str) -> UserContent {
 
 #[tokio::test]
 async fn streamed_text_arrives_as_deltas_then_final() {
-    let script = MockScript::from_responses(vec![text_response("hello world", 5)]).with_streams(
-        vec![vec![
+    let script =
+        MockScript::from_responses(vec![text_response("hello world", 5)]).with_streams(vec![vec![
             StreamedAssistantContent::text("hello "),
             StreamedAssistantContent::text("world"),
-        ]],
-    );
+        ]]);
     let mut stream = AgentStream::new(
         AgentConfig::new(),
         ProviderConfig::Mock(script),
@@ -163,9 +162,7 @@ async fn policy_surfaced_turns_pause_the_stream() {
                 assert_eq!(turn, 1);
                 saw_before_call = true;
                 stream
-                    .reply_before_call(
-                        rig_agent::agent::hook::CompletionCallAction::Continue,
-                    )
+                    .reply_before_call(rig_agent::agent::hook::CompletionCallAction::Continue)
                     .await
                     .expect("continue should be accepted");
             }

@@ -129,8 +129,10 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
         let finish_reason = map_finish_reason(&value.0.stop_reason);
 
-        Ok(completion::CompletionResponse::new(choice, usage, "aws_bedrock")
-            .with_finish_reason(finish_reason))
+        Ok(
+            completion::CompletionResponse::new(choice, usage, "aws_bedrock")
+                .with_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -413,10 +415,9 @@ mod tests {
             ),
         ];
 
-        let completion: completion::CompletionResponse =
-            make_output_with_content(content, None)
-                .try_into()
-                .expect("conversion should succeed");
+        let completion: completion::CompletionResponse = make_output_with_content(content, None)
+            .try_into()
+            .expect("conversion should succeed");
 
         let choice: Vec<_> = completion.choice.into_iter().collect();
         assert_eq!(choice.len(), 3);

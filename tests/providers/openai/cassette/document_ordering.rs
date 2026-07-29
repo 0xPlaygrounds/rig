@@ -1,9 +1,7 @@
 //! Focused OpenAI cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{
-    AssistantContent, CompletionModel, CompletionRequest, Document, Message,
-};
+use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
 use rig::prelude::*;
 use rig::providers::openai;
 use serde::Deserialize;

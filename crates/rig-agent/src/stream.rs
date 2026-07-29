@@ -30,8 +30,8 @@ use rig_core::streaming::{
     StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
 };
 
-use crate::session::SessionPolicy;
 use crate::provider::{self, ProviderConfig, Runtime};
+use crate::session::SessionPolicy;
 
 /// One item pulled from an [`AgentStream`].
 ///
@@ -106,13 +106,18 @@ struct ActiveTurn {
 /// The host decision the stream is waiting for.
 enum Pending {
     None,
-    BeforeCall { prompt: Message, history: Vec<Message> },
+    BeforeCall {
+        prompt: Message,
+        history: Vec<Message>,
+    },
     TurnReply,
     Invalid {
         partial: PartialStreamedTurn,
         invalid: StreamedInvalidToolCall,
     },
-    Tools { calls: Vec<PendingToolCall> },
+    Tools {
+        calls: Vec<PendingToolCall>,
+    },
     Finished,
 }
 
@@ -234,9 +239,9 @@ impl AgentStream {
                 | Pending::TurnReply
                 | Pending::Invalid { .. }
                 | Pending::Tools { .. } => {
-                    return Some(Err(self
-                        .run
-                        .cancel_error("next_item called while a decision inbox awaits its answer")));
+                    return Some(Err(self.run.cancel_error(
+                        "next_item called while a decision inbox awaits its answer",
+                    )));
                 }
             }
 
@@ -365,8 +370,9 @@ impl AgentStream {
                             ));
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
-                            let partial =
-                                active.assembler.partial_turn(active.stream.message_id.clone());
+                            let partial = active
+                                .assembler
+                                .partial_turn(active.stream.message_id.clone());
                             let context = self
                                 .run
                                 .streamed_invalid_tool_call_context(&partial, &invalid);
@@ -379,17 +385,14 @@ impl AgentStream {
                             return Ok(());
                         }
                         StreamedTurnEvent::Completed { usage, emit_final } => {
-                            let call = self
-                                .run
-                                .record_streamed_completion_call(usage)?;
+                            let call = self.run.record_streamed_completion_call(usage)?;
                             self.buffered
                                 .push_back(AgentStreamItem::CompletionCall(call));
                             if let StreamedAssistantContent::Final(final_record) = &item {
                                 self.last_final = Some(final_record.clone());
                                 if emit_final {
-                                    self.buffered.push_back(AgentStreamItem::Assistant(
-                                        item.clone(),
-                                    ));
+                                    self.buffered
+                                        .push_back(AgentStreamItem::Assistant(item.clone()));
                                 }
                             }
                         }
@@ -543,10 +546,7 @@ impl AgentStream {
     /// Answer [`AgentStreamItem::ToolCallsReady`]. Committed results and
     /// execution markers surface on subsequent [`AgentStream::next_item`]
     /// calls, in call order.
-    pub fn provide_tool_results(
-        &mut self,
-        results: Vec<UserContent>,
-    ) -> Result<(), PromptError> {
+    pub fn provide_tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
         let Pending::Tools { calls } = std::mem::replace(&mut self.pending, Pending::None) else {
             return Err(self
                 .run
@@ -570,9 +570,10 @@ impl AgentStream {
                 }
                 _ => None,
             }) {
-                self.buffered.push_back(AgentStreamItem::User(
-                    StreamedUserContent::tool_result(result, internal),
-                ));
+                self.buffered
+                    .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(
+                        result, internal,
+                    )));
             }
         }
         Ok(())

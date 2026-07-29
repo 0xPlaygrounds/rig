@@ -474,9 +474,7 @@ mod tests {
     };
 
     use crate::{
-        test_utils::{
-            MockAddTool, MockBarrierTool, MockControlledTool, MockSubtractTool,
-        },
+        test_utils::{MockAddTool, MockBarrierTool, MockControlledTool, MockSubtractTool},
         tool::{
             Tool, ToolContext, ToolExecutionError, ToolSet,
             server::{ToolServer, ToolServerHandle},

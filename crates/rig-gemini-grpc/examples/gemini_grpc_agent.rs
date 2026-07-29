@@ -13,9 +13,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = AgentBuilder::new(ProviderConfig::GeminiGrpc(
         rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"),
     ))
-        .preamble("Be creative and concise. Answer directly and clearly.")
-        .temperature(0.5)
-        .build();
+    .preamble("Be creative and concise. Answer directly and clearly.")
+    .temperature(0.5)
+    .build();
 
     tracing::info!("Prompting the agent via gRPC...");
 

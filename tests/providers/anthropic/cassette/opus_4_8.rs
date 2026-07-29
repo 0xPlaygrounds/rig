@@ -1,8 +1,7 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionRequest, Document, Message,
-    ProviderToolDefinition,
+    AssistantContent, CompletionModel, CompletionRequest, Document, Message, ProviderToolDefinition,
 };
 use rig::message::Text;
 use rig::prelude::*;
@@ -184,12 +183,9 @@ async fn documents_keep_leading_system_message_top_level() {
                     "According to the document, what color is the clear daytime sky?",
                 )
             };
-            let response = model
-                .completion(request)
-                .await
-                .expect(
-                    "Opus 4.8 request with documents and a leading system message should succeed",
-                );
+            let response = model.completion(request).await.expect(
+                "Opus 4.8 request with documents and a leading system message should succeed",
+            );
 
             let text = assistant_text_response(&response.choice)
                 .or_else(|| {

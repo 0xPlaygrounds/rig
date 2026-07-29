@@ -1585,7 +1585,10 @@ mod protocol_helper_tests {
         assert_eq!(resolution.args(), &serde_json::json!({"step": 1}));
         assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 2}))));
         let (action, salvage) = resolution.finish();
-        assert_eq!(action, ToolCallAction::rewrite(serde_json::json!({"step": 2})));
+        assert_eq!(
+            action,
+            ToolCallAction::rewrite(serde_json::json!({"step": 2}))
+        );
         assert!(salvage.is_none());
 
         // Terminal skip keeps the accumulated rewrite (the salvage path).

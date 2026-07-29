@@ -13,8 +13,8 @@
 //! ```
 pub mod client;
 pub mod completion;
-pub mod functions;
 pub mod embedding;
+pub mod functions;
 pub mod model_listing;
 pub mod responses_api;
 

@@ -63,12 +63,8 @@ where
     let mut last_error: Option<(serde_json::Error, String)> = None;
 
     for _attempt in 0..=retries {
-        let mut session = AgentSession::new(
-            config.clone(),
-            provider.clone(),
-            rt.clone(),
-            prompt.clone(),
-        );
+        let mut session =
+            AgentSession::new(config.clone(), provider.clone(), rt.clone(), prompt.clone());
         if !history.is_empty() {
             session = session.with_history(history.clone());
         }
@@ -92,10 +88,12 @@ where
         Some(pair) => pair,
         None => match serde_json::from_str::<T>("") {
             Err(error) => (error, String::new()),
-            Ok(_) => return Err(ExtractError::Deserialization {
-                source: serde::de::Error::custom("extraction made no attempts"),
-                raw: String::new(),
-            }),
+            Ok(_) => {
+                return Err(ExtractError::Deserialization {
+                    source: serde::de::Error::custom("extraction made no attempts"),
+                    raw: String::new(),
+                });
+            }
         },
     };
     Err(ExtractError::Deserialization { source, raw })

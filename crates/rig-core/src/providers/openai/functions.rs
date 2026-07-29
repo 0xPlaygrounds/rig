@@ -358,7 +358,9 @@ pub fn parse_image_generation_response(
     status: http::StatusCode,
     body: &[u8],
 ) -> Result<
-    crate::image_generation::ImageGenerationResponse<super::image_generation::ImageGenerationResponse>,
+    crate::image_generation::ImageGenerationResponse<
+        super::image_generation::ImageGenerationResponse,
+    >,
     crate::image_generation::ImageGenerationError,
 > {
     use crate::image_generation::ImageGenerationError;
@@ -390,7 +392,9 @@ pub async fn generate_image(
     rt: &HttpRuntime,
     request: crate::image_generation::ImageGenerationRequest,
 ) -> Result<
-    crate::image_generation::ImageGenerationResponse<super::image_generation::ImageGenerationResponse>,
+    crate::image_generation::ImageGenerationResponse<
+        super::image_generation::ImageGenerationResponse,
+    >,
     crate::image_generation::ImageGenerationError,
 > {
     use crate::image_generation::ImageGenerationError;
@@ -580,9 +584,7 @@ pub fn parse_embedding_response(
     body: &str,
     documents: Vec<String>,
 ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-    super::embedding::parse_embedding_response::<super::OpenAIResponsesExt>(
-        status, body, documents,
-    )
+    super::embedding::parse_embedding_response::<super::OpenAIResponsesExt>(status, body, documents)
 }
 
 /// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
@@ -608,8 +610,13 @@ pub async fn embed_batches(
     cfg: &EmbeddingConfig,
     rt: &HttpRuntime,
     texts: Vec<Vec<String>>,
-) -> Result<(Vec<crate::OneOrMany<embeddings::Embedding>>, crate::completion::Usage), EmbeddingError>
-{
+) -> Result<
+    (
+        Vec<crate::OneOrMany<embeddings::Embedding>>,
+        crate::completion::Usage,
+    ),
+    EmbeddingError,
+> {
     let (counts, flat) = crate::embeddings::batching::split_batches(texts);
     let response = embed(cfg, rt, flat).await?;
     let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;

@@ -80,8 +80,7 @@ where
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let body =
-            build_image_generation_body(&self.model, &generation_request)?;
+        let body = build_image_generation_body(&self.model, &generation_request)?;
 
         let request = self
             .client
@@ -120,10 +119,8 @@ pub(crate) fn build_image_generation_body(
 pub(crate) fn parse_image_generation_response(
     status: http::StatusCode,
     text: &str,
-) -> Result<
-    image_generation::ImageGenerationResponse<ImageGenerationResponse>,
-    ImageGenerationError,
-> {
+) -> Result<image_generation::ImageGenerationResponse<ImageGenerationResponse>, ImageGenerationError>
+{
     if !status.is_success() {
         return Err(ImageGenerationError::from_http_response(
             status,

@@ -1,11 +1,11 @@
 use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Client};
+use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use rig::{
     Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
     tool::builtin::ThinkTool, vector_store::in_memory_store::InMemoryVectorStore,
 };
-use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use serde::{Deserialize, Serialize};
 use std::env;
 

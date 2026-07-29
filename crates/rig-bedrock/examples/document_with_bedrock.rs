@@ -22,9 +22,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = AgentBuilder::new(ProviderConfig::Bedrock(
         rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
     ))
-        .preamble("Describe this document")
-        .temperature(0.5)
-        .build();
+    .preamble("Describe this document")
+    .temperature(0.5)
+    .build();
 
     let reqwest_client = reqwest::Client::new();
     let response = reqwest_client.get(DOCUMENT_URL).send().await?;

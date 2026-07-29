@@ -223,7 +223,10 @@ where
 
 /// Build the serialized `/embeddings` request body. Pure; shared by the
 /// trait path and [`functions::embed`].
-pub(crate) fn build_embedding_body(model: &str, texts: &[String]) -> Result<Vec<u8>, EmbeddingError> {
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+) -> Result<Vec<u8>, EmbeddingError> {
     Ok(serde_json::to_vec(&json!({
         "model": model,
         "input": texts,
@@ -712,7 +715,6 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -737,15 +739,9 @@ mod tests {
 
     #[test]
     fn rerank_body_omits_unset_options() {
-        let body = super::functions::build_rerank_body(
-            super::RERANK_2,
-            None,
-            false,
-            None,
-            "q",
-            &[],
-        )
-        .expect("build");
+        let body =
+            super::functions::build_rerank_body(super::RERANK_2, None, false, None, "q", &[])
+                .expect("build");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert!(value.get("top_k").is_none());
         assert_eq!(value["return_documents"], false);

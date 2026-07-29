@@ -2,9 +2,9 @@
 //! Requires `COHERE_API_KEY`.
 //! Run it to see the model answer from the supplied in-memory facts.
 
-use rig::client::ToProviderConfig;
 use anyhow::Result;
 use rig::agent::AgentBuilder;
+use rig::client::ToProviderConfig;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::cohere::{self, COMMAND_R};

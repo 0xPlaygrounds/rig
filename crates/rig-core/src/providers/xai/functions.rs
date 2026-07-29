@@ -208,9 +208,14 @@ pub async fn generate_image(
         "{}/v1/images/generations",
         cfg.base_url.trim_end_matches('/')
     );
-    let req = crate::providers::openai::functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
-        .body(body)
-        .map_err(|e| ImageGenerationError::RequestError(Box::new(e)))?;
+    let req = crate::providers::openai::functions::bearer_post(
+        url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        true,
+    )?
+    .body(body)
+    .map_err(|e| ImageGenerationError::RequestError(Box::new(e)))?;
     let (status, body) = rt.send_bytes(req).await?;
     super::image_generation::parse_image_generation_response(
         status,
@@ -233,9 +238,14 @@ pub async fn generate_audio(
 
     let body = super::audio_generation::build_audio_generation_body(&request)?;
     let url = format!("{}/v1/tts", cfg.base_url.trim_end_matches('/'));
-    let req = crate::providers::openai::functions::bearer_post(url, &cfg.api_key, &cfg.extra_headers, true)?
-        .body(body)
-        .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
+    let req = crate::providers::openai::functions::bearer_post(
+        url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        true,
+    )?
+    .body(body)
+    .map_err(|e| AudioGenerationError::RequestError(Box::new(e)))?;
     let (status, body) = rt.send_bytes(req).await?;
     super::audio_generation::parse_audio_generation_response(status, body)
 }

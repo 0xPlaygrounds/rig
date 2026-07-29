@@ -4,7 +4,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
 use rig::bedrock;
 use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
-use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 

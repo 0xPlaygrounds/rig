@@ -83,8 +83,7 @@ where
         generation_request: ImageGenerationRequest,
     ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
     {
-        let body =
-            super::functions::build_image_generation_body(&self.model, &generation_request)?;
+        let body = super::functions::build_image_generation_body(&self.model, &generation_request)?;
 
         let request = self
             .client

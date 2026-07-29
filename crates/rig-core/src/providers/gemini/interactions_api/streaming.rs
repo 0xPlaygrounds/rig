@@ -213,9 +213,7 @@ where
     Box::pin(stream)
 }
 
-fn step_start_to_choice(
-    step: Step,
-) -> Option<streaming::RawStreamingChoice> {
+fn step_start_to_choice(step: Step) -> Option<streaming::RawStreamingChoice> {
     match step {
         Step::ModelOutput { content } => content.into_iter().find_map(content_to_choice),
         Step::FunctionCall(FunctionCallContent {
@@ -238,9 +236,7 @@ fn step_start_to_choice(
     }
 }
 
-fn content_to_choice(
-    content: Content,
-) -> Option<streaming::RawStreamingChoice> {
+fn content_to_choice(content: Content) -> Option<streaming::RawStreamingChoice> {
     match content {
         Content::Text(text) if !text.text.is_empty() => {
             Some(streaming::RawStreamingChoice::Message(text.text))
@@ -250,9 +246,7 @@ fn content_to_choice(
     }
 }
 
-fn content_delta_to_choice(
-    delta: ContentDelta,
-) -> Option<streaming::RawStreamingChoice> {
+fn content_delta_to_choice(delta: ContentDelta) -> Option<streaming::RawStreamingChoice> {
     match delta {
         ContentDelta::Text(TextDelta {
             text: Some(text), ..
@@ -294,11 +288,8 @@ mod tests {
 
     #[test]
     fn test_stream_final_has_model_version() {
-        let response = streaming::StreamFinal::new(
-            "gemini",
-            crate::completion::Usage::default(),
-        )
-        .with_model("gemini-2.5-pro-preview-05-06");
+        let response = streaming::StreamFinal::new("gemini", crate::completion::Usage::default())
+            .with_model("gemini-2.5-pro-preview-05-06");
 
         assert_eq!(
             response.model.as_deref(),

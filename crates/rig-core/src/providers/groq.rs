@@ -303,10 +303,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::completion::CompletionRequest;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
-    use crate::completion::CompletionRequest;
 
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {

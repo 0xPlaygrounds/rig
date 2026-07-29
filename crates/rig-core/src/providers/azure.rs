@@ -498,8 +498,8 @@ where
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
 
-        let dimensions = (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002)
-            .then_some(self.ndims);
+        let dimensions =
+            (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
         let body = build_embedding_body(&documents, dimensions)?;
 
         let req = self
@@ -673,7 +673,6 @@ mod image_generation {
     use crate::providers::azure::Client;
     use crate::providers::openai::ImageGenerationResponse;
     use bytes::Bytes;
-    
 
     #[derive(Clone)]
     pub struct ImageGenerationModel<T = reqwest::Client> {
@@ -738,7 +737,6 @@ mod audio_generation {
     };
     use crate::http_client::HttpClientExt;
     use bytes::Bytes;
-    
 
     #[derive(Clone)]
     pub struct AudioGenerationModel<T = reqwest::Client> {
@@ -1302,8 +1300,8 @@ pub mod functions {
         use crate::http_client::{MultipartForm, multipart::Part};
         use crate::transcription::TranscriptionError;
 
-        let mut body = MultipartForm::new()
-            .part(Part::bytes("file", request.data).filename(request.filename));
+        let mut body =
+            MultipartForm::new().part(Part::bytes("file", request.data).filename(request.filename));
         if let Some(prompt) = request.prompt {
             body = body.text("prompt", prompt);
         }
@@ -1378,9 +1376,9 @@ pub mod functions {
     > {
         let body = build_image_generation_body(&cfg.model, &request)?;
         let url = deployment_url(cfg, "images/generations");
-        let req = api_key_request(cfg, url, true)?
-            .body(body)
-            .map_err(|e| crate::image_generation::ImageGenerationError::RequestError(Box::new(e)))?;
+        let req = api_key_request(cfg, url, true)?.body(body).map_err(|e| {
+            crate::image_generation::ImageGenerationError::RequestError(Box::new(e))
+        })?;
         let (status, body) = rt.send_bytes(req).await?;
         openai_functions::parse_image_generation_response(status, &body)
     }
@@ -1398,9 +1396,9 @@ pub mod functions {
     > {
         let body = openai_functions::build_audio_generation_body(&cfg.model, &request)?;
         let url = deployment_url(cfg, "audio/speech");
-        let req = api_key_request(cfg, url, true)?
-            .body(body)
-            .map_err(|e| crate::audio_generation::AudioGenerationError::RequestError(Box::new(e)))?;
+        let req = api_key_request(cfg, url, true)?.body(body).map_err(|e| {
+            crate::audio_generation::AudioGenerationError::RequestError(Box::new(e))
+        })?;
         let (status, body) = rt.send_bytes(req).await?;
         openai_functions::parse_audio_generation_response(status, body)
     }

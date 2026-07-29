@@ -187,307 +187,314 @@ async fn effort_max() {
 #[tokio::test]
 async fn mode_pro_with_independent_effort() {
     const SCENARIO: &str = "gpt_5_6_reasoning/mode_pro_with_independent_effort";
-    with_openai_cassette("gpt_5_6_reasoning/mode_pro_with_independent_effort", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_SOL);
-        let response =
-            prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
-        assert_has_text(&response);
-        if replaying() {
-            let raw = recorded_wire_responses(SCENARIO);
-            assert_eq!(raw.len(), 1, "scenario should record a single interaction");
-            assert_reasoning_metadata(
-                &raw[0],
-                json!({
-                    "context": "all_turns",
-                    "effort": "high",
-                    "mode": "pro",
-                    "summary": null
-                }),
-            );
-        }
-    })
+    with_openai_cassette(
+        "gpt_5_6_reasoning/mode_pro_with_independent_effort",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let response =
+                prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
+            assert_has_text(&response);
+            if replaying() {
+                let raw = recorded_wire_responses(SCENARIO);
+                assert_eq!(raw.len(), 1, "scenario should record a single interaction");
+                assert_reasoning_metadata(
+                    &raw[0],
+                    json!({
+                        "context": "all_turns",
+                        "effort": "high",
+                        "mode": "pro",
+                        "summary": null
+                    }),
+                );
+            }
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn context_current_turn() {
     const SCENARIO: &str = "gpt_5_6_reasoning/context_current_turn";
-    with_openai_cassette("gpt_5_6_reasoning/context_current_turn", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_SOL);
-        let response = prompt_with_reasoning(
-            &model,
-            json!({ "effort": "low", "context": "current_turn" }),
-        )
-        .await;
-        assert_has_text(&response);
-        if replaying() {
-            let raw = recorded_wire_responses(SCENARIO);
-            assert_eq!(raw.len(), 1, "scenario should record a single interaction");
-            assert_reasoning_metadata(
-                &raw[0],
-                json!({
-                    "context": "current_turn",
-                    "effort": "low",
-                    "mode": "standard",
-                    "summary": null
-                }),
-            );
-        }
-    })
+    with_openai_cassette(
+        "gpt_5_6_reasoning/context_current_turn",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let response = prompt_with_reasoning(
+                &model,
+                json!({ "effort": "low", "context": "current_turn" }),
+            )
+            .await;
+            assert_has_text(&response);
+            if replaying() {
+                let raw = recorded_wire_responses(SCENARIO);
+                assert_eq!(raw.len(), 1, "scenario should record a single interaction");
+                assert_reasoning_metadata(
+                    &raw[0],
+                    json!({
+                        "context": "current_turn",
+                        "effort": "low",
+                        "mode": "standard",
+                        "summary": null
+                    }),
+                );
+            }
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn five_turn_reasoning_metadata_roundtrip() {
     const SCENARIO: &str = "gpt_5_6_reasoning/five_turn_metadata_roundtrip";
-    with_openai_cassette("gpt_5_6_reasoning/five_turn_metadata_roundtrip", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_SOL);
-        let expected_metadata = json!({
-            "context": "all_turns",
-            "effort": "low",
-            "mode": "pro",
-            "summary": null
-        });
-        let mut stored_turns = Vec::<StoredTurn>::new();
-
-        for (turn_index, (prompt, expected_text)) in FIVE_TURN_PROMPTS.into_iter().enumerate() {
-            let history = stored_turns
-                .iter()
-                .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
-            let user_message = Message::user(prompt);
-            let request = CompletionRequest {
-                additional_params: Some(json!({
-                    "reasoning": {
-                        "context": "all_turns",
-                        "effort": "low",
-                        "mode": "pro"
-                    }
-                })),
-                ..CompletionRequest::with_history(
-                    None,
-                    history.collect(),
-                    user_message.clone(),
-                )
-            };
-            let response = model
-                .completion(request)
-                .await
-                .unwrap_or_else(|error| panic!("turn {} should succeed: {error}", turn_index + 1));
-
-            assert_has_text(&response);
-            let text = response
-                .choice
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect::<String>();
-            assert_eq!(
-                text.trim(),
-                expected_text,
-                "unexpected turn {} text",
-                turn_index + 1
-            );
-
-            stored_turns.push(StoredTurn {
-                user: user_message,
-                assistant: Message::Assistant {
-                    id: response.message_id,
-                    content: response.choice,
-                },
+    with_openai_cassette(
+        "gpt_5_6_reasoning/five_turn_metadata_roundtrip",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let expected_metadata = json!({
+                "context": "all_turns",
+                "effort": "low",
+                "mode": "pro",
+                "summary": null
             });
-            let stored_json =
-                serde_json::to_value(&stored_turns).expect("all stored turns should serialize");
-            stored_turns = serde_json::from_value(stored_json.clone())
-                .expect("all stored turns should deserialize before the next request");
-            assert_eq!(
-                serde_json::to_value(&stored_turns).expect("restored turns should serialize"),
-                stored_json,
-                "all session data should survive persistence after turn {}",
-                turn_index + 1
-            );
-            assert_eq!(stored_turns.len(), turn_index + 1);
-        }
+            let mut stored_turns = Vec::<StoredTurn>::new();
 
-        if replaying() {
-            let wire_responses = recorded_wire_responses(SCENARIO);
-            assert_eq!(
-                wire_responses.len(),
-                FIVE_TURN_PROMPTS.len(),
-                "scenario should record one interaction per turn"
-            );
-            for (turn_index, raw) in wire_responses.iter().enumerate() {
-                assert_reasoning_metadata(raw, expected_metadata.clone());
-                assert_eq!(raw.reasoning_context.as_deref(), Some("all_turns"));
-                assert_wire_roundtrip(raw, turn_index + 1);
+            for (turn_index, (prompt, expected_text)) in FIVE_TURN_PROMPTS.into_iter().enumerate() {
+                let history = stored_turns
+                    .iter()
+                    .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
+                let user_message = Message::user(prompt);
+                let request = CompletionRequest {
+                    additional_params: Some(json!({
+                        "reasoning": {
+                            "context": "all_turns",
+                            "effort": "low",
+                            "mode": "pro"
+                        }
+                    })),
+                    ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
+                };
+                let response = model.completion(request).await.unwrap_or_else(|error| {
+                    panic!("turn {} should succeed: {error}", turn_index + 1)
+                });
+
+                assert_has_text(&response);
+                let text = response
+                    .choice
+                    .iter()
+                    .filter_map(|content| match content {
+                        AssistantContent::Text(text) => Some(text.text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<String>();
+                assert_eq!(
+                    text.trim(),
+                    expected_text,
+                    "unexpected turn {} text",
+                    turn_index + 1
+                );
+
+                stored_turns.push(StoredTurn {
+                    user: user_message,
+                    assistant: Message::Assistant {
+                        id: response.message_id,
+                        content: response.choice,
+                    },
+                });
+                let stored_json =
+                    serde_json::to_value(&stored_turns).expect("all stored turns should serialize");
+                stored_turns = serde_json::from_value(stored_json.clone())
+                    .expect("all stored turns should deserialize before the next request");
+                assert_eq!(
+                    serde_json::to_value(&stored_turns).expect("restored turns should serialize"),
+                    stored_json,
+                    "all session data should survive persistence after turn {}",
+                    turn_index + 1
+                );
+                assert_eq!(stored_turns.len(), turn_index + 1);
             }
-        }
-    })
+
+            if replaying() {
+                let wire_responses = recorded_wire_responses(SCENARIO);
+                assert_eq!(
+                    wire_responses.len(),
+                    FIVE_TURN_PROMPTS.len(),
+                    "scenario should record one interaction per turn"
+                );
+                for (turn_index, raw) in wire_responses.iter().enumerate() {
+                    assert_reasoning_metadata(raw, expected_metadata.clone());
+                    assert_eq!(raw.reasoning_context.as_deref(), Some("all_turns"));
+                    assert_wire_roundtrip(raw, turn_index + 1);
+                }
+            }
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn five_turn_streaming_reasoning_metadata_roundtrip() {
     const SCENARIO: &str = "gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip";
-    with_openai_cassette("gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_SOL);
-        let expected_metadata = json!({
-            "context": "all_turns",
-            "effort": "low",
-            "mode": "pro",
-            "summary": null
-        });
-        let mut stored_turns = Vec::<StoredTurn>::new();
-
-        for (turn_index, (prompt, expected_text)) in FIVE_TURN_PROMPTS.into_iter().enumerate() {
-            let history = stored_turns
-                .iter()
-                .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
-            let user_message = Message::user(prompt);
-            let request = CompletionRequest {
-                additional_params: Some(json!({
-                    "reasoning": {
-                        "context": "all_turns",
-                        "effort": "low",
-                        "mode": "pro"
-                    }
-                })),
-                ..CompletionRequest::with_history(
-                    None,
-                    history.collect(),
-                    user_message.clone(),
-                )
-            };
-            let mut stream = model.stream(request).await.unwrap_or_else(|error| {
-                panic!("turn {} stream should start: {error}", turn_index + 1)
+    with_openai_cassette(
+        "gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let expected_metadata = json!({
+                "context": "all_turns",
+                "effort": "low",
+                "mode": "pro",
+                "summary": null
             });
-            let mut text = String::new();
-            let mut reasoning_blocks = Vec::new();
-            let mut reasoning_delta = String::new();
-            let mut final_response = None;
+            let mut stored_turns = Vec::<StoredTurn>::new();
 
-            while let Some(item) = stream.next().await {
-                match item.unwrap_or_else(|error| {
-                    panic!("turn {} stream should succeed: {error}", turn_index + 1)
-                }) {
-                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                    StreamedAssistantContent::Reasoning(reasoning) => {
-                        reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
+            for (turn_index, (prompt, expected_text)) in FIVE_TURN_PROMPTS.into_iter().enumerate() {
+                let history = stored_turns
+                    .iter()
+                    .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
+                let user_message = Message::user(prompt);
+                let request = CompletionRequest {
+                    additional_params: Some(json!({
+                        "reasoning": {
+                            "context": "all_turns",
+                            "effort": "low",
+                            "mode": "pro"
+                        }
+                    })),
+                    ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
+                };
+                let mut stream = model.stream(request).await.unwrap_or_else(|error| {
+                    panic!("turn {} stream should start: {error}", turn_index + 1)
+                });
+                let mut text = String::new();
+                let mut reasoning_blocks = Vec::new();
+                let mut reasoning_delta = String::new();
+                let mut final_response = None;
+
+                while let Some(item) = stream.next().await {
+                    match item.unwrap_or_else(|error| {
+                        panic!("turn {} stream should succeed: {error}", turn_index + 1)
+                    }) {
+                        StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+                        StreamedAssistantContent::Reasoning(reasoning) => {
+                            reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
+                        }
+                        StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+                            reasoning_delta.push_str(&reasoning);
+                        }
+                        StreamedAssistantContent::Final(response) => {
+                            final_response = Some(response);
+                        }
+                        _ => {}
                     }
-                    StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
-                        reasoning_delta.push_str(&reasoning);
-                    }
-                    StreamedAssistantContent::Final(response) => {
-                        final_response = Some(response);
-                    }
-                    _ => {}
+                }
+
+                assert_eq!(
+                    text.trim(),
+                    expected_text,
+                    "unexpected turn {} text",
+                    turn_index + 1
+                );
+                let _final_response = final_response.unwrap_or_else(|| {
+                    panic!("turn {} should yield a final response", turn_index + 1)
+                });
+
+                if reasoning_blocks.is_empty() && !reasoning_delta.is_empty() {
+                    reasoning_blocks.push(AssistantContent::Reasoning(Reasoning::new(
+                        &reasoning_delta,
+                    )));
+                }
+                reasoning_blocks.push(AssistantContent::text(&text));
+                stored_turns.push(StoredTurn {
+                    user: user_message,
+                    assistant: Message::Assistant {
+                        id: stream.message_id.clone(),
+                        content: rig::OneOrMany::many(reasoning_blocks)
+                            .expect("streamed assistant message should not be empty"),
+                    },
+                });
+                let stored_json = serde_json::to_value(&stored_turns)
+                    .expect("all stored streaming turns should serialize");
+                stored_turns = serde_json::from_value(stored_json.clone()).expect(
+                    "all stored streaming turns should deserialize before the next request",
+                );
+                assert_eq!(
+                    serde_json::to_value(&stored_turns)
+                        .expect("restored streaming turns should serialize"),
+                    stored_json,
+                    "all streaming session data should survive persistence after turn {}",
+                    turn_index + 1
+                );
+                assert_eq!(stored_turns.len(), turn_index + 1);
+            }
+
+            if replaying() {
+                let wire_responses = recorded_completed_wire_responses(SCENARIO);
+                assert_eq!(
+                    wire_responses.len(),
+                    FIVE_TURN_PROMPTS.len(),
+                    "scenario should record one interaction per turn"
+                );
+                for (turn_index, raw) in wire_responses.iter().enumerate() {
+                    assert_reasoning_metadata(raw, expected_metadata.clone());
+                    assert_eq!(raw.reasoning_context.as_deref(), Some("all_turns"));
+                    assert_wire_roundtrip(raw, turn_index + 1);
                 }
             }
-
-            assert_eq!(
-                text.trim(),
-                expected_text,
-                "unexpected turn {} text",
-                turn_index + 1
-            );
-            let _final_response = final_response.unwrap_or_else(|| {
-                panic!("turn {} should yield a final response", turn_index + 1)
-            });
-
-            if reasoning_blocks.is_empty() && !reasoning_delta.is_empty() {
-                reasoning_blocks.push(AssistantContent::Reasoning(Reasoning::new(
-                    &reasoning_delta,
-                )));
-            }
-            reasoning_blocks.push(AssistantContent::text(&text));
-            stored_turns.push(StoredTurn {
-                user: user_message,
-                assistant: Message::Assistant {
-                    id: stream.message_id.clone(),
-                    content: rig::OneOrMany::many(reasoning_blocks)
-                        .expect("streamed assistant message should not be empty"),
-                },
-            });
-            let stored_json = serde_json::to_value(&stored_turns)
-                .expect("all stored streaming turns should serialize");
-            stored_turns = serde_json::from_value(stored_json.clone())
-                .expect("all stored streaming turns should deserialize before the next request");
-            assert_eq!(
-                serde_json::to_value(&stored_turns)
-                    .expect("restored streaming turns should serialize"),
-                stored_json,
-                "all streaming session data should survive persistence after turn {}",
-                turn_index + 1
-            );
-            assert_eq!(stored_turns.len(), turn_index + 1);
-        }
-
-        if replaying() {
-            let wire_responses = recorded_completed_wire_responses(SCENARIO);
-            assert_eq!(
-                wire_responses.len(),
-                FIVE_TURN_PROMPTS.len(),
-                "scenario should record one interaction per turn"
-            );
-            for (turn_index, raw) in wire_responses.iter().enumerate() {
-                assert_reasoning_metadata(raw, expected_metadata.clone());
-                assert_eq!(raw.reasoning_context.as_deref(), Some("all_turns"));
-                assert_wire_roundtrip(raw, turn_index + 1);
-            }
-        }
-    })
+        },
+    )
     .await;
 }
 
 #[tokio::test]
 async fn streaming_reasoning_metadata() {
     const SCENARIO: &str = "gpt_5_6_reasoning/streaming_metadata";
-    with_openai_cassette("gpt_5_6_reasoning/streaming_metadata", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6_SOL);
-        let request = CompletionRequest {
-            additional_params: Some(json!({
-                "reasoning": {
-                    "effort": "low",
-                    "mode": "pro",
-                    "context": "current_turn"
+    with_openai_cassette(
+        "gpt_5_6_reasoning/streaming_metadata",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let request = CompletionRequest {
+                additional_params: Some(json!({
+                    "reasoning": {
+                        "effort": "low",
+                        "mode": "pro",
+                        "context": "current_turn"
+                    }
+                })),
+                ..CompletionRequest::from_prompt(PROMPT)
+            };
+            let mut stream = model
+                .stream(request)
+                .await
+                .expect("GPT-5.6 reasoning stream should start");
+            let mut saw_final = false;
+
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(_) =
+                    item.expect("GPT-5.6 reasoning stream should succeed")
+                {
+                    saw_final = true;
                 }
-            })),
-            ..CompletionRequest::from_prompt(PROMPT)
-        };
-        let mut stream = model
-            .stream(request)
-            .await
-            .expect("GPT-5.6 reasoning stream should start");
-        let mut saw_final = false;
-
-        while let Some(item) = stream.next().await {
-            if let StreamedAssistantContent::Final(_) =
-                item.expect("GPT-5.6 reasoning stream should succeed")
-            {
-                saw_final = true;
             }
-        }
 
-        assert!(
-            saw_final,
-            "GPT-5.6 reasoning stream should yield a final response"
-        );
-
-        if replaying() {
-            let raw = recorded_completed_wire_responses(SCENARIO);
-            assert_eq!(raw.len(), 1, "scenario should record a single interaction");
-            assert_eq!(raw[0].reasoning_context.as_deref(), Some("current_turn"));
-            assert_reasoning_metadata(
-                &raw[0],
-                json!({
-                    "context": "current_turn",
-                    "effort": "low",
-                    "mode": "pro",
-                    "summary": null
-                }),
+            assert!(
+                saw_final,
+                "GPT-5.6 reasoning stream should yield a final response"
             );
-        }
-    })
+
+            if replaying() {
+                let raw = recorded_completed_wire_responses(SCENARIO);
+                assert_eq!(raw.len(), 1, "scenario should record a single interaction");
+                assert_eq!(raw[0].reasoning_context.as_deref(), Some("current_turn"));
+                assert_reasoning_metadata(
+                    &raw[0],
+                    json!({
+                        "context": "current_turn",
+                        "effort": "low",
+                        "mode": "pro",
+                        "summary": null
+                    }),
+                );
+            }
+        },
+    )
     .await;
 }

@@ -364,28 +364,32 @@ where
     pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         let mongo_documents = records
             .into_iter()
-            .map(|record| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
-                let StoreRecord {
-                    id,
-                    payload,
-                    embeddings,
-                } = record;
+            .map(
+                |record| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
+                    let StoreRecord {
+                        id,
+                        payload,
+                        embeddings,
+                    } = record;
 
-                let payload = mongodb::bson::to_bson(&payload)
-                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                    let payload = mongodb::bson::to_bson(&payload)
+                        .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-                embeddings
-                    .into_iter()
-                    .map(|embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
-                        Ok(doc! {
-                            "id": id.clone(),
-                            "document": payload.clone(),
-                            "embedding": embedding.vec,
-                            "embedded_text": embedding.document,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            })
+                    embeddings
+                        .into_iter()
+                        .map(
+                            |embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
+                                Ok(doc! {
+                                    "id": id.clone(),
+                                    "document": payload.clone(),
+                                    "embedding": embedding.vec,
+                                    "embedded_text": embedding.document,
+                                })
+                            },
+                        )
+                        .collect::<Result<Vec<_>, _>>()
+                },
+            )
             .collect::<Result<Vec<Vec<_>>, _>>()?
             .into_iter()
             .flatten()

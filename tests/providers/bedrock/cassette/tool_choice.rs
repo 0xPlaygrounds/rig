@@ -3,7 +3,6 @@
 use rig::bedrock;
 use rig::completion::{AssistantContent, Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
@@ -205,6 +204,7 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
         |client| async move {
             let agent = client
                 .agent(bedrock::completion::AMAZON_NOVA_LITE)
+                .await
                 .preamble("You are a deterministic calculator test. Answer directly in text.")
                 .temperature(0.0)
                 .tool(Adder)
@@ -233,6 +233,7 @@ async fn none_streaming_does_not_emit_tool_calls() {
     with_bedrock_cassette("tool_choice/none_streaming_no_tools", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
+            .await
             .preamble("You are a deterministic calculator test. Answer directly in text.")
             .temperature(0.0)
             .tool(Adder)

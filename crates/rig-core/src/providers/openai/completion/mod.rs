@@ -3,9 +3,7 @@
 // ================================================================
 
 use super::client::ApiResponse;
-use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest,
-};
+use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
@@ -1158,8 +1156,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
-        let finish_reason = (!choice.finish_reason.is_empty())
-            .then(|| map_finish_reason(&choice.finish_reason));
+        let finish_reason =
+            (!choice.finish_reason.is_empty()).then(|| map_finish_reason(&choice.finish_reason));
 
         let content = match &choice.message {
             Message::Assistant {
@@ -3020,8 +3018,7 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let response: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(response.choice.len(), 1);
 

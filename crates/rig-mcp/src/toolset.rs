@@ -213,10 +213,8 @@ impl McpToolset {
         let output = mcp_result_output(&raw)?;
         let result = if raw.is_error == Some(true) {
             ToolResult::failed(
-                ToolExecutionError::other(format!(
-                    "MCP tool '{name}' reported an execution error"
-                ))
-                .with_model_output(output),
+                ToolExecutionError::other(format!("MCP tool '{name}' reported an execution error"))
+                    .with_model_output(output),
             )
         } else {
             ToolResult::success(output)
@@ -230,11 +228,7 @@ impl McpToolset {
 fn tool_definition(tool: &rmcp::model::Tool) -> ToolDefinition {
     ToolDefinition {
         name: tool.name.to_string(),
-        description: tool
-            .description
-            .as_deref()
-            .unwrap_or_default()
-            .to_string(),
+        description: tool.description.as_deref().unwrap_or_default().to_string(),
         parameters: tool.schema_as_json_value(),
     }
 }
@@ -417,7 +411,9 @@ fn mcp_content_block_as_json(content: &ContentBlock) -> Result<ToolResultContent
 
 // Copied from rig-agent/src/tool/rmcp.rs (mcp_content_block_to_tool_content),
 // with the error type swapped for this crate's `McpError`.
-fn mcp_content_block_to_tool_content(content: &ContentBlock) -> Result<ToolResultContent, McpError> {
+fn mcp_content_block_to_tool_content(
+    content: &ContentBlock,
+) -> Result<ToolResultContent, McpError> {
     match content {
         ContentBlock::Text(text) => Ok(ToolResultContent::text(text.text.clone())),
         ContentBlock::Image(image) => match ImageMediaType::from_mime_type(&image.mime_type) {

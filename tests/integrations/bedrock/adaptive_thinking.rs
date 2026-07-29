@@ -23,10 +23,9 @@ fn adaptive_thinking_params() -> serde_json::Value {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
-    let model = client()
-        .completion_model(anthropic_adaptive_model())
-        .with_prompt_caching();
-    let agent = AgentBuilder::new(model)
+    let config =
+        rig::bedrock::functions::Config::new(anthropic_adaptive_model()).with_prompt_caching();
+    let agent = AgentBuilder::new(rig::provider::ProviderConfig::Bedrock(config))
         .preamble(
             "You must call tools when the user asks for their result. \
              After a tool result is available, answer with the exact result.",

@@ -154,10 +154,7 @@ impl InMemoryVectorStore {
     ///
     /// Records with an existing id replace the previous entry.
     pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
-        let mut inner = self
-            .inner
-            .write()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut inner = self.inner.write().unwrap_or_else(PoisonError::into_inner);
 
         for StoreRecord {
             id,
@@ -423,8 +420,7 @@ impl InMemoryVectorStore {
         let mut docs = BinaryHeap::new();
 
         for candidate_id in candidates {
-            if let Some((id_ref, (doc, embeddings))) =
-                inner.embeddings.get_key_value(&candidate_id)
+            if let Some((id_ref, (doc, embeddings))) = inner.embeddings.get_key_value(&candidate_id)
                 && let Some(distance) =
                     Self::score_candidate(doc, embeddings, queries, filter, threshold)
             {
@@ -600,11 +596,7 @@ mod tests {
             hits.into_iter()
                 .map(|hit| (hit.score, hit.id, hit.payload))
                 .collect::<Vec<_>>(),
-            vec![(
-                0.9807965956109156,
-                "doc1".to_string(),
-                json!("glarb-garb")
-            )]
+            vec![(0.9807965956109156, "doc1".to_string(), json!("glarb-garb"))]
         );
     }
 
@@ -682,11 +674,7 @@ mod tests {
             hits.into_iter()
                 .map(|hit| (hit.score, hit.id, hit.payload))
                 .collect::<Vec<_>>(),
-            vec![(
-                0.9807965956109156,
-                "doc1".to_string(),
-                json!("glarb-garb")
-            )]
+            vec![(0.9807965956109156, "doc1".to_string(), json!("glarb-garb"))]
         );
     }
 

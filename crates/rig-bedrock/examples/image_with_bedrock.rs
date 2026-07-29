@@ -22,9 +22,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = AgentBuilder::new(ProviderConfig::Bedrock(
         rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
     ))
-        .preamble("You are an image describer.")
-        .temperature(0.5)
-        .build();
+    .preamble("You are an image describer.")
+    .temperature(0.5)
+    .build();
 
     // Grab image and convert to base64
     let reqwest_client = Client::new();

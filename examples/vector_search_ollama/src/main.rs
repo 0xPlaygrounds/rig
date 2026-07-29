@@ -7,9 +7,7 @@ use rig::prelude::*;
 use rig::providers::ollama;
 use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
 };
 
 use serde::{Deserialize, Serialize};

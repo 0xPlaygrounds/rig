@@ -48,41 +48,48 @@ async fn completions_api_agent_prompt() {
 async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     const SCENARIO: &str =
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text";
-    with_openai_completions_cassette("completions_api/completions_api_raw_response_text_matches_normalized_choice_text", |client| async move {
-        let model = client.completion_model(openai::GPT_4O);
-        let request = CompletionRequest::with_history(
-            Some(RAW_TEXT_RESPONSE_PREAMBLE),
-            Vec::new(),
-            RAW_TEXT_RESPONSE_PROMPT,
-        );
-        let response = model
-            .completion(request)
-            .await
-            .expect("raw completions api request should succeed");
+    with_openai_completions_cassette(
+        "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_4O);
+            let request = CompletionRequest::with_history(
+                Some(RAW_TEXT_RESPONSE_PREAMBLE),
+                Vec::new(),
+                RAW_TEXT_RESPONSE_PROMPT,
+            );
+            let response = model
+                .completion(request)
+                .await
+                .expect("raw completions api request should succeed");
 
-        let normalized_text = assistant_text_response(&response.choice)
-            .expect("normalized completions api response should contain assistant text");
-        assert_nonempty_response(&normalized_text);
-        assert_contains_all_case_insensitive(&normalized_text, &["cedar", "maple"]);
+            let normalized_text = assistant_text_response(&response.choice)
+                .expect("normalized completions api response should contain assistant text");
+            assert_nonempty_response(&normalized_text);
+            assert_contains_all_case_insensitive(&normalized_text, &["cedar", "maple"]);
 
-        // The normalized response no longer carries the provider-typed
-        // `raw_response`; parse the recorded wire body to compare the raw
-        // completions text against the normalized choice text (replay only:
-        // the cassette file is written after the test body in record mode).
-        if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
-            let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
-            assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
-            let raw: openai::completion::CompletionResponse = serde_json::from_str(&bodies[0])
-                .expect("recorded body should deserialize as a completions api response");
-            let raw_text = raw
-                .get_text_response()
-                .expect("raw completions api response should contain assistant text");
+            // The normalized response no longer carries the provider-typed
+            // `raw_response`; parse the recorded wire body to compare the raw
+            // completions text against the normalized choice text (replay only:
+            // the cassette file is written after the test body in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
+                assert_eq!(
+                    bodies.len(),
+                    1,
+                    "scenario should record a single interaction"
+                );
+                let raw: openai::completion::CompletionResponse = serde_json::from_str(&bodies[0])
+                    .expect("recorded body should deserialize as a completions api response");
+                let raw_text = raw
+                    .get_text_response()
+                    .expect("raw completions api response should contain assistant text");
 
-            assert_nonempty_response(&raw_text);
-            assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
-            assert_eq!(raw_text.trim(), normalized_text.trim());
-        }
-    })
+                assert_nonempty_response(&raw_text);
+                assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
+                assert_eq!(raw_text.trim(), normalized_text.trim());
+            }
+        },
+    )
     .await;
 }
 
@@ -289,7 +296,6 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     )
     .await;
 }
-
 
 #[tokio::test]
 async fn completions_api_pure_functions_replay_recorded_request() {

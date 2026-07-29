@@ -27,8 +27,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::{
-    ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, Float64Array, Int32Array,
-    Int64Array, RecordBatch, StringArray,
+    ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, Float64Array, Int32Array, Int64Array,
+    RecordBatch, StringArray,
     types::{Float32Type, Float64Type},
 };
 use lancedb::{
@@ -554,7 +554,11 @@ impl LanceDbVectorIndex {
     /// Serializes each document and inserts it. Sugar over [`Self::insert`].
     pub async fn insert_as<T: Serialize>(
         &self,
-        docs: Vec<(String, T, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+        docs: Vec<(
+            String,
+            T,
+            rig_core::OneOrMany<rig_core::embeddings::Embedding>,
+        )>,
     ) -> Result<(), VectorStoreError> {
         let records = docs
             .into_iter()
@@ -621,38 +625,42 @@ fn build_vector_array(
     }
 
     match inner.data_type() {
-        DataType::Float64 => Ok(Arc::new(
-            FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
-                records.iter().map(|record| {
-                    Some(
-                        record
-                            .embeddings
-                            .first()
-                            .vec
-                            .iter()
-                            .map(|x| Some(*x))
-                            .collect::<Vec<_>>(),
-                    )
-                }),
-                *dims,
-            ),
-        )),
-        DataType::Float32 => Ok(Arc::new(
-            FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-                records.iter().map(|record| {
-                    Some(
-                        record
-                            .embeddings
-                            .first()
-                            .vec
-                            .iter()
-                            .map(|x| Some(*x as f32))
-                            .collect::<Vec<_>>(),
-                    )
-                }),
-                *dims,
-            ),
-        )),
+        DataType::Float64 => Ok(Arc::new(FixedSizeListArray::from_iter_primitive::<
+            Float64Type,
+            _,
+            _,
+        >(
+            records.iter().map(|record| {
+                Some(
+                    record
+                        .embeddings
+                        .first()
+                        .vec
+                        .iter()
+                        .map(|x| Some(*x))
+                        .collect::<Vec<_>>(),
+                )
+            }),
+            *dims,
+        ))),
+        DataType::Float32 => Ok(Arc::new(FixedSizeListArray::from_iter_primitive::<
+            Float32Type,
+            _,
+            _,
+        >(
+            records.iter().map(|record| {
+                Some(
+                    record
+                        .embeddings
+                        .first()
+                        .vec
+                        .iter()
+                        .map(|x| Some(*x as f32))
+                        .collect::<Vec<_>>(),
+                )
+            }),
+            *dims,
+        ))),
         other => Err(VectorStoreError::DatastoreError(
             format!("vector column has unsupported element type {other}").into(),
         )),

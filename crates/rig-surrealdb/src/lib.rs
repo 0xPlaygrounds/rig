@@ -372,10 +372,7 @@ where
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedded_query: Vec<f32> = Self::query_vector(&req)
-            .iter()
-            .map(|&x| x as f32)
-            .collect();
+        let embedded_query: Vec<f32> = Self::query_vector(&req).iter().map(|&x| x as f32).collect();
 
         let mut response = self
             .surreal

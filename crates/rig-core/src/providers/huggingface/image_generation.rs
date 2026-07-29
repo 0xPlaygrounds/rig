@@ -102,10 +102,8 @@ pub(crate) fn build_image_generation_body(
 pub(crate) fn parse_image_generation_response(
     status: http::StatusCode,
     body: Vec<u8>,
-) -> Result<
-    image_generation::ImageGenerationResponse<ImageGenerationResponse>,
-    ImageGenerationError,
-> {
+) -> Result<image_generation::ImageGenerationResponse<ImageGenerationResponse>, ImageGenerationError>
+{
     if !status.is_success() {
         return Err(ImageGenerationError::from_http_response(
             status,

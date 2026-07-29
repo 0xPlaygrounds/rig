@@ -56,6 +56,10 @@ pub struct Config {
     pub endpoint_url: Option<String>,
     /// Model identifier requests are built for.
     pub model: String,
+    /// Enable Bedrock prompt caching (the old `CompletionModel`
+    /// `with_prompt_caching` knob), inserting cache points into requests.
+    #[serde(default)]
+    pub prompt_caching: bool,
 }
 
 impl Config {
@@ -67,6 +71,7 @@ impl Config {
             profile: None,
             endpoint_url: None,
             model: model.into(),
+            prompt_caching: false,
         }
     }
 
@@ -85,6 +90,12 @@ impl Config {
     /// Override the endpoint URL.
     pub fn with_endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
         self.endpoint_url = Some(endpoint_url.into());
+        self
+    }
+
+    /// Enable Bedrock prompt caching for requests built from this config.
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
         self
     }
 }
@@ -275,6 +286,7 @@ impl EmbeddingConfig {
             profile: self.profile.clone(),
             endpoint_url: self.endpoint_url.clone(),
             model: self.model.clone(),
+            prompt_caching: false,
         }
     }
 }

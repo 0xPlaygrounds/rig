@@ -2677,10 +2677,8 @@ mod tests {
                 model_version: None,
             };
 
-            let err = crate::completion::CompletionResponse::try_from(
-                response,
-            )
-            .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::try_from(response)
+                .expect_err("tool protocol finish reason should fail");
 
             assert!(matches!(
                 err,

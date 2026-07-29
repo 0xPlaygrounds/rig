@@ -3,7 +3,6 @@
 use rig::bedrock;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{

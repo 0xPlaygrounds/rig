@@ -128,9 +128,8 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
-        TypedPrompt,
+        Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError, StreamingChat,
+        StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet, TypedPrompt,
     };
     pub use rig_core::prelude::*;
 }
@@ -175,18 +174,18 @@ pub mod tool {
     #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     pub use rig_agent::tool::rmcp;
-    /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a
-    /// [`ToolCatalog`](rig_agent::agent::prepare::ToolCatalog) with MCP-backed
-    /// execution for the data-oriented runtime.
-    #[cfg(all(feature = "mcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
-    pub use rig_mcp as mcp;
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::{
         DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
         server, tool_definition,
     };
+    /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a
+    /// [`ToolCatalog`](rig_agent::agent::prepare::ToolCatalog) with MCP-backed
+    /// execution for the data-oriented runtime.
+    #[cfg(all(feature = "mcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+    pub use rig_mcp as mcp;
     // Runtime support the `#[derive(ToolRouter)]` expansion calls into.
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]

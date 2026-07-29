@@ -23,7 +23,11 @@ fn assert_recorded_completed_event_output_is_empty() {
         return;
     }
     let bodies = crate::cassettes::recorded_response_bodies("chatgpt", SCENARIO);
-    assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+    assert_eq!(
+        bodies.len(),
+        1,
+        "scenario should record a single interaction"
+    );
     let completed = bodies[0]
         .lines()
         .filter_map(|line| line.strip_prefix("data:"))
