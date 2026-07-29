@@ -947,7 +947,7 @@ mod tests {
         use crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT;
         use crate::tool::{ToolContext, ToolErrorKind, server::ToolServer};
         use rmcp::model::{
-            CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+            CallToolRequestParams, CallToolResponse, ClientInfo, ErrorData, Implementation,
             ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
         };
         use rmcp::service::RequestContext;
@@ -967,8 +967,8 @@ mod tests {
                 &self,
                 _request: CallToolRequestParams,
                 _context: RequestContext<RoleServer>,
-            ) -> Result<CallToolResult, ErrorData> {
-                std::future::pending::<Result<CallToolResult, ErrorData>>().await
+            ) -> Result<CallToolResponse, ErrorData> {
+                std::future::pending::<Result<CallToolResponse, ErrorData>>().await
             }
         }
 

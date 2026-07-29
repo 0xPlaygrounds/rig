@@ -36,12 +36,14 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
-# MCP is native-only. rmcp's `ClientHandler` requires `Send + Sync`
-# unconditionally (its `local` feature relaxes only the future bounds), which
-# rig's tool registry cannot satisfy on wasm, where `WasmCompatSend`/
-# `WasmCompatSync` are no-op markers. Scoping the dependency out of the wasm
-# graph keeps the wasm dependency tree honest; `tool/mod.rs` raises a targeted
-# `compile_error!` if the feature is requested there anyway.
+# MCP is native-only because rmcp ships no wasm-capable client transport: its
+# streamable-HTTP client calls reqwest APIs absent on wasm (`redirect`,
+# `pool_max_idle_per_host`), and every other transport is native by
+# construction or blocked by rmcp's unconditional `Send` transport bounds.
+# rmcp core itself is fine on wasm since 3.0 gated the `ClientHandler` bound
+# behind `local`. Scoping the dependency out of the wasm graph keeps the wasm
+# dependency tree honest; `tool/mod.rs` raises a targeted `compile_error!` if
+# the feature is requested there anyway, and carries the full rationale.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rmcp = { workspace = true, optional = true, features = ["client"] }
 

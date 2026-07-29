@@ -44,9 +44,19 @@ feature set WASI rejects. Supporting it would mean making `reqwest` optional and
 adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
 `cfg` fix.
 
-**`rmcp` is native-only.** rmcp's `ClientHandler` is declared
-`Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
-the future bounds but not the handler itself — while this crate's handler owns a
-tool registry whose `Arc<dyn ErasedTool>` is deliberately neither `Send` nor
-`Sync` on wasm. Enabling `rmcp` on a wasm target fails with a single explanatory
+**`rmcp` is native-only** — because of the transport, not the handler. The old
+reason (rmcp's `ClientHandler` demanding `Send + Sync`, which this crate's wasm
+tool registry cannot supply) was fixed upstream in rmcp 3.0, which gates that
+bound behind its `local` feature; rmcp core with `client` + `local` (default
+features off) compiles for `wasm32-unknown-unknown`. What that leaves is no
+usable transport: the streamable-HTTP client calls `reqwest::redirect` and
+`pool_max_idle_per_host`, neither of which exists in reqwest's wasm backend;
+`Transport` itself is unconditionally `Send` with `Send` futures (`local`
+relaxes handlers, never transports), which no browser-`JsFuture`-backed
+implementation can satisfy; and the remaining concrete transports are
+child-process, unix-socket, and stdio. Reaching an MCP server from the browser
+therefore needs upstream `Send`-bound relaxations, a hand-written `Transport`
+over fetch/EventSource, and a spawn shim (rmcp's `local` spawns onto a tokio
+`LocalSet`, not a browser event loop) — a feature project, not a `cfg` fix.
+Enabling `rmcp` on a wasm target fails with a single explanatory
 `compile_error!` rather than a wall of trait errors.
