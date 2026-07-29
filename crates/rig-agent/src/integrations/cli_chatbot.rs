@@ -1,7 +1,7 @@
 use rig_core::{
     markers::{Missing, Provided},
     message::Message,
-    wasm_compat::WasmCompatSend,
+    wasm_compat::MaybeSend,
 };
 
 use crate::{
@@ -66,7 +66,7 @@ where
 
 impl<M> CliChat for AgentImpl<M>
 where
-    M: CompletionModel + WasmCompatSend + 'static,
+    M: CompletionModel + MaybeSend + 'static,
 {
     async fn request(
         &mut self,

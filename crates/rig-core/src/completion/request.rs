@@ -36,7 +36,7 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{OneOrMany, http_client};
 use crate::{
     json_utils,
@@ -335,14 +335,14 @@ impl AddAssign for Usage {
 /// Trait defining a completion model that can be used to generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
-pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
+pub trait CompletionModel: Clone + MaybeSend + MaybeSync {
     /// The raw response type returned by the underlying completion model.
-    type Response: WasmCompatSend + WasmCompatSync + Serialize + DeserializeOwned;
+    type Response: MaybeSend + MaybeSync + Serialize + DeserializeOwned;
     /// The raw response type returned by the underlying completion model when streaming.
     type StreamingResponse: Clone
         + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
+        + MaybeSend
+        + MaybeSync
         + Serialize
         + DeserializeOwned
         + GetTokenUsage;
@@ -359,14 +359,14 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
         request: CompletionRequest,
     ) -> impl std::future::Future<
         Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + WasmCompatSend;
+    > + MaybeSend;
 
     fn stream(
         &self,
         request: CompletionRequest,
     ) -> impl std::future::Future<
         Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + WasmCompatSend;
+    > + MaybeSend;
 
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {

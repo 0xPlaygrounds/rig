@@ -2,7 +2,7 @@
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
 use crate::markers::{Missing, Provided};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{http_client, json_utils, provider_response};
 use std::io;
 use std::{fs, path::Path};
@@ -59,9 +59,9 @@ pub struct TranscriptionResponse<T> {
 /// Trait defining a transcription model that can be used to generate transcription requests.
 /// This trait is meant to be implemented by the user to define a custom transcription model,
 /// either from a third-party provider (e.g: OpenAI) or a local model.
-pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
+pub trait TranscriptionModel: Clone + MaybeSend + MaybeSync {
     /// The raw response type returned by the underlying model.
-    type Response: WasmCompatSend + WasmCompatSync;
+    type Response: MaybeSend + MaybeSync;
     type Client;
 
     fn make(client: &Self::Client, model: impl Into<String>) -> Self;
@@ -72,7 +72,7 @@ pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
         request: TranscriptionRequest,
     ) -> impl std::future::Future<
         Output = Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
-    > + WasmCompatSend;
+    > + MaybeSend;
 
     /// Generates a transcription request builder for the given `file`
     fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing> {

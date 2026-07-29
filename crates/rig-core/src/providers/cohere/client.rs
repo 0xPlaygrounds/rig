@@ -101,7 +101,7 @@ pub enum ApiResponse<T> {
 
 impl<T> Client<T>
 where
-    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
 {
     pub fn embeddings<D: Embed>(
         &self,

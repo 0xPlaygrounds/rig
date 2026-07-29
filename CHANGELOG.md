@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(core, agent)* [**breaking**] Rename Rig's target-conditional portability
+  vocabulary to `MaybeSend`, `MaybeSync`, and `BoxFuture`. “Maybe” is
+  target-conditional, not runtime-optional: only browser WASM
+  (`all(target_arch = "wasm32", target_os = "unknown")`) relaxes `Send`/`Sync`
+  and uses `futures::future::LocalBoxFuture`; every other target uses real
+  `Send`/`Sync` and `futures::future::BoxFuture`. The old names are removed.
+  The HTTP-only stream marker is also removed in favor of the existing
+  target-specific `http_client::sse::BoxedStream` alias. Browser-portable
+  image/audio generation, embedding, in-memory vector-store, agent retrieval,
+  and device-code callback bounds now follow the same predicate.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
 ### Added
@@ -90,11 +104,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wasm32-unknown-unknown` is the entire opt-in. The feature was a pure `cfg`
   switch that every consumer already flipped from a target table, and its one
   optional dependency was never referenced. Relaxing the bounds cannot break
-  implementors — the relaxed markers are blanket-implemented
-  (`impl<T> WasmCompatSend for T {}`), so every type that satisfied the strict
-  form satisfies the relaxed one. (Generic *consumers* on browser wasm that
-  wrote `T: WasmCompatSend` and then relied on `T: Send` internally are the one
-  exception, and only if they were previously building with the feature off.)
+  implementors — the relaxed compatibility markers are blanket-implemented,
+  so every type that satisfied the strict form satisfies the relaxed one.
+  Generic consumers that relied on the compatibility marker to imply `Send`
+  are the one exception, and only on browser wasm if they were previously
+  building with the feature off.
   Dependents passing `features = ["wasm"]` should drop it; nothing replaces it.
 
 - *(core)* `if_wasm!`/`if_not_wasm!` now key on the target rather than a feature.

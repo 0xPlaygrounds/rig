@@ -12,7 +12,7 @@ use reqwest::{Client, StatusCode};
 use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex, request::Filter},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -72,9 +72,9 @@ pub trait HelixDBClient {
         &self,
         endpoint: &str,
         data: &T,
-    ) -> impl Future<Output = Result<R, Self::Err>> + WasmCompatSend
+    ) -> impl Future<Output = Result<R, Self::Err>> + MaybeSend
     where
-        T: Serialize + WasmCompatSync,
+        T: Serialize + MaybeSync,
         R: for<'de> Deserialize<'de>;
 }
 
@@ -83,7 +83,7 @@ impl HelixDBClient for HelixDB {
 
     async fn query<T, R>(&self, endpoint: &str, data: &T) -> Result<R, HelixError>
     where
-        T: Serialize + WasmCompatSync,
+        T: Serialize + MaybeSync,
         R: for<'de> Deserialize<'de>,
     {
         let port = self.port.map(|port| format!(":{port}")).unwrap_or_default();
@@ -183,7 +183,7 @@ impl QueryInput {
 
 impl<C, E> HelixDBVectorStore<C, E>
 where
-    C: HelixDBClient + WasmCompatSend,
+    C: HelixDBClient + MaybeSend,
     E: EmbeddingModel,
 {
     /// Creates a new HelixDB vector store.
@@ -199,11 +199,11 @@ where
 
 impl<C, E> InsertDocuments for HelixDBVectorStore<C, E>
 where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
+    C: HelixDBClient + MaybeSend + MaybeSync,
+    C::Err: std::error::Error + MaybeSend + MaybeSync + 'static,
+    E: EmbeddingModel + MaybeSend + MaybeSync,
 {
-    async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + rig_core::Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -245,13 +245,13 @@ where
 
 impl<C, E> VectorStoreIndex for HelixDBVectorStore<C, E>
 where
-    C: HelixDBClient + WasmCompatSend + WasmCompatSync,
-    C::Err: std::error::Error + WasmCompatSend + WasmCompatSync + 'static,
-    E: EmbeddingModel + WasmCompatSend + WasmCompatSync,
+    C: HelixDBClient + MaybeSend + MaybeSync,
+    C::Err: std::error::Error + MaybeSend + MaybeSync + 'static,
+    E: EmbeddingModel + MaybeSend + MaybeSync,
 {
     type Filter = HelixDBFilter;
 
-    async fn top_n<T: for<'a> serde::Deserialize<'a> + WasmCompatSend>(
+    async fn top_n<T: for<'a> serde::Deserialize<'a> + MaybeSend>(
         &self,
         req: rig_core::vector_store::VectorSearchRequest<HelixDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, rig_core::vector_store::VectorStoreError> {

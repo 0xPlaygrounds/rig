@@ -186,7 +186,7 @@ impl<T> CompletionModel<T> {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

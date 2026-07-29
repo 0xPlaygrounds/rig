@@ -7,7 +7,7 @@ use crate::{
         HttpClientExt, Result as StreamResult,
         retry::{DEFAULT_RETRY, ExponentialBackoff, RetryPolicy},
     },
-    wasm_compat::{WasmCompatSend, WasmCompatSendStream},
+    wasm_compat::MaybeSend,
 };
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
@@ -27,7 +27,12 @@ use std::{
     time::Duration,
 };
 
-pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
+/// Boxed HTTP byte stream, sendable except on browser WASM.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub type BoxedStream = BoxStream<'static, StreamResult<Bytes>>;
+/// Boxed HTTP byte stream that may be non-`Send` on browser WASM.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub type BoxedStream = LocalBoxStream<'static, StreamResult<Bytes>>;
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type ResponseFuture = BoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
@@ -87,7 +92,7 @@ pin_project! {
 impl<HttpClient, RequestBody> GenericEventSource<HttpClient, RequestBody>
 where
     HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    RequestBody: Into<Bytes> + Clone + MaybeSend + 'static,
 {
     /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
@@ -163,7 +168,7 @@ impl From<MessageEvent> for Event {
 impl<HttpClient, RequestBody> Stream for GenericEventSource<HttpClient, RequestBody>
 where
     HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    RequestBody: Into<Bytes> + Clone + MaybeSend + 'static,
 {
     type Item = Result<Event, super::Error>;
 

@@ -67,7 +67,7 @@ pub struct EmbeddingModel<T = reqwest::Client> {
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
-    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
 {
     const MAX_DOCUMENTS: usize = 96;
     type Client = Client<T>;

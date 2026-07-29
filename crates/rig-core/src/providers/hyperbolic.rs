@@ -262,7 +262,7 @@ mod image_generation {
 
     impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
     {
         type Response = ImageGenerationResponse;
 
@@ -372,7 +372,7 @@ mod audio_generation {
 
     impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
     where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+        T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
     {
         type Response = AudioGenerationResponse;
         type Client = Client<T>;

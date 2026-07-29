@@ -42,7 +42,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 
     async fn embed_texts(
         &self,
-        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
+        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::MaybeSend,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents_vec: Vec<String> = documents.into_iter().collect();
         let mut embeddings = Vec::new();

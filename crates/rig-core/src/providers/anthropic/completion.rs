@@ -2456,8 +2456,8 @@ pub(super) fn build_tool_definitions(
 
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
-    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    T: HttpClientExt + Clone + Default + MaybeSend + MaybeSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + MaybeSend + MaybeSync + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;

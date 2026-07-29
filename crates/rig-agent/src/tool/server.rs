@@ -67,7 +67,7 @@ impl ToolRegistrySnapshot {
 /// Shared state behind a `ToolServerHandle`.
 struct ToolServerState {
     /// Vector indexes used to select retrieval-only tools for each prompt.
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
     /// The authoritative ordered registry for execution and exposure.
     toolset: ToolSet,
     /// Generation tokens for registrations managed by MCP client handlers.
@@ -126,7 +126,7 @@ impl Eq for ManagedToolToken {}
 /// Accumulates tools and configuration, then produces a shared handle via
 /// [`run()`](ToolServer::run).
 pub struct ToolServer {
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
     toolset: ToolSet,
 }
 
@@ -151,7 +151,7 @@ impl ToolServer {
 
     pub(crate) fn add_retrieval_indexes(
         mut self,
-        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
+        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
     ) -> Self {
         self.retrieval_indexes = indexes;
         self
@@ -210,7 +210,7 @@ impl ToolServer {
     pub fn retrieved_tools(
         mut self,
         sample: usize,
-        index: impl VectorStoreIndexDyn + Send + Sync + 'static,
+        index: impl VectorStoreIndexDyn + 'static,
         toolset: ToolSet,
     ) -> Self {
         self.retrieval_indexes.push((sample, Arc::new(index)));

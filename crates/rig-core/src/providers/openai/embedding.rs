@@ -1,7 +1,7 @@
 use super::{client::ApiResponse, completion::Usage};
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{embeddings, http_client};
 use serde::{Deserialize, Serialize};
 
@@ -137,8 +137,7 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
 
 impl<Ext, H> embeddings::EmbeddingModel for GenericEmbeddingModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
     Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
 {
     const MAX_DOCUMENTS: usize = 1024;
@@ -366,10 +365,10 @@ mod tests {
         fn send<T, U>(
             &self,
             _req: Request<T>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
         where
-            T: Into<Bytes> + WasmCompatSend,
-            U: From<Bytes> + WasmCompatSend + 'static,
+            T: Into<Bytes> + MaybeSend,
+            U: From<Bytes> + MaybeSend + 'static,
         {
             future::ready(Err(http_client::Error::StreamEnded))
         }
@@ -377,9 +376,9 @@ mod tests {
         fn send_multipart<U>(
             &self,
             _req: Request<MultipartForm>,
-        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+        ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + MaybeSend + 'static
         where
-            U: From<Bytes> + WasmCompatSend + 'static,
+            U: From<Bytes> + MaybeSend + 'static,
         {
             future::ready(Err(http_client::Error::StreamEnded))
         }
@@ -387,9 +386,9 @@ mod tests {
         fn send_streaming<T>(
             &self,
             _req: Request<T>,
-        ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+        ) -> impl Future<Output = http_client::Result<StreamingResponse>> + MaybeSend
         where
-            T: Into<Bytes> + WasmCompatSend,
+            T: Into<Bytes> + MaybeSend,
         {
             future::ready(Err(http_client::Error::StreamEnded))
         }

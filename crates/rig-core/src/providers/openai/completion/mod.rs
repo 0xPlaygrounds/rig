@@ -12,7 +12,7 @@ use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wasm_compat::{MaybeSend, MaybeSync};
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
@@ -1443,8 +1443,8 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
+        + MaybeSend
+        + MaybeSync
         + 'static;
 
     /// The chat-completions payload this provider returns.
@@ -1452,8 +1452,8 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         + Serialize
         + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
         + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
-        + WasmCompatSend
-        + WasmCompatSync;
+        + MaybeSend
+        + MaybeSync;
 
     /// The request path for chat completions, resolved against the client
     /// base URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
@@ -1903,16 +1903,15 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
 
 impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + MaybeSend + MaybeSync + 'static,
     Ext: crate::client::Provider
         + OpenAICompatibleProvider
         + crate::client::DebugExt
         + Clone
-        + WasmCompatSend
-        + WasmCompatSync
+        + MaybeSend
+        + MaybeSync
         + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+    H: Clone + Default + std::fmt::Debug + MaybeSend + MaybeSync + 'static,
 {
     type Response = Ext::Response;
     type StreamingResponse = StreamingCompletionResponse<Ext::StreamingUsage>;

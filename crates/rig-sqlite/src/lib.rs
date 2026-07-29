@@ -10,7 +10,7 @@
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 use rig_core::{Embed, OneOrMany};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
@@ -764,14 +764,10 @@ where
 
 impl<E, T> InsertDocuments for SqliteVectorStore<E, T>
 where
-    E: EmbeddingModel + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    T: SqliteVectorStoreTable
-        + for<'de> Deserialize<'de>
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
+    E: EmbeddingModel + Clone + MaybeSend + MaybeSync + 'static,
+    T: SqliteVectorStoreTable + for<'de> Deserialize<'de> + MaybeSend + MaybeSync + 'static,
 {
-    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
+    async fn insert_documents<Doc: Serialize + Embed + MaybeSend>(
         &self,
         documents: Vec<(Doc, OneOrMany<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -5265,7 +5261,7 @@ mod tests {
 
         async fn embed_texts(
             &self,
-            texts: impl IntoIterator<Item = String> + WasmCompatSend,
+            texts: impl IntoIterator<Item = String> + MaybeSend,
         ) -> Result<Vec<Embedding>, EmbeddingError> {
             Ok(texts
                 .into_iter()

@@ -1,6 +1,6 @@
 use crate::model::{ModelList, ModelListingError};
-use crate::wasm_compat::WasmCompatSend;
-use crate::wasm_compat::WasmCompatSync;
+use crate::wasm_compat::MaybeSend;
+use crate::wasm_compat::MaybeSync;
 use std::future::Future;
 
 /// A provider client with model listing capabilities.
@@ -66,9 +66,8 @@ pub trait ModelListingClient {
     ///     println!("- {} ({})", model.display_name(), model.id);
     /// }
     /// ```
-    fn list_models(
-        &self,
-    ) -> impl Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
+    fn list_models(&self)
+    -> impl Future<Output = Result<ModelList, ModelListingError>> + MaybeSend;
 }
 
 /// A trait for implementing model listing logic for a specific provider.
@@ -94,7 +93,7 @@ pub trait ModelListingClient {
 ///
 /// impl<H> ModelLister<H> for MyProviderModelLister<H>
 /// where
-///     H: HttpClientExt + WasmCompatSend + WasmCompatSync,
+///     H: HttpClientExt + MaybeSend + MaybeSync,
 /// {
 ///     type Client = Client<MyProviderExt, H>;
 ///
@@ -108,7 +107,7 @@ pub trait ModelListingClient {
 ///     }
 /// }
 /// ```
-pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
+pub trait ModelLister<H = reqwest::Client>: MaybeSend + MaybeSync {
     /// The client type associated with this lister
     type Client;
 
@@ -124,7 +123,7 @@ pub trait ModelLister<H = reqwest::Client>: WasmCompatSend + WasmCompatSync {
     /// A `ModelList` containing all available models.
     fn list_all(
         &self,
-    ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<ModelList, ModelListingError>> + MaybeSend;
 }
 
 #[cfg(test)]

@@ -1,74 +1,81 @@
-use bytes::Bytes;
-use std::pin::Pin;
-
-use futures::Stream;
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// `Send` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSend: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// `Send` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSend {}
+//! Target-conditional portability bounds for Rig's async public APIs.
+//!
+//! "Maybe" means target-conditional, not runtime-optional. On browser WASM
+//! (`all(target_arch = "wasm32", target_os = "unknown")`) the marker traits do
+//! not require thread-safety and [`BoxFuture`] is local. Every other target,
+//! including WASI, retains ordinary `Send`/`Sync` guarantees and sendable boxed
+//! futures.
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSend for T where T: Send {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSend for T {}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Streaming response bound that includes `Send` on native targets.
-pub trait WasmCompatSendStream:
-    Stream<Item = Result<Bytes, crate::http_client::Error>> + Send
-{
-    type InnerItem: Send;
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Streaming response bound without `Send` on browser wasm.
-pub trait WasmCompatSendStream: Stream<Item = Result<Bytes, crate::http_client::Error>> {
-    type InnerItem;
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>> + Send,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSendStream for T
-where
-    T: Stream<Item = Result<Bytes, crate::http_client::Error>>,
-{
-    type InnerItem = Result<Bytes, crate::http_client::Error>;
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// `Sync` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSync: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// `Sync` on native targets, a no-op marker on browser wasm.
-pub trait WasmCompatSync {}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-impl<T> WasmCompatSync for T where T: Sync {}
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-impl<T> WasmCompatSync for T {}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Boxed future type that includes `Send`, except on browser wasm.
+/// `Send` except on browser WASM, where this is a no-op marker.
 ///
-/// Gated to match [`WasmCompatSend`]/[`WasmCompatSync`] (and the streaming `Box`
-/// selection) — a `WasmBoxedFuture` returned by a `WasmCompatSend` bound (e.g.
-/// crate-private erased tool dispatch must drop `Send` under the same
-/// condition the marker relaxes it, or the two disagree on wasm.
-pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+/// The relaxed target is exactly `wasm32-unknown-unknown`; this trait still
+/// requires `Send` on WASI and all other targets.
+pub trait MaybeSend: Send {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// `Send` except on browser WASM, where this is a no-op marker.
+///
+/// The relaxed target is exactly `wasm32-unknown-unknown`; this trait still
+/// requires `Send` on WASI and all other targets.
+pub trait MaybeSend {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> MaybeSend for T where T: Send {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl<T> MaybeSend for T {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// `Sync` except on browser WASM, where this is a no-op marker.
+///
+/// The relaxed target is exactly `wasm32-unknown-unknown`; this trait still
+/// requires `Sync` on WASI and all other targets.
+pub trait MaybeSync: Sync {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// `Sync` except on browser WASM, where this is a no-op marker.
+///
+/// The relaxed target is exactly `wasm32-unknown-unknown`; this trait still
+/// requires `Sync` on WASI and all other targets.
+pub trait MaybeSync {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> MaybeSync for T where T: Sync {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl<T> MaybeSync for T {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// A sendable boxed future on every target except browser WASM.
+///
+/// This is [`futures::future::BoxFuture`] on native, WASI, and other
+/// non-browser targets.
+pub use futures::future::BoxFuture;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Boxed future type without `Send`, on browser wasm.
-pub type WasmBoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
+/// A boxed future that may be non-`Send` on browser WASM.
+///
+/// This re-exports [`futures::future::LocalBoxFuture`] as `BoxFuture` exactly
+/// on `wasm32-unknown-unknown`.
+pub use futures::future::LocalBoxFuture as BoxFuture;
+
+// This module is compiled by an ordinary browser-WASM `cargo check`, so it
+// guards the relaxed marker and local-future contract without requiring a WASM
+// test runner.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+mod browser_wasm_contract {
+    use std::rc::Rc;
+
+    use super::{BoxFuture, MaybeSend, MaybeSync};
+
+    fn accepts_maybe_thread_safe<T: MaybeSend + MaybeSync>(_: &T) {}
+
+    #[allow(dead_code)]
+    fn accepts_rc_and_local_future() {
+        let state = Rc::new(());
+        accepts_maybe_thread_safe(&state);
+
+        let future: BoxFuture<'static, Rc<()>> = Box::pin(async move { state });
+        drop(future);
+    }
+}
 
 /// Error returned by [`timeout`] when the future does not complete in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,10 +140,29 @@ macro_rules! if_not_wasm {
     };
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
 mod tests {
-    use super::{Elapsed, timeout};
+    use super::{BoxFuture, Elapsed, MaybeSend, MaybeSync, timeout};
     use std::time::Duration;
+
+    fn maybe_send_implies_send<T: MaybeSend>() {
+        fn assert_send<T: Send>() {}
+        assert_send::<T>();
+    }
+
+    fn maybe_sync_implies_sync<T: MaybeSync>() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<T>();
+    }
+
+    #[test]
+    fn native_compatibility_types_retain_thread_safety() {
+        fn assert_send<T: Send>() {}
+
+        maybe_send_implies_send::<String>();
+        maybe_sync_implies_sync::<String>();
+        assert_send::<BoxFuture<'static, ()>>();
+    }
 
     #[tokio::test]
     async fn timeout_returns_ok_for_a_future_that_completes_in_time() {

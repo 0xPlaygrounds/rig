@@ -1,7 +1,6 @@
 use async_stream::stream;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
@@ -34,11 +33,11 @@ pub struct StreamingCompletionResponse {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>> + Send>>;
+    futures::stream::BoxStream<'static, Result<InteractionSseEvent, CompletionError>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
+    futures::stream::LocalBoxStream<'static, Result<InteractionSseEvent, CompletionError>>;
 
 impl GetTokenUsage for StreamingCompletionResponse {
     fn token_usage(&self) -> crate::completion::Usage {

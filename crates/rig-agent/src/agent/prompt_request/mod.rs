@@ -4,7 +4,7 @@ use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, ToolResultContent, UserContent},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
+    wasm_compat::{BoxFuture, MaybeSend},
 };
 
 use crate::{
@@ -284,7 +284,7 @@ where
     M: CompletionModel + 'static,
 {
     type Output = Result<String, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
@@ -296,7 +296,7 @@ where
     M: CompletionModel + 'static,
 {
     type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
@@ -710,7 +710,7 @@ use serde::de::DeserializeOwned;
 /// ```
 pub struct TypedPromptRequest<T, S, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
     S: PromptType,
     M: CompletionModel,
 {
@@ -720,7 +720,7 @@ where
 
 impl<T, M> TypedPromptRequest<T, Standard, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
     M: CompletionModel,
 {
     /// Create a new TypedPromptRequest from an agent.
@@ -746,7 +746,7 @@ where
 
 impl<T, S, M> TypedPromptRequest<T, S, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
     S: PromptType,
     M: CompletionModel,
 {
@@ -809,7 +809,7 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
 
 impl<T, M> TypedPromptRequest<T, Standard, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
     M: CompletionModel,
 {
     /// Send the typed prompt request and deserialize the response.
@@ -827,7 +827,7 @@ where
 
 impl<T, M> TypedPromptRequest<T, Extended, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
+    T: JsonSchema + DeserializeOwned + MaybeSend,
     M: CompletionModel,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
@@ -846,11 +846,11 @@ where
 
 impl<T, M> IntoFuture for TypedPromptRequest<T, Standard, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
+    T: JsonSchema + DeserializeOwned + MaybeSend + 'static,
     M: CompletionModel + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())
@@ -859,11 +859,11 @@ where
 
 impl<T, M> IntoFuture for TypedPromptRequest<T, Extended, M>
 where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
+    T: JsonSchema + DeserializeOwned + MaybeSend + 'static,
     M: CompletionModel + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
+    type IntoFuture = BoxFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.send())

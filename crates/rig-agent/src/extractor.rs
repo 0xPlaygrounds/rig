@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::{
     message::{Message, ToolChoice},
     vector_store::VectorStoreIndexDyn,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 
 use crate::{
@@ -76,7 +76,7 @@ pub enum ExtractionError {
 pub struct Extractor<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + for<'a> Deserialize<'a> + MaybeSend + MaybeSync,
 {
     agent: Agent<M>,
     _t: PhantomData<T>,
@@ -86,7 +86,7 @@ where
 impl<M, T> Extractor<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
+    T: JsonSchema + for<'a> Deserialize<'a> + MaybeSend + MaybeSync,
 {
     /// Attempts to extract data from the given text with a number of retries.
     ///
@@ -96,7 +96,7 @@ where
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     pub async fn extract(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: impl Into<Message> + MaybeSend,
     ) -> Result<T, ExtractionError> {
         let (data, _usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(data)
@@ -110,7 +110,7 @@ where
     /// The number of retries is determined by the `retries` field on the Extractor struct.
     pub async fn extract_with_chat_history(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: impl Into<Message> + MaybeSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
         let (data, _usage) = self.retry_extract(text.into(), chat_history).await?;
@@ -132,7 +132,7 @@ where
     /// fails the returned error carries no usage information at all.
     pub async fn extract_with_usage(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: impl Into<Message> + MaybeSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
         let (data, usage) = self.retry_extract(text.into(), vec![]).await?;
         Ok(ExtractionResponse { data, usage })
@@ -154,7 +154,7 @@ where
     /// fails the returned error carries no usage information at all.
     pub async fn extract_with_chat_history_with_usage(
         &self,
-        text: impl Into<Message> + WasmCompatSend,
+        text: impl Into<Message> + MaybeSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
         let (data, usage) = self.retry_extract(text.into(), chat_history).await?;
@@ -252,7 +252,7 @@ where
 pub struct ExtractorBuilder<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + MaybeSend + MaybeSync + 'static,
 {
     agent_builder: AgentBuilder<M>,
     _t: PhantomData<T>,
@@ -262,7 +262,7 @@ where
 impl<M, T> ExtractorBuilder<M, T>
 where
     M: CompletionModel,
-    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
+    T: JsonSchema + for<'a> Deserialize<'a> + Serialize + MaybeSend + MaybeSync + 'static,
 {
     pub fn new(model: M) -> Self {
         Self {
@@ -487,7 +487,7 @@ mod tests {
     impl VectorStoreIndex for ExtractorContextIndex {
         type Filter = Filter<serde_json::Value>;
 
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+        async fn top_n<T: for<'a> Deserialize<'a> + MaybeSend>(
             &self,
             req: VectorSearchRequest,
         ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

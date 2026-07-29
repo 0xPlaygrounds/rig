@@ -4,7 +4,7 @@ use crate::{
     agent::StreamingPromptRequest,
     completion::{CompletionModel, GetTokenUsage, Message},
 };
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{MaybeSend, MaybeSync};
 
 pub use rig_core::streaming::*;
 
@@ -12,30 +12,27 @@ pub use rig_core::streaming::*;
 pub trait StreamingPrompt<M, R>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: WasmCompatSend,
+    M::StreamingResponse: MaybeSend,
     R: Clone + Unpin + GetTokenUsage,
 {
     /// Create a classic streaming request for `prompt`.
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M>;
+    fn stream_prompt(&self, prompt: impl Into<Message> + MaybeSend) -> StreamingPromptRequest<M>;
 }
 
 /// High-level streaming chat interface with caller-provided history.
-pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
+pub trait StreamingChat<M, R>: MaybeSend + MaybeSync
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: WasmCompatSend,
+    M::StreamingResponse: MaybeSend,
     R: Clone + Unpin + GetTokenUsage,
 {
     /// Create a classic streaming request with canonical chat history.
     fn stream_chat<I, T>(
         &self,
-        prompt: impl Into<Message> + WasmCompatSend,
+        prompt: impl Into<Message> + MaybeSend,
         chat_history: I,
     ) -> StreamingPromptRequest<M>
     where
-        I: IntoIterator<Item = T> + WasmCompatSend,
+        I: IntoIterator<Item = T> + MaybeSend,
         T: Into<Message>;
 }

@@ -55,7 +55,7 @@ use crate::{
     json_utils, message,
     message::{ImageDetail, Text},
     streaming,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wasm_compat::{MaybeSend, MaybeSync},
 };
 use async_stream::try_stream;
 use bytes::Bytes;
@@ -658,7 +658,7 @@ impl NdjsonBuffer {
 
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
     type Response = CompletionResponse;
     type StreamingResponse = StreamingCompletionResponse;
@@ -880,7 +880,7 @@ pub struct OllamaModelLister<H = reqwest::Client> {
 
 impl<H> ModelLister<H> for OllamaModelLister<H>
 where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + MaybeSend + MaybeSync + 'static,
 {
     type Client = Client<H>;
 
