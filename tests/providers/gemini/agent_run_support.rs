@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{CompletionModel, CompletionRequestBuilder, ToolDefinition, Usage};
+use rig::completion::{CompletionModel, ToolDefinition, Usage};
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;

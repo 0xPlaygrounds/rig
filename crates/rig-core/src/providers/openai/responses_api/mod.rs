@@ -2783,9 +2783,7 @@ impl FromStr for UserContent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::CompletionRequestBuilder;
     use crate::message;
-    use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -3309,10 +3307,11 @@ mod tests {
 
     #[test]
     fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
-            .preamble("System one".to_string())
-            .message(completion::Message::system("System two"))
-            .build();
+        let request = crate::completion::CompletionRequest::with_history(
+            Some("System one"),
+            vec![completion::Message::system("System two")],
+            "Hello",
+        );
 
         let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request should convert");
@@ -3401,11 +3400,14 @@ mod tests {
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
-            .preamble("System one".to_string())
-            .message(completion::Message::user("hi"))
-            .message(completion::Message::system("Mid-conversation instruction"))
-            .build();
+        let request = crate::completion::CompletionRequest::with_history(
+            Some("System one"),
+            vec![
+                completion::Message::user("hi"),
+                completion::Message::system("Mid-conversation instruction"),
+            ],
+            "again",
+        );
 
         let req = model
             .create_completion_request(request)
@@ -3628,12 +3630,18 @@ mod tests {
 
     #[test]
     fn responses_request_keeps_documents_after_lifted_system_messages() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
-            .message(completion::Message::system("System prompt"))
-            .message(completion::Message::user("Earlier user turn"))
-            .message(completion::Message::assistant("Earlier assistant turn"))
-            .document(test_document("doc1", "Document text."))
-            .build();
+        let request = crate::completion::CompletionRequest {
+            documents: vec![test_document("doc1", "Document text.")],
+            ..crate::completion::CompletionRequest::with_history(
+                None,
+                vec![
+                    completion::Message::system("System prompt"),
+                    completion::Message::user("Earlier user turn"),
+                    completion::Message::assistant("Earlier assistant turn"),
+                ],
+                "Prompt",
+            )
+        };
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request conversion should succeed");
@@ -4616,7 +4624,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

@@ -1971,7 +1971,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -1996,7 +1996,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -2018,7 +2018,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o").with_edits_intent();
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -2042,7 +2042,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -2061,7 +2061,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let _response = model
             .completion(request)
@@ -2149,7 +2149,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let err = match stream.next().await.expect("stream should yield an item") {
@@ -2225,7 +2225,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         while let Some(item) = stream.next().await {
@@ -2260,7 +2260,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut saw_error = false;

@@ -920,7 +920,6 @@ mod tests {
         ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
         reasoning_choices_from_done_item,
     };
-    use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::{
@@ -965,7 +964,7 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         stream
@@ -984,7 +983,7 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         while let Some(item) = stream.next().await {
@@ -1417,7 +1416,7 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let err = stream
@@ -1461,7 +1460,7 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let err = stream
@@ -1701,7 +1700,7 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut final_usage = None;

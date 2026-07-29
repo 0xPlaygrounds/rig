@@ -796,9 +796,7 @@ impl ToolCallAction {
 }
 
 /// Action for post-tool hooks.
-// Serde deferred to P7: `ToolOutput: Serialize` currently conflicts with the
-// blanket `IntoToolOutput` impl that P7 deletes.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ToolResultAction {
     /// Keep the current presentation.
     Keep,
@@ -1640,6 +1638,25 @@ mod protocol_helper_tests {
         let json = serde_json::to_string(&action).expect("serialize action");
         let back: InvalidToolCallAction = serde_json::from_str(&json).expect("deserialize action");
         assert_eq!(action, back);
+
+        let action = ToolResultAction::rewrite_output(ToolOutput::json(
+            serde_json::json!({"status": "redacted"}),
+        ));
+        let json = serde_json::to_string(&action).expect("serialize tool-result action");
+        let back: ToolResultAction =
+            serde_json::from_str(&json).expect("deserialize tool-result action");
+        assert_eq!(action, back);
+
+        for action in [
+            ToolResultAction::keep(),
+            ToolResultAction::rewrite("plain text"),
+            ToolResultAction::stop("halt"),
+        ] {
+            let json = serde_json::to_string(&action).expect("serialize tool-result action");
+            let back: ToolResultAction =
+                serde_json::from_str(&json).expect("deserialize tool-result action");
+            assert_eq!(action, back);
+        }
     }
 }
 

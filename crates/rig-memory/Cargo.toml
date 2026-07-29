@@ -14,6 +14,9 @@ workspace = true
 rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
 tracing = { workspace = true }
 
+[features]
+test-utils = []
+
 [dev-dependencies]
 anyhow = { workspace = true }
 rig-agent.workspace = true

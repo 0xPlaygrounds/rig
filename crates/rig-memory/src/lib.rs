@@ -46,10 +46,19 @@ use std::{
 
 /// Re-exports of the core memory abstractions so callers only need a single
 /// dependency on `rig-memory` for both the trait/backend and the policies.
+///
+/// The trait and in-process backend are *defined* in `rig_core::memory`
+/// (this crate depends on `rig-core`, so defining them here would create a
+/// dependency cycle with `rig-core`/`rig-agent`); `rig-memory` is the
+/// canonical companion path for everything memory-related.
 pub use rig_core::memory::{
-    Compactor, ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryError,
-    NoopDemotionHook,
+    Compactor, ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryBackendError,
+    MemoryError, MessageFilter, NoopDemotionHook,
 };
+
+#[cfg(any(test, feature = "test-utils"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+pub mod test_utils;
 
 use rig_core::completion::Message;
 use rig_core::message::UserContent;

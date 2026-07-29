@@ -34,6 +34,16 @@
 //! Truncation, summarization, and other history-shaping policies live in the
 //! `rig-memory` companion crate. To shape history inside the in-tree backend,
 //! pass a closure to [`InMemoryConversationMemory::with_filter`].
+//!
+//! # Where memory code lives
+//!
+//! `rig-memory` is the canonical companion crate for everything
+//! memory-related: it re-exports every item in this module and adds the
+//! reusable policies, adapters, and (behind its `test-utils` feature) the
+//! conversation-memory test doubles. The trait and the in-process backend
+//! remain *defined* here because `rig-memory` and `rig-agent` both depend on
+//! `rig-core`; re-exporting them from `rig-memory` into `rig-core` would
+//! create a dependency cycle. Prefer the `rig_memory` paths in new code.
 
 use std::{
     collections::HashMap,

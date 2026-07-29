@@ -13,11 +13,14 @@ async fn streaming_pause_and_resume() {
     let model = ollama::Client::from_env()
         .expect("client should build")
         .completion_model("gemma3:4b");
-    let request = model
-        .completion_request("Explain backpropagation in neural networks.")
-        .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())
-        .temperature(0.7)
-        .build();
+    let request = rig::completion::CompletionRequest {
+        temperature: Some(0.7),
+        ..rig::completion::CompletionRequest::with_history(
+            Some("You are a helpful AI assistant. Provide concise explanations."),
+            Vec::new(),
+            "Explain backpropagation in neural networks.",
+        )
+    };
     let mut stream = model.stream(request).await.expect("stream should start");
 
     let mut chunk_count = 0usize;

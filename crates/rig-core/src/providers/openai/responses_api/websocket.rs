@@ -1146,7 +1146,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("request should send");
 
@@ -1160,7 +1160,7 @@ mod tests {
         );
 
         let closed = session
-            .send(model.completion_request("retry").build())
+            .send(crate::completion::CompletionRequest::from_prompt("retry"))
             .await
             .expect_err("session should close after fatal parse error");
         assert!(
@@ -1227,7 +1227,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("request should send");
 
@@ -1243,7 +1243,7 @@ mod tests {
         );
 
         let closed = session
-            .send(model.completion_request("retry").build())
+            .send(crate::completion::CompletionRequest::from_prompt("retry"))
             .await
             .expect_err("timed-out session should close");
         assert!(
@@ -1331,7 +1331,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1342,7 +1342,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), Some("resp_1"));
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1427,7 +1427,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1440,7 +1440,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1569,7 +1569,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let error = session
@@ -1580,7 +1580,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1656,7 +1656,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1667,7 +1667,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), Some("resp_1"));
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1776,7 +1776,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let error = session
@@ -1787,7 +1787,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1923,12 +1923,12 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
 
         let error = session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect_err("second send while in-flight should error");
         assert!(
@@ -1969,7 +1969,7 @@ mod tests {
         session.close().await.expect("close should succeed");
 
         let error = session
-            .send(model.completion_request("after close").build())
+            .send(crate::completion::CompletionRequest::from_prompt("after close"))
             .await
             .expect_err("send after close should error");
         assert!(
@@ -2095,7 +2095,7 @@ mod tests {
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("send should succeed");
         let response = session

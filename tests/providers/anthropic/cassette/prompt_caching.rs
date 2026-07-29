@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, ToolDefinition,
-    Usage,
+    AssistantContent, CompletionModel, CompletionRequest,
+    CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -143,14 +143,15 @@ async fn send_cache_probe(
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> RigCompletionResponse {
+    let request = CompletionRequest {
+        tools,
+        tool_choice: Some(ToolChoice::None),
+        temperature: Some(0.0),
+        max_tokens: Some(16),
+        ..CompletionRequest::with_history(Some(&preamble), Vec::new(), prompt)
+    };
     model
-        .completion_request(prompt)
-        .preamble(preamble)
-        .tools(tools)
-        .tool_choice(ToolChoice::None)
-        .temperature(0.0)
-        .max_tokens(16)
-        .send()
+        .completion(request)
         .await
         .expect("prompt-cached Anthropic request should succeed")
 }
@@ -166,16 +167,17 @@ async fn send_streaming_cache_probe(
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> StreamingCacheProbeResponse {
-    let mut stream = model
-        .completion_request(prompt)
-        .preamble(preamble)
-        .tools(tools)
-        .additional_params(json!({
+    let request = CompletionRequest {
+        tools,
+        additional_params: Some(json!({
             "tool_choice": { "type": "none" }
-        }))
-        .temperature(0.0)
-        .max_tokens(16)
-        .stream()
+        })),
+        temperature: Some(0.0),
+        max_tokens: Some(16),
+        ..CompletionRequest::with_history(Some(&preamble), Vec::new(), prompt)
+    };
+    let mut stream = model
+        .stream(request)
         .await
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();

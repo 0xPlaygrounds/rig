@@ -16,7 +16,8 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
+        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, UnaryTurnSource,
+        acquire_agent_span,
         append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
@@ -387,21 +388,35 @@ pub(crate) enum DriveItem {
 /// how its tools are executed, and how the run's spans/usage/final item are
 /// shaped. The medium-independent outer loop (turn counting, the `CompletionCall`
 /// hook, request preparation, memory) lives once in [`drive_agent`]; only the
-/// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
+/// genuinely divergent pieces are behind this enum. Invalid-tool-call recovery
 /// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
 /// for blocking, mid-stream for streaming), not in `drive_agent`.
-pub(crate) trait TurnSource: WasmCompatSend {
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum TurnSource {
+    /// The blocking surface: unary completion calls (see [`UnaryTurnSource`]).
+    Unary(UnaryTurnSource),
+    /// The streaming surface: provider streams (see [`StreamingTurnSource`]).
+    Streaming(StreamingTurnSource),
+}
+
+impl TurnSource {
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
     fn open_chat_span(
         &self,
         runner: &AgentRunner,
         effective_preamble: Option<&str>,
-    ) -> tracing::Span;
+    ) -> tracing::Span {
+        match self {
+            TurnSource::Unary(source) => source.open_chat_span(runner, effective_preamble),
+            TurnSource::Streaming(source) => source.open_chat_span(runner, effective_preamble),
+        }
+    }
 
     /// Run one model turn: issue the provider call, feed the result into the
     /// sans-IO machine, and yield any intermediate items. Returning normally
     /// advances the loop; yielding an `Err` terminates the run.
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     fn run_model_turn<'a>(
         &'a mut self,
@@ -412,7 +427,16 @@ pub(crate) trait TurnSource: WasmCompatSend {
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         prompt: Message,
-    ) -> DriveStream<'a>;
+    ) -> DriveStream<'a> {
+        match self {
+            TurnSource::Unary(source) => source.run_model_turn(
+                runner, hook_ctx, run, prepared, chat_span, agent_span, prompt,
+            ),
+            TurnSource::Streaming(source) => source.run_model_turn(
+                runner, hook_ctx, run, prepared, chat_span, agent_span, prompt,
+            ),
+        }
+    }
 
     /// Execute a turn's tool calls, feeding the results into the machine and
     /// yielding any intermediate items.
@@ -423,7 +447,16 @@ pub(crate) trait TurnSource: WasmCompatSend {
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a>;
+    ) -> DriveStream<'a> {
+        match self {
+            TurnSource::Unary(source) => {
+                source.run_tool_calls(runner, hook_ctx, run, calls, tool_snapshot)
+            }
+            TurnSource::Streaming(source) => {
+                source.run_tool_calls(runner, hook_ctx, run, calls, tool_snapshot)
+            }
+        }
+    }
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
     /// `created_agent_span` so a caller-supplied outer span is never polluted.
@@ -432,11 +465,25 @@ pub(crate) trait TurnSource: WasmCompatSend {
         agent_span: &tracing::Span,
         response: &PromptResponse,
         created_agent_span: bool,
-    );
+    ) {
+        match self {
+            TurnSource::Unary(source) => {
+                source.record_run_level_telemetry(agent_span, response, created_agent_span)
+            }
+            TurnSource::Streaming(source) => {
+                source.record_run_level_telemetry(agent_span, response, created_agent_span)
+            }
+        }
+    }
 
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
-    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
+    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
+        match self {
+            TurnSource::Unary(source) => source.final_item(response),
+            TurnSource::Streaming(source) => source.final_item(response),
+        }
+    }
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -462,18 +509,15 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
 /// medium-specific model call, tool execution, span shaping and finalization to
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
-pub(crate) fn drive_agent<S>(
+pub(crate) fn drive_agent(
     runner: AgentRunner,
-    mut source: S,
+    mut source: TurnSource,
     mut run: AgentRun,
     agent_span: tracing::Span,
     created_agent_span: bool,
     memory_handle: Option<(Arc<dyn rig_core::memory::ConversationMemory>, String)>,
     is_streaming: bool,
-) -> impl Stream<Item = Result<DriveItem, StreamingError>>
-where
-    S: TurnSource,
-{
+) -> impl Stream<Item = Result<DriveItem, StreamingError>> {
     async_stream::stream! {
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
@@ -999,7 +1043,7 @@ impl StreamingTurnSource {
     }
 }
 
-impl TurnSource for StreamingTurnSource {
+impl StreamingTurnSource {
     fn open_chat_span(
         &self,
         runner: &AgentRunner,
@@ -1008,6 +1052,7 @@ impl TurnSource for StreamingTurnSource {
         build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
@@ -1504,12 +1549,12 @@ impl AgentRunner {
         };
 
         let run = self.build_run(history_override);
-        let source = StreamingTurnSource::new(
+        let source = TurnSource::Streaming(StreamingTurnSource::new(
             &self.hooks,
             self.agent_name_or_default().to_string(),
             created_agent_span,
             self.record_telemetry_content,
-        );
+        ));
 
         // The blocking surface folds this same engine; the streaming surface
         // forwards intermediate items (the final response item is the last one)

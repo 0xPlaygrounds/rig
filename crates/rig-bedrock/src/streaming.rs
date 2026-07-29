@@ -272,7 +272,7 @@ pub(crate) async fn stream_converse(
                             }
                             .token_usage();
                             span.record_token_usage(&usage);
-                            let mut final_response = StreamFinal::new("bedrock", usage);
+                            let mut final_response = StreamFinal::new("aws_bedrock", usage);
                             if let Some(reason) = finish_reason.take() {
                                 final_response = final_response.with_finish_reason(reason);
                             }

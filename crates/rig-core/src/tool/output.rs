@@ -15,7 +15,8 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// [`serde_json::Value`], including a JSON string, stays JSON. Multimodal tools
 /// opt in explicitly with [`Self::content`]. Rig never reparses text as JSON to
 /// guess whether it represents rich content.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct ToolOutput {
     content: OneOrMany<ToolResultContent>,
 }
@@ -207,7 +208,12 @@ where
         // silently turn an image into a JSON object. Stable Rust cannot express
         // a blanket `Serialize` impl with negative exceptions, so preserve these
         // two canonical rich types before taking the serialization path.
+        // `ToolOutput` itself is serializable (it is plain serde data), so the
+        // blanket impl also covers it; preserve identity the same way.
         let value = &self as &dyn Any;
+        if let Some(output) = value.downcast_ref::<ToolOutput>() {
+            return Ok(output.clone());
+        }
         if let Some(content) = value.downcast_ref::<ToolResultContent>() {
             return Ok(ToolOutput::one(content.clone()));
         }
@@ -225,12 +231,6 @@ where
                 ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
                     .with_source(error)
             })
-    }
-}
-
-impl IntoToolOutput for ToolOutput {
-    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        Ok(self)
     }
 }
 
@@ -305,6 +305,41 @@ mod tests {
         let output = content.clone().into_tool_output().unwrap();
 
         assert_eq!(output.as_content(), &content);
+    }
+
+    #[test]
+    fn tool_output_passes_through_the_blanket_impl_unchanged() {
+        let output = ToolOutput::content(
+            OneOrMany::many(vec![
+                ToolResultContent::text("before"),
+                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+            ])
+            .unwrap(),
+        );
+
+        assert_eq!(output.clone().into_tool_output().unwrap(), output);
+    }
+
+    #[test]
+    fn tool_output_serde_round_trips() {
+        let output = ToolOutput::content(
+            OneOrMany::many(vec![
+                ToolResultContent::text("before"),
+                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+                ToolResultContent::json(serde_json::json!({"after": true})),
+            ])
+            .unwrap(),
+        );
+
+        let json = serde_json::to_value(&output).unwrap();
+        let restored: ToolOutput = serde_json::from_value(json).unwrap();
+        assert_eq!(restored, output);
+
+        // Transparent representation: a ToolOutput serializes as its content.
+        assert_eq!(
+            serde_json::to_value(&output).unwrap(),
+            serde_json::to_value(output.as_content()).unwrap()
+        );
     }
 
     #[test]

@@ -932,7 +932,7 @@ data: [DONE]"#;
                 .build()
                 .expect("client should build");
             let model = client.completion_model(GPT_5_4);
-            let request = model.completion_request("hello").build();
+            let request = crate::completion::CompletionRequest::from_prompt("hello");
 
             let error = model
                 .completion(request)

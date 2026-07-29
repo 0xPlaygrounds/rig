@@ -887,8 +887,8 @@ impl UnaryTurnSource {
     }
 }
 
-impl TurnSource for UnaryTurnSource {
-    fn open_chat_span(
+impl UnaryTurnSource {
+    pub(crate) fn open_chat_span(
         &self,
         runner: &AgentRunner,
         effective_preamble: Option<&str>,
@@ -897,7 +897,8 @@ impl TurnSource for UnaryTurnSource {
         self.chain_span(chat_span)
     }
 
-    fn run_model_turn<'a>(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
@@ -1041,7 +1042,7 @@ impl TurnSource for UnaryTurnSource {
         })
     }
 
-    fn run_tool_calls<'a>(
+    pub(crate) fn run_tool_calls<'a>(
         &'a self,
         runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
@@ -1063,7 +1064,7 @@ impl TurnSource for UnaryTurnSource {
         )
     }
 
-    fn record_run_level_telemetry(
+    pub(crate) fn record_run_level_telemetry(
         &self,
         agent_span: &tracing::Span,
         response: &PromptResponse,
@@ -1081,7 +1082,7 @@ impl TurnSource for UnaryTurnSource {
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
+    pub(crate) fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None
@@ -1142,7 +1143,7 @@ impl AgentRunner {
         let record_telemetry_content = self.record_telemetry_content;
         let driver = drive_agent(
             self,
-            UnaryTurnSource::new(record_telemetry_content),
+            TurnSource::Unary(UnaryTurnSource::new(record_telemetry_content)),
             run,
             agent_span,
             created_agent_span,

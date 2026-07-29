@@ -129,7 +129,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
         let finish_reason = map_finish_reason(&value.0.stop_reason);
 
-        Ok(completion::CompletionResponse::new(choice, usage, "bedrock")
+        Ok(completion::CompletionResponse::new(choice, usage, "aws_bedrock")
             .with_finish_reason(finish_reason))
     }
 }

@@ -263,7 +263,7 @@ url = { workspace = true }
 [features]
 default = ["rig-core/default", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
-test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
+test-utils = ["rig-core/test-utils", "rig-agent?/test-utils", "rig-memory?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.

@@ -947,7 +947,7 @@ fn report_from_response(
 }
 
 /// Build a bare completion request for direct provider calls, bypassing the
-/// agent runtime (the moral successor of `model.completion_request(...)`).
+/// agent runtime (the moral successor of the removed `CompletionRequestBuilder`).
 fn direct_request(
     prompt: &str,
     tools: Vec<ToolDefinition>,

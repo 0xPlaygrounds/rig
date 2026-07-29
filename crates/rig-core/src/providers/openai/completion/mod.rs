@@ -2070,9 +2070,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
-    use crate::test_utils::MockCompletionModel;
     use std::collections::HashMap;
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -2411,14 +2409,18 @@ mod tests {
 
     #[test]
     fn openai_chat_request_keeps_documents_after_system_messages() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
-            .message(crate::completion::Message::system("System prompt"))
-            .message(crate::completion::Message::user("Earlier user turn"))
-            .message(crate::completion::Message::assistant(
-                "Earlier assistant turn",
-            ))
-            .document(test_document("doc1", "Document text."))
-            .build();
+        let request = CoreCompletionRequest {
+            documents: vec![test_document("doc1", "Document text.")],
+            ..CoreCompletionRequest::with_history(
+                None,
+                vec![
+                    crate::completion::Message::system("System prompt"),
+                    crate::completion::Message::user("Earlier user turn"),
+                    crate::completion::Message::assistant("Earlier assistant turn"),
+                ],
+                "Prompt",
+            )
+        };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -3228,7 +3230,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
@@ -3271,7 +3273,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
