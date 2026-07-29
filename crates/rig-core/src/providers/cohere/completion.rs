@@ -843,16 +843,14 @@ mod tests {
 
     #[test]
     fn cohere_builder_request_preserves_native_documents() {
-        let request = crate::completion::CompletionRequestBuilder::new(
-            crate::test_utils::MockCompletionModel::default(),
-            "What is glarb-glarb?",
-        )
-        .document(crate::completion::request::Document {
-            id: "doc_1".to_string(),
-            text: "Definition of glarb-glarb: an ancient tool.".to_string(),
-            additional_props: Default::default(),
-        })
-        .build();
+        let request = crate::completion::CompletionRequest {
+            documents: vec![crate::completion::request::Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            ..crate::completion::CompletionRequest::from_prompt("What is glarb-glarb?")
+        };
 
         let request = CohereCompletionRequest::try_from(("command-r", request))
             .expect("request conversion should succeed");
@@ -876,7 +874,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

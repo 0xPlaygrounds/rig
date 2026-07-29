@@ -11,7 +11,7 @@
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -152,17 +152,20 @@ async fn main() -> Result<()> {
     for round in 1..=MAX_ROUNDS {
         // This example intentionally operates below the Agent abstraction. Raw
         // model requests have no agent lifecycle or hooks.
-        let mut request = model
-            .completion_request(current_prompt.clone())
-            .preamble(preamble.to_string())
-            .messages(history.clone())
-            .tools(local_tools.get_tool_definitions());
+        let mut request = CompletionRequest {
+            tools: local_tools.get_tool_definitions(),
+            ..CompletionRequest::with_history(
+                Some(preamble),
+                history.clone(),
+                current_prompt.clone(),
+            )
+        };
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
-            request = request.tool_choice(ToolChoice::Required);
+            request.tool_choice = Some(ToolChoice::Required);
         }
 
-        let response = request.send().await?;
+        let response = model.completion(request).await?;
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());

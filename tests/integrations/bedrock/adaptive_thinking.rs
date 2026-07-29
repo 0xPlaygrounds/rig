@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
+use rig::completion::{CompletionRequest, Prompt};
 use rig::prelude::*;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;
@@ -48,11 +48,11 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
     let model = client().completion_model(anthropic_signature_only_model());
-    let request = model
-        .completion_request("What is 2 + 2? Answer with only the number.")
-        .max_tokens(2048)
-        .additional_params(adaptive_thinking_params())
-        .build();
+    let request = CompletionRequest {
+        max_tokens: Some(2048),
+        additional_params: Some(adaptive_thinking_params()),
+        ..CompletionRequest::from_prompt("What is 2 + 2? Answer with only the number.")
+    };
     let mut stream = model
         .stream(request)
         .await

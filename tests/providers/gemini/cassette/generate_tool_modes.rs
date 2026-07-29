@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -22,13 +22,16 @@ async fn required_maps_to_any_and_forces_function_call() {
         "generate_tool_modes/required_maps_to_any_and_forces_function_call",
         |client| async move {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Please greet me.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                tools: vec![rig::tool::tool_definition(&Adder)],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::with_history(
+                    Some(TOOLS_PREAMBLE),
+                    Vec::new(),
+                    "Please greet me.",
+                )
+            };
 
             let response = model
                 .completion(request)

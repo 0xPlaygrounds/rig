@@ -6,7 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -26,11 +26,14 @@ async fn strict_tools_opt_in_roundtrip() {
             let model = client
                 .completion_model(chatgpt::GPT_5_4)
                 .with_strict_tools();
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&Adder)],
+                ..CompletionRequest::with_history(
+                    Some(TOOLS_PREAMBLE),
+                    Vec::new(),
+                    "Use the add tool to add 7 and 5.",
+                )
+            };
 
             let response = model
                 .completion(request)
@@ -77,12 +80,11 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette("codex_behaviors/store_false_and_prompt_cache_fields_roundtrip", |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
             let response = model
-                .completion(
-                    model
-                        .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
-                        .preamble("Return only the requested marker.".to_string())
-                        .build(),
-                )
+                .completion(CompletionRequest::with_history(
+                    Some("Return only the requested marker."),
+                    Vec::new(),
+                    "Reply with exactly this marker: CODEX-STORE-FALSE",
+                ))
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
 

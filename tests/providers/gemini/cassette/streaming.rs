@@ -1,7 +1,7 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
@@ -88,10 +88,10 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: final metadata ok")
-                .temperature(0.0)
-                .build();
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::from_prompt("Reply with exactly: final metadata ok")
+            };
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
@@ -139,10 +139,12 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: contentless final metadata ok")
-                .temperature(0.0)
-                .build();
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::from_prompt(
+                    "Reply with exactly: contentless final metadata ok",
+                )
+            };
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();

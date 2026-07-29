@@ -174,13 +174,15 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("\n→ model call #{turn}");
-                let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(preamble.to_string())
-                    .tools(tool_definitions.clone())
-                    .send()
-                    .await?;
+                let request = rig::completion::CompletionRequest {
+                    tools: tool_definitions.clone(),
+                    ..rig::completion::CompletionRequest::with_history(
+                        Some(preamble),
+                        history,
+                        prompt,
+                    )
+                };
+                let response = model.completion(request).await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()
                     .map(|def| def.name.clone())

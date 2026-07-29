@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::streaming::{StreamingChat, StreamingPrompt};
@@ -582,16 +582,17 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&tool)],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::with_history(
+                    Some("Use the requested tool call and no prose before it."),
+                    Vec::new(),
                     "Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            };
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -622,30 +623,33 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
             let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
-                .message(Message::user("My favorite color is teal. Please remember it."))
-                .message(Message::assistant("Noted: your favorite color is teal."))
-                .message(Message::user("For this release, use the canary lane."))
-                .message(Message::assistant("Understood: the release lane is canary."))
-                .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
+            let history = vec![
+                Message::user("My favorite color is teal. Please remember it."),
+                Message::assistant("Noted: your favorite color is teal."),
+                Message::user("For this release, use the canary lane."),
+                Message::assistant("Understood: the release lane is canary."),
+                Message::user("Look up the harbor label with the tool."),
+                Message::Assistant {
                     id: None,
                     content: OneOrMany::one(AssistantContent::tool_call(
                         "call_REDACTED_1",
                         AlphaSignal::NAME,
                         json!({}),
                     )),
-                })
-                .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+                },
+                Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT),
+                Message::assistant("The harbor label is crimson-harbor."),
+            ];
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tool_choice: Some(ToolChoice::None),
+                ..CompletionRequest::with_history(
+                    Some("You are concise and should rely on the provided chat history."),
+                    history,
+                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.",
+                )
+            };
 
             let response = model.completion(request).await?;
             let text = response

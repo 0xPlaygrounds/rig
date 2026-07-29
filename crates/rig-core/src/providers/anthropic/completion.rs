@@ -2609,6 +2609,7 @@ pub(super) enum ApiResponse<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::completion::CompletionModel as _;
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
@@ -5887,7 +5888,6 @@ mod tests {
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
         use crate::providers::anthropic::Client;
         use crate::test_utils::RecordingHttpClient;
 
@@ -5900,7 +5900,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
@@ -5918,7 +5918,6 @@ mod tests {
     #[tokio::test]
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
         use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
         use crate::providers::anthropic::Client;
         use crate::test_utils::RecordingHttpClient;
 
@@ -5934,7 +5933,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
@@ -5955,7 +5954,6 @@ mod tests {
     #[tokio::test]
     async fn completion_streaming_http_non_success_preserves_status_and_body() {
         use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
         use crate::providers::anthropic::Client;
         use crate::test_utils::HttpErrorStreamingClient;
         use futures::StreamExt;
@@ -5969,7 +5967,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let mut stream = model.stream(request).await.expect("stream should start");
 

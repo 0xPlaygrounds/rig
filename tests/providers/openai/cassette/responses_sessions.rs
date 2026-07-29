@@ -312,11 +312,14 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some(preamble),
+                    Vec::new(),
+                    "Look up the harbor label with the tool.",
+                )
+            };
             let first_response = model
                 .completion(first_request)
                 .await

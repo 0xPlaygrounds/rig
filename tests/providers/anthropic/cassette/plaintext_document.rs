@@ -1,7 +1,7 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
@@ -169,15 +169,17 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_turn = model
-                .completion_request(prompt.clone())
-                .preamble(
-                    "Answer using the supplied document and preserve citation metadata."
-                        .to_string(),
+            let first_request = CompletionRequest {
+                max_tokens: Some(256),
+                temperature: Some(0.0),
+                ..CompletionRequest::with_history(
+                    Some("Answer using the supplied document and preserve citation metadata."),
+                    Vec::new(),
+                    prompt.clone(),
                 )
-                .max_tokens(256)
-                .temperature(0.0)
-                .send()
+            };
+            let first_turn = model
+                .completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
 
@@ -222,20 +224,23 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 _ => false,
             }));
 
-            let followup = model
-                .completion_request("Reply exactly: citations follow-up ok")
-                .preamble(
-                    "Answer using the supplied document and preserve citation metadata."
-                        .to_string(),
+            let followup_request = CompletionRequest {
+                max_tokens: Some(64),
+                temperature: Some(0.0),
+                ..CompletionRequest::with_history(
+                    Some("Answer using the supplied document and preserve citation metadata."),
+                    vec![
+                        prompt,
+                        Message::Assistant {
+                            id: first_turn.message_id.clone(),
+                            content: first_turn.choice.clone(),
+                        },
+                    ],
+                    "Reply exactly: citations follow-up ok",
                 )
-                .max_tokens(64)
-                .temperature(0.0)
-                .message(prompt)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
+            };
+            let followup = model
+                .completion(followup_request)
                 .await
                 .expect("follow-up citation history turn should succeed");
 

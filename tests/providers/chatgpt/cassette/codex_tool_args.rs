@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message, ToolDefinition};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -159,11 +159,14 @@ async fn zero_argument_tool_call_streaming() {
         "codex_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.".to_string())
-                .tool(zero_arg_tool_definition("ping"))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                ..CompletionRequest::with_history(
+                    Some("Follow the tool-calling instructions exactly."),
+                    Vec::new(),
+                    REQUIRED_ZERO_ARG_TOOL_PROMPT,
+                )
+            };
 
             let stream = model
                 .stream(request)
@@ -182,11 +185,14 @@ async fn zero_argument_tool_call_nonstreaming() {
         "codex_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.".to_string())
-                .tool(zero_arg_tool_definition("ping"))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                ..CompletionRequest::with_history(
+                    Some("Follow the tool-calling instructions exactly."),
+                    Vec::new(),
+                    REQUIRED_ZERO_ARG_TOOL_PROMPT,
+                )
+            };
 
             let response = model
                 .completion(request)
@@ -263,11 +269,14 @@ async fn nested_arguments_streaming() {
         "codex_tool_args/nested_arguments_streaming",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(NESTED_ARGS_PROMPT)
-                .preamble(NESTED_ARGS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&PlanTrip))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&PlanTrip)],
+                ..CompletionRequest::with_history(
+                    Some(NESTED_ARGS_PREAMBLE),
+                    Vec::new(),
+                    NESTED_ARGS_PROMPT,
+                )
+            };
 
             let observation = collect_raw_stream_observation(
                 model
@@ -299,17 +308,8 @@ async fn unicode_arguments_streaming() {
         "codex_tool_args/unicode_arguments_streaming",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(
-                    "Call the echo tool exactly once with the message argument set to \
-                     exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-                )
-                .preamble(
-                    "You must call the echo tool with the exact text the user provides. \
-                     Do not translate, reword, or drop any characters."
-                        .to_string(),
-                )
-                .tool(ToolDefinition {
+            let request = CompletionRequest {
+                tools: vec![ToolDefinition {
                     name: "echo".to_string(),
                     description: "Echo a message back to the user.".to_string(),
                     parameters: json!({
@@ -319,8 +319,17 @@ async fn unicode_arguments_streaming() {
                         },
                         "required": ["message"]
                     }),
-                })
-                .build();
+                }],
+                ..CompletionRequest::with_history(
+                    Some(
+                        "You must call the echo tool with the exact text the user provides. \
+                         Do not translate, reword, or drop any characters.",
+                    ),
+                    Vec::new(),
+                    "Call the echo tool exactly once with the message argument set to \
+                     exactly this text: Grüße aus 東京, from the \"naïve café\"!",
+                )
+            };
 
             let observation = collect_raw_stream_observation(
                 model

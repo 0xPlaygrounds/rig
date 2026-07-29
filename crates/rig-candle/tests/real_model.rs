@@ -48,7 +48,7 @@ async fn loads_and_generates_with_a_real_local_model()
     } else {
         "Reply with one short greeting."
     };
-    let request = model.completion_request(prompt).build();
+    let request = rig_core::completion::CompletionRequest::from_prompt(prompt);
     let response = model.completion(request.clone()).await?;
     let buffered_text = choice_text(&response);
     if buffered_text.is_empty() {

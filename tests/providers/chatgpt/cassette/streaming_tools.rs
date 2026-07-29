@@ -1,7 +1,7 @@
 //! ChatGPT cassette coverage for terminal responses that omit `output`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -43,13 +43,13 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::from_prompt(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
                 )
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            };
 
             let response = model
                 .completion(request)
@@ -82,13 +82,13 @@ async fn stream_tool_call_completed_response_without_output() {
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::from_prompt(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
                 )
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            };
 
             let mut stream = model.stream(request).await.expect("stream should start");
             let mut saw_ping_tool_call = false;

@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -20,13 +20,14 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                max_tokens: Some(64),
+                ..CompletionRequest::with_history(
+                    Some("You are a storyteller."),
+                    Vec::new(),
                     "Write a story of at least 150 words about a lighthouse keeper.",
                 )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(64)
-                .build();
+            };
 
             let response = model
                 .completion(request)

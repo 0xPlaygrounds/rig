@@ -312,3 +312,38 @@ dispatch, request counts kept).
 clean workspace-wide; full facade suite green single-threaded (all 34 test
 targets, incl. every cassette suite byte-replaying against the bridged
 runtime); rig-agent 490 + doctests; rig-core 1084; cassettes untouched.
+
+## P7 — Cleanup of orphaned plumbing (COMPLETE, rescoped)
+
+- **`CompletionRequestBuilder<M>` deleted** along with the trait's
+  `completion_request()` sugar; ~230 call sites migrated to the new
+  `CompletionRequest::with_history`/`from_prompt` constructors +
+  struct-update syntax, with explicit `model.completion(request)` /
+  `provider::complete` where the builder's send/stream sugar was used.
+  Cassette byte-fidelity preserved (all suites green).
+- **`TurnSource` trait → enum** (Unary/Streaming, exhaustive match);
+  `drive_agent` no longer generic over it.
+- **`ToolOutput` + the full hook decision vocabulary are serde**
+  (`ToolResultAction` included); exposed and fixed a long-standing
+  `#[serde(flatten)] Option<Value>` wart — flattened `additional_params`
+  now deserialize empty maps to `None` (round-trip equality restored;
+  wire bytes unchanged).
+- **ConversationMemory test doubles moved to `rig_memory::test_utils`**
+  (Counting/Failing/AppendFailing); the trait itself stays in rig-core
+  (dependency direction), implementations/doubles live in rig-memory.
+- **Bedrock naming unified**: `"bedrock"` → `"aws_bedrock"` in
+  CompletionResponse/StreamFinal, matching telemetry and the descriptor.
+
+**Rescoped (logged deviation)**: retiring `CompletionModel`,
+`GenericCompletionModel<Ext,H>`, and the `Client<Ext,H>`/`Capabilities`
+internals moves to the tail of P8 — those internals still carry the
+embedding/transcription/image/audio surfaces that P8 converts to free
+functions, and dismantling the layer once (after P8) beats two partial
+dismantlings. `wasm_compat` shrink rides the same wave.
+
+**Note**: mid-phase, three subagents were killed by a session limit; their
+work was recovered from a stash, reconciled, and verified — no work lost.
+
+**Verification**: workspace check + clippy 0 warnings; full facade suite
+green single-threaded (all targets); rig-core 1081 + rig-agent 490 +
+rig-memory 65; cassettes untouched.

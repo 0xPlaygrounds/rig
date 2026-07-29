@@ -1,7 +1,7 @@
 //! Migrated from `examples/openai_agent_completions_api.rs` against a local llama.cpp server.
 
-use rig::completion::CompletionModel;
 use rig::completion::Prompt;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
 
 use crate::support::{
@@ -35,11 +35,13 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     // body from), so the previous raw-vs-normalized comparison now asserts the
     // exact expected content directly on the normalized text.
     let client = support::completions_client();
-    let response = client
-        .completion_model(support::model_name())
-        .completion_request(RAW_TEXT_RESPONSE_PROMPT)
-        .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-        .send()
+    let model = client.completion_model(support::model_name());
+    let response = model
+        .completion(CompletionRequest::with_history(
+            Some(RAW_TEXT_RESPONSE_PREAMBLE),
+            Vec::new(),
+            RAW_TEXT_RESPONSE_PROMPT,
+        ))
         .await
         .expect("raw completions api request should succeed");
 

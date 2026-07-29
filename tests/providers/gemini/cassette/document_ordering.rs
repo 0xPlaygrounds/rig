@@ -1,7 +1,7 @@
 //! Focused Gemini cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
 use serde::Deserialize;
@@ -47,15 +47,22 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_cassette(
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .completion_model(gemini::completion::GEMINI_2_5_FLASH)
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(32)
-                .send()
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                max_tokens: Some(32),
+                documents: vec![ordering_document()],
+                ..CompletionRequest::with_history(
+                    None,
+                    vec![
+                        Message::system(SYSTEM_INSTRUCTION),
+                        Message::assistant("Acknowledged."),
+                    ],
+                    PROMPT,
+                )
+            };
+            let response = model
+                .completion(request)
                 .await
                 .expect("Gemini document ordering request should succeed");
 
@@ -77,15 +84,22 @@ async fn interactions_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_interactions_cassette(
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
-            let response = client
-                .completion_model("gemini-3-flash-preview")
-                .completion_request(PROMPT)
-                .message(Message::system(SYSTEM_INSTRUCTION))
-                .message(Message::assistant("Acknowledged."))
-                .document(ordering_document())
-                .temperature(0.0)
-                .max_tokens(512)
-                .send()
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                max_tokens: Some(512),
+                documents: vec![ordering_document()],
+                ..CompletionRequest::with_history(
+                    None,
+                    vec![
+                        Message::system(SYSTEM_INSTRUCTION),
+                        Message::assistant("Acknowledged."),
+                    ],
+                    PROMPT,
+                )
+            };
+            let response = model
+                .completion(request)
                 .await
                 .expect("Gemini interactions document ordering request should succeed");
 

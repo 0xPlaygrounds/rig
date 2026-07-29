@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -311,11 +311,14 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool call so the follow-up can echo
             // its call_id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some(preamble),
+                    Vec::new(),
+                    "Look up the harbor label with the tool.",
+                )
+            };
             let first_response = model
                 .completion(first_request)
                 .await
@@ -337,34 +340,34 @@ async fn long_history_replay_nonstreaming() {
             // roundtrip. The tool call is re-tagged with a local item ID (not
             // the provider's `fc_...` ID) — the request must still be accepted
             // because non-native IDs are omitted and calls pair by call_id.
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some(preamble),
+                    vec![
+                        Message::user("My favorite color is teal. Please remember it."),
+                        Message::assistant("Noted - your favorite color is teal."),
+                        Message::user("Now look up the harbor label with the tool."),
+                        Message::Assistant {
+                            id: None,
+                            content: rig::OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                                "history_tool_1",
+                                call_id.clone(),
+                                AlphaSignal::NAME,
+                                serde_json::json!({}),
+                            )),
+                        },
+                        Message::tool_result_with_call_id(
+                            "history_tool_1",
+                            Some(call_id),
+                            ALPHA_SIGNAL_OUTPUT,
+                        ),
+                        Message::assistant("The harbor label is crimson-harbor."),
+                    ],
                     "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
                 )
-                .preamble(preamble.to_string())
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: rig::OneOrMany::one(AssistantContent::tool_call_with_call_id(
-                        "history_tool_1",
-                        call_id.clone(),
-                        AlphaSignal::NAME,
-                        serde_json::json!({}),
-                    )),
-                })
-                .message(Message::tool_result_with_call_id(
-                    "history_tool_1",
-                    Some(call_id),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            };
 
             let response = model
                 .completion(request)

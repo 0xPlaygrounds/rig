@@ -362,22 +362,23 @@ mod tests {
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
-    use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};
+    use crate::completion::CompletionRequest;
 
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
-            .max_tokens(64)
-            .tool(crate::completion::ToolDefinition {
+        let request = CompletionRequest {
+            max_tokens: Some(64),
+            tools: vec![crate::completion::ToolDefinition {
                 name: "choose_beta".to_string(),
                 description: "Choose beta".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            })
-            .tool_choice(crate::message::ToolChoice::Specific {
+            }],
+            tool_choice: Some(crate::message::ToolChoice::Specific {
                 function_names: vec!["choose_beta".to_string()],
-            })
-            .output_schema(schemars::schema_for!(serde_json::Value))
-            .build();
+            }),
+            output_schema: Some(schemars::schema_for!(serde_json::Value)),
+            ..CompletionRequest::from_prompt("Return JSON")
+        };
 
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -399,10 +400,10 @@ mod tests {
         // no tool result exists yet (see `should_apply_response_format`).
         assert_eq!(json["response_format"], serde_json::Value::Null);
 
-        let no_tools_request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
-                .output_schema(schemars::schema_for!(serde_json::Value))
-                .build();
+        let no_tools_request = CompletionRequest {
+            output_schema: Some(schemars::schema_for!(serde_json::Value)),
+            ..CompletionRequest::from_prompt("Return JSON")
+        };
         let no_tools_request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
             request: no_tools_request,
@@ -419,16 +420,17 @@ mod tests {
 
     #[test]
     fn groq_prepare_request_merges_native_tools_into_compound_custom() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "search")
-            .tool(crate::completion::ToolDefinition {
+        let request = CompletionRequest {
+            tools: vec![crate::completion::ToolDefinition {
                 name: "local_tool".to_string(),
                 description: "A local function tool".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            })
-            .additional_params(serde_json::json!({
+            }],
+            additional_params: Some(serde_json::json!({
                 "tools": [{"type": "browser_search"}, {"type": "browser_search"}],
-            }))
-            .build();
+            })),
+            ..CompletionRequest::from_prompt("search")
+        };
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -461,10 +463,10 @@ mod tests {
             extra: None,
         })
         .expect("params should serialize");
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "Think about it")
-                .additional_params(additional_params)
-                .build();
+        let request = CompletionRequest {
+            additional_params: Some(additional_params),
+            ..CompletionRequest::from_prompt("Think about it")
+        };
 
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -505,7 +507,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("llama-3.3-70b-versatile");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

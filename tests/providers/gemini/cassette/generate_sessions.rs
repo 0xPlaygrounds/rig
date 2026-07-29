@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -196,37 +196,34 @@ async fn long_history_replay_nonstreaming() {
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some("You are a concise assistant with perfect recall of this conversation."),
+                    vec![
+                        Message::user("My favorite color is teal. Please remember it."),
+                        Message::assistant("Noted - your favorite color is teal."),
+                        Message::user("Now look up the harbor label with the tool."),
+                        Message::Assistant {
+                            id: None,
+                            content: rig::OneOrMany::many(vec![
+                                AssistantContent::text("Checking the harbor label now."),
+                                AssistantContent::tool_call(
+                                    AlphaSignal::NAME,
+                                    AlphaSignal::NAME,
+                                    serde_json::json!({}),
+                                ),
+                            ])
+                            .expect("assistant content should be non-empty"),
+                        },
+                        Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT),
+                        Message::assistant("The harbor label is crimson-harbor."),
+                    ],
                     "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
                 )
-                .preamble(
-                    "You are a concise assistant with perfect recall of this conversation."
-                        .to_string(),
-                )
-                .temperature(0.0)
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: rig::OneOrMany::many(vec![
-                        AssistantContent::text("Checking the harbor label now."),
-                        AssistantContent::tool_call(
-                            AlphaSignal::NAME,
-                            AlphaSignal::NAME,
-                            serde_json::json!({}),
-                        ),
-                    ])
-                    .expect("assistant content should be non-empty"),
-                })
-                .message(Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            };
 
             let response = model
                 .completion(request)
@@ -273,18 +270,18 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
-                     Think it through, then answer in one short sentence.",
-                )
-                .temperature(0.0)
-                .additional_params(serde_json::json!({
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                additional_params: Some(serde_json::json!({
                     "generationConfig": {
                         "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
                     }
-                }))
-                .build();
+                })),
+                ..CompletionRequest::from_prompt(
+                    "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
+                     Think it through, then answer in one short sentence.",
+                )
+            };
 
             let response = model
                 .completion(request)

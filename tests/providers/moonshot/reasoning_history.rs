@@ -1,7 +1,7 @@
 //! Moonshot reasoning-history roundtrip smoke test.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::prelude::*;
 use rig::providers::moonshot;
@@ -34,13 +34,14 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
     };
 
     let response = model
-        .completion(
-            model
-                .completion_request("What color was I asked to remember? Reply with one word.")
-                .message(Message::user("Remember the secret color is teal."))
-                .message(assistant)
-                .build(),
-        )
+        .completion(CompletionRequest::with_history(
+            None,
+            vec![
+                Message::user("Remember the secret color is teal."),
+                assistant,
+            ],
+            "What color was I asked to remember? Reply with one word.",
+        ))
         .await
         .expect("reasoning-history completion should succeed");
 

@@ -15,7 +15,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionResponse};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -99,10 +99,10 @@ async fn prompt_with_reasoning<M>(model: &M, reasoning: serde_json::Value) -> Co
 where
     M: CompletionModel,
 {
-    let request = model
-        .completion_request(PROMPT)
-        .additional_params(json!({ "reasoning": reasoning }))
-        .build();
+    let request = CompletionRequest {
+        additional_params: Some(json!({ "reasoning": reasoning })),
+        ..CompletionRequest::from_prompt(PROMPT)
+    };
 
     model
         .completion(request)
@@ -255,17 +255,20 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 .iter()
                 .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
             let user_message = Message::user(prompt);
-            let request = model
-                .completion_request(user_message.clone())
-                .messages(history)
-                .additional_params(json!({
+            let request = CompletionRequest {
+                additional_params: Some(json!({
                     "reasoning": {
                         "context": "all_turns",
                         "effort": "low",
                         "mode": "pro"
                     }
-                }))
-                .build();
+                })),
+                ..CompletionRequest::with_history(
+                    None,
+                    history.collect(),
+                    user_message.clone(),
+                )
+            };
             let response = model
                 .completion(request)
                 .await
@@ -342,17 +345,20 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 .iter()
                 .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
             let user_message = Message::user(prompt);
-            let request = model
-                .completion_request(user_message.clone())
-                .messages(history)
-                .additional_params(json!({
+            let request = CompletionRequest {
+                additional_params: Some(json!({
                     "reasoning": {
                         "context": "all_turns",
                         "effort": "low",
                         "mode": "pro"
                     }
-                }))
-                .build();
+                })),
+                ..CompletionRequest::with_history(
+                    None,
+                    history.collect(),
+                    user_message.clone(),
+                )
+            };
             let mut stream = model.stream(request).await.unwrap_or_else(|error| {
                 panic!("turn {} stream should start: {error}", turn_index + 1)
             });
@@ -439,16 +445,16 @@ async fn streaming_reasoning_metadata() {
     const SCENARIO: &str = "gpt_5_6_reasoning/streaming_metadata";
     with_openai_cassette("gpt_5_6_reasoning/streaming_metadata", |client| async move {
         let model = client.completion_model(openai::GPT_5_6_SOL);
-        let request = model
-            .completion_request(PROMPT)
-            .additional_params(json!({
+        let request = CompletionRequest {
+            additional_params: Some(json!({
                 "reasoning": {
                     "effort": "low",
                     "mode": "pro",
                     "context": "current_turn"
                 }
-            }))
-            .build();
+            })),
+            ..CompletionRequest::from_prompt(PROMPT)
+        };
         let mut stream = model
             .stream(request)
             .await

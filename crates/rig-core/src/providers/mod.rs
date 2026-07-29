@@ -75,13 +75,14 @@
 //!
 //! // Create a model and send a low-level completion request.
 //! let model = openai.completion_model(openai::GPT_5_2);
-//! let request = model
-//!     .completion_request("Discuss the fate of Middle Earth.")
-//!     .preamble("\
-//!         You are Gandalf the white and you will be conversing with other \
-//!         powerful beings to discuss the fate of Middle Earth.\
-//!     ".to_string())
-//!     .build();
+//! let request = rig_core::completion::CompletionRequest::with_history(
+//!     Some(
+//!         "You are Gandalf the white and you will be conversing with other \
+//!         powerful beings to discuss the fate of Middle Earth.",
+//!     ),
+//!     Vec::new(),
+//!     "Discuss the fate of Middle Earth.",
+//! );
 //! let response = model.completion(request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {

@@ -3609,7 +3609,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

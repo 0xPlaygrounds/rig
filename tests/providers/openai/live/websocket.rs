@@ -1,7 +1,7 @@
 //! Migrated from `examples/openai_websocket_mode.rs`.
 
 use anyhow::Result;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -26,19 +26,18 @@ fn extract_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 async fn websocket_session_roundtrip() -> Result<()> {
     let client = openai::Client::from_env().expect("client should build");
     let model_name = openai::GPT_4O_MINI;
-    let model = client.completion_model(model_name);
     let mut session = client.responses_websocket(model_name).await?;
 
-    let warmup_request = model
-        .completion_request("You will answer a follow-up question about websocket mode.")
-        .preamble("Be precise and concise.".to_string())
-        .build();
+    let warmup_request = CompletionRequest::with_history(
+        Some("Be precise and concise."),
+        Vec::new(),
+        "You will answer a follow-up question about websocket mode.",
+    );
     let warmup_id = session.warmup(warmup_request).await?;
     anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 
-    let request = model
-        .completion_request("Explain the benefit of websocket mode in one sentence.")
-        .build();
+    let request =
+        CompletionRequest::from_prompt("Explain the benefit of websocket mode in one sentence.");
     session.send(request).await?;
 
     let mut streamed_text = String::new();
@@ -67,9 +66,8 @@ async fn websocket_session_roundtrip() -> Result<()> {
     }
     assert_nonempty_response(&streamed_text);
 
-    let chained_request = model
-        .completion_request("Now restate that as three very short bullet points.")
-        .build();
+    let chained_request =
+        CompletionRequest::from_prompt("Now restate that as three very short bullet points.");
     let response = session.completion(chained_request).await?;
     let text = extract_text(&response.choice);
     assert_nonempty_response(&text);

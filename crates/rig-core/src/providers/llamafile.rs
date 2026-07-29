@@ -18,10 +18,11 @@
 //!
 //! // Send a completion request with a preamble.
 //! let model = client.completion_model(llamafile::LLAMA_CPP);
-//! let request = model
-//!     .completion_request("Hello!")
-//!     .preamble("You are a helpful assistant.".to_string())
-//!     .build();
+//! let request = rig_core::completion::CompletionRequest::with_history(
+//!     Some("You are a helpful assistant."),
+//!     Vec::new(),
+//!     "Hello!",
+//! );
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())

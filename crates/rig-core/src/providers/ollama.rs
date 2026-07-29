@@ -21,10 +21,11 @@
 //!
 //! // Send a completion request with a preamble.
 //! let model = client.completion_model("qwen2.5:14b");
-//! let request = model
-//!     .completion_request("Entertain me!")
-//!     .preamble("You are a comedian here to entertain the user using humour and jokes.".to_string())
-//!     .build();
+//! let request = rig_core::completion::CompletionRequest::with_history(
+//!     Some("You are a comedian here to entertain the user using humour and jokes."),
+//!     Vec::new(),
+//!     "Entertain me!",
+//! );
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);
 //!
@@ -2735,7 +2736,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

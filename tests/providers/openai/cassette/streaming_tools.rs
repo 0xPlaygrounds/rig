@@ -1,7 +1,7 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -166,11 +166,14 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
             let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    ORDERED_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -194,14 +197,11 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+            let followup_request = CompletionRequest::with_history(
+                Some("Use the provided tool result and answer directly."),
+                vec![assistant_message, tool_result_message],
+                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
+            );
 
             let second_turn = collect_raw_stream_observation(
                 model

@@ -311,21 +311,23 @@ mod tests {
     use super::XAICompletionRequest;
     use crate::OneOrMany;
     use crate::completion::request::Document;
-    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
+    use crate::completion::{CompletionRequest, Message, ToolDefinition};
     use crate::message::ToolChoice;
-    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn xai_request_includes_normalized_documents() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "What is glarb-glarb?")
-                .message(Message::system("Use the provided context."))
-                .document(Document {
-                    id: "doc_1".to_string(),
-                    text: "Definition of glarb-glarb: an ancient tool.".to_string(),
-                    additional_props: Default::default(),
-                })
-                .build();
+        let request = CompletionRequest {
+            documents: vec![Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            ..CompletionRequest::with_history(
+                None,
+                vec![Message::system("Use the provided context.")],
+                "What is glarb-glarb?",
+            )
+        };
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
             .expect("request conversion should succeed");
@@ -397,29 +399,32 @@ mod tests {
 
     #[test]
     fn xai_request_uses_responses_tool_choice_for_specific_tool() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(ToolDefinition {
-                name: "alpha".to_string(),
-                description: "Alpha tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool(ToolDefinition {
-                name: "beta".to_string(),
-                description: "Beta tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool_choice(ToolChoice::Specific {
+        let request = CompletionRequest {
+            tools: vec![
+                ToolDefinition {
+                    name: "alpha".to_string(),
+                    description: "Alpha tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+                ToolDefinition {
+                    name: "beta".to_string(),
+                    description: "Beta tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+            ],
+            tool_choice: Some(ToolChoice::Specific {
                 function_names: vec!["beta".to_string()],
-            })
-            .build();
+            }),
+            ..CompletionRequest::from_prompt("Use a tool.")
+        };
 
         let xai_request = XAICompletionRequest::try_from(("grok-4.3", request))
             .expect("xAI Responses API should support specific tool choice");
@@ -488,7 +493,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
@@ -518,7 +523,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let request = CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

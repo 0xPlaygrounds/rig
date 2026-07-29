@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::mistral;
@@ -697,16 +697,17 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&tool)],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::with_history(
+                    Some("Use the requested tool call and no prose before it."),
+                    Vec::new(),
                     "Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            };
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -733,34 +734,36 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         |client| async move {
             let model = client.completion_model(SESSION_MODEL);
             let tool_call_id = "call_REDACTED_1";
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tool_choice: Some(ToolChoice::None),
+                ..CompletionRequest::with_history(
+                    Some("You are concise and should rely on the provided chat history."),
+                    vec![
+                        Message::user("My favorite color is teal. Please remember it."),
+                        Message::assistant("Noted: your favorite color is teal."),
+                        Message::user("For this release, use the canary lane."),
+                        Message::assistant("Understood: the release lane is canary."),
+                        Message::user("Look up the harbor label with the tool."),
+                        Message::Assistant {
+                            id: None,
+                            content: OneOrMany::one(AssistantContent::tool_call(
+                                tool_call_id,
+                                AlphaSignal::NAME,
+                                json!({}),
+                            )),
+                        },
+                        Message::tool_result_with_call_id(
+                            AlphaSignal::NAME,
+                            Some(tool_call_id.to_string()),
+                            ALPHA_SIGNAL_OUTPUT,
+                        ),
+                        Message::assistant("The harbor label is crimson-harbor."),
+                    ],
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
                 )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
-                .message(Message::user("My favorite color is teal. Please remember it."))
-                .message(Message::assistant("Noted: your favorite color is teal."))
-                .message(Message::user("For this release, use the canary lane."))
-                .message(Message::assistant("Understood: the release lane is canary."))
-                .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call(
-                        tool_call_id,
-                        AlphaSignal::NAME,
-                        json!({}),
-                    )),
-                })
-                .message(Message::tool_result_with_call_id(
-                    AlphaSignal::NAME,
-                    Some(tool_call_id.to_string()),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+            };
 
             let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)
@@ -786,13 +789,13 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             let model = client.completion_model(SESSION_MODEL);
 
             let auto = model
-                .completion(
-                    model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Auto)
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::Auto),
+                    ..CompletionRequest::from_prompt(
+                        "Call lookup_harbor_label exactly once with an empty object.",
+                    )
+                })
                 .await?;
             anyhow::ensure!(
                 auto.choice.iter().any(|content| matches!(
@@ -805,13 +808,13 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let any = model
-                .completion(
-                    model
-                        .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required)
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::Required),
+                    ..CompletionRequest::from_prompt(
+                        "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
+                    )
+                })
                 .await?;
             anyhow::ensure!(
                 any.choice.iter().any(|content| matches!(
@@ -824,16 +827,18 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
-                        .completion_request("Call the orchard-label tool exactly once with an empty object and do not call any other tool.")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool(rig::tool::tool_definition(&BetaSignal))
-                        .tool_choice(ToolChoice::Specific {
-                            function_names: vec![BetaSignal::NAME.to_string()],
-                        })
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![
+                        rig::tool::tool_definition(&AlphaSignal),
+                        rig::tool::tool_definition(&BetaSignal),
+                    ],
+                    tool_choice: Some(ToolChoice::Specific {
+                        function_names: vec![BetaSignal::NAME.to_string()],
+                    }),
+                    ..CompletionRequest::from_prompt(
+                        "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
+                    )
+                })
                 .await?;
             let specific_calls = specific
                 .choice
@@ -850,13 +855,13 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
-                        .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None)
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::None),
+                    ..CompletionRequest::from_prompt(
+                        "Do not call tools. Reply with exactly this phrase: no-tool-answer",
+                    )
+                })
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -880,13 +885,14 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
             let model = client.completion_model(STRUCTURED_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                additional_params: Some(json!({"response_format": { "type": "json_object" }})),
+                ..CompletionRequest::with_history(
+                    Some("Return only valid JSON. No markdown."),
+                    Vec::new(),
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
-                .preamble("Return only valid JSON. No markdown.".to_string())
-                .additional_params(json!({"response_format": { "type": "json_object" }}))
-                .build();
+            };
 
             let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)
@@ -925,13 +931,14 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
             let model = client.completion_model(STRUCTURED_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                output_schema: Some(schemars::schema_for!(StructuredReleasePlan)),
+                ..CompletionRequest::with_history(
+                    Some("Return only the requested structured object."),
+                    Vec::new(),
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
                 )
-                .preamble("Return only the requested structured object.".to_string())
-                .output_schema(schemars::schema_for!(StructuredReleasePlan))
-                .build();
+            };
 
             let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)

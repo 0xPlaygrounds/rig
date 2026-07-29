@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason, Prompt};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -40,19 +40,20 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .temperature(0.0)
-                .max_tokens(48)
-                .additional_params(serde_json::json!({
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                max_tokens: Some(48),
+                additional_params: Some(serde_json::json!({
                     "generationConfig": {
                         "thinkingConfig": { "thinkingBudget": 0 }
                     }
-                }))
-                .build();
+                })),
+                ..CompletionRequest::with_history(
+                    Some("You are a storyteller."),
+                    Vec::new(),
+                    "Write a story of at least 150 words about a lighthouse keeper.",
+                )
+            };
 
             let response = model
                 .completion(request)

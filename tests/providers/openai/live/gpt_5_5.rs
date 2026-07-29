@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "websocket")]
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 #[cfg(feature = "websocket")]
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
@@ -422,12 +422,10 @@ async fn chat_completions_image_input_smoke() {
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn responses_websocket_smoke() -> anyhow::Result<()> {
     let client = openai::Client::from_env().expect("client should build");
-    let model = client.completion_model(openai::GPT_5_5);
     let mut session = client.responses_websocket(openai::GPT_5_5).await?;
 
-    let request = model
-        .completion_request("Explain one benefit of websocket mode in one sentence.")
-        .build();
+    let request =
+        CompletionRequest::from_prompt("Explain one benefit of websocket mode in one sentence.");
     session.send(request).await?;
 
     let mut streamed_text = String::new();

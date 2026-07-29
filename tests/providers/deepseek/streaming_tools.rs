@@ -1,7 +1,7 @@
 //! DeepSeek streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
@@ -60,12 +60,12 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .additional_params(non_thinking_params())
-                .build();
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                tool_choice: Some(ToolChoice::Required),
+                additional_params: Some(non_thinking_params()),
+                ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            };
             let stream = model.stream(request).await.expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -80,13 +80,18 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(non_thinking_params())
-                .build();
+            let request = CompletionRequest {
+                tools: vec![
+                    rig::tool::tool_definition(&AlphaSignal),
+                    rig::tool::tool_definition(&BetaSignal),
+                ],
+                additional_params: Some(non_thinking_params()),
+                ..CompletionRequest::with_history(
+                    Some(TWO_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    TWO_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let observation = collect_raw_stream_observation(
                 model
@@ -118,13 +123,18 @@ async fn raw_stream_tool_call_arguments_are_objects() {
         "streaming_tools/raw_stream_tool_call_arguments_are_objects",
         |client| async move {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(non_thinking_params())
-                .build();
+            let request = CompletionRequest {
+                tools: vec![
+                    rig::tool::tool_definition(&AlphaSignal),
+                    rig::tool::tool_definition(&BetaSignal),
+                ],
+                additional_params: Some(non_thinking_params()),
+                ..CompletionRequest::with_history(
+                    Some(TWO_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    TWO_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let observation = collect_raw_stream_observation(
                 model
@@ -208,12 +218,15 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.completion_model(DEEPSEEK_V4_FLASH);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(non_thinking_params())
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                additional_params: Some(non_thinking_params()),
+                ..CompletionRequest::with_history(
+                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    ORDERED_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -240,15 +253,14 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 tool_call.call_id,
                 ALPHA_SIGNAL_OUTPUT,
             );
-            let followup_request = model
-                .completion_request(
+            let followup_request = CompletionRequest {
+                additional_params: Some(non_thinking_params()),
+                ..CompletionRequest::with_history(
+                    Some("Use the provided tool result and answer directly."),
+                    vec![assistant_message, tool_result_message],
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
                 )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .additional_params(non_thinking_params())
-                .build();
+            };
 
             let second_turn = collect_raw_stream_observation(
                 model

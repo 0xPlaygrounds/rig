@@ -1,7 +1,7 @@
 //! ChatGPT completion normalization smoke tests.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::AssistantContent;
 use rig::message::Message;
 use rig::prelude::*;
@@ -46,10 +46,11 @@ async fn default_instructions_fill_required_instructions() {
 async fn system_messages_are_lifted_into_instructions() {
     let model = live_client().completion_model(LIVE_MODEL);
 
-    let request = model
-        .completion_request("Reply with the exact word from the system message.")
-        .message(Message::system("Always answer with the single word maple."))
-        .build();
+    let request = CompletionRequest::with_history(
+        None,
+        vec![Message::system("Always answer with the single word maple.")],
+        "Reply with the exact word from the system message.",
+    );
     let mut stream = model
         .stream(request)
         .await

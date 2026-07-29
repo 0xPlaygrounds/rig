@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, Message, Prompt};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Message, Prompt};
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai::responses_api::Output;
@@ -638,16 +638,17 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let log = Arc::new(Mutex::new(Vec::new()));
             let model = client.completion_model(SESSION_MODEL);
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&tool)],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::with_history(
+                    Some("Use the requested tool call and no prose before it."),
+                    Vec::new(),
                     "Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
                      Do not write normal text before the tool call.",
                 )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+            };
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -678,35 +679,37 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
             let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                tool_choice: Some(ToolChoice::None),
+                ..CompletionRequest::with_history(
+                    Some("You are concise and should rely on the provided chat history."),
+                    vec![
+                        Message::user("My favorite color is teal. Please remember it."),
+                        Message::assistant("Noted: your favorite color is teal."),
+                        Message::user("For this release, use the canary lane."),
+                        Message::assistant("Understood: the release lane is canary."),
+                        Message::user("Look up the harbor label with the tool."),
+                        Message::Assistant {
+                            id: None,
+                            content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                                "call_REDACTED_1",
+                                "call_REDACTED_1".to_string(),
+                                AlphaSignal::NAME,
+                                json!({}),
+                            )),
+                        },
+                        Message::tool_result_with_call_id(
+                            "call_REDACTED_1",
+                            Some("call_REDACTED_1".to_string()),
+                            ALPHA_SIGNAL_OUTPUT,
+                        ),
+                        Message::assistant("The harbor label is crimson-harbor."),
+                    ],
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
                      and which release lane did I choose? Do not call any tools.",
                 )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
-                .message(Message::user("My favorite color is teal. Please remember it."))
-                .message(Message::assistant("Noted: your favorite color is teal."))
-                .message(Message::user("For this release, use the canary lane."))
-                .message(Message::assistant("Understood: the release lane is canary."))
-                .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
-                        "call_REDACTED_1",
-                        "call_REDACTED_1".to_string(),
-                        AlphaSignal::NAME,
-                        json!({}),
-                    )),
-                })
-                .message(Message::tool_result_with_call_id(
-                    "call_REDACTED_1",
-                    Some("call_REDACTED_1".to_string()),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+            };
 
             let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)
@@ -737,15 +740,13 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let model = client.completion_model(SESSION_MODEL);
 
             let required = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required)
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::Required),
+                    ..CompletionRequest::from_prompt(
+                        "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
+                    )
+                })
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -758,18 +759,18 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let specific = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool(rig::tool::tool_definition(&BetaSignal))
-                        .tool_choice(ToolChoice::Specific {
-                            function_names: vec![BetaSignal::NAME.to_string()],
-                        })
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![
+                        rig::tool::tool_definition(&AlphaSignal),
+                        rig::tool::tool_definition(&BetaSignal),
+                    ],
+                    tool_choice: Some(ToolChoice::Specific {
+                        function_names: vec![BetaSignal::NAME.to_string()],
+                    }),
+                    ..CompletionRequest::from_prompt(
+                        "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
+                    )
+                })
                 .await?;
             let specific_calls = specific
                 .choice
@@ -786,15 +787,13 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             );
 
             let none = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Do not call tools. Reply with exactly this phrase: no-tool-answer",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None)
-                        .build(),
-                )
+                .completion(CompletionRequest {
+                    tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::None),
+                    ..CompletionRequest::from_prompt(
+                        "Do not call tools. Reply with exactly this phrase: no-tool-answer",
+                    )
+                })
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -818,15 +817,16 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
         |client| async move {
             let model = client.completion_model(REASONING_MODEL);
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                additional_params: Some(json!({
+                    "reasoning": { "effort": "low", "summary": "detailed" }
+                })),
+                ..CompletionRequest::with_history(
+                    Some("You are a concise reliability engineer."),
+                    Vec::new(),
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
                 )
-                .preamble("You are a concise reliability engineer.".to_string())
-                .additional_params(json!({
-                    "reasoning": { "effort": "low", "summary": "detailed" }
-                }))
-                .build();
+            };
 
             let response = model.completion(request).await?;
 
@@ -879,12 +879,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
         |client| async move {
             let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
-                    "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
-                )
-                .preamble("Return only JSON matching the supplied schema.".to_string())
-                .additional_params(json!({
+            let request = CompletionRequest {
+                additional_params: Some(json!({
                     "text": {
                         "format": {
                             "type": "json_schema",
@@ -920,8 +916,13 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                             }
                         }
                     }
-                }))
-                .build();
+                })),
+                ..CompletionRequest::with_history(
+                    Some("Return only JSON matching the supplied schema."),
+                    Vec::new(),
+                    "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
+                )
+            };
 
             let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)

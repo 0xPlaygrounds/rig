@@ -438,18 +438,16 @@ mod tests {
             OpenAIRequestParams,
         };
 
-        let request = crate::completion::CompletionRequestBuilder::new(
-            crate::test_utils::MockCompletionModel::default(),
-            "hello",
-        )
-        .tool(crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: "Lookup".to_string(),
-            parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-        })
-        .tool_choice(crate::message::ToolChoice::Required)
-        .output_schema(schemars::schema_for!(serde_json::Value))
-        .build();
+        let request = crate::completion::CompletionRequest {
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Lookup".to_string(),
+                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+            }],
+            tool_choice: Some(crate::message::ToolChoice::Required),
+            output_schema: Some(schemars::schema_for!(serde_json::Value)),
+            ..crate::completion::CompletionRequest::from_prompt("hello")
+        };
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
@@ -494,7 +492,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::LLAMA_3_1_8B);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)
@@ -523,7 +521,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::LLAMA_3_1_8B);
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

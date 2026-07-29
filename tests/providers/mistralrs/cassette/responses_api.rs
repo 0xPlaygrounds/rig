@@ -1,6 +1,6 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
 
-use rig::completion::{Chat, CompletionModel, Prompt};
+use rig::completion::{Chat, CompletionModel, CompletionRequest, Prompt};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 
@@ -39,13 +39,14 @@ async fn responses_api_reasoning_plus_answer_completes() {
             let model = client
                 .with_system_instructions_as_messages()
                 .completion_model(model_name());
-            let request = model
-                .completion_request(
+            let request = CompletionRequest {
+                max_tokens: Some(512),
+                ..CompletionRequest::with_history(
+                    Some(SYSTEM_PROMPT),
+                    Vec::new(),
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
                 )
-                .preamble(SYSTEM_PROMPT.to_owned())
-                .max_tokens(512)
-                .build();
+            };
             let response = model
                 .completion(request)
                 .await

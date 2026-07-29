@@ -1,7 +1,7 @@
 //! Cassette-backed OpenRouter streaming tools coverage.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
@@ -52,16 +52,19 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
             let model = client.completion_model("openai/o4-mini");
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
-            let request = model
-                .completion_request(crate::reasoning::TOOL_USER_PROMPT)
-                .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
-                .max_tokens(4096)
-                .tool(tool_definition)
-                .additional_params(serde_json::json!({
+            let request = CompletionRequest {
+                max_tokens: Some(4096),
+                tools: vec![tool_definition],
+                additional_params: Some(serde_json::json!({
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
-                }))
-                .build();
+                })),
+                ..CompletionRequest::with_history(
+                    Some(crate::reasoning::TOOL_SYSTEM_PROMPT),
+                    Vec::new(),
+                    crate::reasoning::TOOL_USER_PROMPT,
+                )
+            };
 
             let stream = model.stream(request).await.expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
@@ -101,12 +104,17 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
             let model = client.completion_model(TOOL_MODEL);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![
+                    rig::tool::tool_definition(&AlphaSignal),
+                    rig::tool::tool_definition(&BetaSignal),
+                ],
+                ..CompletionRequest::with_history(
+                    Some(TWO_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    TWO_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let observation = collect_raw_stream_observation(
                 model
@@ -131,11 +139,14 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.completion_model(TOOL_MODEL);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let request = CompletionRequest {
+                tools: vec![rig::tool::tool_definition(&AlphaSignal)],
+                ..CompletionRequest::with_history(
+                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
+                    Vec::new(),
+                    ORDERED_TOOL_STREAM_PROMPT,
+                )
+            };
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -162,14 +173,11 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 tool_call.call_id,
                 ALPHA_SIGNAL_OUTPUT,
             );
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+            let followup_request = CompletionRequest::with_history(
+                Some("Use the provided tool result and answer directly."),
+                vec![assistant_message, tool_result_message],
+                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
+            );
 
             let second_turn = collect_raw_stream_observation(
                 model

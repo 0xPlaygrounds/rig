@@ -1,6 +1,6 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, Prompt};
 use rig::prelude::*;
 use serde_json::Value;
 
@@ -11,14 +11,17 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let _response = client
-                .completion_model(model_name())
-                .completion_request(
+            let model = client.completion_model(model_name());
+            let request = CompletionRequest {
+                max_tokens: Some(256),
+                ..CompletionRequest::with_history(
+                    Some(SYSTEM_PROMPT),
+                    Vec::new(),
                     "Think briefly, then answer in one sentence why token usage should be reported.",
                 )
-                .preamble(SYSTEM_PROMPT.to_string())
-                .max_tokens(256)
-                .send()
+            };
+            let _response = model
+                .completion(request)
                 .await
                 .expect("raw chat completion should succeed");
             // The normalized response no longer exposes the raw payload, so the

@@ -11,10 +11,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = Client::from_env()?;
     let model = client.completion_model(GEMINI_2_5_FLASH_LITE);
 
-    let request = model
-        .completion_request("What is the capital of France?")
-        .max_tokens(1024)
-        .build();
+    let request = rig_core::completion::CompletionRequest {
+        max_tokens: Some(1024),
+        ..rig_core::completion::CompletionRequest::from_prompt("What is the capital of France?")
+    };
 
     let response = model
         .completion(request)

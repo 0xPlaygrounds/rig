@@ -319,13 +319,13 @@ async fn run_scenario(
     let client = gemini::Client::from_env()?;
     let model = client.completion_model(MODEL);
 
-    let stream = model
-        .completion_request(prompt)
-        .temperature(0.7)
-        .max_tokens(2000)
-        .additional_params(no_thinking_params()?)
-        .stream()
-        .await?;
+    let request = rig::completion::CompletionRequest {
+        temperature: Some(0.7),
+        max_tokens: Some(2000),
+        additional_params: Some(no_thinking_params()?),
+        ..rig::completion::CompletionRequest::from_prompt(prompt)
+    };
+    let stream = model.stream(request).await?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

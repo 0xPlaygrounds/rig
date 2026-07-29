@@ -21,7 +21,7 @@
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = doubleword::Client::from_env()?;
 //! let model = client.completion_model(doubleword::QWEN3_5_9B);
-//! let request = model.completion_request("What is Rig?").build();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("What is Rig?");
 //! let response = model.completion(request).await?;
 //! # let _ = response;
 //! # Ok(())

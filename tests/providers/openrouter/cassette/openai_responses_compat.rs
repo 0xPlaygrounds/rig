@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI Responses provider.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, Prompt};
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 
@@ -15,12 +15,16 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     const SCENARIO: &str =
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata";
     with_openrouter_openai_cassette("openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata", |client| async move {
-        let response = client
+        let model = client
             .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-            .with_system_instructions_as_messages()
-            .completion_request("Reply with exactly: openrouter responses service tier ok")
-            .preamble("Return the requested text exactly, with no extra commentary.".to_string())
-            .send()
+            .with_system_instructions_as_messages();
+        let request = CompletionRequest::with_history(
+            Some("Return the requested text exactly, with no extra commentary."),
+            Vec::new(),
+            "Reply with exactly: openrouter responses service tier ok",
+        );
+        let response = model
+            .completion(request)
             .await
             .expect("OpenRouter Responses API completion should deserialize");
 

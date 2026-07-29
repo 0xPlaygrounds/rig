@@ -147,7 +147,7 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("meta-llama/Meta-Llama-3-70B-Instruct-Turbo");
-        let request = model.completion_request("hello").build();
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
         let error = model
             .completion(request)

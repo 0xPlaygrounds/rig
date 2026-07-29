@@ -113,16 +113,17 @@ async fn main() -> Result<()> {
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
                 // execution of the configured `Agent`. Its transport is an
                 // explicit raw model request and therefore has no agent hooks.
-                let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(
-                        "You are a calculator. Always use the provided tools to compute results."
-                            .to_string(),
+                let request = rig::completion::CompletionRequest {
+                    tools: tool_definitions.clone(),
+                    ..rig::completion::CompletionRequest::with_history(
+                        Some(
+                            "You are a calculator. Always use the provided tools to compute results.",
+                        ),
+                        history,
+                        prompt,
                     )
-                    .tools(tool_definitions.clone())
-                    .send()
-                    .await?;
+                };
+                let response = model.completion(request).await?;
 
                 // The tools advertised to the provider for this turn. With
                 // static tools these are the agent's registered tools; agents
