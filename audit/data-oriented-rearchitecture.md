@@ -6,6 +6,38 @@ parameter) and corrects `audit/generic-bounds.md` where verification found its
 numbers wrong (§2). Every anchor below was checked against the working tree on
 branch `docs/migrating-0.30-onward` (rig 0.41.0).
 
+> **Revision 2 — maintainer direction (2026-07-28).** Three scope changes
+> supersede the original endgame wherever this document says otherwise:
+> 1. **The classic runtime is never deleted.** The original P7 ("the
+>    deletion") is retired. Instead the classic runtime is *migrated onto*
+>    the new data-oriented substrate: `Agent<M>` loses its model generic
+>    (holding `ProviderConfig` + `Arc<Runtime>`), its internals are rewired
+>    onto `prepare_request` + the facade provider functions, and its
+>    ergonomic surface — prompt API, `AgentHook` callbacks, memory backends,
+>    tool server — is **preserved** as the classic runtime's convenience
+>    layer. The mandate's full rigor applies to `rig-core` and the protocol
+>    layer; the classic runtime is *a* consumer of them, kept for users who
+>    want batteries. (Because the migrated `Agent` drives `ProviderConfig`,
+>    which must live downstream of the companion provider crates, the
+>    runtime's implementation moves into the `rig` facade; user-facing paths
+>    are preserved via the facade's existing re-export modules.)
+> 2. **A simple `bevy_ecs` runtime (`rig-bevy`) is a deliverable**, not just
+>    a validation gate: a new crate with `AgentConfig`/`ProviderConfig`/
+>    `ToolCatalog`/`AgentRun` as components and systems driving the
+>    `CallModel`/`CallTools` effects. This is the second runtime the whole
+>    rearchitecture exists to enable.
+> 3. **Vector-store crates are kept**, but lose all generic trait machinery
+>    per §10.3 (pre-embedded queries, concrete inherent methods, no shared
+>    trait) — de-genericized, not removed.
+>
+> Decision rule for everything left open in this document: choose whatever
+> yields idiomatic, safe, beautiful Rust, a bug-free future, and the easiest
+> `bevy_ecs` integration for `rig-core`. Concretely resolved by that rule:
+> the `Tool` trait stays (better diagnostics = fewer bugs); the
+> `ToolExecutionError` public downcast API is dropped at P7 unless the test
+> port proves a need; §14's phase table is rewritten below to match this
+> revision.
+
 **Mandate.** `rig-core` and `rig-agent` become data-oriented libraries with no
 polymorphism in their public or internal architecture: no `dyn`, no hand-rolled
 fn-pointer vtables, no `Any`, no `Value`-as-uniform-payload, no behavior-bounding
@@ -1538,14 +1570,16 @@ wholesale cassette churn destroys reviewability).
 | P3 | Provider pilot | `openai`: `Config`/`DESCRIPTOR`/`build_request`/`parse_response`/`SseParser`/`complete`/`open_stream` + `HttpRuntime`; existing trait impl becomes a thin delegate. Byte-identical cassettes prove the split total. | No | Yes |
 | P4 | Provider fleet | Remaining 24 in-core providers via `openai_compat` helpers + x-macro; companion crates (`bedrock`/`gemini-grpc`/`candle`) gain `Config` + free fns alongside their trait impls. | No | Yes (mechanical) |
 | P5 | The facade runtime | `ProviderConfig`/`Runtime` (live-handle caches)/`ModelStream`/facade `complete`/`open_stream`; `AgentSession`; `AgentStream`; `#[derive(ToolRouter)]`; `McpToolset` in rig-mcp; extraction fn; `ProviderConfig::Mock`+`ModelStream::Mock` scripted test doubles (the successor to `MockCompletionModel`, §3.6); telemetry ported into the session drivers. Ships **alongside** the classic runtime. | No | Yes |
-| P6 | Convergence | Examples, integrations, docs, and the classic runtime's tests ported to sessions; classic surface marked deprecated; `MIGRATING.md` chapter written from this table. | No (deprecations) | Yes |
-| P7 | The deletion | `Agent<M>`, `AgentRunner<M>`, `PromptRequest*`, `StreamingPromptRequest`, `TurnSource`, `drive_agent`, `AgentHook`/`HookStack`/`HookContext`/`Scratchpad`, `ToolSet`/`ToolServer*`/`ErasedTool`/`ToolContext`/`DynamicTool`, `CompletionModel`, `CompletionRequestBuilder<M>`, `Client<Ext,H>`+`ClientBuilder`+`Capabilities`+`Provider(Builder)`+`CompletionClient`, `Prompt`/`Chat`/`TypedPrompt`, `Extractor<M,T>`, `ConversationMemory` moves to rig-memory, `wasm_compat` shrinks. One major release. | **Yes — the big one** | No |
-| P8 | Modalities & stores | `EmbeddingModel` → embed functions + `EmbedderConfig` (13 store crates drop the bound, switching to pre-embedded queries); transcription/image/audio/rerank; `VectorStoreIndex(Dyn)` retired per §10.3, coordinated with the vector-store-removal plan. | Yes (per-crate majors) | Per-crate |
+| P6 | Classic runtime re-plumb (Revision 2) | `Agent<M>` → `Agent` (holds `ProviderConfig` + `Arc<Runtime>`); `AgentRunner`/`PromptRequest`/`StreamingPromptRequest`/`Extractor` lose `M`; internals rewired onto `prepare_request` + facade `complete`/`open_stream`; implementation moves to the `rig` facade with user paths preserved via its existing re-export modules; **hooks, memory, and the tool server are kept** as the classic runtime's convenience layer. Examples/integrations/docs updated; `MIGRATING.md` chapter written. | Yes (type-param removal; API shape preserved) | No (the migration itself) |
+| P7 | Cleanup of orphaned plumbing (Revision 2 — was "the deletion") | Delete only what the re-plumb orphaned: `GenericCompletionModel<Ext,H>`, `Client<Ext,H>`/`ClientBuilder`/`Provider(Builder)`/`Capabilities` internals (per-provider `Client::from_env()` survives as thin sugar over `Config` + `Runtime`), `CompletionRequestBuilder<M>`, `TurnSource`, `CompletionModel` retired after nothing in-tree consumes it (out-of-tree implementors migrate to `Config` + free fns or drive `AgentRun` directly), `wasm_compat` shrinks. The classic runtime surface itself is untouched. | Yes (trait retirement) | No |
+| P8 | Modalities & stores (Revision 2) | `EmbeddingModel` → embed functions + `EmbedderConfig`; transcription/image/audio/rerank per §10.2; **all 13 store crates kept and de-genericized** per §10.3 (drop the `EmbeddingModel` bound, pre-embedded queries, `StoreRecord`/`SearchHit`/`top_n_as`, no shared trait). | Yes (per-crate majors) | Per-crate |
+| P9 | `rig-bevy` (Revision 2 — new) | A simple `bevy_ecs` runtime crate: components = `AgentConfig`, `ProviderConfig`, `ToolCatalog`, `AgentRun`; systems fulfil `CallModel`/`CallTools` as owned effects (spawned entities + write-back), per the PR #6 invariants §13.1 lists; a mock-provider example proving a world of heterogeneous agents driven by one system set. Deliberately minimal — scheduling/policy sophistication is future work. | No (new crate) | Yes |
 
-P1–P5 are individually valuable regardless of whether P7 ever lands (P1 closes
-two open issues; P3/P4 make providers unit-testable as pure functions; P5 is
-the ECS-ready runtime). That is the commit-point structure: decide P7 only
-after P5 exists and `rig-ecs` has been prototyped against it.
+P1–P5 are individually valuable on their own (P1 closes two open issues;
+P3/P4 make providers unit-testable as pure functions; P5 is the ECS-ready
+runtime). Under Revision 2 the sequence runs to completion: the classic
+runtime survives migrated, and P9's `rig-bevy` is the proof that the
+"additional runtime with no adaptation layer" goal is real.
 
 ---
 
@@ -1553,23 +1587,24 @@ after P5 exists and `rig-ecs` has been prototyped against it.
 
 Stated against the whole redesign, not per-phase:
 
-1. **User-facing breakage at P7 (the major).** Every `Agent`/`prompt`/
-   `stream_prompt`/hook/tool-registration call site in user code rewrites onto
-   sessions and routers. In-repo proxy for the blast radius: ~45 example
-   packages, 152 provider-test files' agent call sites, plus the classic test
-   suites (~23k lines across `runner.rs`/`streaming.rs`/`prompt_request`
-   tests — 76–88% of those files). The protocol *semantics* are preserved
-   (same machine underneath), so ports are mechanical but voluminous.
-2. **The hook ecosystem regresses from plug-in to pattern.** Drop-in
-   `AgentHook` crates stop being possible; reusable policies become decision
-   functions the host must wire into its loop (§6.5). Teams using hooks as
-   org-wide middleware lose automatic composition; the fold functions are the
-   consolation, not an equivalent.
-3. **Out-of-tree providers lose the plug-in point.** No `CompletionModel` to
-   implement. Options: PR an arm into the facade, or drive
-   `AgentRun`+`prepare_request` directly (fully supported, but they re-own the
-   driver loop). Private/proprietary providers are the loss case; the three
-   in-repo companions are unaffected (they get arms).
+1. **User-facing breakage (Revision 2 — much smaller than originally
+   scoped).** With the classic runtime migrated rather than deleted, user
+   code keeps `Agent`/`prompt`/`stream_prompt`/hooks/tool registration; the
+   breakage is the `M` parameter's removal (construction sites and any code
+   naming `Agent<SomeModel>` in types) plus the P7 trait retirements. The
+   ~23k-line classic test suites are *updated in place*, not ported to a new
+   surface. Sessions and routers are the new, additional surface — adopted
+   by choice, mandatory only for the bevy runtime.
+2. **The hook ecosystem survives (Revision 2).** `AgentHook`/`HookStack`
+   remain the classic runtime's convenience layer. The decision-protocol
+   pattern (§6) is how the *protocol layer and rig-bevy* express the same
+   powers; §6.5's plug-in-to-pattern regression now applies only to hosts
+   that leave the classic runtime.
+3. **Out-of-tree providers lose the trait plug-in point at P7.** No
+   `CompletionModel` to implement. Options: PR an arm into the facade, or
+   drive `AgentRun`+`prepare_request` directly (fully supported, but they
+   re-own the driver loop). Private/proprietary providers are the loss case;
+   the three in-repo companions are unaffected (they get arms).
 4. **Dynamic tool sets change idiom.** Runtime add/remove via a shared handle
    becomes host-owned catalog rebuilds. Long-lived multi-tenant servers that
    mutated one agent's tools concurrently must now own that state machine
