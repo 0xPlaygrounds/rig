@@ -10,8 +10,8 @@ use std::sync::Arc;
 use rig_core::tool::PortableDynamicTool;
 use rig_rmcp::{McpTool, tools_from_server};
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, ClientInfo, ContentBlock, ErrorData, Implementation,
-    ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ClientInfo, ContentBlock, ErrorData,
+    Implementation, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::RequestContext;
 use rmcp::{RoleServer, ServerHandler, ServiceExt};
@@ -30,7 +30,7 @@ impl ServerHandler for EchoServer {
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
         let who = request
             .arguments
             .as_ref()
@@ -41,10 +41,9 @@ impl ServerHandler for EchoServer {
         match request.name.as_ref() {
             "greet" => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "hello {who}"
-            ))])),
-            _ => Ok(CallToolResult::error(vec![ContentBlock::text(
-                "unknown tool",
-            )])),
+            ))])
+            .into()),
+            _ => Ok(CallToolResult::error(vec![ContentBlock::text("unknown tool")]).into()),
         }
     }
 }
