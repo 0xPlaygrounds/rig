@@ -167,12 +167,6 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.41.0", default-features = false }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-futures = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
-aws-sdk-bedrockruntime = { workspace = true, optional = true }
 rig-agent = { path = "crates/rig-agent", version = "0.41.0", optional = true, default-features = false }
 rig-bedrock = { path = "crates/rig-bedrock", version = "0.41.0", optional = true, default-features = false }
 rig-candle = { path = "crates/rig-candle", version = "0.41.0", optional = true, default-features = false }
@@ -274,7 +268,7 @@ test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
 # lane) enables it so the guard still runs, while ad-hoc `cargo test` skips it.
 facade-build-tests = []
-bedrock = ["dep:rig-bedrock", "dep:aws-sdk-bedrockruntime"]
+bedrock = ["dep:rig-bedrock", "rig-agent?/bedrock"]
 candle = ["dep:rig-candle"]
 fastembed = [
   "dep:rig-fastembed",
@@ -283,7 +277,7 @@ fastembed = [
 ]
 fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
 fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
-gemini-grpc = ["dep:rig-gemini-grpc"]
+gemini-grpc = ["dep:rig-gemini-grpc", "rig-agent?/gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
 mcp = ["agent", "dep:rig-mcp"]

@@ -27,15 +27,15 @@
 
 use std::sync::Arc;
 
-use rig_agent::agent::hook::{
+use crate::agent::hook::{
     CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch,
 };
-use rig_agent::agent::prepare::{ToolCatalog, prepare_request};
-use rig_agent::agent::run::{
+use crate::agent::prepare::{ToolCatalog, prepare_request};
+use crate::agent::run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
 };
-use rig_agent::agent::{AgentConfig, InvalidToolCallContext, PromptResponse};
-use rig_agent::completion::{Message, PromptError, Usage};
+use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse};
+use crate::completion::{Message, PromptError, Usage};
 use rig_core::OneOrMany;
 use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, UserContent};
@@ -58,7 +58,7 @@ pub struct SessionPolicy {
 /// What a session needs from its host next.
 ///
 /// Deliberately exhaustive, like
-/// [`AgentRunStep`](rig_agent::agent::run::AgentRunStep): a new
+/// [`AgentRunStep`](crate::agent::run::AgentRunStep): a new
 /// decision-bearing variant must fail to compile in every host.
 #[derive(Debug)]
 pub enum SessionEvent {

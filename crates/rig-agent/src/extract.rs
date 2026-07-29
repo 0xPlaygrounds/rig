@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use rig_core::schemars;
 
-use rig_agent::agent::AgentConfig;
-use rig_agent::agent::run::OutputMode;
-use rig_agent::completion::{Message, PromptError};
+use crate::agent::AgentConfig;
+use crate::agent::run::OutputMode;
+use crate::completion::{Message, PromptError};
 
 use crate::provider::{ProviderConfig, Runtime};
 use crate::session::AgentSession;

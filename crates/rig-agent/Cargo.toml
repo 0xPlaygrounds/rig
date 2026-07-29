@@ -25,8 +25,11 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
+rig-bedrock = { path = "../rig-bedrock", version = "0.41.0", optional = true, default-features = false }
 rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+rig-gemini-grpc = { path = "../rig-gemini-grpc", version = "0.41.0", optional = true, default-features = false }
 rig-derive = { path = "../rig-derive", version = "0.41.0", optional = true }
+aws-sdk-bedrockruntime = { workspace = true, optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -59,3 +62,5 @@ derive = ["dep:rig-derive", "rig-core/derive"]
 test-utils = ["rig-core/test-utils"]
 discord-bot = ["dep:serenity"]
 rmcp = ["dep:rmcp"]
+bedrock = ["dep:rig-bedrock", "dep:aws-sdk-bedrockruntime"]
+gemini-grpc = ["dep:rig-gemini-grpc"]

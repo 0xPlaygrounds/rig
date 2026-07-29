@@ -243,3 +243,16 @@ extraction (P7); candle `ProviderConfig` arm (P7, needs artifact plumbing).
 single-threaded (incl. 6 new `agent_session` + 3 new `agent_stream` tests);
 rig-agent 492 + rig-core 1079 + rig-derive (8 router) + rig-mcp all green;
 cassettes untouched.
+
+## P6 pre-step — facade purity (maintainer direction, 2026-07-29)
+
+The maintainer directed that the `rig` facade must remain a pure re-export
+layer: nothing is implemented there. The P5 runtime modules
+(`provider.rs`, `session.rs`, `stream.rs`, `extract.rs`) moved from the
+facade into `rig-agent` verbatim; the facade re-exports them
+(`rig::provider` etc.), so no user-facing path changed. No dependency
+cycle: rig-bedrock/rig-gemini-grpc dev-depend on rig-agent, so rig-agent
+takes them as optional normal deps behind new `bedrock`/`gemini-grpc`
+features, forwarded by the facade's features. The design doc gained a
+Revision 2.2 note re-reading every "in the facade" placement accordingly;
+P6's classic runtime consequently also stays in `rig-agent`.

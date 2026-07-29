@@ -97,23 +97,24 @@ pub mod integrations {
     pub use rig_agent::integrations::*;
 }
 
-/// Common portable imports plus additive classic-runtime conveniences.
 /// The bundled provider set as plain configuration, plus the live-handle
 /// runtime — the data-oriented fulfilment layer.
-pub mod provider;
+#[cfg(feature = "agent")]
+pub use rig_agent::provider;
 
 /// The blocking session driver over the sans-IO run protocol.
 #[cfg(feature = "agent")]
-pub mod session;
+pub use rig_agent::session;
 
 /// The streaming session driver over the sans-IO run protocol.
 #[cfg(feature = "agent")]
-pub mod stream;
+pub use rig_agent::stream;
 
 /// Structured extraction over the session runtime.
 #[cfg(feature = "agent")]
-pub mod extract;
+pub use rig_agent::extract;
 
+/// Common portable imports plus additive classic-runtime conveniences.
 pub mod prelude {
     // The classic contextual `Tool` and its mutable `ToolContext` — the same
     // prelude surface as before the runtime split, so `use rig::prelude::*;

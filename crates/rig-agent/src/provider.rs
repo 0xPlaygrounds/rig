@@ -14,7 +14,7 @@
 //!
 //! Out-of-tree providers cannot add arms; they drive the public
 //! [`AgentRun`](crate::agent::run::AgentRun) +
-//! [`prepare_request`](rig_agent::agent::prepare::prepare_request) protocol
+//! [`prepare_request`](crate::agent::prepare::prepare_request) protocol
 //! directly instead.
 
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};

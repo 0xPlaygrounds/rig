@@ -69,6 +69,15 @@ pub mod integrations;
 // `json_utils::merge` / `json_utils::serialize_json_value`.
 pub(crate) use rig_core::json_utils;
 pub mod prelude;
+/// The bundled provider set as plain configuration, plus the live-handle
+/// runtime — the data-oriented fulfilment layer.
+pub mod provider;
+/// The blocking session driver over the sans-IO run protocol.
+pub mod session;
+/// The streaming session driver over the sans-IO run protocol.
+pub mod stream;
+/// Structured extraction over the session runtime.
+pub mod extract;
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]

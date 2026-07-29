@@ -6,6 +6,21 @@ parameter) and corrects `audit/generic-bounds.md` where verification found its
 numbers wrong (§2). Every anchor below was checked against the working tree on
 branch `docs/migrating-0.30-onward` (rig 0.41.0).
 
+> **Revision 2.2 — maintainer direction (2026-07-29).** The `rig` facade
+> crate must remain a *pure facade*: re-exports only, no implementation.
+> Everything this document places "in the `rig` facade" — the
+> `ProviderConfig` enum, `Runtime`, the free `complete`/`open_stream`
+> dispatch functions, `AgentSession`, `AgentStream`, `extract<T>` — is
+> implemented in `rig-agent` (`src/provider.rs`, `src/session.rs`,
+> `src/stream.rs`, `src/extract.rs`) and re-exported unchanged at the
+> familiar `rig::provider`/`rig::session`/`rig::stream`/`rig::extract`
+> paths. This works without a dependency cycle because the companion
+> provider crates (`rig-bedrock`, `rig-gemini-grpc`) depend on `rig-agent`
+> only as dev-dependencies; `rig-agent` takes them as optional normal
+> dependencies behind `bedrock`/`gemini-grpc` features, which the facade's
+> features forward. The migrated classic `Agent` likewise stays in
+> `rig-agent`. Read every "facade" placement below through this lens.
+
 > **Revision 2 — maintainer direction (2026-07-28).** Three scope changes
 > supersede the original endgame wherever this document says otherwise:
 > 1. **The classic runtime is never deleted.** The original P7 ("the
@@ -17,10 +32,7 @@ branch `docs/migrating-0.30-onward` (rig 0.41.0).
 >    tool server — is **preserved** as the classic runtime's convenience
 >    layer. The mandate's full rigor applies to `rig-core` and the protocol
 >    layer; the classic runtime is *a* consumer of them, kept for users who
->    want batteries. (Because the migrated `Agent` drives `ProviderConfig`,
->    which must live downstream of the companion provider crates, the
->    runtime's implementation moves into the `rig` facade; user-facing paths
->    are preserved via the facade's existing re-export modules.)
+>    want batteries.
 > 2. **A simple `bevy_ecs` runtime (`rig-bevy`) is a deliverable**, not just
 >    a validation gate: a new crate with `AgentConfig`/`ProviderConfig`/
 >    `ToolCatalog`/`AgentRun` as components and systems driving the
@@ -1584,7 +1596,7 @@ wholesale cassette churn destroys reviewability).
 | P3 | Provider pilot | `openai`: `Config`/`DESCRIPTOR`/`build_request`/`parse_response`/`SseParser`/`complete`/`open_stream` + `HttpRuntime`; existing trait impl becomes a thin delegate. Byte-identical cassettes prove the split total. | No | Yes |
 | P4 | Provider fleet | Remaining 24 in-core providers via `openai_compat` helpers + x-macro; companion crates (`bedrock`/`gemini-grpc`/`candle`) gain `Config` + free fns alongside their trait impls. | No | Yes (mechanical) |
 | P5 | The facade runtime | `ProviderConfig`/`Runtime` (live-handle caches)/`ModelStream`/facade `complete`/`open_stream`; `AgentSession`; `AgentStream`; `#[derive(ToolRouter)]`; `McpToolset` in rig-mcp; extraction fn; `ProviderConfig::Mock`+`ModelStream::Mock` scripted test doubles (the successor to `MockCompletionModel`, §3.6); telemetry ported into the session drivers. Ships **alongside** the classic runtime. | No | Yes |
-| P6 | Classic runtime re-plumb (Revision 2) | `Agent<M>` → `Agent` (holds `ProviderConfig` + `Arc<Runtime>`); `AgentRunner`/`PromptRequest`/`StreamingPromptRequest`/`Extractor` lose `M`; internals rewired onto `prepare_request` + facade `complete`/`open_stream`; implementation moves to the `rig` facade with user paths preserved via its existing re-export modules; **hooks, memory, and the tool server are kept** as the classic runtime's convenience layer. Examples/integrations/docs updated; `MIGRATING.md` chapter written. | Yes (type-param removal; API shape preserved) | No (the migration itself) |
+| P6 | Classic runtime re-plumb (Revision 2) | `Agent<M>` → `Agent` (holds `ProviderConfig` + `Arc<Runtime>`); `AgentRunner`/`PromptRequest`/`StreamingPromptRequest`/`Extractor` lose `M`; internals rewired onto `prepare_request` + facade `complete`/`open_stream`; implementation stays in `rig-agent` (Revision 2.2), rewired onto the in-crate `provider` module; **hooks, memory, and the tool server are kept** as the classic runtime's convenience layer. Examples/integrations/docs updated; `MIGRATING.md` chapter written. | Yes (type-param removal; API shape preserved) | No (the migration itself) |
 | P7 | Cleanup of orphaned plumbing (Revision 2 — was "the deletion") | Delete only what the re-plumb orphaned: `GenericCompletionModel<Ext,H>`, `Client<Ext,H>`/`ClientBuilder`/`Provider(Builder)`/`Capabilities` internals (per-provider `Client::from_env()` survives as thin sugar over `Config` + `Runtime`), `CompletionRequestBuilder<M>`, `TurnSource`, `CompletionModel` retired after nothing in-tree consumes it (out-of-tree implementors migrate to `Config` + free fns or drive `AgentRun` directly), `wasm_compat` shrinks. The classic runtime surface itself is untouched. | Yes (trait retirement) | No |
 | P8 | Modalities & stores (Revision 2) | `EmbeddingModel` → embed functions + `EmbedderConfig`; transcription/image/audio/rerank per §10.2; **all 13 store crates kept and de-genericized** per §10.3 (drop the `EmbeddingModel` bound, pre-embedded queries, `StoreRecord`/`SearchHit`/`top_n_as`, no shared trait). | Yes (per-crate majors) | Per-crate |
 | P9 | `rig-bevy` (Revision 2 — new) | A simple `bevy_ecs` runtime crate: components = `AgentConfig`, `ProviderConfig`, `ToolCatalog`, `AgentRun`; systems fulfil `CallModel`/`CallTools` as owned effects (spawned entities + write-back), per the PR #6 invariants §13.1 lists; a mock-provider example proving a world of heterogeneous agents driven by one system set. Deliberately minimal — scheduling/policy sophistication is future work. | No (new crate) | Yes |
