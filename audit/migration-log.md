@@ -403,3 +403,11 @@ the maintainer's direction. The data-oriented path (`ProviderConfig`/
 traits are now purely the classic convenience layer, single-sourced
 through the extracted functions. If the classic layer is ever sunset,
 the retirement is mechanical.
+
+
+## P9 — rig-bevy: CANCELLED (maintainer direction, 2026-07-30)
+
+The maintainer dropped the rig-bevy deliverable before implementation
+started. The migration ends at P8; the bevy_ecs runtime remains a future
+possibility the rearchitecture enables (components-as-data over
+`AgentRun`/`prepare_request`/`ProviderConfig`), not a shipped crate.
