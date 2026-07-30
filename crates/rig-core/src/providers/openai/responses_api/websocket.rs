@@ -262,6 +262,51 @@ where
 /// turns can automatically chain via `previous_response_id` unless the request
 /// explicitly sets a different one.
 ///
+/// Automatic compaction composes with that chaining behavior. Configure
+/// `context_management` on each request and send only the new turn input:
+///
+/// ```no_run
+/// use rig_core::{
+///     client::{CompletionClient, ProviderClient},
+///     completion::CompletionModel,
+///     providers::openai::{self, responses_api::ContextManagement},
+/// };
+/// use serde_json::json;
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::from_env()?;
+/// let model = client.completion_model("gpt-5.4");
+/// let mut session = client.responses_websocket("gpt-5.4").await?;
+///
+/// session
+///     .completion(
+///         model
+///             .completion_request("Begin a long task.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// session
+///     .completion(
+///         model
+///             .completion_request("Continue with the next step.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// session.close().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
 pub struct ResponsesWebSocketSession<H = reqwest::Client> {
@@ -833,7 +878,8 @@ mod tests {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::providers::openai::responses_api::{
-        CompletionResponse, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+        CompletionResponse, ContextManagement, ResponseError, ResponseObject, ResponseStatus,
+        ResponsesUsage,
     };
     use futures::{SinkExt, StreamExt};
     use serde_json::json;
@@ -1352,6 +1398,140 @@ mod tests {
         assert_eq!(second.id, "resp_2");
         assert_eq!(session.previous_response_id(), Some("resp_2"));
 
+        server.await.expect("server task should finish");
+    }
+
+    #[tokio::test]
+    async fn compaction_requests_chain_only_after_successful_websocket_turns() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            let turns = [
+                ("first", "resp_1", ResponseStatus::Completed),
+                ("second", "resp_incomplete", ResponseStatus::Incomplete),
+                ("third", "resp_3", ResponseStatus::Completed),
+            ];
+
+            for (index, (prompt, response_id, status)) in turns.into_iter().enumerate() {
+                let request = socket
+                    .next()
+                    .await
+                    .expect("request should exist")
+                    .expect("request should be valid");
+                let payload: serde_json::Value =
+                    serde_json::from_str(&request.into_text().expect("request should be text"))
+                        .expect("request should be JSON");
+
+                assert_eq!(payload["type"], "response.create");
+                assert_eq!(
+                    payload["context_management"],
+                    json!([{
+                        "type": "compaction",
+                        "compact_threshold": 200_000
+                    }])
+                );
+                assert_eq!(payload["store"], false);
+                assert_eq!(
+                    payload["input"]
+                        .as_array()
+                        .expect("input should be an array")
+                        .len(),
+                    1
+                );
+                assert_eq!(payload["input"][0]["content"][0]["text"], prompt);
+
+                match index {
+                    1 => assert_eq!(payload["previous_response_id"], "resp_1"),
+                    0 | 2 => assert!(
+                        payload.get("previous_response_id").is_none(),
+                        "turn {index} should not carry a stale response ID"
+                    ),
+                    _ => unreachable!("test only defines three turns"),
+                }
+
+                let event_type = match &status {
+                    ResponseStatus::Completed => "response.completed",
+                    ResponseStatus::Incomplete => "response.incomplete",
+                    _ => unreachable!("test only uses terminal statuses"),
+                };
+                let response = serde_json::to_value(CompletionResponse {
+                    id: response_id.to_string(),
+                    status,
+                    ..sample_response(ResponseStatus::Completed)
+                })
+                .expect("response should serialize");
+
+                socket
+                    .send(Message::text(
+                        json!({
+                            "type": event_type,
+                            "sequence_number": index + 1,
+                            "response": response,
+                        })
+                        .to_string(),
+                    ))
+                    .await
+                    .expect("terminal event should send");
+            }
+        });
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let mut session = client
+            .responses_websocket("gpt-5.4")
+            .await
+            .expect("session should connect");
+
+        for prompt in ["first", "second", "third"] {
+            session
+                .send(
+                    model
+                        .completion_request(prompt)
+                        .additional_params(json!({
+                            "context_management": [ContextManagement::compaction(200_000)],
+                            "store": false
+                        }))
+                        .build(),
+                )
+                .await
+                .expect("request should send");
+
+            if prompt == "second" {
+                session
+                    .wait_for_completed_response()
+                    .await
+                    .expect_err("incomplete response should fail");
+                assert_eq!(session.previous_response_id(), None);
+            } else {
+                let response = session
+                    .wait_for_completed_response()
+                    .await
+                    .expect("completed response should succeed");
+                assert_eq!(
+                    response.id,
+                    if prompt == "first" {
+                        "resp_1"
+                    } else {
+                        "resp_3"
+                    }
+                );
+            }
+        }
+
+        assert_eq!(session.previous_response_id(), Some("resp_3"));
         server.await.expect("server task should finish");
     }
 

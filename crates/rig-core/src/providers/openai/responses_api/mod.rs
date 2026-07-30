@@ -1637,6 +1637,9 @@ pub struct AdditionalParameters {
     /// Whether or not a given model task should run in the background (ie a detached process).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<bool>,
+    /// Server-managed context controls such as automatic compaction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_management: Option<Vec<ContextManagement>>,
     /// The text response format. This is where you would add structured outputs (if you want them).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextConfig>,
@@ -1680,6 +1683,77 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
+}
+
+/// Server-managed context controls for the OpenAI Responses API.
+///
+/// Automatic compaction runs during a normal Responses request when the
+/// rendered token count crosses the configured threshold. When continuing with
+/// `previous_response_id`, send only the new input for each turn and do not
+/// manually prune the conversation.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_core::{
+///     client::{CompletionClient, ProviderClient},
+///     completion::CompletionModel,
+///     providers::openai::{self, responses_api::ContextManagement},
+/// };
+/// use serde_json::json;
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::from_env()?;
+/// let model = client.completion_model("gpt-5.4");
+///
+/// let first = model
+///     .completion(
+///         model
+///             .completion_request("Begin a long task.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// let second = model
+///     .completion(
+///         model
+///             .completion_request("Continue with the next step.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "previous_response_id": first.raw_response.id,
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+/// # let _ = second;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContextManagement {
+    /// Compact the server-managed context after the optional token threshold is
+    /// crossed. When omitted, OpenAI selects the threshold.
+    Compaction {
+        /// Rendered token threshold that triggers automatic compaction.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        compact_threshold: Option<u64>,
+    },
+}
+
+impl ContextManagement {
+    /// Enables automatic server-side compaction at `compact_threshold`.
+    #[must_use]
+    pub const fn compaction(compact_threshold: u64) -> Self {
+        Self::Compaction {
+            compact_threshold: Some(compact_threshold),
+        }
+    }
 }
 
 fn deserialize_metadata<'de, D>(
@@ -1960,6 +2034,11 @@ pub enum Output {
         encrypted_content: Option<String>,
         status: Option<ToolStatus>,
     },
+    /// Opaque server-side compaction state returned by OpenAI.
+    ///
+    /// This item remains available in the raw provider response but is not
+    /// converted into Rig's provider-agnostic assistant conversation history.
+    Compaction(ResponseCompactionItem),
     /// Catch-all for output item types this version does not model. Holds the
     /// raw item object exactly as it appeared in the provider's `output[]`
     /// array, so hosted-tool payloads survive the typed decode.
@@ -2051,6 +2130,9 @@ impl Serialize for Output {
                 }
                 Ok(value)
             }
+            Output::Compaction(compaction) => {
+                return Value::from(compaction).serialize(serializer);
+            }
             Output::Unknown(value) => return value.serialize(serializer),
         };
         value
@@ -2081,6 +2163,9 @@ impl<'de> Deserialize<'de> for Output {
                 .map_err(serde::de::Error::custom),
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
+                .map_err(serde::de::Error::custom),
+            "compaction" => serde_json::from_value(value)
+                .map(Output::Compaction)
                 .map_err(serde::de::Error::custom),
             _ => Ok(Output::Unknown(value)),
         }
@@ -2136,10 +2221,43 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
+            Output::Compaction(_) => Vec::new(),
             Output::Unknown(_) => Vec::new(),
         };
 
         res
+    }
+}
+
+/// Opaque context state emitted by OpenAI automatic server-side compaction.
+///
+/// The encrypted content is provider state rather than a human-readable
+/// summary. When using `previous_response_id`, callers only need to carry the
+/// response ID forward; OpenAI retains this item in the response chain.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ResponseCompactionItem {
+    /// Provider-assigned compaction item ID.
+    pub id: String,
+    /// Encrypted context state used by OpenAI for subsequent turns.
+    pub encrypted_content: String,
+    /// The component that created the compaction item, when supplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+impl From<&ResponseCompactionItem> for Value {
+    fn from(item: &ResponseCompactionItem) -> Self {
+        let mut value = Map::new();
+        value.insert("type".to_string(), Value::String("compaction".to_string()));
+        value.insert("id".to_string(), Value::String(item.id.clone()));
+        value.insert(
+            "encrypted_content".to_string(),
+            Value::String(item.encrypted_content.clone()),
+        );
+        if let Some(created_by) = &item.created_by {
+            value.insert("created_by".to_string(), Value::String(created_by.clone()));
+        }
+        Value::Object(value)
     }
 }
 
@@ -4608,6 +4726,227 @@ mod tests {
         assert_eq!(json["error"]["code"], "invalid_value");
     }
 
+    #[tokio::test]
+    async fn responses_compaction_preserves_raw_state_and_chains_new_input() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::providers::openai::Client;
+        use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+        let first_response = json!({
+            "id": "resp_compacted_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [
+                {
+                    "type": "compaction",
+                    "id": "cmp_1",
+                    "encrypted_content": "encrypted-state",
+                    "created_by": "server"
+                },
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [{
+                        "type": "output_text",
+                        "text": "First answer",
+                        "annotations": []
+                    }]
+                }
+            ]
+        })
+        .to_string();
+        let second_response = json!({
+            "id": "resp_compacted_2",
+            "object": "response",
+            "created_at": 1,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [{
+                "type": "message",
+                "id": "msg_2",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{
+                    "type": "output_text",
+                    "text": "Second answer",
+                    "annotations": []
+                }]
+            }]
+        })
+        .to_string();
+        let http_client = SequencedHttpClient::new([
+            MockHttpResponse::success(first_response),
+            MockHttpResponse::success(second_response),
+        ]);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+
+        let first = model
+            .completion(
+                model
+                    .completion_request("Begin the task")
+                    .additional_params(json!({
+                        "context_management": [ContextManagement::compaction(200_000)],
+                        "store": false
+                    }))
+                    .build(),
+            )
+            .await
+            .expect("first response should complete");
+
+        assert!(first.choice.iter().any(|content| {
+            matches!(
+                content,
+                completion::AssistantContent::Text(text) if text.text == "First answer"
+            )
+        }));
+        assert!(matches!(
+            first.raw_response.output.first(),
+            Some(Output::Compaction(ResponseCompactionItem {
+                id,
+                encrypted_content,
+                created_by: Some(created_by),
+            })) if id == "cmp_1"
+                && encrypted_content == "encrypted-state"
+                && created_by == "server"
+        ));
+
+        let first_response_id = first.raw_response.id.clone();
+        model
+            .completion(
+                model
+                    .completion_request("Continue with the next step")
+                    .additional_params(json!({
+                        "context_management": [ContextManagement::compaction(200_000)],
+                        "previous_response_id": first_response_id,
+                        "store": false
+                    }))
+                    .build(),
+            )
+            .await
+            .expect("second response should complete");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.uri.ends_with("/responses"))
+        );
+
+        let first_request: Value =
+            serde_json::from_slice(&requests[0].body).expect("first request should be JSON");
+        let second_request: Value =
+            serde_json::from_slice(&requests[1].body).expect("second request should be JSON");
+        let expected_context_management =
+            json!([{ "type": "compaction", "compact_threshold": 200_000 }]);
+
+        assert_eq!(
+            first_request["context_management"],
+            expected_context_management
+        );
+        assert_eq!(
+            second_request["context_management"],
+            expected_context_management
+        );
+        assert_eq!(first_request["store"], false);
+        assert_eq!(second_request["store"], false);
+        assert!(first_request.get("previous_response_id").is_none());
+        assert_eq!(second_request["previous_response_id"], "resp_compacted_1");
+        assert_eq!(
+            second_request["input"]
+                .as_array()
+                .expect("input should be an array")
+                .len(),
+            1
+        );
+        assert_eq!(
+            second_request["input"][0]["content"][0]["text"],
+            "Continue with the next step"
+        );
+    }
+
+    #[test]
+    fn context_management_serializes_and_survives_request_conversion() {
+        let compaction = ContextManagement::compaction(200_000);
+        assert_eq!(
+            serde_json::to_value(&compaction).expect("compaction should serialize"),
+            json!({
+                "type": "compaction",
+                "compact_threshold": 200_000
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(ContextManagement::Compaction {
+                compact_threshold: None
+            })
+            .expect("compaction without a threshold should serialize"),
+            json!({ "type": "compaction" })
+        );
+
+        let mut request = request_with_preamble("You are concise.");
+        request.additional_params = Some(json!({
+            "context_management": [compaction],
+            "store": false
+        }));
+        let request = CompletionRequest::try_from(("gpt-5.4".to_string(), request))
+            .expect("request should convert");
+        let serialized = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(
+            serialized["context_management"],
+            json!([{
+                "type": "compaction",
+                "compact_threshold": 200_000
+            }])
+        );
+        assert_eq!(serialized["store"], false);
+    }
+
+    #[test]
+    fn output_compaction_round_trips_value_equal() {
+        for item in [
+            json!({
+                "type": "compaction",
+                "id": "cmp_1",
+                "encrypted_content": "encrypted-state",
+                "created_by": "server"
+            }),
+            json!({
+                "type": "compaction",
+                "id": "cmp_2",
+                "encrypted_content": "encrypted-state"
+            }),
+        ] {
+            let output: Output =
+                serde_json::from_value(item.clone()).expect("compaction should deserialize");
+            assert!(matches!(output, Output::Compaction(_)));
+            assert_eq!(
+                serde_json::to_value(output).expect("compaction should serialize"),
+                item
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_compaction_output_errors() {
+        let result: Result<Output, _> = serde_json::from_value(json!({
+            "type": "compaction",
+            "id": "cmp_1"
+        }));
+
+        assert!(result.is_err());
+    }
+
     #[test]
     fn output_unknown_preserves_hosted_tool_payload() {
         let item = json!({
@@ -4862,6 +5201,14 @@ mod tests {
             serde_json::from_value(json!({ "type": "reasoning", "id": "r1", "summary": [] }))
                 .expect("reasoning item should decode");
         assert!(matches!(reasoning, Output::Reasoning { .. }));
+
+        let compaction: Output = serde_json::from_value(json!({
+            "type": "compaction",
+            "id": "cmp_1",
+            "encrypted_content": "encrypted-state"
+        }))
+        .expect("compaction item should decode");
+        assert!(matches!(compaction, Output::Compaction(_)));
     }
 
     #[test]

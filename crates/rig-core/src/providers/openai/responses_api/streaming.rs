@@ -37,6 +37,12 @@ pub enum StreamingCompletionChunk {
 /// The final streaming response from the OpenAI Responses API.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
+    /// Provider-assigned response ID from the terminal response event.
+    ///
+    /// Pass this as `previous_response_id` on the next request when using
+    /// response-ID chaining, including automatic server-side compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
     /// Token usage
     pub usage: ResponsesUsage,
     /// The complete object-shaped reasoning metadata from the terminal response event.
@@ -218,6 +224,7 @@ pub(crate) fn parse_sse_completion_body(
 }
 
 struct RawChoiceAccumulator {
+    response_id: Option<String>,
     final_usage: ResponsesUsage,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
@@ -228,6 +235,7 @@ struct RawChoiceAccumulator {
 impl RawChoiceAccumulator {
     fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
+            response_id: None,
             final_usage: initial_usage,
             reasoning_metadata: None,
             reasoning_context: None,
@@ -318,6 +326,7 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
+                self.response_id = Some(response.id);
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
@@ -378,6 +387,11 @@ impl RawChoiceAccumulator {
             Output::Message(message) => {
                 immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
             }
+            Output::Compaction(compaction) => {
+                immediate.push(streaming::RawStreamingChoice::Unknown(
+                    serde_json::Value::from(&compaction),
+                ));
+            }
             // An unmodeled output item (e.g. a hosted-tool result such as
             // `web_search_call`) arriving on `response.output_item.done`. Surface
             // the raw item to stream consumers, mirroring how the non-streaming
@@ -393,6 +407,7 @@ impl RawChoiceAccumulator {
         choices.append(&mut self.tool_calls);
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
+                response_id: self.response_id,
                 usage: self.final_usage,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
@@ -1155,6 +1170,38 @@ mod tests {
     }
 
     #[test]
+    fn compaction_output_item_surfaces_as_raw_unknown_choice() {
+        let item = json!({
+            "type": "compaction",
+            "id": "cmp_1",
+            "encrypted_content": "encrypted-state",
+            "created_by": "server"
+        });
+        let body = format!(
+            "data: {}\n",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": item,
+            })
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode");
+
+        let compaction = choices.iter().find_map(|choice| match choice {
+            RawStreamingChoice::Unknown(value)
+                if value.get("type").and_then(serde_json::Value::as_str) == Some("compaction") =>
+            {
+                Some(value)
+            }
+            _ => None,
+        });
+        assert_eq!(compaction, Some(&item));
+    }
+
+    #[test]
     fn reasoning_done_item_without_encrypted_emits_summary_only() {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
@@ -1573,10 +1620,11 @@ mod tests {
             "response": response,
         });
 
-        let usage = final_response_from_event(event).await.usage;
-        assert_eq!(usage.input_tokens, 10);
-        assert_eq!(usage.output_tokens, 5);
-        assert_eq!(usage.total_tokens, 15);
+        let response = final_response_from_event(event).await;
+        assert_eq!(response.response_id.as_deref(), Some("resp_123"));
+        assert_eq!(response.usage.input_tokens, 10);
+        assert_eq!(response.usage.output_tokens, 5);
+        assert_eq!(response.usage.total_tokens, 15);
     }
 
     #[tokio::test]
