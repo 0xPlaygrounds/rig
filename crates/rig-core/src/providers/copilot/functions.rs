@@ -14,14 +14,22 @@
 //!
 //! # Credentials
 //!
-//! [`Config::api_key`] carries an **already-resolved Copilot chat token**
-//! (or a long-lived Copilot API key). The classic client's richer auth —
-//! OAuth device flow, GitHub access-token exchange, cached token files, and
-//! automatic refresh (`auth::Authenticator`) — is stateful and asynchronous
-//! and cannot be represented as a plain
-//! [`ApiKeyLocation`]; callers needing those flows should resolve a token
-//! through the classic client first. Token-derived base-URL routing
-//! (`proxy-ep=` inside the token) is honored, mirroring the classic client.
+//! [`Config::api_key`] carries an **already-resolved Copilot chat token** (or
+//! a long-lived Copilot API key), because a plain [`ApiKeyLocation`] cannot
+//! express a stateful, refreshing credential.
+//!
+//! Resolution is therefore a construction-time step, not a request-time one:
+//!
+//! - [`Config::from_env`] — synchronous, API-key variables only;
+//! - [`config_from_env`] — async, the full precedence the deleted
+//!   `copilot::Client::from_env` had: API key, then GitHub access-token
+//!   exchange, then cached OAuth (device flow and refresh included) via
+//!   [`auth::Authenticator`](super::auth::Authenticator).
+//!
+//! Token-derived base-URL routing (`proxy-ep=` inside the token) is honored by
+//! [`build_request`], mirroring the classic client. Because the resolved token
+//! is stored in the config, long-lived processes should rebuild the config
+//! when a token expires — the classic client refreshed per request.
 //!
 //! Note: Copilot requests carry a generated `x-request-id` header, so
 //! [`build_request`] is pure up to that identifier (and credential
@@ -39,7 +47,9 @@ use super::{
 };
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
+};
 use crate::providers::openai;
 use crate::providers::openai::responses_api;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
@@ -68,7 +78,7 @@ pub struct Config {
     /// exactly like the classic client.
     pub base_url: String,
     /// Credential location; must resolve to a Copilot chat token or API key
-    /// (see the module docs for why OAuth flows are out of scope).
+    /// (see the module docs for how OAuth logins are resolved into one).
     pub api_key: ApiKeyLocation,
     /// Model identifier requests are built for.
     pub model: String,
@@ -106,6 +116,154 @@ impl Config {
         self.base_url = base_url.into();
         self
     }
+
+    /// Config for `model` from an explicit Copilot API key in the environment.
+    ///
+    /// The synchronous subset of [`config_from_env`]: it requires one of
+    /// `GITHUB_COPILOT_API_KEY` / `COPILOT_API_KEY` to be set and applies the
+    /// `GITHUB_COPILOT_API_BASE` / `COPILOT_BASE_URL` override. Use
+    /// [`config_from_env`] instead when the credential may come from a GitHub
+    /// access token or a cached OAuth login, since both require an async
+    /// exchange.
+    ///
+    /// # Errors
+    /// [`ConfigError::InvalidConfiguration`] when no API-key variable is set.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        let key_var = env_first_present(API_KEY_VARS)?.ok_or(ConfigError::InvalidConfiguration(
+            "one of `GITHUB_COPILOT_API_KEY` or `COPILOT_API_KEY` must be set; \
+                 use `config_from_env` for GitHub-token or OAuth credentials",
+        ))?;
+        cfg.api_key = ApiKeyLocation::Env(key_var.to_string());
+        if let Some(base_url) = env_first_value(BASE_URL_VARS)? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
+    }
+}
+
+/// API-key variables, in the classic client's precedence order.
+const API_KEY_VARS: &[&str] = &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
+/// GitHub access-token variables, in the classic client's precedence order.
+const ACCESS_TOKEN_VARS: &[&str] = &["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"];
+/// Base-URL override variables, in the classic client's precedence order.
+const BASE_URL_VARS: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
+
+/// The first of `vars` that is set, as a variable name.
+fn env_first_present(vars: &[&'static str]) -> Result<Option<&'static str>, ConfigError> {
+    for var in vars {
+        if optional_env_var(var)?.is_some() {
+            return Ok(Some(var));
+        }
+    }
+    Ok(None)
+}
+
+/// The value of the first of `vars` that is set.
+fn env_first_value(vars: &[&'static str]) -> Result<Option<String>, ConfigError> {
+    for var in vars {
+        if let Some(value) = optional_env_var(var)? {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+
+/// Failure while resolving a Copilot configuration from the environment.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigFromEnvError {
+    /// An environment variable was missing or unreadable.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+    /// Credential exchange, refresh, or the device-code flow failed.
+    #[error(transparent)]
+    Auth(#[from] super::auth::AuthError),
+}
+
+/// Config for `model`, resolving the credential the way the deleted
+/// `copilot::Client::from_env` did.
+///
+/// Precedence, unchanged from the classic client:
+///
+/// 1. `GITHUB_COPILOT_API_KEY` / `COPILOT_API_KEY` — used directly;
+/// 2. `COPILOT_GITHUB_ACCESS_TOKEN` / `GITHUB_TOKEN` — exchanged for a Copilot
+///    chat token (cached token file reused when still valid);
+/// 3. otherwise the cached OAuth login, refreshing or running the device-code
+///    flow as needed.
+///
+/// The base URL follows the same rules the classic client applied at request
+/// time: an explicit `GITHUB_COPILOT_API_BASE` / `COPILOT_BASE_URL` override
+/// wins; otherwise the endpoint reported by the token exchange is used; failing
+/// that, [`build_request`] still derives it from the token's `proxy-ep=`
+/// segment.
+///
+/// This is async because cases 2 and 3 perform IO. Use [`Config::from_env`]
+/// for the synchronous API-key-only path.
+///
+/// # Errors
+/// [`ConfigFromEnvError`] when a variable is unreadable or credential
+/// resolution fails.
+pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigFromEnvError> {
+    let cfg = Config::new(model);
+    let base_url_override = env_first_value(BASE_URL_VARS)?;
+
+    let source = if let Some(key) = env_first_value(API_KEY_VARS)? {
+        super::auth::AuthSource::ApiKey(key)
+    } else if let Some(token) = env_first_value(ACCESS_TOKEN_VARS)? {
+        super::auth::AuthSource::GitHubAccessToken(token)
+    } else {
+        super::auth::AuthSource::OAuth
+    };
+
+    // The classic `CopilotBuilder::default()` token-file layout, so a login
+    // cached by the old client is still found.
+    let token_dir = super::default_token_dir();
+    let authenticator = super::auth::Authenticator::new(
+        source,
+        token_dir.as_ref().map(|dir| dir.join("access-token")),
+        token_dir.map(|dir| dir.join("api-key.json")),
+        super::auth::DeviceCodeHandler::default(),
+        true,
+    );
+
+    apply_auth_context(cfg, &authenticator, base_url_override).await
+}
+
+/// Config for `model` using a caller-built [`Authenticator`].
+///
+/// The escape hatch [`config_from_env`] does not cover: custom token-file
+/// locations, a device-code prompt handler, or `allow_device_flow = false` for
+/// unattended services (the classic builder's `token_dir`/`auth_file`/
+/// `on_device_code`/`allow_device_flow` knobs).
+///
+/// # Errors
+/// [`ConfigFromEnvError`] when credential resolution fails.
+pub async fn config_from_auth(
+    model: impl Into<String>,
+    authenticator: &super::auth::Authenticator,
+) -> Result<Config, ConfigFromEnvError> {
+    let cfg = Config::new(model);
+    let base_url_override = env_first_value(BASE_URL_VARS)?;
+    apply_auth_context(cfg, authenticator, base_url_override).await
+}
+
+/// Resolve `authenticator` into `cfg`'s credential and base URL.
+async fn apply_auth_context(
+    mut cfg: Config,
+    authenticator: &super::auth::Authenticator,
+    base_url_override: Option<String>,
+) -> Result<Config, ConfigFromEnvError> {
+    let auth = authenticator.auth_context().await?;
+
+    cfg.api_key = ApiKeyLocation::Inline(auth.api_key);
+    match (base_url_override, auth.api_base) {
+        (Some(base_url), _) => cfg.base_url = base_url,
+        (None, Some(api_base)) => cfg.base_url = api_base,
+        // Left at the default so `build_request` derives it from the token's
+        // `proxy-ep=` segment, exactly as the classic client did.
+        (None, None) => {}
+    }
+    Ok(cfg)
 }
 
 /// Build the serialized chat-completions request body for `request`.

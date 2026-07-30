@@ -286,12 +286,19 @@ pub mod functions {
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
     use crate::providers::descriptor::ChatCompletionsDialect;
-    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
+    };
     use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Llamafile API base URL.
-    pub const DEFAULT_BASE_URL: &str = "http://localhost:8080";
+    ///
+    /// Carries the `/v1` suffix: llamafile serves the OpenAI-compatible API
+    /// under `/v1`, and this path joins `base_url` with the endpoint path
+    /// verbatim. (The deleted classic client stored a bare host and appended
+    /// `/v1` inside its own `build_uri`; the resulting wire URL is the same.)
+    pub const DEFAULT_BASE_URL: &str = "http://localhost:8080/v1";
 
     /// Llamafile's Chat Completions streaming dialect.
     pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
@@ -331,6 +338,30 @@ pub mod functions {
                 model: model.into(),
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `LLAMAFILE_API_BASE_URL` (**required**) — the same variable the
+        /// deleted `llamafile::Client::from_env` read, which handed it straight to
+        /// `Client::from_url`. There is no credential: llamafile serves an
+        /// unauthenticated local endpoint, so `api_key` stays
+        /// [`ApiKeyLocation::None`].
+        ///
+        /// The env value is a **bare host URL without the `/v1` suffix** (e.g.
+        /// `http://localhost:8080`), exactly as the classic client expected: the
+        /// classic path appended `/v1` itself in `build_uri` on
+        /// [`LlamafileExt`](super::LlamafileExt). The functions path
+        /// builds URLs from `base_url` verbatim, so that same `/v1` is appended
+        /// here to keep the wire URL identical to the classic client's.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            let base_url = required_env_var("LLAMAFILE_API_BASE_URL")?;
+            cfg.base_url = format!("{}/v1", base_url.trim_end_matches('/'));
+            Ok(cfg)
         }
 
         /// Config for `model` with an explicit API key.
@@ -465,7 +496,7 @@ pub mod functions {
         fn build_request_sets_url_and_model() {
             let cfg = Config::new("test-model").with_api_key("secret");
             let req = build_request(&cfg, &sample_request(), false).expect("build");
-            assert_eq!(req.uri(), "http://localhost:8080/chat/completions");
+            assert_eq!(req.uri(), "http://localhost:8080/v1/chat/completions");
             let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
             assert_eq!(value["model"], "test-model");
         }

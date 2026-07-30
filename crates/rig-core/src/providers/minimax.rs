@@ -252,6 +252,28 @@ fn anthropic_base_override(
     ))
 }
 
+/// [`anthropic_base_override`] on the data-oriented error type.
+///
+/// Same precedence, same pure [`resolve_anthropic_base_override`] logic; only
+/// the env-var reader and error type differ so the `functions` module does not
+/// depend on `crate::client`.
+///
+/// # Errors
+/// [`ConfigError`](crate::providers::descriptor::ConfigError) when a variable
+/// is set but invalid.
+fn anthropic_base_override_from_env(
+    primary_env: &'static str,
+    fallback_env: &'static str,
+) -> Result<Option<String>, crate::providers::descriptor::ConfigError> {
+    let primary = crate::providers::descriptor::optional_env_var(primary_env)?;
+    let fallback = crate::providers::descriptor::optional_env_var(fallback_env)?;
+
+    Ok(resolve_anthropic_base_override(
+        primary.as_deref(),
+        fallback.as_deref(),
+    ))
+}
+
 fn resolve_anthropic_base_override(
     primary: Option<&str>,
     fallback: Option<&str>,
@@ -400,8 +422,11 @@ pub mod functions {
 
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::anthropic::functions as anthropic_functions;
     use crate::providers::descriptor::ChatCompletionsDialect;
-    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+    };
     use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
@@ -448,6 +473,25 @@ pub mod functions {
             }
         }
 
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `MINIMAX_API_KEY` (required) and `MINIMAX_API_BASE` (optional
+        /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+        /// `minimax::Client::from_env` read. The credential is validated
+        /// eagerly but stored as [`ApiKeyLocation::Env`], so the secret is read
+        /// at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            required_env_var("MINIMAX_API_KEY")?;
+            if let Some(base_url) = optional_env_var("MINIMAX_API_BASE")? {
+                cfg.base_url = base_url;
+            }
+            Ok(cfg)
+        }
+
         /// Config for `model` with an explicit API key.
         pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
             self.api_key = ApiKeyLocation::Inline(key.into());
@@ -459,6 +503,42 @@ pub mod functions {
             self.base_url = base_url.into();
             self
         }
+    }
+
+    /// Anthropic-Messages surface configuration for `model`, built from the
+    /// process environment.
+    ///
+    /// The replacement for the deleted [`AnthropicClient`](super::AnthropicClient):
+    /// MiniMax's Anthropic endpoint is reached through
+    /// [`anthropic::functions`](crate::providers::anthropic::functions) with a
+    /// MiniMax base URL and credential. Reads `MINIMAX_API_KEY` (required) and
+    /// resolves the base URL from `MINIMAX_ANTHROPIC_API_BASE`, falling back to a
+    /// normalized `MINIMAX_API_BASE`, then to
+    /// [`GLOBAL_ANTHROPIC_API_BASE_URL`](super::GLOBAL_ANTHROPIC_API_BASE_URL) — the same precedence and default
+    /// the classic client used.
+    ///
+    /// `default_max_tokens` is forced to `4096` for every model, mirroring
+    /// MiniMax's `AnthropicDialect`; `anthropic_version`/`anthropic_betas` keep
+    /// the Anthropic defaults, which is what the classic builder used too.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn anthropic_config_from_env(
+        model: impl Into<String>,
+    ) -> Result<anthropic_functions::Config, ConfigError> {
+        let mut cfg = anthropic_functions::Config::new(model);
+        required_env_var("MINIMAX_API_KEY")?;
+        cfg.api_key = ApiKeyLocation::Env("MINIMAX_API_KEY".to_string());
+        cfg.base_url =
+            anthropic_functions::normalize_base_url(super::GLOBAL_ANTHROPIC_API_BASE_URL);
+        cfg.default_max_tokens = Some(4096);
+        if let Some(base_url) = super::anthropic_base_override_from_env(
+            "MINIMAX_ANTHROPIC_API_BASE",
+            "MINIMAX_API_BASE",
+        )? {
+            cfg.base_url = anthropic_functions::normalize_base_url(&base_url);
+        }
+        Ok(cfg)
     }
 
     /// Build the serialized chat-completions request body for `request`. Pure.

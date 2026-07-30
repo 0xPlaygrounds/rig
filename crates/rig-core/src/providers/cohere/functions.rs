@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 use super::completion::{CohereCompletionRequest, apply_stream_flag};
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
+};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 /// Default Cohere API base URL.
@@ -63,6 +65,22 @@ impl Config {
             model: model.into(),
             extra_headers: Vec::new(),
         }
+    }
+
+    /// Config for `model` built from the process environment.
+    ///
+    /// Reads `COHERE_API_KEY` (required) — the same variable the deleted
+    /// `cohere::Client::from_env` read. There is no base-URL override: the
+    /// classic client always targeted [`DEFAULT_BASE_URL`]. The credential is
+    /// validated eagerly but stored as [`ApiKeyLocation::Env`], so the secret is
+    /// read at request time rather than held inside the config.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let cfg = Self::new(model);
+        required_env_var("COHERE_API_KEY")?;
+        Ok(cfg)
     }
 
     /// Config for `model` with an explicit API key.
@@ -207,6 +225,18 @@ impl EmbeddingConfig {
             input_type: "search_document".to_string(),
             extra_headers: Vec::new(),
         }
+    }
+
+    /// Config for `model` built from the process environment.
+    ///
+    /// Same variable as [`Config::from_env`]: `COHERE_API_KEY` (required).
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let cfg = Self::new(model);
+        required_env_var("COHERE_API_KEY")?;
+        Ok(cfg)
     }
 
     /// Config for `model` with an explicit API key.

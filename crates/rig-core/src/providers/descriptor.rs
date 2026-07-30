@@ -207,6 +207,56 @@ pub enum ApiKeyError {
     MissingEnv(String),
 }
 
+/// Failure while building a provider configuration from the environment.
+///
+/// Returned by every provider's `functions::Config::from_env` (and the
+/// modality configs' `from_env`). These are the problems detectable before any
+/// request is sent: a missing credential variable, a variable holding invalid
+/// Unicode, or a combination of variables that cannot describe a usable
+/// endpoint.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConfigError {
+    /// A required or optional environment variable could not be read.
+    ///
+    /// For required variables this is also the "variable not present" case.
+    #[error("environment variable `{name}` is not set or is invalid")]
+    EnvironmentVariable {
+        /// The environment variable name.
+        name: &'static str,
+        /// The underlying environment lookup error.
+        #[source]
+        source: std::env::VarError,
+    },
+    /// The variables that were present do not describe a usable configuration.
+    #[error("{0}")]
+    InvalidConfiguration(&'static str),
+}
+
+/// Read a required environment variable for provider configuration.
+///
+/// # Errors
+/// [`ConfigError::EnvironmentVariable`] when the variable is missing or holds
+/// invalid Unicode.
+pub fn required_env_var(name: &'static str) -> Result<String, ConfigError> {
+    std::env::var(name).map_err(|source| ConfigError::EnvironmentVariable { name, source })
+}
+
+/// Read an optional environment variable for provider configuration.
+///
+/// Missing variables return `Ok(None)`.
+///
+/// # Errors
+/// [`ConfigError::EnvironmentVariable`] when the variable holds invalid
+/// Unicode.
+pub fn optional_env_var(name: &'static str) -> Result<Option<String>, ConfigError> {
+    match std::env::var(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(source) => Err(ConfigError::EnvironmentVariable { name, source }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ApiKeyLocation;

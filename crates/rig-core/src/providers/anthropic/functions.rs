@@ -23,7 +23,9 @@ use super::completion::{
 };
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 /// Default Anthropic API base URL.
@@ -90,6 +92,25 @@ impl Config {
         }
     }
 
+    /// Config for `model` built from the process environment.
+    ///
+    /// Reads `ANTHROPIC_API_KEY` (required) and `ANTHROPIC_BASE_URL` (optional
+    /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+    /// `anthropic::Client::from_env` read. The credential is validated eagerly
+    /// but stored as [`ApiKeyLocation::Env`], so the secret is read at request
+    /// time rather than held inside the config.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        required_env_var("ANTHROPIC_API_KEY")?;
+        if let Some(base_url) = optional_env_var("ANTHROPIC_BASE_URL")? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
+    }
+
     /// Config for `model` with an explicit API key.
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = ApiKeyLocation::Inline(key.into());
@@ -100,6 +121,28 @@ impl Config {
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
+    }
+}
+
+/// Normalize an Anthropic Messages base URL.
+///
+/// Strips a trailing slash and any `/v1`, `/messages`, or `/v1/messages`
+/// suffix, so a base URL copied from API documentation still composes into a
+/// single well-formed request path. This is the classic client's
+/// `anthropic::client::normalize_anthropic_base_url`, moved here so the
+/// Anthropic-compatible providers (Z.ai, MiniMax, Moonshot, Xiaomi MiMo) keep
+/// byte-identical URLs after the client layer's deletion.
+pub fn normalize_base_url(base_url: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+
+    if let Some(stripped) = trimmed.strip_suffix("/v1/messages") {
+        stripped.to_string()
+    } else if let Some(stripped) = trimmed.strip_suffix("/messages") {
+        stripped.to_string()
+    } else if let Some(stripped) = trimmed.strip_suffix("/v1") {
+        stripped.to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 

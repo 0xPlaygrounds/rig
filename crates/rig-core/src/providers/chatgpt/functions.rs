@@ -6,16 +6,24 @@
 //! [`build_request`] and [`parse_response`] — plus async [`complete`] and
 //! [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! # Auth deviation
+//! # Credentials
 //!
-//! The full ChatGPT client authenticates via an OAuth device-code flow with
-//! a cached, refreshable token file (`auth::Authenticator`). That flow is
-//! interactive and stateful and cannot be represented as plain data, so
-//! [`Config`] carries only the resolved credential: a bearer access token
-//! (mirroring the client's `CHATGPT_ACCESS_TOKEN` path) plus the optional
-//! `ChatGPT-Account-Id`. Callers using OAuth should resolve a token via the
-//! client's authenticator and store it here as
-//! [`ApiKeyLocation::Inline`]/`Env`.
+//! ChatGPT authenticates via an OAuth device-code flow with a cached,
+//! refreshable token file, which cannot be represented as plain data. So
+//! [`Config`] carries only the *resolved* credential — a bearer access token
+//! plus the optional `ChatGPT-Account-Id` — and resolution is a
+//! construction-time step:
+//!
+//! - [`Config::from_env`] — synchronous, `CHATGPT_ACCESS_TOKEN` only;
+//! - [`config_from_env`] — async, the full precedence the deleted
+//!   `chatgpt::Client::from_env` had (access token, then cached OAuth with
+//!   refresh and device flow) via
+//!   [`auth::Authenticator`](super::auth::Authenticator);
+//! - [`config_from_auth`] — async, for a caller-configured authenticator.
+//!
+//! Because the resolved token is stored in the config, long-lived processes
+//! should rebuild the config when a token expires — the classic client
+//! refreshed per request.
 //!
 //! # Other deviations
 //!
@@ -35,7 +43,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
+};
 use crate::providers::openai::responses_api;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
@@ -123,6 +133,112 @@ impl Config {
         self.base_url = base_url.into();
         self
     }
+
+    /// Config for `model` from an explicit access token in the environment.
+    ///
+    /// The synchronous subset of [`config_from_env`]: it requires
+    /// `CHATGPT_ACCESS_TOKEN`, reads the optional `CHATGPT_ACCOUNT_ID`, and
+    /// applies the `CHATGPT_API_BASE` / `OPENAI_CHATGPT_API_BASE` override.
+    /// Use [`config_from_env`] when the credential may come from a cached
+    /// OAuth login, which requires an async refresh.
+    ///
+    /// # Errors
+    /// [`ConfigError::InvalidConfiguration`] when `CHATGPT_ACCESS_TOKEN` is
+    /// unset.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        if optional_env_var("CHATGPT_ACCESS_TOKEN")?.is_none() {
+            return Err(ConfigError::InvalidConfiguration(
+                "`CHATGPT_ACCESS_TOKEN` must be set; use `config_from_env` for OAuth credentials",
+            ));
+        }
+        cfg.account_id = optional_env_var("CHATGPT_ACCOUNT_ID")?;
+        if let Some(base_url) = env_base_url()? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
+    }
+}
+
+/// The `CHATGPT_API_BASE` / `OPENAI_CHATGPT_API_BASE` override, in the classic
+/// client's precedence order.
+fn env_base_url() -> Result<Option<String>, ConfigError> {
+    Ok(optional_env_var("CHATGPT_API_BASE")?.or(optional_env_var("OPENAI_CHATGPT_API_BASE")?))
+}
+
+/// Failure while resolving a ChatGPT configuration from the environment.
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigFromEnvError {
+    /// An environment variable was missing or unreadable.
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+    /// OAuth refresh or the device-code flow failed.
+    #[error(transparent)]
+    Auth(#[from] super::auth::AuthError),
+}
+
+/// Config for `model`, resolving the credential the way the deleted
+/// `chatgpt::Client::from_env` did.
+///
+/// Precedence, unchanged from the classic client:
+///
+/// 1. `CHATGPT_ACCESS_TOKEN` (plus optional `CHATGPT_ACCOUNT_ID`);
+/// 2. otherwise the cached OAuth login in the standard `auth.json`, refreshing
+///    or running the device-code flow as needed.
+///
+/// The `CHATGPT_API_BASE` / `OPENAI_CHATGPT_API_BASE` override and the
+/// `CHATGPT_DEFAULT_INSTRUCTIONS` default (applied by [`Config::new`]) behave
+/// as before.
+///
+/// This is async because case 2 performs IO. Use [`Config::from_env`] for the
+/// synchronous access-token path.
+///
+/// # Errors
+/// [`ConfigFromEnvError`] when a variable is unreadable or credential
+/// resolution fails.
+pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigFromEnvError> {
+    let source = match optional_env_var("CHATGPT_ACCESS_TOKEN")? {
+        Some(access_token) => super::auth::AuthSource::AccessToken {
+            access_token,
+            account_id: optional_env_var("CHATGPT_ACCOUNT_ID")?,
+        },
+        None => super::auth::AuthSource::OAuth,
+    };
+
+    // The classic `ChatGPTBuilder::default()` auth-file location, so a login
+    // cached by the old client is still found.
+    let authenticator = super::auth::Authenticator::new(
+        source,
+        super::default_auth_file(),
+        super::auth::DeviceCodeHandler::default(),
+        true,
+    );
+
+    config_from_auth(model, &authenticator).await
+}
+
+/// Config for `model` using a caller-built [`Authenticator`].
+///
+/// The escape hatch [`config_from_env`] does not cover: a custom `auth.json`
+/// location, a device-code prompt handler, or `allow_device_flow = false` for
+/// unattended services (the classic builder's `auth_file`/`token_dir`/
+/// `on_device_code`/`allow_device_flow` knobs).
+///
+/// # Errors
+/// [`ConfigFromEnvError`] when credential resolution fails.
+pub async fn config_from_auth(
+    model: impl Into<String>,
+    authenticator: &super::auth::Authenticator,
+) -> Result<Config, ConfigFromEnvError> {
+    let mut cfg = Config::new(model);
+    let auth = authenticator.auth_context().await?;
+
+    cfg.api_key = ApiKeyLocation::Inline(auth.access_token);
+    cfg.account_id = auth.account_id;
+    if let Some(base_url) = env_base_url()? {
+        cfg.base_url = base_url;
+    }
+    Ok(cfg)
 }
 
 /// Build the serialized Codex Responses request body for `request`.

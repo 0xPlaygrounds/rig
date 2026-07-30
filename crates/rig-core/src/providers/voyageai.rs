@@ -302,7 +302,9 @@ pub mod functions {
 
     use crate::embeddings::EmbeddingError;
     use crate::http_runtime::HttpRuntime;
-    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
+    };
 
     /// Default Voyage AI API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.voyageai.com/v1";
@@ -335,6 +337,22 @@ pub mod functions {
                 model: model.into(),
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `VOYAGE_API_KEY` (required) — the same variable the deleted
+        /// `voyageai::Client::from_env` read. There is no base-URL override: the
+        /// classic client always targeted [`DEFAULT_BASE_URL`]. The credential is
+        /// validated eagerly but stored as [`ApiKeyLocation::Env`], so the secret
+        /// is read at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let cfg = Self::new(model);
+            required_env_var("VOYAGE_API_KEY")?;
+            Ok(cfg)
         }
 
         /// Config for `model` with an explicit API key.
@@ -460,6 +478,19 @@ pub mod functions {
                 return_documents: false,
                 truncation: None,
             }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Same variable as [`EmbeddingConfig::from_env`]: `VOYAGE_API_KEY`
+        /// (required).
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let cfg = Self::new(model);
+            required_env_var("VOYAGE_API_KEY")?;
+            Ok(cfg)
         }
 
         /// Config with an explicit API key.

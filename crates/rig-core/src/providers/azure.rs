@@ -1124,17 +1124,20 @@ pub mod functions {
     //! `base_url`, and [`build_request`] uses the same absolute URL
     //! [`AzureExt::completion_path`](super::AzureExt) produces.
     //!
-    //! Authentication mirrors the client's `AzureOpenAIAuth::ApiKey` arm:
-    //! the resolved key is sent in the `api-key` header. The Entra
-    //! bearer-token arm (`AzureOpenAIAuth::Token`) is not modeled here; use
-    //! `extra_headers` with an `authorization` header for token auth.
+    //! Authentication carries both of the classic client's arms as data:
+    //! [`AuthScheme::ApiKeyHeader`] (the default) sends the resolved
+    //! credential in the `api-key` header, and [`AuthScheme::Bearer`] sends
+    //! it as `Authorization: Bearer` — the Entra ID / `AZURE_TOKEN` path the
+    //! classic `AzureOpenAIAuth::Token` arm used.
 
     use serde::{Deserialize, Serialize};
 
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
     use crate::providers::descriptor::ChatCompletionsDialect;
-    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+    };
     use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
@@ -1156,6 +1159,54 @@ pub mod functions {
         max_embedding_documents: Some(1024),
     };
 
+    /// How an Azure credential is presented on the wire.
+    ///
+    /// The plain-data replacement for the classic `AzureOpenAIAuth` enum:
+    /// resource keys go in `api-key`, Entra ID tokens go in
+    /// `Authorization: Bearer`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+    pub enum AuthScheme {
+        /// Send the credential in the `api-key` header (Azure resource keys).
+        #[default]
+        ApiKeyHeader,
+        /// Send the credential as `Authorization: Bearer` (Entra ID tokens —
+        /// the classic `AzureOpenAIAuth::Token` arm, `AZURE_TOKEN`).
+        Bearer,
+    }
+
+    /// Resolve which Azure credential variable to read and how to present it.
+    ///
+    /// `AZURE_API_KEY` wins over `AZURE_TOKEN`, exactly as the classic
+    /// `azure::Client::from_env` did.
+    ///
+    /// # Errors
+    /// [`ConfigError::InvalidConfiguration`] when neither variable is set.
+    fn resolve_env_credential() -> Result<(&'static str, AuthScheme), ConfigError> {
+        if optional_env_var("AZURE_API_KEY")?.is_some() {
+            Ok(("AZURE_API_KEY", AuthScheme::ApiKeyHeader))
+        } else if optional_env_var("AZURE_TOKEN")?.is_some() {
+            Ok(("AZURE_TOKEN", AuthScheme::Bearer))
+        } else {
+            Err(ConfigError::InvalidConfiguration(
+                "either `AZURE_API_KEY` or `AZURE_TOKEN` must be set",
+            ))
+        }
+    }
+
+    /// Apply the configured credential header to `builder`.
+    fn apply_auth_header(
+        builder: http::request::Builder,
+        scheme: AuthScheme,
+        key: String,
+    ) -> http::request::Builder {
+        match scheme {
+            AuthScheme::ApiKeyHeader => builder.header("api-key", key),
+            AuthScheme::Bearer => {
+                builder.header(http::header::AUTHORIZATION, format!("Bearer {key}"))
+            }
+        }
+    }
+
     /// Plain-data Azure OpenAI provider configuration.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
@@ -1164,8 +1215,11 @@ pub mod functions {
         pub endpoint: String,
         /// API version query parameter (defaults to [`DEFAULT_API_VERSION`]).
         pub api_version: String,
-        /// Credential location; sent as the `api-key` header.
+        /// Credential location.
         pub api_key: ApiKeyLocation,
+        /// How the credential is presented (`api-key` header by default).
+        #[serde(default)]
+        pub auth_scheme: AuthScheme,
         /// Deployment identifier requests are built for (routed through the URL).
         pub model: String,
         /// Extra headers attached to every request.
@@ -1180,9 +1234,44 @@ pub mod functions {
                 endpoint: endpoint.into(),
                 api_version: DEFAULT_API_VERSION.to_string(),
                 api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
+                auth_scheme: AuthScheme::ApiKeyHeader,
                 model: model.into(),
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Config for `model` built entirely from the process environment.
+        ///
+        /// Reads `AZURE_ENDPOINT` and `AZURE_API_VERSION` (both required) and
+        /// takes the credential from `AZURE_API_KEY`, falling back to
+        /// `AZURE_TOKEN` — the same variables the deleted
+        /// `azure::Client::from_env` read. The credential is validated eagerly
+        /// but stored as [`ApiKeyLocation::Env`], so the secret is read at
+        /// request time rather than held inside the config.
+        ///
+        /// Credential presentation matches the classic client exactly:
+        /// `AZURE_API_KEY` is sent in the `api-key` header
+        /// ([`AuthScheme::ApiKeyHeader`]), while `AZURE_TOKEN` is sent as
+        /// `Authorization: Bearer` ([`AuthScheme::Bearer`], Entra ID).
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid, or
+        /// when neither credential variable is set.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let endpoint = required_env_var("AZURE_ENDPOINT")?;
+            let api_version = required_env_var("AZURE_API_VERSION")?;
+            let (key_var, auth_scheme) = resolve_env_credential()?;
+            let mut cfg = Self::new(endpoint, model);
+            cfg.api_key = ApiKeyLocation::Env(key_var.to_string());
+            cfg.auth_scheme = auth_scheme;
+            cfg.api_version = api_version;
+            Ok(cfg)
+        }
+
+        /// Select the Azure credential variable and its wire presentation.
+        pub fn with_auth_scheme(mut self, auth_scheme: AuthScheme) -> Self {
+            self.auth_scheme = auth_scheme;
+            self
         }
 
         /// Config with an explicit API key.
@@ -1268,7 +1357,7 @@ pub mod functions {
             .resolve()
             .map_err(|e| CompletionError::RequestError(Box::new(e)))?
         {
-            builder = builder.header("api-key", key);
+            builder = apply_auth_header(builder, cfg.auth_scheme, key);
         }
         for (name, value) in &cfg.extra_headers {
             builder = builder.header(name.as_str(), value.as_str());
@@ -1331,7 +1420,7 @@ pub mod functions {
             .resolve()
             .map_err(|e| crate::http_client::Error::Instance(e.into()))?
         {
-            builder = builder.header("api-key", key);
+            builder = apply_auth_header(builder, cfg.auth_scheme, key);
         }
         for (name, value) in &cfg.extra_headers {
             builder = builder.header(name.as_str(), value.as_str());
@@ -1480,8 +1569,11 @@ pub mod functions {
         pub endpoint: String,
         /// API version query parameter (defaults to [`DEFAULT_API_VERSION`]).
         pub api_version: String,
-        /// Credential location; sent as the `api-key` header.
+        /// Credential location.
         pub api_key: crate::providers::descriptor::ApiKeyLocation,
+        /// How the credential is presented (`api-key` header by default).
+        #[serde(default)]
+        pub auth_scheme: AuthScheme,
         /// Embedding deployment identifier (routed through the URL).
         pub model: String,
         /// Requested embedding dimensions, sent verbatim as `dimensions`
@@ -1500,10 +1592,40 @@ pub mod functions {
                 endpoint: endpoint.into(),
                 api_version: DEFAULT_API_VERSION.to_string(),
                 api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
+                auth_scheme: AuthScheme::ApiKeyHeader,
                 model: model.into(),
                 dimensions: None,
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Embedding config for the `model` deployment, built entirely from the
+        /// process environment.
+        ///
+        /// Same variables as [`Config::from_env`]: `AZURE_ENDPOINT` and
+        /// `AZURE_API_VERSION` (both required), plus `AZURE_API_KEY` with
+        /// `AZURE_TOKEN` as a fallback. The credential is validated eagerly but
+        /// stored as [`ApiKeyLocation::Env`]; `AZURE_API_KEY` is sent in the
+        /// `api-key` header and `AZURE_TOKEN` as `Authorization: Bearer`.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid, or
+        /// when neither credential variable is set.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let endpoint = required_env_var("AZURE_ENDPOINT")?;
+            let api_version = required_env_var("AZURE_API_VERSION")?;
+            let (key_var, auth_scheme) = resolve_env_credential()?;
+            let mut cfg = Self::new(endpoint, model);
+            cfg.api_key = ApiKeyLocation::Env(key_var.to_string());
+            cfg.auth_scheme = auth_scheme;
+            cfg.api_version = api_version;
+            Ok(cfg)
+        }
+
+        /// Select how the credential is presented on the wire.
+        pub fn with_auth_scheme(mut self, auth_scheme: AuthScheme) -> Self {
+            self.auth_scheme = auth_scheme;
+            self
         }
 
         /// Config with an explicit API key.
@@ -1550,7 +1672,7 @@ pub mod functions {
             .resolve()
             .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
         {
-            builder = builder.header("api-key", key);
+            builder = apply_auth_header(builder, cfg.auth_scheme, key);
         }
         for (name, value) in &cfg.extra_headers {
             builder = builder.header(name.as_str(), value.as_str());

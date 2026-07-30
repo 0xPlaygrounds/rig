@@ -24,7 +24,9 @@ use crate::http_runtime::HttpRuntime;
 use crate::json_utils::merge;
 use crate::model::{ModelList, ModelListingError};
 use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+};
 
 /// Default OpenAI API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -67,6 +69,25 @@ impl Config {
             model: model.into(),
             extra_headers: Vec::new(),
         }
+    }
+
+    /// Config for `model` built from the process environment.
+    ///
+    /// Reads `OPENAI_API_KEY` (required) and `OPENAI_BASE_URL` (optional
+    /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+    /// `openai::Client::from_env` read. The credential is validated eagerly but
+    /// stored as [`ApiKeyLocation::Env`], so the secret is read at request time
+    /// rather than held inside the config.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        required_env_var("OPENAI_API_KEY")?;
+        if let Some(base_url) = optional_env_var("OPENAI_BASE_URL")? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
     }
 
     /// Config for `model` with an explicit API key.
@@ -566,6 +587,22 @@ impl EmbeddingConfig {
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
         self
+    }
+
+    /// Config for `model` built from the process environment.
+    ///
+    /// Same variables as [`Config::from_env`]: `OPENAI_API_KEY` (required) and
+    /// `OPENAI_BASE_URL` (optional).
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        required_env_var("OPENAI_API_KEY")?;
+        if let Some(base_url) = optional_env_var("OPENAI_BASE_URL")? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
     }
 
     /// Request `dimensions`-sized embeddings.

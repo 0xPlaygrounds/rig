@@ -1353,7 +1353,9 @@ pub mod functions {
     use super::{CompletionResponse, OllamaCompletionRequest};
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
-    use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
+    };
 
     /// Default Ollama API base URL (local instance).
     pub const DEFAULT_BASE_URL: &str = super::OLLAMA_API_BASE_URL;
@@ -1405,6 +1407,33 @@ pub mod functions {
                 model: model.into(),
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `OLLAMA_API_BASE_URL` (optional override of
+        /// [`DEFAULT_BASE_URL`]) and `OLLAMA_API_KEY` (**optional** — Ollama
+        /// serves unauthenticated by default; only proxied deployments need a
+        /// Bearer token). These are the same variables the deleted
+        /// `ollama::Client::from_env` read, where an absent key became
+        /// `OllamaApiKey::default()`, i.e. no `Authorization` header at all —
+        /// mirrored here as [`ApiKeyLocation::None`] (an empty value is likewise
+        /// treated as no credential, as `OllamaApiKey::from` did). When the key is
+        /// present and non-empty it is stored as [`ApiKeyLocation::Env`], so the
+        /// secret is read at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a variable holds invalid Unicode.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            if let Some(base_url) = optional_env_var("OLLAMA_API_BASE_URL")? {
+                cfg.base_url = base_url;
+            }
+            cfg.api_key = match optional_env_var("OLLAMA_API_KEY")? {
+                Some(key) if !key.is_empty() => ApiKeyLocation::Env("OLLAMA_API_KEY".to_string()),
+                _ => ApiKeyLocation::None,
+            };
+            Ok(cfg)
         }
 
         /// Config for `model` with an explicit Bearer token (proxied
@@ -1540,6 +1569,28 @@ pub mod functions {
                 model: model.into(),
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Same variables as [`Config::from_env`]: `OLLAMA_API_BASE_URL`
+        /// (optional base-URL override) and `OLLAMA_API_KEY` (**optional**; an
+        /// absent or empty value leaves the config credential-less, matching the
+        /// classic client's `OllamaApiKey::default()`, which emitted no
+        /// `Authorization` header).
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a variable holds invalid Unicode.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            if let Some(base_url) = optional_env_var("OLLAMA_API_BASE_URL")? {
+                cfg.base_url = base_url;
+            }
+            cfg.api_key = match optional_env_var("OLLAMA_API_KEY")? {
+                Some(key) if !key.is_empty() => ApiKeyLocation::Env("OLLAMA_API_KEY".to_string()),
+                _ => ApiKeyLocation::None,
+            };
+            Ok(cfg)
         }
 
         /// Config for `model` with an explicit Bearer token (proxied

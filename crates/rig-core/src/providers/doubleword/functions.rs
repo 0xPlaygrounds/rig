@@ -15,7 +15,9 @@ use serde::{Deserialize, Serialize};
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::descriptor::{
+    ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+};
 use crate::providers::openai::completion::CompletionModelOptions;
 use crate::providers::openai::functions as openai_functions;
 
@@ -60,6 +62,25 @@ impl Config {
             model: model.into(),
             extra_headers: Vec::new(),
         }
+    }
+
+    /// Config for `model` built from the process environment.
+    ///
+    /// Reads `DOUBLEWORD_API_KEY` (required) and `DOUBLEWORD_BASE_URL` (optional
+    /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+    /// `doubleword::Client::from_env` read. The credential is validated eagerly
+    /// but stored as [`ApiKeyLocation::Env`], so the secret is read at request
+    /// time rather than held inside the config.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        required_env_var("DOUBLEWORD_API_KEY")?;
+        if let Some(base_url) = optional_env_var("DOUBLEWORD_BASE_URL")? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
     }
 
     /// Config for `model` with an explicit API key.
@@ -194,6 +215,22 @@ impl EmbeddingConfig {
             model: model.into(),
             extra_headers: Vec::new(),
         }
+    }
+
+    /// Embedding config for `model` built from the process environment.
+    ///
+    /// Same variables as [`Config::from_env`]: `DOUBLEWORD_API_KEY` (required)
+    /// and `DOUBLEWORD_BASE_URL` (optional).
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let mut cfg = Self::new(model);
+        required_env_var("DOUBLEWORD_API_KEY")?;
+        if let Some(base_url) = optional_env_var("DOUBLEWORD_BASE_URL")? {
+            cfg.base_url = base_url;
+        }
+        Ok(cfg)
     }
 
     /// Config for `model` with an explicit API key.

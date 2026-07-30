@@ -94,6 +94,11 @@
 //! ```
 pub mod descriptor;
 
+pub use descriptor::{
+    ApiKeyError, ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
+    required_env_var,
+};
+
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
