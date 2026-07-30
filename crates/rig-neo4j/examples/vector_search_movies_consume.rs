@@ -14,6 +14,7 @@
 //! [examples/vector_search_movies_add_embeddings.rs](examples/vector_search_movies_add_embeddings.rs) provides an example of
 //! how to add embeddings to an existing `recommendations` database.
 use neo4rs::ConfigBuilder;
+use rig_core::OneOrMany;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig_neo4j::Neo4jClient;
@@ -70,11 +71,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "a historical movie on quebec";
     // Queries are pre-embedded: embed them with the same model the index was built with.
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query).await?)
-        .samples(5)
-        .filter(SearchFilter::gt("node.year", 1990.into()))
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 5)
+        .with_filter(SearchFilter::gt("node.year", 1990.into()));
 
     // Query the index
     let results = index
@@ -92,10 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{:#}", display::SearchResults(&results));
 
     let query = "A movie where the bad guy wins";
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query).await?)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 1);
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

@@ -74,11 +74,7 @@ mod tests {
             .expect("build client");
         let model = client.audio_generation_model(TTS_1);
 
-        let request = model
-            .audio_generation_request()
-            .text("hello")
-            .voice("alloy")
-            .build();
+        let request = AudioGenerationRequest::new("hello", "alloy");
 
         let error = model
             .audio_generation(request)

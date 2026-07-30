@@ -1,24 +1,30 @@
-//! Shared helpers for OpenAI Chat Completions-compatible streaming providers.
+//! The sans-IO stream state machine for OpenAI Chat Completions-compatible
+//! providers.
 //!
 //! Several providers expose an SSE stream that looks like OpenAI Chat
 //! Completions: text arrives in deltas, tool calls are streamed piecemeal, and
-//! a trailing event may carry usage. This module centralizes the common stream
-//! state machine while leaving request parsing and provider-specific metadata to
-//! small profile hooks.
+//! a trailing event may carry usage. This module owns the shared state machine.
+//! Dialect variation is **plain data**, not a trait: [`ChunkNormalizer`] is a
+//! concrete enum whose arms name the per-dialect pure chunk parsers
+//! (`&str -> NormalizedCompatibleChunk`), and the boolean knobs come from each
+//! provider's [`ProviderDescriptor`](crate::providers::descriptor::ProviderDescriptor).
+//! The transport is the type-erased
+//! [`BoxedEventSource`](crate::http_client::sse::BoxedEventSource), so nothing
+//! here is generic over the HTTP client.
 
 use std::collections::HashMap;
 
 use async_stream::stream;
 use futures::StreamExt;
-use http::Request;
 use tracing_futures::Instrument;
 
 use crate::completion::CompletionError;
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::{BoxedEventSource, Event};
 use crate::json_utils;
+pub(crate) use crate::providers::descriptor::{
+    ChatCompletionsDialect, ChatCompletionsUsageDialect,
+};
 use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-use crate::wasm_compat::WasmCompatSend;
 
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
@@ -80,67 +86,53 @@ impl CompatibleToolCallChunk {
     }
 }
 
+/// One normalized choice from a compatible streaming chunk.
+///
+/// `details` carries provider-specific side payloads (OpenRouter's
+/// `reasoning_details`) that decorate already-accumulated tool calls; dialects
+/// without them leave it empty.
 #[derive(Debug, Clone)]
-pub(crate) struct CompatibleChoice<D> {
+pub(crate) struct CompatibleChoice {
     pub(crate) finish_reason: CompatibleFinishReason,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
-    pub(crate) details: Vec<D>,
+    pub(crate) details: Vec<serde_json::Value>,
 }
 
+/// One normalized compatible streaming chunk.
+///
+/// `usage` is already normalized to [`crate::completion::Usage`]: each dialect
+/// parses its own wire usage type and converts at the parse site, so the state
+/// machine carries no provider usage generic.
 #[derive(Debug, Clone)]
-pub(crate) struct CompatibleChoiceData<T, D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
-    pub(crate) text: Option<String>,
-    pub(crate) reasoning: Option<String>,
-    pub(crate) tool_calls: Vec<T>,
-    pub(crate) details: Vec<D>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct CompatibleChunk<U, D> {
+pub(crate) struct CompatibleChunk {
     pub(crate) response_id: Option<String>,
     pub(crate) response_model: Option<String>,
-    pub(crate) choice: Option<CompatibleChoice<D>>,
-    pub(crate) usage: Option<U>,
+    pub(crate) choice: Option<CompatibleChoice>,
+    pub(crate) usage: Option<crate::completion::Usage>,
 }
 
-pub(crate) type NormalizedCompatibleChunk<U, D> =
-    Result<Option<CompatibleChunk<U, D>>, CompletionError>;
+/// The result of a pure per-dialect chunk parser: `Ok(None)` skips the chunk
+/// (unparseable payloads are logged and skipped, as before), `Err` terminates
+/// the stream.
+pub(crate) type NormalizedCompatibleChunk = Result<Option<CompatibleChunk>, CompletionError>;
 
-impl<T, D> From<CompatibleChoiceData<T, D>> for CompatibleChoice<D>
-where
-    T: Into<CompatibleToolCallChunk>,
-{
-    fn from(value: CompatibleChoiceData<T, D>) -> Self {
-        Self {
-            finish_reason: value.finish_reason,
-            text: value.text,
-            reasoning: value.reasoning,
-            tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
-            details: value.details,
-        }
-    }
-}
-
-pub(crate) fn normalize_first_choice_chunk<U, D, Choice, ToolCall, F>(
+/// Assemble a normalized chunk from a dialect's first choice.
+pub(crate) fn first_choice_chunk<Choice, F>(
     response_id: Option<String>,
     response_model: Option<String>,
-    usage: Option<U>,
+    usage: Option<crate::completion::Usage>,
     choices: &[Choice],
     map_choice: F,
-) -> CompatibleChunk<U, D>
+) -> CompatibleChunk
 where
-    ToolCall: Into<CompatibleToolCallChunk>,
-    F: FnOnce(&Choice) -> CompatibleChoiceData<ToolCall, D>,
+    F: FnOnce(&Choice) -> CompatibleChoice,
 {
-    let choice = choices.first().map(|choice| map_choice(choice).into());
-
     CompatibleChunk {
         response_id,
         response_model,
-        choice,
+        choice: choices.first().map(map_choice),
         usage,
     }
 }
@@ -155,17 +147,68 @@ where
         .collect()
 }
 
-pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + Into<crate::completion::Usage> + WasmCompatSend + 'static;
-    type Detail: WasmCompatSend + 'static;
+/// The per-dialect chunk parser the shared state machine runs, as a concrete
+/// enum rather than a trait object.
+///
+/// Each arm names a pure `&str -> NormalizedCompatibleChunk` function living
+/// with the wire types it parses.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ChunkNormalizer {
+    /// The OpenAI Chat Completions wire dialect (17 providers).
+    ChatCompletions(ChatCompletionsDialect),
+    /// GitHub Copilot's chat completions dialect (a narrower schema: required
+    /// `index`, no `reasoning`/`reasoning_details` keys, no deprecated
+    /// `function_call` finish reason).
+    CopilotChat,
+    /// Scripted normalizers that drive the state machine directly in tests.
+    #[cfg(test)]
+    Test(crate::test_utils::internal_streaming_profiles::TestNormalizer),
+}
 
-    fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
+impl ChunkNormalizer {
+    /// Parse one SSE `data` payload into a normalized chunk.
+    fn normalize(&self, data: &str) -> NormalizedCompatibleChunk {
+        match self {
+            Self::ChatCompletions(dialect) => {
+                crate::providers::openai::completion::streaming::normalize_chat_completions_chunk(
+                    data, *dialect,
+                )
+            }
+            Self::CopilotChat => crate::providers::copilot::normalize_copilot_chat_chunk(data),
+            #[cfg(test)]
+            Self::Test(normalizer) => normalizer.normalize(data),
+        }
+    }
 
-    /// Build the normalized terminal record from the provider's wire usage.
-    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal;
+    /// The provider name stamped on the terminal record.
+    fn provider_name(&self) -> &'static str {
+        match self {
+            Self::ChatCompletions(dialect) => dialect.provider,
+            Self::CopilotChat => "copilot",
+            #[cfg(test)]
+            Self::Test(normalizer) => normalizer.provider_name(),
+        }
+    }
 
+    /// The usage carried on the terminal record when the provider never sent a
+    /// usage payload — the dialect's wire default, converted.
+    fn default_usage(&self) -> crate::completion::Usage {
+        match self {
+            Self::ChatCompletions(dialect) => default_usage_for(dialect.usage),
+            Self::CopilotChat => crate::providers::openai::completion::Usage::default().into(),
+            #[cfg(test)]
+            Self::Test(_) => crate::completion::Usage::default(),
+        }
+    }
+
+    /// Whether same-index tool calls with distinct ids start a new call
+    /// (gateways that reuse `index: 0` for parallel calls).
     fn uses_distinct_tool_call_eviction(&self) -> bool {
-        false
+        match self {
+            Self::ChatCompletions(_) | Self::CopilotChat => true,
+            #[cfg(test)]
+            Self::Test(normalizer) => normalizer.uses_distinct_tool_call_eviction(),
+        }
     }
 
     fn should_evict(
@@ -177,24 +220,74 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
             && should_evict_distinct_named_tool_call(existing, incoming)
     }
 
-    fn decorate_tool_call(
-        &self,
-        _detail: &Self::Detail,
-        _tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
-    ) {
-    }
-
-    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
-        false
-    }
-
+    /// Whether a tool call that arrives complete in one chunk is emitted
+    /// immediately instead of being held until the stream ends.
     fn should_emit_completed_tool_call_immediately(
         &self,
-        _tool_call: &RawStreamingToolCall,
         incoming: &CompatibleToolCallChunk,
     ) -> bool {
-        self.emits_complete_single_chunk_tool_calls() && incoming.is_complete_single_chunk()
+        let emits = match self {
+            Self::ChatCompletions(dialect) => dialect.emits_complete_single_chunk_tool_calls,
+            Self::CopilotChat => false,
+            #[cfg(test)]
+            Self::Test(_) => false,
+        };
+        emits && incoming.is_complete_single_chunk()
     }
+
+    /// Apply a dialect's side payloads to the accumulated tool calls.
+    fn decorate_tool_call(
+        &self,
+        detail: &serde_json::Value,
+        tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
+    ) {
+        if let Self::ChatCompletions(dialect) = self
+            && dialect.decorates_reasoning_details
+        {
+            crate::providers::openrouter::decorate_streaming_tool_call(detail, tool_calls);
+        }
+    }
+}
+
+/// The normalized value of a dialect's default (all-zero) wire usage.
+fn default_usage_for(usage: ChatCompletionsUsageDialect) -> crate::completion::Usage {
+    match usage {
+        ChatCompletionsUsageDialect::OpenAi => {
+            crate::providers::openai::completion::Usage::default().into()
+        }
+        ChatCompletionsUsageDialect::DeepSeek => {
+            crate::providers::deepseek::Usage::default().into()
+        }
+        ChatCompletionsUsageDialect::Mistral => crate::providers::mistral::Usage::default().into(),
+        ChatCompletionsUsageDialect::OpenRouter => {
+            crate::providers::openrouter::Usage::default().into()
+        }
+    }
+}
+
+/// Parse a dialect's wire usage payload from an already-decoded JSON value,
+/// normalizing it at the parse site.
+pub(crate) fn normalize_wire_usage(
+    usage: Option<serde_json::Value>,
+    dialect: ChatCompletionsUsageDialect,
+) -> Result<Option<crate::completion::Usage>, serde_json::Error> {
+    let Some(usage) = usage else {
+        return Ok(None);
+    };
+    Ok(Some(match dialect {
+        ChatCompletionsUsageDialect::OpenAi => {
+            serde_json::from_value::<crate::providers::openai::completion::Usage>(usage)?.into()
+        }
+        ChatCompletionsUsageDialect::DeepSeek => {
+            serde_json::from_value::<crate::providers::deepseek::Usage>(usage)?.into()
+        }
+        ChatCompletionsUsageDialect::Mistral => {
+            serde_json::from_value::<crate::providers::mistral::Usage>(usage)?.into()
+        }
+        ChatCompletionsUsageDialect::OpenRouter => {
+            serde_json::from_value::<crate::providers::openrouter::Usage>(usage)?.into()
+        }
+    }))
 }
 
 pub(crate) fn should_evict_distinct_named_tool_call(
@@ -215,18 +308,18 @@ pub(crate) fn should_evict_distinct_named_tool_call(
     false
 }
 
-pub(crate) async fn send_compatible_streaming_request<T, P>(
-    http_client: T,
-    req: Request<Vec<u8>>,
-    profile: P,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-    P: CompatibleStreamProfile + 'static,
-{
+/// Drive `event_source` through the shared compatible stream state machine.
+///
+/// Sans-IO apart from consuming the already-opened transport-edge event stream:
+/// every dialect decision is a match on `normalizer`.
+pub(crate) fn drive_compatible_stream(
+    event_source: BoxedEventSource,
+    normalizer: ChunkNormalizer,
+) -> streaming::StreamingCompletionResponse {
     let span = tracing::Span::current();
     let instrument_span = span.clone();
-    let mut event_source = GenericEventSource::new(http_client, req);
+    let mut event_source = event_source;
+    let profile = normalizer;
 
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
@@ -250,7 +343,7 @@ where
                         break;
                     }
 
-                    let chunk = match profile.normalize_chunk(&message.data) {
+                    let chunk = match profile.normalize(&message.data) {
                         Ok(Some(chunk)) => chunk,
                         Ok(None) => continue,
                         Err(error) => {
@@ -316,11 +409,8 @@ where
                             });
                         }
 
-                        let emit_completed_tool_call_immediately = profile
-                            .should_emit_completed_tool_call_immediately(
-                                existing_tool_call,
-                                &incoming,
-                            );
+                        let emit_completed_tool_call_immediately =
+                            profile.should_emit_completed_tool_call_immediately(&incoming);
                         let finalized_tool_call = emit_completed_tool_call_immediately
                             .then(|| tool_calls.get(&incoming.index).cloned())
                             .flatten()
@@ -372,8 +462,6 @@ where
             }
         }
 
-        event_source.close();
-
         if terminated_with_error {
             return;
         }
@@ -384,18 +472,15 @@ where
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
         }
 
-        let final_usage = final_usage.unwrap_or_default();
-        let normalized_usage: crate::completion::Usage = final_usage.clone().into();
-        record_usage(&span, &normalized_usage);
+        let final_usage = final_usage.unwrap_or_else(|| profile.default_usage());
+        record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            crate::streaming::StreamFinal::new(profile.provider_name(), final_usage),
         ));
     }
     .instrument(instrument_span);
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
 }
 
 fn record_usage(span: &tracing::Span, usage: &crate::completion::Usage) {
@@ -641,19 +726,46 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
     use super::{
-        finalize_completed_streaming_tool_call, finalize_pending_tool_call,
-        send_compatible_streaming_request,
+        ChunkNormalizer, drive_compatible_stream, finalize_completed_streaming_tool_call,
+        finalize_pending_tool_call,
     };
     use crate::completion::CompletionError;
     use crate::http_client;
+    use crate::http_client::HttpClientExt;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
-    use crate::test_utils::internal_streaming_profiles::{
-        DistinctToolCallEvictionProfile, ErrorAfterPendingToolCallProfile,
-        FinishReasonCleanupProfile,
-    };
+    use crate::test_utils::internal_streaming_profiles::TestNormalizer;
     use futures::StreamExt;
+
+    /// Drive a scripted normalizer over a test HTTP client.
+    fn send_compatible_streaming_request<T>(
+        client: T,
+        req: http::Request<Vec<u8>>,
+        normalizer: TestNormalizer,
+    ) -> crate::streaming::StreamingCompletionResponse
+    where
+        T: HttpClientExt + Clone + 'static,
+    {
+        drive_compatible_stream(
+            crate::http_client::sse::boxed_event_source(client, req, false),
+            ChunkNormalizer::Test(normalizer),
+        )
+    }
+
+    /// Drive the OpenAI chat-completions dialect over a test HTTP client.
+    fn send_openai_streaming_request<T>(
+        client: T,
+        req: http::Request<Vec<u8>>,
+    ) -> crate::streaming::StreamingCompletionResponse
+    where
+        T: HttpClientExt + Clone + 'static,
+    {
+        drive_compatible_stream(
+            crate::http_client::sse::boxed_event_source(client, req, false),
+            ChunkNormalizer::ChatCompletions(crate::providers::openai::functions::STREAM_DIALECT),
+        )
+    }
 
     #[test]
     fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
@@ -834,10 +946,11 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream =
-            send_compatible_streaming_request(client, req, DistinctToolCallEvictionProfile)
-                .await
-                .expect("stream should start");
+        let mut stream = send_compatible_streaming_request(
+            client,
+            req,
+            TestNormalizer::DistinctToolCallEviction,
+        );
 
         let mut collected_tool_calls = Vec::new();
         while let Some(item) = stream.next().await {
@@ -914,10 +1027,11 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream =
-            send_compatible_streaming_request(client, req, ErrorAfterPendingToolCallProfile)
-                .await
-                .expect("stream should start");
+        let mut stream = send_compatible_streaming_request(
+            client,
+            req,
+            TestNormalizer::ErrorAfterPendingToolCall,
+        );
 
         match stream
             .next()
@@ -966,10 +1080,11 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream =
-            send_compatible_streaming_request(client, req, DistinctToolCallEvictionProfile)
-                .await
-                .expect("stream should start");
+        let mut stream = send_compatible_streaming_request(
+            client,
+            req,
+            TestNormalizer::DistinctToolCallEviction,
+        );
 
         let mut collected_tool_calls = Vec::new();
         while let Some(item) = stream.next().await {
@@ -1007,9 +1122,8 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
-            .await
-            .expect("stream should start");
+        let mut stream =
+            send_compatible_streaming_request(client, req, TestNormalizer::FinishReasonCleanup);
 
         let err = stream
             .next()
@@ -1046,7 +1160,6 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_in_band_error_envelope_preserves_full_payload() {
-        use crate::providers::openai::send_compatible_streaming_request;
         use crate::test_utils::MockStreamingClient;
 
         let body = r#"{"error":{"message":"upstream unavailable","type":"server_error"}}"#;
@@ -1062,9 +1175,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .expect("stream should start");
+        let mut stream = send_openai_streaming_request(client, req);
 
         let first = stream
             .next()
@@ -1092,7 +1203,6 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
-        use crate::providers::openai::send_compatible_streaming_request;
         use crate::test_utils::SequencedStreamingHttpClient;
 
         let body = r#"{"error":{"message":"upstream unavailable"}}"#;
@@ -1112,9 +1222,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .expect("stream should start");
+        let mut stream = send_openai_streaming_request(client, req);
 
         let first = stream
             .next()
@@ -1153,9 +1261,8 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
-            .await
-            .expect("stream should start");
+        let mut stream =
+            send_compatible_streaming_request(client, req, TestNormalizer::FinishReasonCleanup);
 
         let err = match stream.next().await {
             Some(Err(err)) => err,
@@ -1169,8 +1276,6 @@ mod tests {
     async fn streaming_non_http_transport_error_stays_provider_error() {
         use crate::test_utils::SequencedStreamingHttpClient;
 
-        use crate::providers::openai::send_compatible_streaming_request;
-
         let chunks = vec![Err(http_client::Error::InvalidContentType(
             http::HeaderValue::from_static("application/json"),
         ))];
@@ -1181,9 +1286,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .expect("stream should start");
+        let mut stream = send_openai_streaming_request(client, req);
 
         let err = match stream.next().await {
             Some(Err(err)) => err,
@@ -1212,9 +1315,8 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
-            .await
-            .expect("stream should start");
+        let mut stream =
+            send_compatible_streaming_request(client, req, TestNormalizer::FinishReasonCleanup);
 
         let mut saw_final = false;
         let mut saw_tool_call = false;

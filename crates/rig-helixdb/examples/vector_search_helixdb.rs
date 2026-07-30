@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
@@ -63,10 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "What is a flurbo?";
     let query_embedding = openai_model.embed_text(query).await?;
-    let vector_req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(5)
-        .build();
+    let vector_req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5);
 
     let docs = vector_store.top_n_as::<WordDefinition>(vector_req).await?;
 

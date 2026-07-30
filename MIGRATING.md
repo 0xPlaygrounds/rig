@@ -280,6 +280,83 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### Custom OpenAI-compatible providers: the trait stack is inverted
+
+If you implemented `providers::openai::completion::OpenAICompatibleProvider`
+for your own extension type, the five hook methods and the capability consts
+are gone. The trait is now a four-item lookup shim, and *your dialect lives in
+your own free functions*:
+
+```rust
+// before
+impl OpenAICompatibleProvider for MyExt {
+    const PROVIDER_NAME: &'static str = "mine";
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+    type StreamingUsage = openai::Usage;
+    type Response = openai::CompletionResponse;
+    fn finalize_request_body(&self, body: &mut Value) -> Result<(), CompletionError> { … }
+}
+
+// after — the quirk is straight-line code you own
+pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("mine");
+pub const STREAM_DIALECT: ChatCompletionsDialect =
+    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
+
+pub fn build_body(
+    model: &str,
+    request: &CompletionRequest,
+    options: CompletionModelOptions,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let typed = compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+    let mut body = compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+    /* your former finalize_request_body body, here */
+    Ok(serde_json::to_vec(&body)?)
+}
+```
+
+Mapping of the deleted items:
+
+| deleted | replacement |
+| --- | --- |
+| `PROVIDER_NAME` | `ProviderDescriptor::name` |
+| `SUPPORTS_TOOLS` | `ProviderDescriptor::supports_tools` |
+| `SUPPORTS_RESPONSE_FORMAT` | `ProviderDescriptor::supports_response_format` |
+| `STREAM_INCLUDE_USAGE` | `ProviderDescriptor::stream_include_usage` |
+| `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` | `ProviderDescriptor::emits_complete_single_chunk_tool_calls` |
+| `type StreamingUsage` | `ChatCompletionsDialect::usage` (a `ChatCompletionsUsageDialect` arm) |
+| `build_completion_request` | call `compatible_typed_request` (or your own conversion) inside `build_body` |
+| `prepare_request` | straight-line code on the typed request inside `build_body` |
+| `finalize_request_body(_with_options)` | straight-line code on the serialized body inside `build_body` |
+| `decorate_streaming_tool_call` | a `ChatCompletionsDialect` flag plus a free function in your module |
+| `completion_path` | still a trait method; the body forwards to your free function |
+
+`AnthropicCompatibleProvider` shrank the same way: `PROVIDER_NAME` and
+`default_max_tokens` are now the two fields of one plain-data
+`anthropic::completion::AnthropicDialect`, supplied by a single
+`const DIALECT`. On the data-oriented path there is nothing to supply at all —
+`anthropic::functions::Config` already stores the resolved
+`default_max_tokens` as a field.
+
+### `openai::send_compatible_streaming_request` is gone
+
+Chat-completions stream parsing no longer goes through a profile trait. The
+public `send_compatible_streaming_request` free function, the
+`CompatibleStreamProfile` trait, and `OpenAICompatibleProfile` are deleted.
+Streaming is now: open the transport-edge event stream, then drive the shared
+sans-IO state machine with a dialect.
+
+```rust
+// after (what every provider's `functions::open_stream` does)
+let req = build_request(cfg, &request, true)?;
+Ok(compatible_open_stream(rt, req, STREAM_DIALECT))
+```
+
+If you drove the shared machinery yourself, box your own event source with
+`http_client::sse::boxed_event_source(client, req, allow_missing_content_type)`.
+Provider stream drivers are no longer generic over `HttpClientExt`; they take
+`http_client::sse::BoxedEventSource`.
+
 ### `Agent<M>` is now `Agent`
 
 Every classic runtime type lost its `M: CompletionModel` parameter:
@@ -1291,28 +1368,66 @@ If you were selecting a provider at runtime through `DynClientBuilder`, you now
 own that dispatch — a `match` over your own provider enum returning a boxed
 `Agent`, or an enum of concrete clients.
 
-### 2. Required builder fields are enforced by types
+### 2. Request typestate builders are gone — plain constructors instead
 
-Builders that used to accept a field and fail at `build()` now encode
-required-ness in the type (#1611), using the `Missing` / `Provided<T>` markers:
+The request builders that encoded required-ness in the type (`Missing` /
+`Provided<T>`, #1611) are deleted. Each request struct now takes its required
+fields in a constructor and its optional fields through `with_*` setters, the
+same shape `CompletionRequest` already uses. `Provided<T>` is removed;
+`markers::Missing` survives only inside `ClientBuilder`.
 
-| Builder | Required field(s) |
+| Deleted builder | Replacement constructor |
 | --- | --- |
-| `VectorSearchRequestBuilder` | `query`, `samples` |
-| `TranscriptionRequestBuilder` | `data` |
-| `ImageGenerationRequestBuilder` | `prompt` |
-| `AudioGenerationRequestBuilder` | `text`, `voice` |
-| `ChatBotBuilder` | the chatbot impl |
-| `ClientBuilder` | `api_key` (`NeedsApiKey` is now `Missing`) |
+| `VectorSearchRequestBuilder` | `VectorSearchRequest::new(query: OneOrMany<Embedding>, samples: u64)` |
+| `TranscriptionRequestBuilder` | `TranscriptionRequest::new(data: Vec<u8>)` |
+| `ImageGenerationRequestBuilder` | `ImageGenerationRequest::new(prompt: impl Into<String>)` |
+| `AudioGenerationRequestBuilder` | `AudioGenerationRequest::new(text: impl Into<String>, voice: impl Into<String>)` |
 
-Two consequences. `VectorSearchRequestBuilder::build()` returns
-`VectorSearchRequest<F>` instead of `Result<_, VectorStoreError>` — drop the `?`.
-And `TranscriptionRequestBuilder::load_file` returns
-`io::Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>>`, so it needs a
-`?` where it previously did not.
+The builder-returning trait methods `TranscriptionModel::transcription_request`,
+`ImageGenerationModel::image_generation_request`, and
+`AudioGenerationModel::audio_generation_request` are removed with them, as is the
+builders' `send()`. Build the request, then call the model's
+`transcription`/`image_generation`/`audio_generation` method (or the provider's
+`functions::transcribe`/`generate_image`/`generate_audio` free function).
 
-Naming these builder types explicitly requires the marker parameters; chained
-builder expressions need no change.
+```rust
+// before
+let response = model
+    .transcription_request()
+    .data(bytes)
+    .filename(Some("audio.mp3".to_string()))
+    .temperature(0.5)
+    .send()
+    .await?;
+
+// after
+let request = TranscriptionRequest::new(bytes)
+    .with_filename("audio.mp3")
+    .with_temperature(0.5);
+let response = model.transcription(request).await?;
+```
+
+```rust
+// before
+let req = VectorSearchRequest::builder()
+    .query(query_embedding)
+    .samples(10)
+    .threshold(0.7)
+    .build();
+
+// after
+let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 10)
+    .with_threshold(0.7);
+```
+
+Renames to note: `queries(..)` is `with_queries(..)` (and `with_query(..)` takes
+a single `Embedding`); `filter(..)` is `with_filter(..)`;
+`additional_params(..)` is `with_additional_params(..)` and no longer returns a
+`Result`, so drop the `?`; `TranscriptionRequestBuilder::load_file(path)` is
+`TranscriptionRequest::from_file(path)`, still returning `io::Result`;
+`additional_params_opt` is `with_additional_params_opt`.
+
+`ChatBotBuilder` and `ClientBuilder` keep their typestate for now.
 
 ### 3. `ProviderClient` construction is fallible
 
@@ -1740,6 +1855,11 @@ Renamed or relocated items, for searching.
 | `CompletionClientDyn` / `EmbeddingsClientDyn` / `TranscriptionClientDyn` / `ImageGenerationClientDyn` / `AudioGenerationClientDyn` / `VerifyClientDyn` | the non-`Dyn` client traits | 0.36 |
 | `client::NeedsApiKey` | `markers::Missing` | 0.36 |
 | `ProviderClient::from_env() -> Self` | `-> Result<Self, Self::Error>` | 0.36 |
+| `VectorSearchRequestBuilder` | `VectorSearchRequest::new(query, samples)` + `with_*` | 0.37 |
+| `TranscriptionRequestBuilder` / `TranscriptionModel::transcription_request` | `TranscriptionRequest::new(data)` + `with_*` | 0.37 |
+| `ImageGenerationRequestBuilder` / `ImageGenerationModel::image_generation_request` | `ImageGenerationRequest::new(prompt)` + `with_*` | 0.37 |
+| `AudioGenerationRequestBuilder` / `AudioGenerationModel::audio_generation_request` | `AudioGenerationRequest::new(text, voice)` + `with_*` | 0.37 |
+| `markers::Provided<T>` | none — no typestate builders remain over it | 0.37 |
 | `VectorSearchRequestBuilder::build() -> Result<_, _>` | infallible `build()` | 0.36 |
 | `json_utils::empty_or_none` | none | 0.36 |
 | `anthropic::{CLAUDE_3_5_HAIKU, CLAUDE_3_5_SONNET, CLAUDE_3_7_SONNET, CLAUDE_4_OPUS, CLAUDE_4_SONNET}` | `CLAUDE_OPUS_4_6` / `CLAUDE_SONNET_4_6` / `CLAUDE_HAIKU_4_5` | 0.35 |

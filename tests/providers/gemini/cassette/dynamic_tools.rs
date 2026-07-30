@@ -8,6 +8,7 @@
 //! per model call, and per-turn tool declarations), so they remain the
 //! contract this migration satisfies.
 
+use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::Message;
 use rig::embeddings::{EmbeddingsBuilder, ToolSchema};
@@ -79,10 +80,7 @@ fn tool_retrieval_hook(
                     ));
                 }
             };
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(*samples)
-                .build();
+            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
             match store.top_n_ids(request).await {
                 Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
                     RequestPatch::new().active_tools(
@@ -215,10 +213,7 @@ async fn sample_caps_retrieved_definitions() {
                 .embed_text("Multiply two numbers together to get their product.")
                 .await
                 .expect("query embedding should succeed");
-            let request = VectorSearchRequest::builder()
-                .query(query)
-                .samples(2)
-                .build();
+            let request = VectorSearchRequest::new(OneOrMany::one(query), 2);
             let hits = store
                 .top_n_ids(request)
                 .await

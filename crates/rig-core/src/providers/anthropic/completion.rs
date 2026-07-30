@@ -37,21 +37,41 @@ pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
-pub trait AnthropicCompatibleProvider: Provider {
-    const PROVIDER_NAME: &'static str;
+/// A provider on the Anthropic Messages wire format, as plain data.
+///
+/// The two things the shared Messages path ever needed from a provider — the
+/// name stamped on telemetry and normalized responses, and how it resolves a
+/// default `max_tokens` — are a `&'static str` and a plain function. The
+/// data-oriented path does not consult this at all: `functions::Config` stores
+/// the *resolved* `default_max_tokens` as a field.
+#[derive(Debug, Clone, Copy)]
+pub struct AnthropicDialect {
+    /// Provider name for telemetry and normalized responses.
+    pub provider: &'static str,
+    /// The provider's default `max_tokens` for a model, applied when the
+    /// request does not set one.
+    pub default_max_tokens: fn(&str) -> Option<u64>,
+}
 
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        let _ = model;
-        None
-    }
+/// Anthropic's own dialect.
+pub const ANTHROPIC_DIALECT: AnthropicDialect = AnthropicDialect {
+    provider: "anthropic",
+    default_max_tokens: default_max_tokens_for_model,
+};
+
+/// The remaining compile-time plumbing for provider extensions on the
+/// Anthropic Messages wire format.
+///
+/// A **lookup shim, not a behavior contract**: the single item is plain data,
+/// and every impl is a one-line forward to a `const AnthropicDialect`. It
+/// exists only while the classic `Client<Ext, H>`-based model types survive.
+pub trait AnthropicCompatibleProvider: Provider {
+    /// The provider's dialect data.
+    const DIALECT: AnthropicDialect;
 }
 
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
-    const PROVIDER_NAME: &'static str = "anthropic";
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        default_max_tokens_for_model(model)
-    }
+    const DIALECT: AnthropicDialect = ANTHROPIC_DIALECT;
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1586,7 +1606,7 @@ where
 {
     pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = Ext::default_max_tokens(&model);
+        let default_max_tokens = (Ext::DIALECT.default_max_tokens)(&model);
 
         Self {
             client,
@@ -1602,7 +1622,7 @@ where
         Self {
             client,
             model: model.to_string(),
-            default_max_tokens: Ext::default_max_tokens(model)
+            default_max_tokens: (Ext::DIALECT.default_max_tokens)(model)
                 .or_else(|| Some(default_max_tokens_with_fallback(model))),
             prompt_caching: false,
             automatic_caching: false,
@@ -1692,7 +1712,7 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
@@ -2493,7 +2513,7 @@ where
             .clone()
             .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
+            Ext::DIALECT.provider,
             &request_model,
             CompletionOperation::Chat,
         )
@@ -2571,7 +2591,7 @@ where
                         );
                     }
                     let mut converted: completion::CompletionResponse = completion.try_into()?;
-                    converted.provider = Ext::PROVIDER_NAME.to_string();
+                    converted.provider = Ext::DIALECT.provider.to_string();
                     Ok(converted)
                 }
                 ApiResponse::Error(ApiErrorResponse { message }) => {

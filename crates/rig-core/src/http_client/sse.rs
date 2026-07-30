@@ -29,6 +29,48 @@ use std::{
 
 pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
 
+/// A type-erased SSE event stream — the transport edge for the sans-IO
+/// provider stream parsers.
+///
+/// Provider stream state machines consume this concrete type instead of being
+/// generic over [`HttpClientExt`]: the genericity ends at the boxing site (see
+/// [`boxed_event_source`] and
+/// [`HttpRuntime::sse_events`](crate::http_runtime::HttpRuntime::sse_events)).
+pub type BoxedEventSource = Pin<Box<dyn WasmCompatEventStream>>;
+
+/// Helper supertrait so [`BoxedEventSource`] can be a trait object:
+/// `WasmCompatSend` is not an auto trait, so it cannot be an additional bound
+/// on `dyn Stream`. `Send`-bounded on native targets, unbounded on browser wasm.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> + Send {}
+/// Helper supertrait so [`BoxedEventSource`] can be a trait object.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> + Send {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> {}
+
+/// Box an event source over `client` into the transport-edge
+/// [`BoxedEventSource`], ending the `HttpClientExt` genericity.
+pub fn boxed_event_source<HttpClient>(
+    client: HttpClient,
+    req: Request<Vec<u8>>,
+    allow_missing_content_type: bool,
+) -> BoxedEventSource
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+{
+    let source = GenericEventSource::new(client, req);
+    let source = if allow_missing_content_type {
+        source.allow_missing_content_type()
+    } else {
+        source
+    };
+    Box::pin(source)
+}
+
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type ResponseFuture = BoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

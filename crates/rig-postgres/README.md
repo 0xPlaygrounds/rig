@@ -135,10 +135,7 @@ Example usage
 
     // embed the query, then retrieve matches
     let query_embedding = model.embed_text("Which phones have more than 16Gb and support 5G").await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(50)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 50);
     let results = vector_store.top_n_as::<Product>(req).await?;
 
     ...

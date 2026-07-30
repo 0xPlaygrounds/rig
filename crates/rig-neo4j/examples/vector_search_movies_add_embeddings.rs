@@ -5,6 +5,7 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
+use rig_core::OneOrMany;
 use std::env;
 
 use rig_core::{
@@ -110,11 +111,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "a historical movie on quebec";
     // ❗IMPORTANT: Embed the query with the same model that was used to generate the embeddings
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query).await?)
-        .samples(5)
-        .filter(SearchFilter::gt("node.year", 1990.into()))
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 5)
+        .with_filter(SearchFilter::gt("node.year", 1990.into()));
 
     // Query the index
     let results = index
@@ -132,10 +130,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{:#}", display::SearchResults(&results));
 
     let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query).await?)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 1);
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

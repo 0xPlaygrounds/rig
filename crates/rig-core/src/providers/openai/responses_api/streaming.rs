@@ -2,7 +2,7 @@
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::Event;
 use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
 use crate::streaming;
@@ -619,26 +619,19 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
         .unwrap_or_default()
 }
 
-pub(crate) fn stream_from_event_source<HttpClient, RequestBody>(
-    event_source: GenericEventSource<HttpClient, RequestBody>,
+pub(crate) fn stream_from_event_source(
+    event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
-{
+) -> streaming::StreamingCompletionResponse {
     stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
 }
 
-pub(crate) fn stream_from_event_source_with_options<HttpClient, RequestBody>(
-    mut event_source: GenericEventSource<HttpClient, RequestBody>,
+pub(crate) fn stream_from_event_source_with_options(
+    event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
     options: ResponsesStreamOptions,
-) -> streaming::StreamingCompletionResponse
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
-{
+) -> streaming::StreamingCompletionResponse {
+    let mut event_source = event_source;
     let stream = stream! {
         let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
         let span = tracing::Span::current();
@@ -700,7 +693,10 @@ where
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
-                    event_source.close();
+                    // Previously `event_source.close()`, which made the next poll
+                    // yield `None` and end this loop; breaking is equivalent, and
+                    // dropping the boxed stream releases the transport.
+                    break;
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
@@ -711,7 +707,8 @@ where
             }
         }
 
-        event_source.close();
+        // Dropping the boxed event source is equivalent to closing it — the
+        // state machine is finished with it.
 
         if terminated_with_error {
             return;
@@ -908,7 +905,7 @@ where
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         let client = self.client.clone();
-        let event_source = GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
 
         Ok(stream_from_event_source(event_source, span))
     }
@@ -1482,7 +1479,6 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_http_non_success_preserves_status_and_body() {
-        use crate::http_client::sse::GenericEventSource;
         use crate::test_utils::HttpErrorStreamingClient;
 
         let body = r#"{"error":{"message":"quota exceeded"}}"#;
@@ -1492,7 +1488,7 @@ mod tests {
             .uri("http://localhost/v1/responses")
             .body(Vec::new())
             .expect("request should build");
-        let event_source = GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
         let span = tracing::Span::none();
         let mut stream = super::stream_from_event_source(event_source, span);
 
@@ -1535,7 +1531,6 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_non_http_transport_error_stays_provider_error() {
-        use crate::http_client::sse::GenericEventSource;
         use crate::test_utils::SequencedStreamingHttpClient;
 
         let chunks = vec![Err(crate::http_client::Error::InvalidContentType(
@@ -1547,7 +1542,7 @@ mod tests {
             .uri("http://localhost/v1/responses")
             .body(Vec::new())
             .expect("request should build");
-        let event_source = GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
         let span = tracing::Span::none();
         let mut stream = super::stream_from_event_source(event_source, span);
 

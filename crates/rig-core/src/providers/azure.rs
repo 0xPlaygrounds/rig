@@ -29,6 +29,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
+use crate::completion::CompletionError;
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::transcription::TranscriptionError;
 use crate::{
@@ -587,9 +588,9 @@ pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<AzureExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for AzureExt {
-    const PROVIDER_NAME: &'static str = "azure.openai";
-
-    type StreamingUsage = openai::Usage;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
+        functions::STREAM_DIALECT;
 
     type Response = openai::CompletionResponse;
 
@@ -597,12 +598,17 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
     // the API via a query parameter; the client base URL is blank so this
     // absolute URL passes through `build_uri` untouched.
     fn completion_path(&self, model: &str) -> String {
-        format!(
-            "{}/openai/deployments/{}/chat/completions?api-version={}",
-            self.endpoint,
-            model.trim_start_matches('/'),
-            self.api_version
-        )
+        functions::completion_path(&self.endpoint, &self.api_version, model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -882,7 +888,9 @@ mod azure_tests {
     #[tokio::test]
     async fn transcription_http_non_success_preserves_status_and_body() {
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+        use crate::transcription::{
+            TranscriptionError, TranscriptionModel as _, TranscriptionRequest,
+        };
 
         let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
         let http_client =
@@ -896,9 +904,7 @@ mod azure_tests {
         let model = TranscriptionModel::new(client, "whisper");
 
         let error = match model
-            .transcription_request()
-            .data(vec![0u8; 16])
-            .send()
+            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
             .await
         {
             Err(error) => error,
@@ -1125,15 +1131,19 @@ pub mod functions {
 
     use serde::{Deserialize, Serialize};
 
-    use super::AzureExt;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
-    use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Azure OpenAI API version (GA).
     pub const DEFAULT_API_VERSION: &str = "2024-10-21";
+
+    /// Azure OpenAI's Chat Completions streaming dialect (OpenAI's own).
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Azure OpenAI's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -1188,11 +1198,35 @@ pub mod functions {
         }
     }
 
-    fn ext_for(cfg: &Config) -> AzureExt {
-        AzureExt {
-            endpoint: cfg.endpoint.trim_end_matches('/').to_string(),
-            api_version: cfg.api_version.clone(),
-        }
+    /// The absolute deployment-scoped chat-completions URL, e.g.
+    /// `{endpoint}/openai/deployments/{model}/chat/completions?api-version={v}`.
+    ///
+    /// Azure routes the deployment (model) through the URL path and versions
+    /// the API via a query parameter, so this is a complete URL rather than a
+    /// path relative to a base URL.
+    pub(crate) fn completion_path(endpoint: &str, api_version: &str, model: &str) -> String {
+        format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            endpoint,
+            model.trim_start_matches('/'),
+            api_version
+        )
+    }
+
+    /// Azure OpenAI's chat-completions body assembly.
+    ///
+    /// Identical to OpenAI's: Azure's wire dialect has no body-level quirks
+    /// (the deployment and API version live in the URL, not the body).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
     }
 
     /// Build the serialized chat-completions request body for `request`. Pure.
@@ -1201,7 +1235,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&ext_for(cfg), &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -1213,10 +1252,13 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        let ext = ext_for(cfg);
         // Absolute deployment-scoped URL, e.g.
         // `{endpoint}/openai/deployments/{model}/chat/completions?api-version={v}`.
-        let url = ext.completion_path(&cfg.model);
+        let url = completion_path(
+            cfg.endpoint.trim_end_matches('/'),
+            &cfg.api_version,
+            &cfg.model,
+        );
         let body = build_request_body(cfg, request, stream)?;
 
         let mut builder =
@@ -1242,7 +1284,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<AzureExt>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -1252,7 +1298,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(ext_for(cfg), rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// The deployment-scoped modality URL, e.g.

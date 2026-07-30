@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
@@ -55,10 +56,7 @@ fn tool_retrieval_hook(
                     ));
                 }
             };
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(*samples)
-                .build();
+            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
             match store.top_n_ids(request).await {
                 Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
                     RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),

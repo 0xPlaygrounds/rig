@@ -6,6 +6,7 @@
 //! 3. Creates a vector index on the embeddings
 //! 4. Queries the vector index
 //! 5. Returns the results
+use rig_core::OneOrMany;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
@@ -128,10 +129,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Queries are pre-embedded: embed them with the same model that was used
     // to generate the document embeddings.
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query1).await?)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query1).await?), 1);
 
     // Query the index
     let results = index
@@ -143,10 +141,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {results:?}");
 
-    let req = VectorSearchRequest::builder()
-        .query(model.embed_text(query2).await?)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query2).await?), 1);
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

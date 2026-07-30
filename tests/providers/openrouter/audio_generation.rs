@@ -1,6 +1,7 @@
 //! OpenRouter audio generation (TTS) smoke test.
 
 use rig::audio_generation::AudioGenerationModel;
+use rig::audio_generation::AudioGenerationRequest;
 use rig::client::ProviderClient;
 use rig::prelude::AudioGenerationClient;
 use rig::providers::openrouter;
@@ -13,10 +14,7 @@ async fn audio_generation_smoke() {
     let client = openrouter::Client::from_env().expect("client should build");
     let model = client.audio_generation_model(openrouter::GPT_4O_MINI_TTS);
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("alloy")
-        .send()
+        .audio_generation(AudioGenerationRequest::new(AUDIO_TEXT, "alloy"))
         .await
         .expect("audio generation should succeed");
 

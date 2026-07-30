@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -74,10 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Attempting vector search with query: {query}");
 
     let query_embedding = model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding.clone())
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 2);
 
     let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
@@ -98,11 +96,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
     );
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .threshold(midpoint)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1).with_threshold(midpoint);
 
     let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 

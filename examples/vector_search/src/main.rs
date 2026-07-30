@@ -2,6 +2,7 @@
 //! Requires `OPENAI_API_KEY` and the `derive` feature.
 //! Run it to compare `top_n` results with `top_n_ids`.
 
+use rig::OneOrMany;
 use rig::prelude::*;
 use rig::providers::openai;
 use serde::{Deserialize, Serialize};
@@ -77,10 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "I need to buy something in a fictional universe. What type of money can I use for this?";
     // Queries are embedded up front; the store only sees pre-embedded requests.
     let query_embedding = embedding_model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     let results = vector_store
         .top_n_as::<WordDefinition>(req.clone())

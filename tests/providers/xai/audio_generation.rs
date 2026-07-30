@@ -1,6 +1,7 @@
 //! xAI audio generation smoke test covering provider-specific additional parameters.
 
 use rig::audio_generation::AudioGenerationModel;
+use rig::audio_generation::AudioGenerationRequest;
 use rig::client::ProviderClient;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::providers::xai;
@@ -15,13 +16,11 @@ async fn audio_generation_smoke() {
     let model = client.audio_generation_model(xai::TTS_1);
 
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("eve")
-        .additional_params(json!({
-            "language": "en",
-        }))
-        .send()
+        .audio_generation(
+            AudioGenerationRequest::new(AUDIO_TEXT, "eve").with_additional_params(json!({
+                "language": "en",
+            })),
+        )
         .await
         .expect("audio generation should succeed");
 

@@ -1,17 +1,16 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::{CompletionError, Usage},
+    completion::CompletionError,
     providers::internal::openai_chat_completions_compatible::{
-        CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-        CompatibleToolCallChunk,
+        CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleToolCallChunk,
+        NormalizedCompatibleChunk,
     },
-    streaming::StreamFinal,
 };
 
 use super::streaming::MOCK_PROVIDER;
 
-fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
+fn test_chunk(choice: CompatibleChoice) -> CompatibleChunk {
     CompatibleChunk {
         response_id: None,
         response_model: None,
@@ -23,7 +22,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
 fn tool_call_choice(
     finish_reason: CompatibleFinishReason,
     tool_calls: Vec<CompatibleToolCallChunk>,
-) -> CompatibleChoice<()> {
+) -> CompatibleChoice {
     CompatibleChoice {
         finish_reason,
         text: None,
@@ -47,134 +46,113 @@ fn tool_call_chunk(
     }
 }
 
-/// Streaming profile that yields a pending tool call and then errors.
-#[derive(Clone, Copy)]
-pub(crate) struct ErrorAfterPendingToolCallProfile;
+/// Scripted chunk normalizers that drive the shared compatible stream state
+/// machine directly, without a wire dialect.
+///
+/// The state-machine tests script chunk *outcomes* (a pending tool call, a
+/// normalize error, an eviction sequence) rather than provider JSON, so they
+/// pin the machine's own semantics. As a plain enum they are an arm of
+/// [`ChunkNormalizer`](crate::providers::internal::openai_chat_completions_compatible::ChunkNormalizer)
+/// instead of trait impls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TestNormalizer {
+    /// Yields a pending tool call, then errors — the "errors terminate without
+    /// flushing" case.
+    ErrorAfterPendingToolCall,
+    /// Same-index tool calls with distinct ids, which must evict.
+    DistinctToolCallEviction,
+    /// An unfinished tool call finalized by a `tool_calls` finish reason.
+    FinishReasonCleanup,
+}
 
-impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
-    type Usage = Usage;
-    type Detail = ();
+impl TestNormalizer {
+    /// The scripted provider name on the terminal record.
+    pub(crate) fn provider_name(&self) -> &'static str {
+        MOCK_PROVIDER
+    }
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        match data {
-            "start" => Ok(Some(test_chunk(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
-            )))),
-            "bad" => Err(CompletionError::ProviderError(
-                "normalize failed".to_owned(),
-            )),
-            _ => Ok(None),
+    /// Whether same-index tool calls with distinct ids evict.
+    pub(crate) fn uses_distinct_tool_call_eviction(&self) -> bool {
+        matches!(self, Self::DistinctToolCallEviction)
+    }
+
+    /// Map a scripted SSE `data` token to a normalized chunk.
+    pub(crate) fn normalize(&self, data: &str) -> NormalizedCompatibleChunk {
+        match self {
+            Self::ErrorAfterPendingToolCall => match data {
+                "start" => Ok(Some(test_chunk(tool_call_choice(
+                    CompatibleFinishReason::Other,
+                    vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
+                )))),
+                "bad" => Err(CompletionError::ProviderError(
+                    "normalize failed".to_owned(),
+                )),
+                _ => Ok(None),
+            },
+            Self::DistinctToolCallEviction => {
+                let choice = match data {
+                    "first_start" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(
+                            0,
+                            Some("call_aaa"),
+                            Some("search"),
+                            Some(""),
+                        )],
+                    )),
+                    "first_args" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
+                    )),
+                    // A partial (still-streaming) argument fragment: the
+                    // accumulator holds it as a bare `Value::String` because it
+                    // is not yet a complete `{...}` object. If the first call is
+                    // evicted at this point, its arguments are a non-object
+                    // string — the exact #1958 leak condition.
+                    "first_args_partial" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(0, None, None, Some("{\"query\":"))],
+                    )),
+                    "second_start" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(
+                            0,
+                            Some("call_bbb"),
+                            Some("search"),
+                            Some(""),
+                        )],
+                    )),
+                    "second_args" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
+                    )),
+                    "finish" => Some(tool_call_choice(
+                        CompatibleFinishReason::ToolCalls,
+                        Vec::new(),
+                    )),
+                    _ => None,
+                };
+                Ok(choice.map(test_chunk))
+            }
+            Self::FinishReasonCleanup => {
+                let choice = match data {
+                    "start" => Some(tool_call_choice(
+                        CompatibleFinishReason::Other,
+                        vec![tool_call_chunk(
+                            0,
+                            Some("call_123"),
+                            Some("ping"),
+                            Some("{\"x\":"),
+                        )],
+                    )),
+                    "finish" => Some(tool_call_choice(
+                        CompatibleFinishReason::ToolCalls,
+                        Vec::new(),
+                    )),
+                    _ => None,
+                };
+                Ok(choice.map(test_chunk))
+            }
         }
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
-    }
-}
-
-/// Streaming profile whose same-index tool calls should evict by distinct IDs.
-#[derive(Clone, Copy)]
-pub(crate) struct DistinctToolCallEvictionProfile;
-
-impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
-    type Usage = Usage;
-    type Detail = ();
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let choice = match data {
-            "first_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(
-                    0,
-                    Some("call_aaa"),
-                    Some("search"),
-                    Some(""),
-                )],
-            )),
-            "first_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
-            )),
-            // A partial (still-streaming) argument fragment: the accumulator
-            // holds it as a bare `Value::String` because it is not yet a complete
-            // `{...}` object. If the first call is evicted at this point, its
-            // arguments are a non-object string — the exact #1958 leak condition.
-            "first_args_partial" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(0, None, None, Some("{\"query\":"))],
-            )),
-            "second_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(
-                    0,
-                    Some("call_bbb"),
-                    Some("search"),
-                    Some(""),
-                )],
-            )),
-            "second_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
-            )),
-            "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
-                Vec::new(),
-            )),
-            _ => None,
-        };
-
-        Ok(choice.map(test_chunk))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-}
-
-/// Streaming profile with an unfinished tool call finalized by tool-calls finish reason.
-#[derive(Clone, Copy)]
-pub(crate) struct FinishReasonCleanupProfile;
-
-impl CompatibleStreamProfile for FinishReasonCleanupProfile {
-    type Usage = Usage;
-    type Detail = ();
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let choice = match data {
-            "start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
-                vec![tool_call_chunk(
-                    0,
-                    Some("call_123"),
-                    Some("ping"),
-                    Some("{\"x\":"),
-                )],
-            )),
-            "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
-                Vec::new(),
-            )),
-            _ => None,
-        };
-
-        Ok(choice.map(test_chunk))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
     }
 }

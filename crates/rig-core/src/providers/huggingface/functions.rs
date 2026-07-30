@@ -6,21 +6,29 @@
 //! [`build_request`]/[`parse_response`] free functions plus the async
 //! [`complete`]/[`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
-//! mechanics are shared with the other OpenAI-compatible providers via
-//! `openai::functions`; this module instantiates them with
-//! [`HuggingFaceExt`](super::client::HuggingFaceExt) so Hugging Face's paths, hooks, and
-//! provider name apply.
+//! mechanics reuse the shared OpenAI-compatible stages in
+//! `openai::functions`; the Hugging Face dialect steps ([`completion_path`],
+//! [`build_body`]) live here and are what the classic
+//! [`HuggingFaceExt`](super::client::HuggingFaceExt) trait impl forwards to.
+//! The [`Config`] path targets the default sub-provider
+//! ([`SubProvider::default`]), matching the classic default client.
 
 use serde::{Deserialize, Serialize};
 
-use super::client::HuggingFaceExt as Ext;
+use super::client::SubProvider;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::openai::completion::CompletionModelOptions;
 use crate::providers::openai::functions as openai_functions;
 
 /// Default Hugging Face API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://router.huggingface.co";
+
+/// Hugging Face's Chat Completions streaming dialect (OpenAI's own).
+pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
 /// Hugging Face's capability sheet.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -71,13 +79,47 @@ impl Config {
     }
 }
 
+/// The chat-completions request path for `model` on `subprovider`.
+///
+/// Chat completions live under the router's `/v1`, while the minor modalities
+/// use root-relative paths, so the prefix cannot live in the base URL.
+pub(crate) fn completion_path(subprovider: &SubProvider, model: &str) -> String {
+    subprovider.completion_endpoint(model)
+}
+
+/// Hugging Face's chat-completions body assembly.
+///
+/// One dialect step over OpenAI's: some sub-providers (Fireworks) address
+/// models through a fully-qualified identifier in the request body.
+pub(crate) fn build_body(
+    subprovider: &SubProvider,
+    model: &str,
+    request: &CompletionRequest,
+    options: CompletionModelOptions,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let mut typed =
+        openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+    // Some sub-providers (Fireworks) address models through a qualified
+    // identifier in the request body.
+    typed.model = subprovider.model_identifier(&typed.model);
+    let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+    Ok(serde_json::to_vec(&body)?)
+}
+
 /// Build the serialized chat-completions request body for `request`. Pure.
 pub fn build_request_body(
     cfg: &Config,
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
-    openai_functions::compatible_request_body(&Ext::default(), &cfg.model, request, stream)
+    build_body(
+        &SubProvider::default(),
+        &cfg.model,
+        request,
+        CompletionModelOptions::default(),
+        stream,
+    )
 }
 
 /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -89,14 +131,12 @@ pub fn build_request(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-    openai_functions::compatible_request(
-        &Ext::default(),
+    openai_functions::compatible_http_request(
         &cfg.base_url,
+        &completion_path(&SubProvider::default(), &cfg.model),
         &cfg.api_key,
         &cfg.extra_headers,
-        &cfg.model,
-        request,
-        stream,
+        build_request_body(cfg, request, stream)?,
     )
 }
 
@@ -106,7 +146,11 @@ pub fn parse_response(
     status: http::StatusCode,
     body: &str,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    openai_functions::compatible_parse_response::<Ext>(status, body)
+    openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+        status,
+        body,
+        DESCRIPTOR.name,
+    )
 }
 
 /// The HF Inference modality URL: `{base}/hf-inference/models/{model}`.
@@ -179,7 +223,11 @@ pub async fn open_stream(
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let req = build_request(cfg, &request, true)?;
-    openai_functions::compatible_open_stream(Ext::default(), rt, req).await
+    Ok(openai_functions::compatible_open_stream(
+        rt,
+        req,
+        STREAM_DIALECT,
+    ))
 }
 
 /// Send `request` to Hugging Face and return the normalized response.

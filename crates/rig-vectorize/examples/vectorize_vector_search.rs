@@ -11,6 +11,7 @@
 // 3. Run the example:
 //    cargo run --release --example vectorize_vector_search
 
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
@@ -73,10 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("\nSearching for: {}", query);
 
     let query_embedding = model.embed_text(query).await?;
-    let request = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(3)
-        .build();
+    let request = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
 
     let results = vector_store.top_n_as::<Word>(request).await?;
 

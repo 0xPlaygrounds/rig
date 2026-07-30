@@ -171,31 +171,12 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_runtime::Transport;
-
     let req = build_request(cfg, &request, true)?;
-    match rt.transport() {
-        Transport::Reqwest(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
-            Box::pin(super::streaming::generate_content_stream(
-                client.clone(),
-                req,
-            )),
+    Ok(crate::streaming::StreamingCompletionResponse::stream(
+        Box::pin(super::streaming::generate_content_stream(
+            rt.sse_events(req, false),
         )),
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
-            Box::pin(super::streaming::generate_content_stream(
-                client.clone(),
-                req,
-            )),
-        )),
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => Ok(crate::streaming::StreamingCompletionResponse::stream(
-            Box::pin(super::streaming::generate_content_stream(
-                client.clone(),
-                req,
-            )),
-        )),
-    }
+    ))
 }
 
 /// The keyed `generateContent` URL for `cfg`'s model.

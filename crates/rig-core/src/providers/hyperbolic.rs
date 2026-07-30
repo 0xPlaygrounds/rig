@@ -15,6 +15,8 @@
 use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
 use crate::client::{BearerAuth, ProviderClient};
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::descriptor::ChatCompletionsDialect;
+use crate::providers::descriptor::ProviderDescriptor;
 
 // ================================================================
 // Main Hyperbolic Client
@@ -49,42 +51,23 @@ impl<H> Capabilities<H> for HyperbolicExt {
 impl DebugExt for HyperbolicExt {}
 
 impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
-    const PROVIDER_NAME: &'static str = "hyperbolic";
-
-    // Hyperbolic's structured-output support is unverified; keep the
-    // pre-migration behavior of dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    // Hyperbolic does not support tool calling; `tools`/`tool_choice` are
-    // dropped with a warning during request conversion.
-    const SUPPORTS_TOOLS: bool = false;
-
-    type StreamingUsage = crate::providers::openai::Usage;
+    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = crate::providers::openai::CompletionResponse;
 
-    fn finalize_request_body(
-        &self,
-        body: &mut serde_json::Value,
-    ) -> Result<(), crate::completion::CompletionError> {
-        // Strip tool-exchange remnants that shared chat histories may carry;
-        // content-part arrays are kept as-is for Hyperbolic's vision models.
-        if let Some(messages) = body
-            .get_mut("messages")
-            .and_then(serde_json::Value::as_array_mut)
-        {
-            crate::providers::openai::completion::sanitize_plain_text_history(
-                messages, None, false, false,
-            );
-        }
-
-        Ok(())
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
     }
 
-    // The client base URL is the bare host; image/audio generation build
-    // their own v1 paths.
-    fn completion_path(&self, _model: &str) -> String {
-        "/v1/chat/completions".to_string()
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -390,11 +373,8 @@ mod audio_generation {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
-        use crate::providers::openai::completion::{
-            CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider,
-            OpenAIRequestParams,
-        };
+    fn hyperbolic_body_drops_tools_and_tool_choice() {
+        use crate::providers::openai::completion::CompletionModelOptions;
 
         let request = crate::completion::CompletionRequest {
             tools: vec![crate::completion::ToolDefinition {
@@ -407,20 +387,15 @@ mod tests {
             ..crate::completion::CompletionRequest::from_prompt("hello")
         };
 
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: super::HyperbolicExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: false,
-        })
-        .expect("request should convert");
-        super::HyperbolicExt
-            .prepare_request(&mut request)
-            .expect("prepare_request should succeed");
+        let bytes = super::functions::build_body(
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect("body should build");
 
-        let body = serde_json::to_value(request).expect("request should serialize");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("body should be json");
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());
         assert!(body.get("response_format").is_none());
@@ -666,20 +641,24 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`HyperbolicExt`](super::HyperbolicExt) so Hyperbolic's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`'s stage helpers; this module owns Hyperbolic's own
+    //! dialect steps, paths, and provider name.
 
     use serde::{Deserialize, Serialize};
 
-    use super::HyperbolicExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Hyperbolic API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.hyperbolic.xyz";
+
+    /// Hyperbolic's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Hyperbolic's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -730,13 +709,55 @@ pub mod functions {
         }
     }
 
+    /// The chat-completions request path for `model`.
+    ///
+    /// The client base URL is the bare host; image/audio generation build their
+    /// own v1 paths.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/v1/chat/completions".to_string()
+    }
+
+    /// Hyperbolic's straight-line chat-completions body assembly.
+    ///
+    /// Tool-exchange remnants that shared chat histories may carry are stripped
+    /// from the serialized body; content-part arrays are kept as-is for
+    /// Hyperbolic's vision models. Tool calling and structured output are
+    /// unsupported and dropped during the typed conversion (see [`DESCRIPTOR`]).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        // Strip tool-exchange remnants that shared chat histories may carry;
+        // content-part arrays are kept as-is for Hyperbolic's vision models.
+        if let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages, None, false, false,
+            );
+        }
+
+        Ok(serde_json::to_vec(&body)?)
+    }
+
     /// Build the serialized chat-completions request body for `request`. Pure.
     pub fn build_request_body(
         cfg: &Config,
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -748,14 +769,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -765,7 +784,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -775,7 +798,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Build the serialized image-generation request body. Pure.

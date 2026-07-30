@@ -157,8 +157,6 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_runtime::Transport;
-
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     let span =
         CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
@@ -168,25 +166,9 @@ pub async fn open_stream(
             )
             .build();
     let req = build_request(cfg, &request, true)?;
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            super::streaming::send_xai_streaming_request(client.clone(), req)
-                .instrument(span)
-                .await
-        }
-    }
+    super::streaming::send_xai_streaming_request(rt.sse_events(req, false))
+        .instrument(span)
+        .await
 }
 
 /// Generate an image with xAI's `/v1/images/generations` endpoint.

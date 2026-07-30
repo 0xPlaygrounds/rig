@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::OneOrMany;
 use serde_json::json;
 
 use fixture::{Word, as_record_batch, words};
@@ -181,10 +182,7 @@ async fn vector_search_test() {
     // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
     let query_embedding = model.embed_text(query).await.unwrap();
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
     let results = vector_store_index.top_n(req).await.unwrap();
@@ -398,10 +396,7 @@ async fn agent_with_retrieved_context_test() {
     // most relevant documents ourselves, and hand them to the agent as
     // context (previously done implicitly by `dynamic_context`).
     let query_embedding = model.embed_text(query).await.unwrap();
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(top_k as u64)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), top_k as u64);
     let hits = vector_store_index.top_n(req).await.unwrap();
     assert!(!hits.is_empty());
 

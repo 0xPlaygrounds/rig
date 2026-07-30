@@ -12,7 +12,8 @@
 //! # }
 //! ```
 use crate::client::BearerAuth;
-use crate::completion::CompletionError;
+use crate::providers::descriptor::ChatCompletionsDialect;
+use crate::providers::descriptor::ProviderDescriptor;
 use crate::providers::openai;
 use crate::{
     client::{
@@ -42,44 +43,23 @@ impl Provider for PerplexityExt {
 }
 
 impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
-    const PROVIDER_NAME: &'static str = "perplexity";
-
-    type StreamingUsage = openai::Usage;
-
-    // Perplexity has no tool-calling support; `tools`/`tool_choice` are
-    // dropped with a warning during request conversion.
-    const SUPPORTS_TOOLS: bool = false;
-
-    // Perplexity's structured-output support predates rig's `output_schema`
-    // mapping; keep the pre-migration behavior of dropping it with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    // The pre-migration streaming request sent `stream: true` with no
-    // `stream_options`.
-    const STREAM_INCLUDE_USAGE: bool = false;
+    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = openai::CompletionResponse;
 
-    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
-        // Perplexity historically only accepted plain `{role, content: String}`
-        // messages, and its API accepts only system/user/assistant roles
-        // with strict user/assistant alternation. Strip tool-exchange
-        // remnants from shared histories and flatten text-only content-part
-        // arrays; arrays with non-text parts (e.g. images on sonar models)
-        // are left for the API's multimodal handling.
-        if let Some(messages) = body
-            .get_mut("messages")
-            .and_then(serde_json::Value::as_array_mut)
-        {
-            openai::completion::sanitize_plain_text_history(
-                messages,
-                Some(("\n", true)),
-                false,
-                true,
-            );
-        }
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
 
-        Ok(())
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -153,9 +133,35 @@ pub const SONAR: &str = "sonar";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
-    };
+    use crate::OneOrMany;
+    use crate::message::{AssistantContent, Message, UserContent};
+    use crate::providers::openai::completion::CompletionModelOptions;
+
+    /// Build the request body Perplexity would send for `chat_history`.
+    fn body_for_history(chat_history: OneOrMany<Message>) -> serde_json::Value {
+        body_for(crate::completion::CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history,
+            documents: vec![],
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+    }
+
+    /// Build the request body Perplexity would send for `request`.
+    fn body_for(request: crate::completion::CompletionRequest) -> serde_json::Value {
+        let bytes =
+            functions::build_body(SONAR, &request, CompletionModelOptions::default(), false)
+                .expect("body should build");
+        serde_json::from_slice(&bytes).expect("body should be json")
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -167,93 +173,81 @@ mod tests {
     }
 
     #[test]
-    fn perplexity_finalize_flattens_text_only_content_arrays() {
-        let mut body = serde_json::json!({
-            "model": SONAR,
-            "messages": [
-                {"role": "system", "content": [{"type": "text", "text": "Be brief."}]},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "First."},
-                    {"type": "text", "text": "Second."}
-                ]},
-                {"role": "user", "content": [
-                    {"type": "text", "text": "Look:"},
-                    {"type": "image_url", "image_url": {"url": "https://example.com/i.png"}}
-                ]}
-            ]
-        });
+    fn perplexity_body_flattens_text_only_content_arrays() {
+        let body = body_for_history(
+            OneOrMany::many([
+                Message::User {
+                    content: OneOrMany::many([
+                        UserContent::text("First."),
+                        UserContent::text("Second."),
+                    ])
+                    .expect("multi-part user message"),
+                },
+                Message::User {
+                    content: OneOrMany::many([
+                        UserContent::text("Look:"),
+                        UserContent::image_url("https://example.com/i.png", None, None),
+                    ])
+                    .expect("mixed user message"),
+                },
+            ])
+            .expect("history"),
+        );
 
-        PerplexityExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
-
-        assert_eq!(body["messages"][0]["content"], "Be brief.");
-        assert_eq!(body["messages"][1]["content"], "First.\nSecond.");
+        assert_eq!(body["messages"][0]["content"], "First.\nSecond.");
         // Mixed content stays an array for the API's multimodal handling.
-        assert!(body["messages"][2]["content"].is_array());
+        assert!(body["messages"][1]["content"].is_array());
     }
 
     #[test]
     fn perplexity_drops_tool_choice_instead_of_erroring() {
         // Multi-name Specific errors on tool-supporting providers; with
-        // SUPPORTS_TOOLS = false it must be dropped before that validation.
-        let mut request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: crate::OneOrMany::one("Hello!".into()),
-            documents: vec![],
-            max_tokens: None,
-            temperature: None,
-            tools: vec![],
+        // `supports_tools: false` it must be dropped before that validation.
+        let body = body_for(crate::completion::CompletionRequest {
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: String::new(),
+                parameters: serde_json::json!({}),
+            }],
             tool_choice: Some(crate::message::ToolChoice::Specific {
                 function_names: vec!["a".to_string(), "b".to_string()],
             }),
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
-        request.tools = vec![crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: String::new(),
-            parameters: serde_json::json!({}),
-        }];
+            ..crate::completion::CompletionRequest::from_prompt("Hello!")
+        });
 
-        let converted = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: SONAR.to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: PerplexityExt::SUPPORTS_TOOLS,
-        })
-        .expect("unsupported tools should be dropped, not an error");
-
-        let json = serde_json::to_value(converted).expect("request should serialize");
         assert!(
-            json.get("tools")
+            body.get("tools")
                 .is_none_or(|tools| tools.as_array().is_none_or(|tools| tools.is_empty()))
         );
-        assert!(json.get("tool_choice").is_none());
+        assert!(body.get("tool_choice").is_none());
     }
 
     #[test]
-    fn perplexity_finalize_strips_tool_history_and_preserves_alternation() {
-        let mut body = serde_json::json!({
-            "model": SONAR,
-            "messages": [
-                {"role": "user", "content": "Look it up."},
-                {"role": "assistant", "tool_calls": [
-                    {"id": "call_1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
-                ]},
-                {"role": "tool", "tool_call_id": "call_1", "content": "result"},
-                {"role": "assistant", "content": "It is crimson.", "reasoning_content": "hmm"},
-                {"role": "user", "content": "Thanks!"}
-            ]
-        });
-
-        PerplexityExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+    fn perplexity_body_strips_tool_history_and_preserves_alternation() {
+        let body = body_for_history(
+            OneOrMany::many([
+                Message::user("Look it up."),
+                Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(AssistantContent::tool_call(
+                        "call_1",
+                        "lookup",
+                        serde_json::json!({}),
+                    )),
+                },
+                Message::tool_result("call_1", "result"),
+                Message::Assistant {
+                    id: None,
+                    content: OneOrMany::many([
+                        AssistantContent::reasoning("hmm"),
+                        AssistantContent::text("It is crimson."),
+                    ])
+                    .expect("assistant content"),
+                },
+                Message::user("Thanks!"),
+            ])
+            .expect("history"),
+        );
 
         let messages = body["messages"].as_array().expect("messages array");
         let roles = messages
@@ -267,8 +261,8 @@ mod tests {
     }
 
     #[test]
-    fn perplexity_prepare_request_drops_tools() {
-        let request = crate::completion::CompletionRequest {
+    fn perplexity_body_drops_tools() {
+        let body = body_for(crate::completion::CompletionRequest {
             tools: vec![crate::completion::ToolDefinition {
                 name: "lookup".to_string(),
                 description: "Lookup".to_string(),
@@ -276,22 +270,8 @@ mod tests {
             }],
             tool_choice: Some(crate::message::ToolChoice::Required),
             ..crate::completion::CompletionRequest::from_prompt("What's new today?")
-        };
+        });
 
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: SONAR.to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: PerplexityExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: false,
-        })
-        .expect("request should convert");
-        PerplexityExt
-            .prepare_request(&mut request)
-            .expect("prepare_request should succeed");
-
-        let body = serde_json::to_value(request).expect("request should serialize");
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());
     }
@@ -307,20 +287,24 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`PerplexityExt`](super::PerplexityExt) so Perplexity's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`'s stage helpers; this module owns Perplexity's own
+    //! dialect steps, paths, and provider name.
 
     use serde::{Deserialize, Serialize};
 
-    use super::PerplexityExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Perplexity API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.perplexity.ai";
+
+    /// Perplexity's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Perplexity's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -371,13 +355,62 @@ pub mod functions {
         }
     }
 
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Perplexity's straight-line chat-completions body assembly.
+    ///
+    /// Perplexity historically only accepted plain `{role, content: String}`
+    /// messages, and its API accepts only system/user/assistant roles with
+    /// strict user/assistant alternation, so the serialized body has its
+    /// tool-exchange remnants stripped and its text-only content-part arrays
+    /// flattened. Tools and structured output are dropped during the typed
+    /// conversion (see [`DESCRIPTOR`]), and the streaming body carries a bare
+    /// `stream: true` with no `stream_options`.
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        // Perplexity historically only accepted plain `{role, content: String}`
+        // messages, and its API accepts only system/user/assistant roles
+        // with strict user/assistant alternation. Strip tool-exchange
+        // remnants from shared histories and flatten text-only content-part
+        // arrays; arrays with non-text parts (e.g. images on sonar models)
+        // are left for the API's multimodal handling.
+        if let Some(messages) = body
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            crate::providers::openai::completion::sanitize_plain_text_history(
+                messages,
+                Some(("\n", true)),
+                false,
+                true,
+            );
+        }
+
+        Ok(serde_json::to_vec(&body)?)
+    }
+
     /// Build the serialized chat-completions request body for `request`. Pure.
     pub fn build_request_body(
         cfg: &Config,
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -389,14 +422,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -406,7 +437,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -416,7 +451,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to Perplexity and return the normalized response.

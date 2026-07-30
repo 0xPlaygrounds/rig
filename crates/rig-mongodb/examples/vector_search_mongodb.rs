@@ -3,6 +3,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig_core::OneOrMany;
 use rig_core::{
     client::ProviderClient, providers::openai, vector_store::request::VectorSearchRequest,
 };
@@ -110,10 +111,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embed the query outside the store (reuse the same model that was used to
     // generate the document embeddings), then search with the pre-embedded query.
     let query = model.embed_text("What is a linglingdong?").await?;
-    let req = VectorSearchRequest::<MongoDbSearchFilter>::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::<MongoDbSearchFilter>::new(OneOrMany::one(query), 1);
 
     // Query the index
     let results = index.top_n_as::<Word>(req.clone()).await?;

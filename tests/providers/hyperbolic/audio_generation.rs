@@ -1,6 +1,7 @@
 //! Hyperbolic audio generation smoke test.
 
 use rig::audio_generation::AudioGenerationModel;
+use rig::audio_generation::AudioGenerationRequest;
 use rig::client::ProviderClient;
 use rig::client::audio_generation::AudioGenerationClient;
 use rig::providers::hyperbolic;
@@ -14,10 +15,7 @@ async fn audio_generation_smoke() {
     let model = client.audio_generation_model("EN");
 
     let response = model
-        .audio_generation_request()
-        .text(AUDIO_TEXT)
-        .voice("EN-US")
-        .send()
+        .audio_generation(AudioGenerationRequest::new(AUDIO_TEXT, "EN-US"))
         .await
         .expect("audio generation should succeed");
 

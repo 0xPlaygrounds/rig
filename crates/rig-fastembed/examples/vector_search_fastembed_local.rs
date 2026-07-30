@@ -3,6 +3,7 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
     embeddings::{EmbeddingModel as _, EmbeddingsBuilder},
@@ -96,10 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "I need to buy something in a fictional universe. What type of money can I use for this?";
     let query_embedding = embedding_model.embed_text(query).await?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     let results = vector_store
         .top_n_as::<WordDefinition>(req)

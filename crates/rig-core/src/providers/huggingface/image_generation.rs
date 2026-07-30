@@ -132,10 +132,7 @@ mod tests {
             .expect("build client");
         let model = client.image_generation_model(Flux1);
 
-        let request = model
-            .image_generation_request()
-            .prompt("draw a cat")
-            .build();
+        let request = ImageGenerationRequest::new("draw a cat");
 
         let error = model
             .image_generation(request)

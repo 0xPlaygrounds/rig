@@ -31,19 +31,25 @@ impl Provider for TogetherExt {
 impl DebugExt for TogetherExt {}
 
 impl crate::providers::openai::completion::OpenAICompatibleProvider for TogetherExt {
-    const PROVIDER_NAME: &'static str = "together";
-
-    type StreamingUsage = crate::providers::openai::Usage;
-
-    // Together's structured-output support is model-dependent; keep the
-    // pre-migration behavior of dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor =
+        super::functions::DESCRIPTOR;
+    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
+        super::functions::STREAM_DIALECT;
 
     type Response = crate::providers::openai::CompletionResponse;
 
-    // The client base URL is the bare host; embeddings build their own v1 path.
-    fn completion_path(&self, _model: &str) -> String {
-        "/v1/chat/completions".to_string()
+    fn completion_path(&self, model: &str) -> String {
+        super::functions::completion_path(model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        super::functions::build_body(model, request, options, stream)
     }
 }
 

@@ -12,6 +12,7 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
+use rig::OneOrMany;
 use rig::mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
 use rig::{
     Embed,
@@ -180,10 +181,7 @@ async fn vector_search_test() {
     // Embed the query outside the store (reuse the same model that was used to
     // generate the document embeddings), then search with the pre-embedded query.
     let query = model.embed_text("What is a linglingdong?").await.unwrap();
-    let req = VectorSearchRequest::<MongoDbSearchFilter>::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::<MongoDbSearchFilter>::new(OneOrMany::one(query), 1);
 
     let mut observed_results = Vec::new();
     let mut results = Vec::new();

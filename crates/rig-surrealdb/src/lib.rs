@@ -489,12 +489,10 @@ mod tests {
             .unwrap();
 
         let hits = vector_store
-            .top_n(
-                VectorSearchRequest::builder()
-                    .query(embedding("query", vec![0.0, 0.1, 0.6]))
-                    .samples(1)
-                    .build(),
-            )
+            .top_n(VectorSearchRequest::new(
+                OneOrMany::one(embedding("query", vec![0.0, 0.1, 0.6])),
+                1,
+            ))
             .await
             .unwrap();
 
@@ -505,12 +503,10 @@ mod tests {
         assert!(hit.score > 0.99);
 
         let ids = vector_store
-            .top_n_ids(
-                VectorSearchRequest::builder()
-                    .query(embedding("query", vec![0.7, -0.3, 0.0]))
-                    .samples(1)
-                    .build(),
-            )
+            .top_n_ids(VectorSearchRequest::new(
+                OneOrMany::one(embedding("query", vec![0.7, -0.3, 0.0])),
+                1,
+            ))
             .await
             .unwrap();
         assert_eq!(ids.len(), 1);

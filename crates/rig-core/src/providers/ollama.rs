@@ -1352,7 +1352,6 @@ pub mod functions {
 
     use super::{CompletionResponse, OllamaCompletionRequest};
     use crate::completion::{self, CompletionError, CompletionRequest};
-    use crate::http_client::HttpClientExt as _;
     use crate::http_runtime::HttpRuntime;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 
@@ -1488,34 +1487,16 @@ pub mod functions {
         rt: &HttpRuntime,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        use crate::http_runtime::Transport;
-
         let req = build_request(cfg, &request, true)?;
-        match rt.transport() {
-            Transport::Reqwest(client) => {
-                let response = client.send_streaming(req).await?;
-                let stream = super::consume_chat_streaming_response(response).await?;
-                Ok(crate::streaming::StreamingCompletionResponse::stream(
-                    Box::pin(stream),
-                ))
-            }
-            #[cfg(any(test, feature = "test-utils"))]
-            Transport::Recording(client) => {
-                let response = client.send_streaming(req).await?;
-                let stream = super::consume_chat_streaming_response(response).await?;
-                Ok(crate::streaming::StreamingCompletionResponse::stream(
-                    Box::pin(stream),
-                ))
-            }
-            #[cfg(any(test, feature = "test-utils"))]
-            Transport::Sequenced(client) => {
-                let response = client.send_streaming(req).await?;
-                let stream = super::consume_chat_streaming_response(response).await?;
-                Ok(crate::streaming::StreamingCompletionResponse::stream(
-                    Box::pin(stream),
-                ))
-            }
-        }
+        // Ollama's native stream is NDJSON, not SSE, so this path takes the
+        // raw byte-stream transport edge rather than `HttpRuntime::sse_events`.
+        // `consume_chat_streaming_response` already consumes the type-erased
+        // `http_client::StreamingResponse`, so no genericity leaks out.
+        let response = rt.send_streaming(req).await?;
+        let stream = super::consume_chat_streaming_response(response).await?;
+        Ok(crate::streaming::StreamingCompletionResponse::stream(
+            Box::pin(stream),
+        ))
     }
 
     /// Send `request` to Ollama and return the normalized response.

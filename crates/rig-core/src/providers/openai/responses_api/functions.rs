@@ -169,9 +169,6 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_client::sse::GenericEventSource;
-    use crate::http_runtime::Transport;
-
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     let span =
         CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
@@ -181,31 +178,10 @@ pub async fn open_stream(
             )
             .build();
     let req = build_request(cfg, &request, true)?;
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            let event_source = GenericEventSource::new(client.clone(), req);
-            Ok(super::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            let event_source = GenericEventSource::new(client.clone(), req);
-            Ok(super::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            let event_source = GenericEventSource::new(client.clone(), req);
-            Ok(super::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-    }
+    Ok(super::streaming::stream_from_event_source(
+        rt.sse_events(req, false),
+        span,
+    ))
 }
 
 /// Send `request` to the OpenAI Responses API and return the normalized

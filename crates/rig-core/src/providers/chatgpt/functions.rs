@@ -209,9 +209,6 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_client::sse::GenericEventSource;
-    use crate::http_runtime::Transport;
-
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     let span =
         CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
@@ -221,34 +218,11 @@ pub async fn open_stream(
             )
             .build();
     let req = build_request(cfg, &request, true)?;
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            let event_source =
-                GenericEventSource::new(client.clone(), req).allow_missing_content_type();
-            Ok(responses_api::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            let event_source =
-                GenericEventSource::new(client.clone(), req).allow_missing_content_type();
-            Ok(responses_api::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            let event_source =
-                GenericEventSource::new(client.clone(), req).allow_missing_content_type();
-            Ok(responses_api::streaming::stream_from_event_source(
-                event_source,
-                span,
-            ))
-        }
-    }
+    // The ChatGPT backend omits the SSE `Content-Type` header.
+    Ok(responses_api::streaming::stream_from_event_source(
+        rt.sse_events(req, true),
+        span,
+    ))
 }
 
 /// Send `request` to the ChatGPT Codex backend and return the normalized

@@ -1,6 +1,7 @@
 //! Migrated from `examples/mistral_embeddings.rs`.
 
 use rig::Embed;
+use rig::OneOrMany;
 use rig::client::{EmbeddingsClient, ProviderClient};
 use rig::embeddings::EmbeddingModel;
 use rig::embeddings::EmbeddingsBuilder;
@@ -39,10 +40,7 @@ async fn derive_embeddings_and_vector_search() {
         .embed_text("Hello world")
         .await
         .expect("query embedding should succeed");
-    let request = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let request = VectorSearchRequest::new(OneOrMany::one(query), 1);
     let results = vector_store
         .top_n_as::<Greetings>(request)
         .await

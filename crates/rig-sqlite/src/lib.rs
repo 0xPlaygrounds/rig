@@ -2396,11 +2396,9 @@ mod tests {
 
     #[test]
     fn threshold_filter_uses_computed_similarity_expression() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .threshold(0.95)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_threshold(0.95);
 
         let (where_clause, params) =
             build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
@@ -2428,11 +2426,9 @@ mod tests {
 
     #[test]
     fn l2_threshold_filter_uses_l2_score_expression() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .threshold(-1.5)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_threshold(-1.5);
 
         let (where_clause, params) =
             build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::L2, &[], 5)?;
@@ -2452,10 +2448,8 @@ mod tests {
 
     #[test]
     fn no_threshold_does_not_add_similarity_predicate() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5);
 
         let (where_clause, params) =
             build_where_clause(&req, vec![1.0, 0.0], SqliteDistanceMetric::Cosine, &[], 5)?;
@@ -2471,10 +2465,8 @@ mod tests {
 
     #[test]
     fn candidate_limit_at_k_cap_still_uses_knn_path() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5);
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2500,10 +2492,8 @@ mod tests {
 
     #[test]
     fn candidate_limit_above_k_cap_falls_back_to_brute_force_scan() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5);
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2537,11 +2527,9 @@ mod tests {
 
     #[test]
     fn brute_force_scan_keeps_filter_params_aligned() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .threshold(0.95)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_threshold(0.95);
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2576,11 +2564,9 @@ mod tests {
             SqliteSearchFilter::eq("title", serde_json::json!("archive")),
         );
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(filter);
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -2612,14 +2598,12 @@ mod tests {
 
     #[test]
     fn indexed_filter_uses_vec0_metadata_constraint() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq(
-                "category",
-                serde_json::json!("docs"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq(
+                    "category",
+                    serde_json::json!("docs"),
+                ));
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2644,11 +2628,9 @@ mod tests {
 
     #[test]
     fn negated_eq_filter_uses_vec0_metadata_inequality() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq("category", serde_json::json!("docs")).not())
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq("category", serde_json::json!("docs")).not());
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2673,11 +2655,9 @@ mod tests {
 
     #[test]
     fn negated_range_comparison_uses_vec0_metadata_boundary() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::gt("priority", serde_json::json!(10)).not())
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::gt("priority", serde_json::json!(10)).not());
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2702,11 +2682,9 @@ mod tests {
 
     #[test]
     fn negated_boolean_eq_filter_uses_vec0_metadata_inequality() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq("published", serde_json::json!(true)).not())
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq("published", serde_json::json!(true)).not());
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2731,11 +2709,9 @@ mod tests {
     #[test]
     fn negated_between_filter_uses_document_filter() -> anyhow::Result<()> {
         let filter = SqliteSearchFilter::between("priority".to_string(), 1_i64..=10_i64).not();
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(filter);
 
         let filters = render_search_filters(
             &req,
@@ -2770,14 +2746,12 @@ mod tests {
 
     #[test]
     fn boolean_range_filter_is_rejected() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::gt(
-                "published",
-                serde_json::json!(false),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::gt(
+                    "published",
+                    serde_json::json!(false),
+                ));
 
         let err = filter_error(
             build_where_clause(
@@ -2801,11 +2775,9 @@ mod tests {
     #[test]
     fn indexed_between_filter_uses_vec0_metadata_constraints() -> anyhow::Result<()> {
         let filter = SqliteSearchFilter::between("priority".to_string(), 1_i64..=10_i64);
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(filter);
 
         let (where_clause, params) = build_where_clause(
             &req,
@@ -2854,11 +2826,11 @@ mod tests {
         ];
 
         for (filter, expected) in cases {
-            let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-                .query(needle_embedding())
-                .samples(5)
-                .filter(filter)
-                .build();
+            let req = VectorSearchRequest::<SqliteSearchFilter>::new(
+                OneOrMany::one(needle_embedding()),
+                5,
+            )
+            .with_filter(filter);
 
             let err = filter_error(
                 build_where_clause(
@@ -2890,11 +2862,9 @@ mod tests {
             .and(SqliteSearchFilter::is_null(
                 "metadata->>'$.missing'".to_string(),
             ));
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(filter);
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -2927,11 +2897,9 @@ mod tests {
 
     #[test]
     fn nonindexed_filters_use_document_filter() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq("title", serde_json::json!("docs")))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq("title", serde_json::json!("docs")));
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -2962,14 +2930,12 @@ mod tests {
 
     #[test]
     fn json_metadata_expression_uses_document_filter() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq(
-                "metadata->>'$.xxx'",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata->>'$.xxx'",
+                    serde_json::json!("vvv"),
+                ));
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -3000,14 +2966,12 @@ mod tests {
 
     #[test]
     fn json_metadata_arrow_expression_binds_rhs_as_json_text() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq(
-                "metadata->'$.xxx'",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata->'$.xxx'",
+                    serde_json::json!("vvv"),
+                ));
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -3029,14 +2993,12 @@ mod tests {
 
     #[test]
     fn chained_json_metadata_expression_uses_final_operator_for_param_mode() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq(
-                "metadata->'$.nested'->>'$.xxx'",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata->'$.nested'->>'$.xxx'",
+                    serde_json::json!("vvv"),
+                ));
 
         let filters =
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns())?;
@@ -3058,14 +3020,12 @@ mod tests {
 
     #[test]
     fn unsupported_document_filter_expressions_are_rejected() -> anyhow::Result<()> {
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(5)
-            .filter(SqliteSearchFilter::eq(
-                "metadata) OR 1 = 1 --",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 5)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata) OR 1 = 1 --",
+                    serde_json::json!("vvv"),
+                ));
 
         let err = filter_error(
             render_search_filters(&req, SqliteDistanceMetric::Cosine, &test_metadata_columns()),
@@ -3093,11 +3053,9 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(3)
-            .threshold(0.75)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 3)
+                .with_threshold(0.75);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3166,10 +3124,8 @@ mod tests {
             .await?;
 
         let index = vector_store;
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3242,11 +3198,9 @@ mod tests {
             .await?;
 
         let index = vector_store;
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .threshold(0.9)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_threshold(0.9);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3299,10 +3253,8 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(2)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 2);
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
             .iter()
@@ -3323,11 +3275,9 @@ mod tests {
             "top_n_ids should return each document once using its best embedding: {id_results:?}"
         );
 
-        let threshold_req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(2)
-            .threshold(1.0)
-            .build();
+        let threshold_req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 2)
+                .with_threshold(1.0);
         let threshold_results = index
             .top_n_as::<TestDocument>(threshold_req.clone())
             .await?;
@@ -3387,10 +3337,8 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(3)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 3);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3433,14 +3381,12 @@ mod tests {
         let index =
             live_test_index("live_post_filter_search_beyond_knn_k_cap_succeeds", rows).await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "title",
-                serde_json::json!("wanted title"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "title",
+                    serde_json::json!("wanted title"),
+                ));
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3476,10 +3422,8 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(2)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 2);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3518,10 +3462,8 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1);
         let results = index.top_n_as::<CommonTypeDocument>(req).await?;
 
         let Some((_, id, doc)) = results.first() else {
@@ -3559,10 +3501,8 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1);
         let results = index
             .top_n_as::<StructuredJsonMetadataDocument>(req.clone())
             .await?;
@@ -3596,11 +3536,9 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq("name", serde_json::json!("docs")))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq("name", serde_json::json!("docs")));
 
         let results = index.top_n_as::<CommonTypeDocument>(req.clone()).await?;
         let ids = results
@@ -3645,11 +3583,9 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(2)
-            .threshold(-2.0)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 2)
+                .with_threshold(-2.0);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3710,14 +3646,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "category",
-                serde_json::json!("docs"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "category",
+                    serde_json::json!("docs"),
+                ));
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3755,14 +3689,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "title",
-                serde_json::json!("wanted title"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "title",
+                    serde_json::json!("wanted title"),
+                ));
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -3798,14 +3730,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "metadata->>'$.xxx'",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata->>'$.xxx'",
+                    serde_json::json!("vvv"),
+                ));
 
         let results = index.top_n_as::<JsonMetadataDocument>(req.clone()).await?;
         let ids = results
@@ -3841,14 +3771,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "metadata->'$.xxx'",
-                serde_json::json!("vvv"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "metadata->'$.xxx'",
+                    serde_json::json!("vvv"),
+                ));
 
         let results = index.top_n_as::<JsonMetadataDocument>(req.clone()).await?;
         let ids = results
@@ -3906,11 +3834,9 @@ mod tests {
         let filter = SqliteSearchFilter::eq("category", serde_json::json!("docs")).and(
             SqliteSearchFilter::eq("metadata->>'$.xxx'", serde_json::json!("vvv")),
         );
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(filter);
 
         let results = index.top_n_as::<JsonMetadataDocument>(req.clone()).await?;
         let ids = results
@@ -3951,11 +3877,9 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq("category", serde_json::json!("misc")).not())
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq("category", serde_json::json!("misc")).not());
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -4001,10 +3925,8 @@ mod tests {
             .await?;
 
         let index = vector_store;
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1);
 
         let results = index.top_n_as::<ReorderedIdDocument>(req.clone()).await?;
         let Some((_, id, doc)) = results.first() else {
@@ -4060,11 +3982,9 @@ mod tests {
             .await?;
 
         let index = vector_store;
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .threshold(0.9)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_threshold(0.9);
 
         let results = index.top_n_as::<InternalAliasDocument>(req.clone()).await?;
         let Some((score, id, doc)) = results.first() else {
@@ -4125,11 +4045,9 @@ mod tests {
         let filter = SqliteSearchFilter::lt("priority", serde_json::json!(10))
             .and(SqliteSearchFilter::gt("rating", serde_json::json!(0.9)))
             .and(SqliteSearchFilter::eq("published", serde_json::json!(true)));
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(filter);
 
         let results = index.top_n_as::<TypedTestDocument>(req.clone()).await?;
         anyhow::ensure!(
@@ -4187,14 +4105,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(2)
-            .filter(SqliteSearchFilter::gt(
-                "published",
-                serde_json::json!(false),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 2)
+                .with_filter(SqliteSearchFilter::gt(
+                    "published",
+                    serde_json::json!(false),
+                ));
 
         ensure_vector_store_filter_error(
             index.top_n_as::<TypedTestDocument>(req.clone()).await,
@@ -4224,14 +4140,12 @@ mod tests {
         )
         .await?;
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(SqliteSearchFilter::eq(
-                "published",
-                serde_json::json!("true"),
-            ))
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(SqliteSearchFilter::eq(
+                    "published",
+                    serde_json::json!("true"),
+                ));
 
         ensure_vector_store_filter_error(
             index.top_n_as::<TypedTestDocument>(req.clone()).await,
@@ -4260,12 +4174,12 @@ mod tests {
             SqliteDistanceMetric::L1,
         ] {
             let threshold = oracle_threshold(distance_metric);
-            let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-                .query(needle_embedding())
-                .samples(u64::try_from(rows.len())?)
-                .threshold(threshold)
-                .filter(filter.clone())
-                .build();
+            let req = VectorSearchRequest::<SqliteSearchFilter>::new(
+                OneOrMany::one(needle_embedding()),
+                u64::try_from(rows.len())?,
+            )
+            .with_threshold(threshold)
+            .with_filter(filter.clone());
             let expected = exact_oracle_results(
                 &rows,
                 &query,
@@ -4326,11 +4240,9 @@ mod tests {
             SqliteSearchFilter::eq("title", serde_json::json!("special title")),
         );
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(filter);
 
         let results = index.top_n_as::<TestDocument>(req.clone()).await?;
         let ids = results
@@ -4371,11 +4283,9 @@ mod tests {
             .and(SqliteSearchFilter::like("title".to_string(), "metadata%"))
             .and(SqliteSearchFilter::glob("category".to_string(), "doc*"));
 
-        let req = VectorSearchRequest::<SqliteSearchFilter>::builder()
-            .query(needle_embedding())
-            .samples(1)
-            .filter(filter)
-            .build();
+        let req =
+            VectorSearchRequest::<SqliteSearchFilter>::new(OneOrMany::one(needle_embedding()), 1)
+                .with_filter(filter);
 
         let results = index.top_n_as::<JsonMetadataDocument>(req.clone()).await?;
         let ids = results

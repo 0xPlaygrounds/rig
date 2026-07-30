@@ -34,6 +34,7 @@ use crate::client::{
     Transport,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::openai;
 
 // ================================================================
@@ -64,14 +65,24 @@ impl Provider for LlamafileExt {
 }
 
 impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
-    const PROVIDER_NAME: &'static str = "llamafile";
-
-    type StreamingUsage = openai::Usage;
-
-    // llama.cpp-based servers can emit a whole tool call in one streaming chunk.
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = openai::CompletionResponse;
+
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
+    }
 }
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for LlamafileExt {
@@ -272,14 +283,19 @@ pub mod functions {
 
     use serde::{Deserialize, Serialize};
 
-    use super::LlamafileExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Llamafile API base URL.
     pub const DEFAULT_BASE_URL: &str = "http://localhost:8080";
+
+    /// Llamafile's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Llamafile's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -336,7 +352,36 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Llamafile's straight-line chat-completions body assembly.
+    ///
+    /// No wire-level request quirks: llamafile serves the reference OpenAI
+    /// dialect, so the body is the shared typed conversion serialized as-is. Its
+    /// one dialect difference is on the streaming side — llama.cpp-based servers
+    /// can emit a whole tool call in a single chunk
+    /// (`emits_complete_single_chunk_tool_calls` on [`DESCRIPTOR`]).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -348,14 +393,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -365,7 +408,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -375,7 +422,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to Llamafile and return the normalized response.

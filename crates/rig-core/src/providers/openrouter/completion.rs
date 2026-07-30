@@ -1444,58 +1444,52 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     }
 }
 
-impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
-    const PROVIDER_NAME: &'static str = "openrouter";
+/// Decorate accumulated streaming tool calls from OpenRouter's
+/// `reasoning_details` payloads: an encrypted-reasoning detail carries the
+/// signature belonging to the tool call with the matching id.
+pub(crate) fn decorate_streaming_tool_call(
+    detail: &serde_json::Value,
+    tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
+) {
+    let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
+        serde_json::from_value::<ReasoningDetails>(detail.clone())
+    else {
+        return;
+    };
+    let Some(id) = id else {
+        return;
+    };
+    let Some(tool_call) = tool_calls
+        .values_mut()
+        .find(|tool_call| tool_call.id.eq(&id))
+    else {
+        return;
+    };
 
-    type StreamingUsage = Usage;
+    tool_call.signature = Some(data);
+    tool_call.additional_params = Some(detail.clone());
+}
+
+impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor =
+        super::functions::DESCRIPTOR;
+    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
+        super::functions::STREAM_DIALECT;
+
     type Response = CompletionResponse;
 
-    const STREAM_INCLUDE_USAGE: bool = false;
-
-    fn build_completion_request(
-        &self,
-        model: String,
-        request: CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-    ) -> Result<openai::completion::CompletionRequest, CompletionError> {
-        OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model: &model,
-            request,
-            strict_tools: options.strict_tools,
-        })
+    fn completion_path(&self, model: &str) -> String {
+        super::functions::completion_path(model)
     }
 
-    fn finalize_request_body_with_options(
+    fn build_body(
         &self,
-        body: &mut serde_json::Value,
+        model: &str,
+        request: &CompletionRequest,
         options: openai::completion::CompletionModelOptions,
-    ) -> Result<(), CompletionError> {
-        finalize_openrouter_request_body(body, options.prompt_caching);
-        Ok(())
-    }
-
-    fn decorate_streaming_tool_call(
-        &self,
-        detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
-            serde_json::from_value::<ReasoningDetails>(detail.clone())
-        else {
-            return;
-        };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
-        };
-
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        super::functions::build_body(model, request, options, stream)
     }
 }
 

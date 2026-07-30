@@ -64,11 +64,53 @@ impl HttpRuntime {
         }
     }
 
-    /// The underlying transport, for provider modules that drive streaming
-    /// helpers generic over `HttpClientExt` (transitional until the sans-IO
-    /// stream parser lands).
-    pub(crate) fn transport(&self) -> &Transport {
-        &self.transport
+    /// Open an SSE event stream for `request`.
+    ///
+    /// This is the transport edge of the sans-IO stream parsers: the
+    /// `HttpClientExt` genericity ends here, and provider stream state
+    /// machines consume the concrete
+    /// [`BoxedEventSource`](crate::http_client::sse::BoxedEventSource).
+    ///
+    /// `allow_missing_content_type` relaxes the `text/event-stream`
+    /// content-type check for backends that omit it (ChatGPT's backend API).
+    pub(crate) fn sse_events(
+        &self,
+        request: http::Request<Vec<u8>>,
+        allow_missing_content_type: bool,
+    ) -> crate::http_client::sse::BoxedEventSource {
+        use crate::http_client::sse::boxed_event_source;
+        match &self.transport {
+            Transport::Reqwest(client) => {
+                boxed_event_source(client.clone(), request, allow_missing_content_type)
+            }
+            #[cfg(any(test, feature = "test-utils"))]
+            Transport::Recording(client) => {
+                boxed_event_source(client.clone(), request, allow_missing_content_type)
+            }
+            #[cfg(any(test, feature = "test-utils"))]
+            Transport::Sequenced(client) => {
+                boxed_event_source(client.clone(), request, allow_missing_content_type)
+            }
+        }
+    }
+
+    /// Send a request and return the raw byte-stream response.
+    ///
+    /// The non-SSE transport edge, for providers whose streams are not
+    /// server-sent events (Ollama's native NDJSON `/api/chat` stream). The
+    /// returned [`StreamingResponse`](crate::http_client::StreamingResponse) is
+    /// already type-erased, so no HTTP-client genericity leaks to the caller.
+    pub(crate) async fn send_streaming(
+        &self,
+        request: http::Request<Vec<u8>>,
+    ) -> Result<crate::http_client::StreamingResponse, http_client::Error> {
+        match &self.transport {
+            Transport::Reqwest(client) => client.send_streaming(request).await,
+            #[cfg(any(test, feature = "test-utils"))]
+            Transport::Recording(client) => client.send_streaming(request).await,
+            #[cfg(any(test, feature = "test-utils"))]
+            Transport::Sequenced(client) => client.send_streaming(request).await,
+        }
     }
 
     /// Send a request and return `(status, body bytes)`.

@@ -86,6 +86,70 @@ impl ProviderDescriptor {
     }
 }
 
+/// Which wire `usage` payload a Chat Completions dialect sends.
+///
+/// The variants exist because the providers' usage accounting differs (Mistral's
+/// cached-token fallbacks, DeepSeek's cache hit/miss counters, OpenRouter's
+/// cost fields); each is parsed into its own concrete type and converted at the
+/// parse site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatCompletionsUsageDialect {
+    /// OpenAI's `Usage` — the shape almost every compatible provider sends.
+    OpenAi,
+    /// DeepSeek's cache hit/miss accounting.
+    DeepSeek,
+    /// Mistral's usage with cached-token fallbacks.
+    Mistral,
+    /// OpenRouter's usage.
+    OpenRouter,
+}
+
+/// A Chat Completions streaming dialect, as plain data.
+///
+/// Everything the shared state machine needs to know about a provider: the name
+/// stamped on the terminal record, which wire usage payload to parse, and the
+/// two behavioral knobs (both already
+/// [`ProviderDescriptor`] fields or a single provider's quirk).
+#[derive(Debug, Clone, Copy)]
+pub struct ChatCompletionsDialect {
+    /// Provider name stamped on the normalized terminal record.
+    pub provider: &'static str,
+    /// Which wire usage payload the provider sends.
+    pub usage: ChatCompletionsUsageDialect,
+    /// Whether a whole tool call can arrive in one chunk (llama.cpp-style
+    /// servers); mirrors the descriptor field of the same name.
+    pub emits_complete_single_chunk_tool_calls: bool,
+    /// Whether `reasoning_details` payloads decorate accumulated tool calls
+    /// (OpenRouter's encrypted-reasoning signatures).
+    pub decorates_reasoning_details: bool,
+}
+
+impl ChatCompletionsDialect {
+    /// The dialect implied by a provider's capability sheet: OpenAI-shaped
+    /// usage, no reasoning-detail decoration.
+    pub const fn from_descriptor(descriptor: &ProviderDescriptor) -> Self {
+        Self {
+            provider: descriptor.name,
+            usage: ChatCompletionsUsageDialect::OpenAi,
+            emits_complete_single_chunk_tool_calls: descriptor
+                .emits_complete_single_chunk_tool_calls,
+            decorates_reasoning_details: false,
+        }
+    }
+
+    /// Parse a provider-specific wire usage payload instead of OpenAI's.
+    pub const fn with_usage(mut self, usage: ChatCompletionsUsageDialect) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    /// Decorate accumulated tool calls from `reasoning_details` payloads.
+    pub const fn with_reasoning_detail_decoration(mut self) -> Self {
+        self.decorates_reasoning_details = true;
+        self
+    }
+}
+
 /// Where a provider credential comes from.
 ///
 /// A serialized provider config can reference the environment instead of

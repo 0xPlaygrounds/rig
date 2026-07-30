@@ -108,10 +108,8 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// let query = model
 ///     .embed_text("My boss says I zindle too much, what does that mean?")
 ///     .await?;
-/// let req = VectorSearchRequest::<MongoDbSearchFilter>::builder()
-///     .query(query)
-///     .samples(1)
-///     .build();
+/// let req =
+///     VectorSearchRequest::<MongoDbSearchFilter>::new(rig_core::OneOrMany::one(query), 1);
 ///
 /// // Query the index
 /// let definitions = index

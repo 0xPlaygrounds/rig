@@ -288,7 +288,9 @@ mod test {
     async fn transcription_non_success_preserves_status_and_body() {
         use crate::client::transcription::TranscriptionClient;
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+        use crate::transcription::{
+            TranscriptionError, TranscriptionModel as _, TranscriptionRequest,
+        };
 
         let body = r#"{"error":{"message":"boom"}}"#;
         let http_client =
@@ -301,9 +303,7 @@ mod test {
         let model = client.transcription_model(VOXTRAL_MINI);
 
         let error = match model
-            .transcription_request()
-            .data(vec![0u8; 16])
-            .send()
+            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
             .await
         {
             Err(error) => error,

@@ -2,6 +2,7 @@
 
 use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
+use rig::image_generation::ImageGenerationRequest;
 use rig::providers::gemini;
 
 #[tokio::test]
@@ -11,11 +12,13 @@ async fn nano_banana_image_generation_smoke() {
         |client| async move {
             let model = client.image_generation_model(gemini::GEMINI_2_5_FLASH_IMAGE);
             let response = model
-                .image_generation_request()
-                .prompt("Generate a simple flat icon of a yellow banana on a white background.")
-                .width(256)
-                .height(256)
-                .send()
+                .image_generation(
+                    ImageGenerationRequest::new(
+                        "Generate a simple flat icon of a yellow banana on a white background.",
+                    )
+                    .with_width(256)
+                    .with_height(256),
+                )
                 .await
                 .expect("Nano Banana image generation should succeed");
 

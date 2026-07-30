@@ -32,8 +32,7 @@ use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoice, CompatibleFinishReason, CompatibleToolCallChunk,
 };
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
@@ -995,11 +994,15 @@ where
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
-        tracing::Instrument::instrument(
-            send_copilot_chat_streaming_request(self.client.clone(), req),
-            span,
-        )
-        .await
+        // `drive_compatible_stream` is sync and captures `Span::current()`, so
+        // enter the span around the call instead of instrumenting a future.
+        Ok(span.in_scope(|| {
+            send_copilot_chat_streaming_request(crate::http_client::sse::boxed_event_source(
+                self.client.clone(),
+                req,
+                false,
+            ))
+        }))
     }
 
     async fn stream_responses(
@@ -1031,7 +1034,7 @@ where
         .build();
 
         let client = self.client.clone();
-        let event_source = crate::http_client::sse::GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
         Ok(stream_copilot_responses_from_event_source(
             event_source,
             span,
@@ -1045,13 +1048,11 @@ where
 /// The single source of truth for Copilot Responses streaming: the trait path
 /// ([`CompletionModel::stream`]) and the data-oriented [`functions`] face both
 /// route through this function.
-pub(crate) fn stream_copilot_responses_from_event_source<HttpClient>(
-    mut event_source: crate::http_client::sse::GenericEventSource<HttpClient, Vec<u8>>,
+pub(crate) fn stream_copilot_responses_from_event_source(
+    event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> StreamingCompletionResponse
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-{
+) -> StreamingCompletionResponse {
+    let mut event_source = event_source;
     let stream = tracing_futures::Instrument::instrument(
         stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
@@ -1213,7 +1214,8 @@ where
                     }
                 }
 
-                event_source.close();
+                // Dropping the boxed event source is equivalent to closing it —
+                // the state machine is finished with it.
 
                 if terminated_with_error {
                     return;
@@ -1658,70 +1660,52 @@ struct ChatStreamingChunk {
     usage: Option<openai::completion::Usage>,
 }
 
-#[derive(Clone, Copy)]
-struct CopilotChatCompatibleProfile;
+/// Parse one GitHub Copilot chat-completions SSE `data` payload. Pure.
+///
+/// A narrower schema than the shared OpenAI dialect: `index` is required,
+/// there is no `reasoning`/`reasoning_details` key, and the deprecated
+/// `function_call` finish reason is not treated as a tool call.
+pub(crate) fn normalize_copilot_chat_chunk(
+    data: &str,
+) -> crate::providers::internal::openai_chat_completions_compatible::NormalizedCompatibleChunk {
+    let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
+        Ok(data) => data,
+        Err(error) => {
+            tracing::debug!(?error, "Couldn't parse Copilot chat SSE payload");
+            return Ok(None);
+        }
+    };
 
-impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
-    type Usage = openai::completion::Usage;
-    type Detail = ();
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                tracing::debug!(?error, "Couldn't parse Copilot chat SSE payload");
-                return Ok(None);
-            }
-        };
-
-        Ok(Some(
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
-                    },
-                    text: choice.delta.content.clone(),
-                    reasoning: choice.delta.reasoning_content.clone(),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: Vec::new(),
+    Ok(Some(
+        openai_chat_completions_compatible::first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage.map(Into::into),
+            &data.choices,
+            |choice| CompatibleChoice {
+                finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
+                    CompatibleFinishReason::ToolCalls
+                } else {
+                    CompatibleFinishReason::Other
                 },
-            ),
-        ))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal {
-        crate::streaming::StreamFinal::new("copilot", usage.into())
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
+                text: choice.delta.content.clone(),
+                reasoning: choice.delta.reasoning_content.clone(),
+                tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                    &choice.delta.tool_calls,
+                ),
+                details: Vec::new(),
+            },
+        ),
+    ))
 }
 
-async fn send_copilot_chat_streaming_request<T>(
-    http_client: T,
-    req: Request<Vec<u8>>,
-) -> Result<StreamingCompletionResponse, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    openai_chat_completions_compatible::send_compatible_streaming_request(
-        http_client,
-        req,
-        CopilotChatCompatibleProfile,
+fn send_copilot_chat_streaming_request(
+    event_source: crate::http_client::sse::BoxedEventSource,
+) -> StreamingCompletionResponse {
+    openai_chat_completions_compatible::drive_compatible_stream(
+        event_source,
+        openai_chat_completions_compatible::ChunkNormalizer::CopilotChat,
     )
-    .await
 }
 
 fn default_token_dir() -> Option<PathBuf> {

@@ -2,6 +2,7 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
+use rig::OneOrMany;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
@@ -60,10 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // passthrough of the query; since the passthrough is instant, a plain
     // sequential lookup is equivalent and clearer.)
     let query_embedding = embedding_model.embed_text(QUERY).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
     let prompt = match vector_store.top_n_as::<String>(req).await {
         Ok(docs) => lookup_context(docs, QUERY),
         Err(err) => {

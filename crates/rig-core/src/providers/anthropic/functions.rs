@@ -217,8 +217,6 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_runtime::Transport;
-
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     let span =
         CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
@@ -228,28 +226,11 @@ pub async fn open_stream(
             )
             .build();
     let req = build_request(cfg, &request, true)?;
-    match rt.transport() {
-        Transport::Reqwest(client) => Ok(super::streaming::stream_anthropic_sse(
-            client.clone(),
-            req,
-            DESCRIPTOR.name,
-            span,
-        )),
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => Ok(super::streaming::stream_anthropic_sse(
-            client.clone(),
-            req,
-            DESCRIPTOR.name,
-            span,
-        )),
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => Ok(super::streaming::stream_anthropic_sse(
-            client.clone(),
-            req,
-            DESCRIPTOR.name,
-            span,
-        )),
-    }
+    Ok(super::streaming::stream_anthropic_sse(
+        rt.sse_events(req, false),
+        DESCRIPTOR.name,
+        span,
+    ))
 }
 
 /// Send `request` to Anthropic and return the normalized response.

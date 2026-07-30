@@ -17,17 +17,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::client::ApiResponse;
-use super::client::OpenAICompletionsExt;
-use super::completion::{CompletionModelOptions, OpenAICompatibleProvider as _};
+use super::completion::CompletionModelOptions;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_runtime::HttpRuntime;
 use crate::json_utils::merge;
 use crate::model::{ModelList, ModelListingError};
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 
 /// Default OpenAI API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+
+/// OpenAI's Chat Completions streaming dialect.
+pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
 /// OpenAI's capability sheet.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -88,29 +92,34 @@ pub fn build_request_body(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
-    let ext = OpenAICompletionsExt::default();
-    let options = CompletionModelOptions::default();
-    let mut typed = ext.build_completion_request(cfg.model.clone(), request.clone(), options)?;
-    ext.prepare_request(&mut typed)?;
-    let mut body = serde_json::to_value(&typed)?;
-    if stream {
-        if DESCRIPTOR.stream_include_usage {
-            match body.get_mut("stream_options") {
-                Some(serde_json::Value::Object(options)) => {
-                    options
-                        .entry("include_usage")
-                        .or_insert(serde_json::Value::Bool(true));
-                }
-                Some(_) => {}
-                None => {
-                    body = merge(body, json!({"stream_options": {"include_usage": true}}));
-                }
-            }
-        }
-        body = merge(body, json!({"stream": true}));
-    }
-    ext.finalize_request_body_with_options(&mut body, options)?;
+    build_body(
+        &cfg.model,
+        request,
+        CompletionModelOptions::default(),
+        stream,
+    )
+}
+
+/// OpenAI's straight-line chat-completions body assembly.
+///
+/// OpenAI is the reference dialect: no wire-level quirks, so the body is the
+/// shared typed conversion serialized as-is. Compatible providers add their own
+/// dialect steps between the two shared stages (see e.g.
+/// [`crate::providers::mistral::functions::build_body`]).
+pub(crate) fn build_body(
+    model: &str,
+    request: &CompletionRequest,
+    options: CompletionModelOptions,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let typed = compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+    let body = compatible_body_value(&typed, &DESCRIPTOR, stream)?;
     Ok(serde_json::to_vec(&body)?)
+}
+
+/// The chat-completions request path for `model`.
+pub(crate) fn completion_path(_model: &str) -> String {
+    "/chat/completions".to_string()
 }
 
 /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -122,25 +131,13 @@ pub fn build_request(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-    let ext = OpenAICompletionsExt::default();
-    let path = ext.completion_path(&cfg.model);
-    let url = format!("{}{}", cfg.base_url.trim_end_matches('/'), path);
-    let body = build_request_body(cfg, request, stream)?;
-
-    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
-    if let Some(key) = cfg
-        .api_key
-        .resolve()
-        .map_err(|e| CompletionError::RequestError(Box::new(e)))?
-    {
-        builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
-    }
-    for (name, value) in &cfg.extra_headers {
-        builder = builder.header(name.as_str(), value.as_str());
-    }
-    builder
-        .body(body)
-        .map_err(|e| CompletionError::RequestError(Box::new(e)))
+    compatible_http_request(
+        &cfg.base_url,
+        &completion_path(&cfg.model),
+        &cfg.api_key,
+        &cfg.extra_headers,
+        build_request_body(cfg, request, stream)?,
+    )
 }
 
 /// Parse a chat-completions response body into the normalized
@@ -149,22 +146,11 @@ pub fn parse_response(
     status: http::StatusCode,
     body: &str,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    if !status.is_success() {
-        return Err(CompletionError::from_http_response(
-            status,
-            body.to_string(),
-        ));
-    }
-    match serde_json::from_str::<ApiResponse<super::completion::CompletionResponse>>(body)? {
-        ApiResponse::Ok(response) => response.try_into(),
-        ApiResponse::Err(err) => {
-            tracing::warn!(message = %err.message, "provider returned an error response");
-            Err(CompletionError::from_http_response(
-                status,
-                body.to_string(),
-            ))
-        }
-    }
+    compatible_parse_response::<super::completion::CompletionResponse>(
+        status,
+        body,
+        DESCRIPTOR.name,
+    )
 }
 
 /// Open a streaming completion for `request`.
@@ -177,24 +163,8 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_runtime::Transport;
-    use crate::providers::internal::openai_chat_completions_compatible as compat;
-
     let req = build_request(cfg, &request, true)?;
-    let profile = super::completion::streaming::openai_stream_profile();
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-    }
+    Ok(compatible_open_stream(rt, req, STREAM_DIALECT))
 }
 
 /// Send `request` to OpenAI and return the normalized response.
@@ -684,32 +654,53 @@ pub async fn embed_batches(
 }
 
 // ================================================================
-// Generic OpenAI-compatible helpers
+// Shared OpenAI-compatible request/response stages
 //
-// The per-provider `functions` modules (groq, deepseek, together, …) are
-// thin wrappers over these: each instantiates its own `Ext` so the
-// provider's completion_path/prepare_request/finalize hooks and
-// PROVIDER_NAME apply, while the request/parse mechanics stay in one
-// place. Transitional compile-time plumbing; retired with the generic
-// path later in the migration.
+// The per-provider `functions` modules (groq, deepseek, mistral, …) are
+// straight-line code built out of these stages: each calls
+// `compatible_typed_request`, applies its own dialect steps to the typed
+// request and/or the serialized body, and finishes with
+// `compatible_body_value`. Every stage is plain data in, plain data out —
+// no provider trait, no hooks.
 // ================================================================
 
-/// Build the serialized chat-completions body for an OpenAI-compatible `ext`.
-pub(crate) fn compatible_request_body<Ext>(
-    ext: &Ext,
+/// Stage 1 (pure): a core completion request becomes the typed OpenAI
+/// chat-completions request, honoring `descriptor`'s tool and
+/// structured-output capabilities.
+pub(crate) fn compatible_typed_request(
     model: &str,
     request: &CompletionRequest,
+    descriptor: &ProviderDescriptor,
+    options: CompletionModelOptions,
+) -> Result<super::completion::CompletionRequest, CompletionError> {
+    super::completion::CompletionRequest::try_from(super::completion::OpenAIRequestParams {
+        model: model.to_string(),
+        request: request.clone(),
+        strict_tools: options.strict_tools,
+        tool_result_array_content: options.tool_result_array_content,
+        supports_response_format: descriptor.supports_response_format,
+        supports_tools: descriptor.supports_tools,
+    })
+}
+
+/// Stage 2 (pure): serialize a typed request and merge the streaming
+/// parameters (`stream: true` and, when `descriptor.stream_include_usage`,
+/// `stream_options.include_usage`).
+///
+/// `merge` is shallow, so `include_usage` is inserted *into* any
+/// caller-supplied `stream_options` rather than merged over it: the caller's
+/// keys survive and the usage chunk is still requested.
+pub(crate) fn compatible_body_value<T>(
+    typed: &T,
+    descriptor: &ProviderDescriptor,
     stream: bool,
-) -> Result<Vec<u8>, CompletionError>
+) -> Result<serde_json::Value, CompletionError>
 where
-    Ext: super::completion::OpenAICompatibleProvider,
+    T: Serialize,
 {
-    let options = CompletionModelOptions::default();
-    let mut typed = ext.build_completion_request(model.to_string(), request.clone(), options)?;
-    ext.prepare_request(&mut typed)?;
-    let mut body = serde_json::to_value(&typed)?;
+    let mut body = serde_json::to_value(typed)?;
     if stream {
-        if Ext::STREAM_INCLUDE_USAGE {
+        if descriptor.stream_include_usage {
             match body.get_mut("stream_options") {
                 Some(serde_json::Value::Object(options)) => {
                     options
@@ -724,31 +715,26 @@ where
         }
         body = merge(body, json!({"stream": true}));
     }
-    ext.finalize_request_body_with_options(&mut body, options)?;
-    Ok(serde_json::to_vec(&body)?)
+    Ok(body)
 }
 
-/// Build the complete HTTP request for an OpenAI-compatible `ext` with
-/// Bearer authentication.
-pub(crate) fn compatible_request<Ext>(
-    ext: &Ext,
+/// Stage 3: the complete HTTP request for a Bearer-authenticated
+/// OpenAI-compatible provider.
+///
+/// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+/// environment).
+pub(crate) fn compatible_http_request(
     base_url: &str,
+    path: &str,
     api_key: &ApiKeyLocation,
     extra_headers: &[(String, String)],
-    model: &str,
-    request: &CompletionRequest,
-    stream: bool,
-) -> Result<http::Request<Vec<u8>>, CompletionError>
-where
-    Ext: super::completion::OpenAICompatibleProvider,
-{
-    let path = ext.completion_path(model);
+    body: Vec<u8>,
+) -> Result<http::Request<Vec<u8>>, CompletionError> {
     let url = format!(
         "{}/{}",
         base_url.trim_end_matches('/'),
         path.trim_start_matches('/')
     );
-    let body = compatible_request_body(ext, model, request, stream)?;
 
     let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
     if let Some(key) = api_key
@@ -766,14 +752,17 @@ where
 }
 
 /// Parse an OpenAI-compatible response body into the normalized
-/// [`completion::CompletionResponse`], stamping `Ext::PROVIDER_NAME`
-/// (mirroring `GenericCompletionModel`). Pure.
-pub(crate) fn compatible_parse_response<Ext>(
+/// [`completion::CompletionResponse`], stamping `provider`. Pure.
+///
+/// `R` is the provider's own concrete chat-completions payload type.
+pub(crate) fn compatible_parse_response<R>(
     status: http::StatusCode,
     body: &str,
+    provider: &str,
 ) -> Result<completion::CompletionResponse, CompletionError>
 where
-    Ext: super::completion::OpenAICompatibleProvider,
+    R: serde::de::DeserializeOwned
+        + TryInto<completion::CompletionResponse, Error = CompletionError>,
 {
     if !status.is_success() {
         return Err(CompletionError::from_http_response(
@@ -781,10 +770,10 @@ where
             body.to_string(),
         ));
     }
-    match serde_json::from_str::<ApiResponse<Ext::Response>>(body)? {
+    match serde_json::from_str::<ApiResponse<R>>(body)? {
         ApiResponse::Ok(response) => {
             let mut normalized: completion::CompletionResponse = response.try_into()?;
-            normalized.provider = Ext::PROVIDER_NAME.to_string();
+            normalized.provider = provider.to_string();
             Ok(normalized)
         }
         ApiResponse::Err(err) => {
@@ -797,36 +786,19 @@ where
     }
 }
 
-/// Drive `req` through the shared OpenAI-compatible streaming path with
-/// `ext`'s streaming profile.
-pub(crate) async fn compatible_open_stream<Ext>(
-    ext: Ext,
+/// Open a chat-completions stream for `req` and drive it through the shared
+/// sans-IO state machine with `dialect`'s chunk normalizer.
+pub(crate) fn compatible_open_stream(
     rt: &HttpRuntime,
     req: http::Request<Vec<u8>>,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError>
-where
-    Ext: super::completion::OpenAICompatibleProvider
-        + Clone
-        + crate::wasm_compat::WasmCompatSend
-        + 'static,
-{
-    use crate::http_runtime::Transport;
+    dialect: ChatCompletionsDialect,
+) -> crate::streaming::StreamingCompletionResponse {
     use crate::providers::internal::openai_chat_completions_compatible as compat;
 
-    let profile = super::completion::streaming::stream_profile_for(ext);
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            compat::send_compatible_streaming_request(client.clone(), req, profile).await
-        }
-    }
+    compat::drive_compatible_stream(
+        rt.sse_events(req, false),
+        compat::ChunkNormalizer::ChatCompletions(dialect),
+    )
 }
 
 #[cfg(test)]

@@ -128,7 +128,7 @@ mod tests {
     use super::*;
     use crate::client::transcription::TranscriptionClient;
     use crate::test_utils::RecordingHttpClient;
-    use crate::transcription::TranscriptionModel as _;
+    use crate::transcription::{TranscriptionModel as _, TranscriptionRequest};
 
     #[tokio::test]
     async fn transcription_non_success_preserves_status_and_body() {
@@ -142,7 +142,7 @@ mod tests {
             .expect("build client");
         let model = client.transcription_model(WHISPER_LARGE_V3);
 
-        let request = model.transcription_request().data(vec![0u8; 16]).build();
+        let request = TranscriptionRequest::new(vec![0u8; 16]);
 
         let error = model
             .transcription(request)
@@ -172,7 +172,7 @@ mod tests {
             .expect("build client");
         let model = client.transcription_model(WHISPER_LARGE_V3);
 
-        let request = model.transcription_request().data(vec![0u8; 16]).build();
+        let request = TranscriptionRequest::new(vec![0u8; 16]);
 
         let error = model
             .transcription(request)

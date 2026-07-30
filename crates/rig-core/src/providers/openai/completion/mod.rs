@@ -7,6 +7,8 @@ use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequ
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
+use crate::providers::descriptor::ChatCompletionsDialect;
+use crate::providers::descriptor::ProviderDescriptor;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
@@ -1409,58 +1411,21 @@ pub struct CompletionModelOptions {
     pub prompt_caching: bool,
 }
 
-/// Contract for provider extensions that speak the OpenAI Chat Completions wire
-/// format through [`GenericCompletionModel`]. Mirrors
-/// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
-/// on the Anthropic-compatible side.
+/// The remaining compile-time plumbing for provider extensions that speak the
+/// OpenAI Chat Completions wire format through [`GenericCompletionModel`].
 ///
-/// Request construction runs the hooks in a fixed order:
-/// [`prepare_request`](Self::prepare_request) on the typed request, then
-/// serialization, then (for streaming) the `stream`/`stream_options` merge,
-/// and finally
-/// [`finalize_request_body_with_options`](Self::finalize_request_body_with_options)
-/// on the serialized body — so the finalize hook always sees the streaming
-/// parameters and model-level options.
+/// This is a **dispatch shim, not a behavior contract**: every provider's
+/// request assembly lives as straight-line code in its own `functions` module,
+/// and each impl here is a one-line forward to it. The shim exists only while
+/// the classic `Client<Ext, H>`-based model types survive; it is deleted with
+/// them.
 pub trait OpenAICompatibleProvider: crate::client::Provider {
-    /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
-    const PROVIDER_NAME: &'static str;
+    /// The provider's capability sheet — the single source of the values that
+    /// used to be assoc consts on this trait.
+    const DESCRIPTOR: ProviderDescriptor;
 
-    /// Whether the backend can emit a whole tool call (id, name, and complete
-    /// arguments) in a single streaming chunk, as llama.cpp-based servers do.
-    /// When true, the shared streaming layer emits such calls as soon as they
-    /// arrive instead of holding them until the stream ends.
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = false;
-
-    /// Whether the provider supports tool calling. When false, `tools` and
-    /// `tool_choice` are dropped with a warning during request conversion —
-    /// before tool-choice validation, so unsupported tool configurations
-    /// never error client-side on a provider that ignores tools anyway.
-    const SUPPORTS_TOOLS: bool = true;
-
-    /// Whether `output_schema` maps to OpenAI's `response_format`. Providers
-    /// whose APIs reject `json_schema` response formats set this to false;
-    /// the schema is then dropped with a warning instead of being sent.
-    const SUPPORTS_RESPONSE_FORMAT: bool = true;
-
-    /// Whether streaming requests include
-    /// `"stream_options": {"include_usage": true}`. Providers that reject
-    /// unknown parameters and already report usage on the final chunk set
-    /// this to false.
-    const STREAM_INCLUDE_USAGE: bool = true;
-
-    /// The usage payload parsed from streaming chunks and carried on the
-    /// final streaming response. OpenAI's [`Usage`] for most providers;
-    /// providers with richer usage accounting (e.g. Mistral's cached-token
-    /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
-    type StreamingUsage: Clone
-        + Default
-        + Into<crate::completion::Usage>
-        + Serialize
-        + serde::de::DeserializeOwned
-        + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static;
+    /// The provider's streaming dialect, for the sans-IO chunk normalizer.
+    const STREAM_DIALECT: ChatCompletionsDialect;
 
     /// The chat-completions payload this provider returns.
     type Response: serde::de::DeserializeOwned
@@ -1470,82 +1435,40 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         + WasmCompatSend
         + WasmCompatSync;
 
-    /// The request path for chat completions, resolved against the client
-    /// base URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
-    /// Providers that route the model through the URL (e.g. Azure deployment
-    /// paths) or keep other capabilities on differently-versioned paths
-    /// override this. `model` is the identifier the completion model handle
-    /// was created with; per-request model overrides only affect the body.
-    fn completion_path(&self, model: &str) -> String {
-        let _ = model;
-        "/chat/completions".to_string()
-    }
+    /// The request path for chat completions, resolved against the client base
+    /// URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
+    fn completion_path(&self, model: &str) -> String;
 
-    /// Build the typed chat-completions request. Providers that share the
-    /// OpenAI transport but need provider-specific message conversion can
-    /// override this while still using [`GenericCompletionModel`] for sending,
-    /// streaming, error handling, and telemetry.
-    fn build_completion_request(
+    /// The exact serialized request body — the provider's own straight-line
+    /// assembly in its `functions` module.
+    fn build_body(
         &self,
-        model: String,
-        request: CoreCompletionRequest,
+        model: &str,
+        request: &CoreCompletionRequest,
         options: CompletionModelOptions,
-    ) -> Result<CompletionRequest, CompletionError> {
-        CompletionRequest::try_from(OpenAIRequestParams {
-            model,
-            request,
-            strict_tools: options.strict_tools,
-            tool_result_array_content: options.tool_result_array_content,
-            supports_response_format: Self::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: Self::SUPPORTS_TOOLS,
-        })
-    }
-
-    /// Adjust the typed request before serialization (e.g. rewrite the model
-    /// identifier or fold provider-native tool definitions out of
-    /// `additional_params`).
-    fn prepare_request(&self, request: &mut CompletionRequest) -> Result<(), CompletionError> {
-        let _ = request;
-        Ok(())
-    }
-
-    /// Adjust the fully serialized request body — after any streaming
-    /// parameters are merged — immediately before it is sent. This is where
-    /// wire-level dialect differences live (e.g. Mistral's `"any"` tool
-    /// choice, DeepSeek's string-flattened message content).
-    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
-        let _ = body;
-        Ok(())
-    }
-
-    /// Adjust the fully serialized request body with model-level options.
-    /// Providers that do not need model-instance options should override
-    /// [`finalize_request_body`](Self::finalize_request_body) instead.
-    fn finalize_request_body_with_options(
-        &self,
-        body: &mut serde_json::Value,
-        options: CompletionModelOptions,
-    ) -> Result<(), CompletionError> {
-        let _ = options;
-        self.finalize_request_body(body)
-    }
-
-    /// Decorate streamed tool calls from provider-specific streaming detail
-    /// payloads. Most OpenAI-compatible providers do not emit such details.
-    fn decorate_streaming_tool_call(
-        &self,
-        detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let _ = (detail, tool_calls);
-    }
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError>;
 }
 
 impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
-    const PROVIDER_NAME: &'static str = "openai";
+    const DESCRIPTOR: ProviderDescriptor = super::functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = super::functions::STREAM_DIALECT;
 
-    type StreamingUsage = Usage;
     type Response = CompletionResponse;
+
+    fn completion_path(&self, model: &str) -> String {
+        super::functions::completion_path(model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &CoreCompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        super::functions::build_body(model, request, options, stream)
+    }
 }
 
 /// A chat-completions model over any [`OpenAICompatibleProvider`] extension.
@@ -1942,12 +1865,16 @@ where
     // governs. (Caveat: a turn-1 answer with no tool call is therefore not
     // schema-constrained; `Native` is "guaranteed" only once tools have run.)
     // See issue #1928.
+    // Not a getter for the same-named descriptor field: OpenAI Chat
+    // Completions composes iff it sends `response_format` at all, so the
+    // answer is `supports_response_format`.
+    #[allow(clippy::misnamed_getters)]
     fn composes_native_output_with_tools(&self) -> bool {
-        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
-        // false) cannot compose native structured output with tools; the
-        // agent then falls back to tool-mode enforcement as their
-        // pre-migration hand-rolled models did.
-        Ext::SUPPORTS_RESPONSE_FORMAT
+        // Providers that drop `output_schema`
+        // (`descriptor.supports_response_format == false`) cannot compose
+        // native structured output with tools; the agent then falls back to
+        // tool-mode enforcement as their pre-migration hand-rolled models did.
+        Ext::DESCRIPTOR.supports_response_format
     }
 
     async fn completion(
@@ -1961,33 +1888,32 @@ where
             tool_result_array_content: self.tool_result_array_content,
             prompt_caching: self.prompt_caching,
         };
-        let mut request = self.client.ext().build_completion_request(
-            self.model.to_owned(),
-            completion_request,
-            options,
-        )?;
-        self.client.ext().prepare_request(&mut request)?;
+        let resolved_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
-            &request.model,
+            Ext::DESCRIPTOR.name,
+            &resolved_model,
             CompletionOperation::Chat,
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
-        let mut request_body = serde_json::to_value(&request)?;
-        self.client
-            .ext()
-            .finalize_request_body_with_options(&mut request_body, options)?;
+        // The provider's own straight-line body assembly (its `functions`
+        // module) is the single source of truth for the wire bytes.
+        let body =
+            self.client
+                .ext()
+                .build_body(&self.model, &completion_request, options, false)?;
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
                 "OpenAI Chat Completions completion request: {}",
-                serde_json::to_string_pretty(&request_body)?
+                String::from_utf8_lossy(&body)
             );
         }
 
-        let body = serde_json::to_vec(&request_body)?;
         // Deliberately the configured model, not the per-request override:
         // Azure's deployment URL is pinned to the model handle.
         let path = self.client.ext().completion_path(&self.model);
@@ -2026,7 +1952,7 @@ where
                         // provider; stamp the real one for this extension.
                         let mut normalized: completion::CompletionResponse =
                             response.try_into()?;
-                        normalized.provider = Ext::PROVIDER_NAME.to_string();
+                        normalized.provider = Ext::DESCRIPTOR.name.to_string();
                         Ok(normalized)
                     }
                     ApiResponse::Err(err) => {

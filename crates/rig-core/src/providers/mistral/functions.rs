@@ -13,14 +13,23 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::client::MistralExt as Ext;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::internal::openai_chat_completions_compatible::{
+    ChatCompletionsDialect, ChatCompletionsUsageDialect,
+};
+use crate::providers::openai::completion::CompletionModelOptions;
 use crate::providers::openai::functions as openai_functions;
 
 /// Default Mistral API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.mistral.ai";
+
+/// Mistral's Chat Completions streaming dialect: OpenAI-shaped chunks with
+/// Mistral's own usage payload (cached-token fallbacks).
+pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR)
+        .with_usage(ChatCompletionsUsageDialect::Mistral);
 
 /// Mistral's capability sheet.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -77,7 +86,91 @@ pub fn build_request_body(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
-    openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+    build_body(
+        &cfg.model,
+        request,
+        CompletionModelOptions::default(),
+        stream,
+    )
+}
+
+/// The chat-completions request path for `model`.
+///
+/// The client base URL is the bare host; other Mistral capabilities
+/// (embeddings, transcription, model listing) build their own v1 paths.
+pub(crate) fn completion_path(_model: &str) -> String {
+    "/v1/chat/completions".to_string()
+}
+
+/// Mistral's straight-line chat-completions body assembly.
+///
+/// Mistral's dialect quirks are all wire-level: the "must call some tool" mode is
+/// spelled `any` rather than `required`, message `content` is a plain string
+/// rather than an array of content parts, assistant messages carry the `prefix`
+/// flag from Mistral's schema and must not echo hidden `reasoning_content` (the
+/// API rejects unknown assistant fields). Mistral is also strict about unknown
+/// parameters and reports usage on the final stream chunk without
+/// `stream_options` — hence `stream_include_usage: false` on [`DESCRIPTOR`].
+pub(crate) fn build_body(
+    model: &str,
+    request: &CompletionRequest,
+    options: CompletionModelOptions,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let typed = openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+    let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+    apply_wire_dialect(&mut body);
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// Rewrite a serialized chat-completions `body` into Mistral's wire dialect in
+/// place: `any` tool choice, string message `content`, `prefix`-stamped
+/// assistant turns, and no echoed `reasoning_content`.
+pub(crate) fn apply_wire_dialect(body: &mut serde_json::Value) {
+    if let Some(map) = body.as_object_mut() {
+        // Mistral spells the "must call some tool" mode `any`, not `required`.
+        if let Some(tool_choice) = map.get_mut("tool_choice")
+            && tool_choice.as_str() == Some("required")
+        {
+            *tool_choice = serde_json::Value::String("any".to_string());
+        }
+
+        if let Some(messages) = map
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for message in messages {
+                let Some(message) = message.as_object_mut() else {
+                    continue;
+                };
+                let is_assistant =
+                    message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
+
+                // Mistral takes message `content` as a plain string.
+                if let Some(content) = message.get_mut("content") {
+                    crate::providers::openai::completion::flatten_text_content_parts(
+                        content, "", false,
+                    );
+                }
+
+                if is_assistant {
+                    if !message.contains_key("content") {
+                        message.insert(
+                            "content".to_string(),
+                            serde_json::Value::String(String::new()),
+                        );
+                    }
+                    // `prefix` is part of Mistral's assistant message schema.
+                    message
+                        .entry("prefix")
+                        .or_insert(serde_json::Value::Bool(false));
+                    // Mistral rejects unknown assistant fields; hidden
+                    // reasoning cannot be echoed back.
+                    message.remove("reasoning_content");
+                }
+            }
+        }
+    }
 }
 
 /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -89,14 +182,12 @@ pub fn build_request(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-    openai_functions::compatible_request(
-        &Ext,
+    openai_functions::compatible_http_request(
         &cfg.base_url,
+        &completion_path(&cfg.model),
         &cfg.api_key,
         &cfg.extra_headers,
-        &cfg.model,
-        request,
-        stream,
+        build_request_body(cfg, request, stream)?,
     )
 }
 
@@ -106,7 +197,11 @@ pub fn parse_response(
     status: http::StatusCode,
     body: &str,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    openai_functions::compatible_parse_response::<Ext>(status, body)
+    openai_functions::compatible_parse_response::<super::CompletionResponse>(
+        status,
+        body,
+        DESCRIPTOR.name,
+    )
 }
 
 /// Open a streaming completion for `request`.
@@ -116,7 +211,11 @@ pub async fn open_stream(
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let req = build_request(cfg, &request, true)?;
-    openai_functions::compatible_open_stream(Ext, rt, req).await
+    Ok(openai_functions::compatible_open_stream(
+        rt,
+        req,
+        STREAM_DIALECT,
+    ))
 }
 
 /// Send `request` to Mistral and return the normalized response.

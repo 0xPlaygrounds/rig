@@ -12,14 +12,13 @@
 //! # }
 //! ```
 
-use serde_json::Value;
-
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -48,72 +47,23 @@ impl Provider for DeepSeekExt {
 }
 
 impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
-    const PROVIDER_NAME: &'static str = "deepseek";
-
-    type StreamingUsage = Usage;
-
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
-
-    // DeepSeek's API only supports `json_object` response formats (passed via
-    // `additional_params`), not the `json_schema` mapping of `output_schema`.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = CompletionResponse;
 
-    fn finalize_request_body(&self, body: &mut Value) -> Result<(), CompletionError> {
-        let Some(map) = body.as_object_mut() else {
-            return Ok(());
-        };
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
 
-        // DeepSeek takes message `content` as a plain string, not an array of
-        // content parts, and echoes tool calls back with an `index` field.
-        if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
-            for message in messages {
-                let Some(message) = message.as_object_mut() else {
-                    continue;
-                };
-                let is_assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
-
-                if let Some(content) = message.get_mut("content") {
-                    let separator = if is_assistant { "" } else { "\n" };
-                    openai::completion::flatten_text_content_parts(content, separator, false);
-                } else if is_assistant && !message.contains_key("content") {
-                    // Tool-call-only assistant turns must still carry an
-                    // (empty) string content field.
-                    message.insert("content".to_string(), Value::String(String::new()));
-                }
-
-                if is_assistant
-                    && let Some(tool_calls) =
-                        message.get_mut("tool_calls").and_then(Value::as_array_mut)
-                {
-                    for tool_call in tool_calls {
-                        if let Some(tool_call) = tool_call.as_object_mut() {
-                            tool_call
-                                .entry("index")
-                                .or_insert_with(|| serde_json::json!(0));
-                        }
-                    }
-                }
-            }
-        }
-
-        // DeepSeek rejects forced tool choices (`required` or a specific
-        // function) unless thinking is explicitly disabled; suppress them to
-        // an explicit `null` otherwise.
-        let thinking_disabled = map
-            .get("thinking")
-            .and_then(|thinking| thinking.get("type"))
-            .and_then(Value::as_str)
-            .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
-        if !thinking_disabled && let Some(tool_choice) = map.get_mut("tool_choice") {
-            let forced = tool_choice.is_object() || tool_choice.as_str() == Some("required");
-            if forced {
-                *tool_choice = Value::Null;
-            }
-        }
-
-        Ok(())
+    fn build_body(
+        &self,
+        model: &str,
+        request: &completion::CompletionRequest,
+        options: openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -396,11 +346,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
 
         let usage = crate::completion::Usage::from(response.usage.clone());
 
-        let mut normalized = completion::CompletionResponse::new(
-            choice,
-            usage,
-            <DeepSeekExt as openai::completion::OpenAICompatibleProvider>::PROVIDER_NAME,
-        );
+        let mut normalized =
+            completion::CompletionResponse::new(choice, usage, functions::DESCRIPTOR.name);
         if let Some(model) = response.model.clone() {
             normalized = normalized.with_model(model);
         }
@@ -525,26 +472,18 @@ mod tests {
         CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDefinition,
     };
     use crate::message::ToolChoice as RigToolChoice;
-    use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
-    };
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::test_utils::RecordingHttpClient;
 
     fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
-        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "deepseek-v4-flash".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-        let mut body = serde_json::to_value(request).expect("request should serialize");
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
-        body
+        let body = super::functions::build_body(
+            "deepseek-v4-flash",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect("build_body should succeed");
+        serde_json::from_slice(&body).expect("body should be JSON")
     }
 
     #[test]
@@ -689,9 +628,7 @@ mod tests {
             ]
         });
 
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["content"], "first part\nsecond part");
         assert_eq!(body["messages"][1]["content"], "Hello world");
@@ -712,9 +649,7 @@ mod tests {
             }]
         });
 
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["tool_calls"][0]["index"], 0);
     }
@@ -966,15 +901,25 @@ pub mod functions {
     //! provider name apply.
 
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
 
-    use super::DeepSeekExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::internal::openai_chat_completions_compatible::{
+        ChatCompletionsDialect, ChatCompletionsUsageDialect,
+    };
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default DeepSeek API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
+
+    /// DeepSeek's Chat Completions streaming dialect: OpenAI-shaped chunks with
+    /// DeepSeek's own cache hit/miss usage accounting.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR)
+            .with_usage(ChatCompletionsUsageDialect::DeepSeek);
 
     /// DeepSeek's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -1031,7 +976,98 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// DeepSeek's straight-line chat-completions body assembly.
+    ///
+    /// Three wire-level dialect quirks: message `content` is a plain string
+    /// rather than an array of content parts, assistant tool calls are echoed
+    /// back with an `index` field, and forced tool choices (`required` or a
+    /// specific function) are rejected unless thinking is explicitly disabled,
+    /// so they are suppressed to an explicit `null`. DeepSeek also only supports
+    /// `json_object` response formats (passed via `additional_params`), not the
+    /// `json_schema` mapping of `output_schema` — hence
+    /// `supports_response_format: false` on [`DESCRIPTOR`].
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        apply_wire_dialect(&mut body);
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// Rewrite a serialized chat-completions `body` into DeepSeek's wire dialect
+    /// in place: string message `content`, `index`-stamped assistant tool calls,
+    /// and forced tool choices suppressed to an explicit `null`.
+    pub(crate) fn apply_wire_dialect(body: &mut Value) {
+        if let Some(map) = body.as_object_mut() {
+            // DeepSeek takes message `content` as a plain string, not an array of
+            // content parts, and echoes tool calls back with an `index` field.
+            if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
+                for message in messages {
+                    let Some(message) = message.as_object_mut() else {
+                        continue;
+                    };
+                    let is_assistant =
+                        message.get("role").and_then(Value::as_str) == Some("assistant");
+
+                    if let Some(content) = message.get_mut("content") {
+                        let separator = if is_assistant { "" } else { "\n" };
+                        crate::providers::openai::completion::flatten_text_content_parts(
+                            content, separator, false,
+                        );
+                    } else if is_assistant && !message.contains_key("content") {
+                        // Tool-call-only assistant turns must still carry an
+                        // (empty) string content field.
+                        message.insert("content".to_string(), Value::String(String::new()));
+                    }
+
+                    if is_assistant
+                        && let Some(tool_calls) =
+                            message.get_mut("tool_calls").and_then(Value::as_array_mut)
+                    {
+                        for tool_call in tool_calls {
+                            if let Some(tool_call) = tool_call.as_object_mut() {
+                                tool_call
+                                    .entry("index")
+                                    .or_insert_with(|| serde_json::json!(0));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // DeepSeek rejects forced tool choices (`required` or a specific
+            // function) unless thinking is explicitly disabled; suppress them to
+            // an explicit `null` otherwise.
+            let thinking_disabled = map
+                .get("thinking")
+                .and_then(|thinking| thinking.get("type"))
+                .and_then(Value::as_str)
+                .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
+            if !thinking_disabled && let Some(tool_choice) = map.get_mut("tool_choice") {
+                let forced = tool_choice.is_object() || tool_choice.as_str() == Some("required");
+                if forced {
+                    *tool_choice = Value::Null;
+                }
+            }
+        }
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -1043,14 +1079,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -1060,7 +1094,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<super::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -1070,7 +1108,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to DeepSeek and return the normalized response.

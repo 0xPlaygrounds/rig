@@ -118,11 +118,25 @@ impl DebugExt for ZAiExt {}
 impl DebugExt for ZAiAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
-    const PROVIDER_NAME: &'static str = "zai";
-
-    type StreamingUsage = super::openai::Usage;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
+        functions::STREAM_DIALECT;
 
     type Response = super::openai::CompletionResponse;
+
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
+    }
 }
 
 impl ProviderBuilder for ZAiBuilder {
@@ -170,12 +184,16 @@ impl ProviderBuilder for ZAiAnthropicBuilder {
     }
 }
 
-impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
-    const PROVIDER_NAME: &'static str = "z.ai";
+/// The Anthropic-Messages dialect for this provider's Anthropic-compatible
+/// endpoint.
+const ANTHROPIC_DIALECT: crate::providers::anthropic::completion::AnthropicDialect =
+    crate::providers::anthropic::completion::AnthropicDialect {
+        provider: "z.ai",
+        default_max_tokens: |_model| Some(4096),
+    };
 
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
+impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
+    const DIALECT: crate::providers::anthropic::completion::AnthropicDialect = ANTHROPIC_DIALECT;
 }
 
 impl ProviderClient for Client {
@@ -374,20 +392,24 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`ZAiExt`](super::ZAiExt) so Z.ai's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`' stage functions; this module is the source of truth
+    //! for Z.ai's path, body assembly, and streaming dialect.
 
     use serde::{Deserialize, Serialize};
 
-    use super::ZAiExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Z.ai API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
+
+    /// Z.ai's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Z.ai's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -444,7 +466,33 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// Z.ai's straight-line chat-completions body assembly.
+    ///
+    /// Z.ai speaks the reference dialect: no wire-level quirks, so the body is
+    /// the shared typed conversion serialized as-is.
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -456,14 +504,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -473,7 +519,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -483,7 +533,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to Z.ai and return the normalized response.

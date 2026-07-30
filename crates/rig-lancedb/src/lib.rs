@@ -389,13 +389,10 @@ impl LanceDbVectorIndex {
     ///
     /// # Example
     /// ```ignore
-    /// use rig_core::vector_store::VectorSearchRequest;
+    /// use rig_core::{OneOrMany, vector_store::VectorSearchRequest};
     ///
     /// let query_embedding = model.embed_text("What does zindle mean?").await?;
-    /// let req = VectorSearchRequest::builder()
-    ///     .query(query_embedding)
-    ///     .samples(1)
-    ///     .build();
+    /// let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
     /// let hits = vector_store_index.top_n(req).await?;
     /// ```
     pub async fn top_n(

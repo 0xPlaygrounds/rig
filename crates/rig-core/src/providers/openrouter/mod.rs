@@ -26,6 +26,9 @@ pub mod transcription;
 pub use audio_generation::{AudioGenerationModel, GPT_4O_MINI_TTS, KOKORO_82M, VOXTRAL_MINI_TTS};
 pub use client::*;
 pub use completion::*;
+// The shared chat-completions stream state machine calls this at exactly this
+// path when a dialect enables reasoning-detail decoration.
+pub(crate) use completion::decorate_streaming_tool_call;
 pub use embedding::*;
 pub use model_listing::OpenRouterModelLister;
 pub use transcription::{

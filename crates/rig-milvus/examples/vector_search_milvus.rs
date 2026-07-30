@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use rig_core::client::ProviderClient;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
@@ -74,10 +75,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What does \"glarb-glarb\" mean?";
     let query_embedding = model.embed_text(query).await?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 

@@ -245,7 +245,6 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
 
     #[test]
     fn deserializes_response_with_array_and_null_content() {
@@ -342,9 +341,7 @@ mod tests {
             "tool_choice": "required"
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["tool_choice"], "any");
     }
@@ -357,9 +354,7 @@ mod tests {
             "tool_choice": {"type": "function", "function": {"name": "beta"}}
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(
             body["tool_choice"],
@@ -390,9 +385,7 @@ mod tests {
             ]
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["content"], "Be brief.");
         assert_eq!(body["messages"][2]["content"], "Hello.");

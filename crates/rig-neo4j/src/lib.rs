@@ -85,10 +85,7 @@
 //!
 //!     // Queries arrive pre-embedded: embed with the same model the index was built with.
 //!     let query = model.embed_text("Batman").await.unwrap();
-//!     let req = VectorSearchRequest::builder()
-//!         .query(query)
-//!         .samples(3)
-//!         .build();
+//!     let req = VectorSearchRequest::new(rig_core::OneOrMany::one(query), 3);
 //!     let results = index.top_n_as::<Movie>(req).await.unwrap();
 //!     println!("{:#?}", results);
 //! }

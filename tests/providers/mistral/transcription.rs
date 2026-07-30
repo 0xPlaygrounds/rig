@@ -4,6 +4,7 @@ use rig::client::ProviderClient;
 use rig::prelude::TranscriptionClient;
 use rig::providers::mistral;
 use rig::transcription::TranscriptionModel;
+use rig::transcription::TranscriptionRequest;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 
@@ -13,10 +14,10 @@ async fn transcription_smoke() {
     let client = mistral::Client::from_env().expect("client should build");
     let model = client.transcription_model(mistral::VOXTRAL_MINI);
     let response = model
-        .transcription_request()
-        .load_file(AUDIO_FIXTURE_PATH)
-        .expect("should be able to load audio fixture")
-        .send()
+        .transcription(
+            TranscriptionRequest::from_file(AUDIO_FIXTURE_PATH)
+                .expect("should be able to load audio fixture"),
+        )
         .await
         .expect("transcription should succeed");
 

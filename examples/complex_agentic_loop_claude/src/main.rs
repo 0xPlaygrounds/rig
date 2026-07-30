@@ -5,6 +5,7 @@
 //! whose callback closes over a clone of the agent (`Agent` is `Clone`) and
 //! forwards the prompt to it — see [`agent_as_tool`].
 use anyhow::Result;
+use rig::OneOrMany;
 use rig::agent::Agent;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, Client};
@@ -54,10 +55,7 @@ impl rig::tool::PortableTool for KnowledgeBaseTool {
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let query_embedding = self.embedding_model.embed_text(&args.query).await?;
-        let req = VectorSearchRequest::builder()
-            .query(query_embedding)
-            .samples(3)
-            .build();
+        let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
         self.store.top_n(req).await
     }
 }

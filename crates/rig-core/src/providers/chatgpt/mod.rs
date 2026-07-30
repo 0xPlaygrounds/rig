@@ -562,8 +562,8 @@ where
         .build();
 
         let client = self.client.clone();
-        let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
-            .allow_missing_content_type();
+        // The ChatGPT backend omits the SSE `Content-Type` header.
+        let event_source = crate::http_client::sse::boxed_event_source(client, req, true);
 
         Ok(responses_api::streaming::stream_from_event_source(
             event_source,

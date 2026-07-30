@@ -6,19 +6,26 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::VectorStoreError;
-use crate::{
-    OneOrMany,
-    embeddings::Embedding,
-    markers::{Missing, Provided},
-};
+use crate::{OneOrMany, embeddings::Embedding};
 
 /// A pre-embedded vector search request.
 ///
 /// The query arrives already embedded (as one or more [`Embedding`]s); stores never
 /// embed text themselves. The type parameter `F` specifies the filter type
 /// (defaults to [`Filter<serde_json::Value>`]).
-/// Use [`VectorSearchRequest::builder()`] to construct instances.
+///
+/// Construct with [`VectorSearchRequest::new`] (the two required fields) and refine
+/// with the `with_*` methods:
+///
+/// ```
+/// use rig_core::{OneOrMany, embeddings::Embedding, vector_store::request::{Filter, SearchFilter, VectorSearchRequest}};
+///
+/// # fn example(embedding: Embedding) {
+/// let request = VectorSearchRequest::new(OneOrMany::one(embedding), 10)
+///     .with_threshold(0.7)
+///     .with_filter(Filter::eq("category", serde_json::json!("fruit")));
+/// # }
+/// ```
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     /// The pre-embedded query to search with.
@@ -33,10 +40,53 @@ pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     filter: Option<F>,
 }
 
-impl<Filter> VectorSearchRequest<Filter> {
-    /// Creates a [`VectorSearchRequestBuilder`] which you can use to instantiate this struct.
-    pub fn builder() -> VectorSearchRequestBuilder<Filter> {
-        VectorSearchRequestBuilder::<Filter>::default()
+impl<F> VectorSearchRequest<F> {
+    /// Creates a request from the two required fields: the pre-embedded query and the
+    /// maximum number of results.
+    pub fn new(query: OneOrMany<Embedding>, samples: u64) -> Self {
+        Self {
+            query,
+            samples,
+            threshold: None,
+            additional_params: None,
+            filter: None,
+        }
+    }
+
+    /// Replaces the query with a single pre-embedded query embedding.
+    pub fn with_query(mut self, query: Embedding) -> Self {
+        self.query = OneOrMany::one(query);
+        self
+    }
+
+    /// Replaces the query with one or more pre-embedded query embeddings.
+    pub fn with_queries(mut self, query: OneOrMany<Embedding>) -> Self {
+        self.query = query;
+        self
+    }
+
+    /// Sets the maximum number of results to return.
+    pub fn with_samples(mut self, samples: u64) -> Self {
+        self.samples = samples;
+        self
+    }
+
+    /// Sets the minimum similarity threshold.
+    pub fn with_threshold(mut self, threshold: f64) -> Self {
+        self.threshold = Some(threshold);
+        self
+    }
+
+    /// Sets backend-specific parameters.
+    pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+
+    /// Sets a filter expression to narrow results by metadata.
+    pub fn with_filter(mut self, filter: F) -> Self {
+        self.filter = Some(filter);
+        self
     }
 
     /// The pre-embedded query used in similarity search.
@@ -55,7 +105,7 @@ impl<Filter> VectorSearchRequest<Filter> {
     }
 
     /// Returns a reference to the optional filter expression.
-    pub fn filter(&self) -> &Option<Filter> {
+    pub fn filter(&self) -> &Option<F> {
         &self.filter
     }
 
@@ -63,9 +113,9 @@ impl<Filter> VectorSearchRequest<Filter> {
     ///
     /// This is useful for converting between filter representations, such as
     /// translating the canonical [`super::request::Filter`] to a backend-specific filter type.
-    pub fn map_filter<T, F>(self, f: F) -> VectorSearchRequest<T>
+    pub fn map_filter<T, Func>(self, f: Func) -> VectorSearchRequest<T>
     where
-        F: Fn(Filter) -> T,
+        Func: Fn(F) -> T,
     {
         VectorSearchRequest {
             query: self.query,
@@ -79,9 +129,9 @@ impl<Filter> VectorSearchRequest<Filter> {
     /// Transforms the filter type using a provided function which can additionally return a result.
     ///
     /// Useful for converting between filter representations where the conversion can potentially fail (eg, unrepresentable or invalid values).
-    pub fn try_map_filter<T, F>(self, f: F) -> Result<VectorSearchRequest<T>, FilterError>
+    pub fn try_map_filter<T, Func>(self, f: Func) -> Result<VectorSearchRequest<T>, FilterError>
     where
-        F: Fn(Filter) -> Result<T, FilterError>,
+        Func: Fn(F) -> Result<T, FilterError>,
     {
         let filter = self.filter.map(f).transpose()?;
 
@@ -250,101 +300,6 @@ impl Filter<serde_json::Value> {
                 .is_some_and(|ord| ord == Ordering::Less),
             And(l, r) => l.satisfies(value) && r.satisfies(value),
             Or(l, r) => l.satisfies(value) || r.satisfies(value),
-        }
-    }
-}
-
-/// Builder for [`VectorSearchRequest`]. Requires `query` and `samples`.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>, Q = Missing, S = Missing> {
-    query: Q,
-    samples: S,
-    threshold: Option<f64>,
-    additional_params: Option<serde_json::Value>,
-    filter: Option<F>,
-}
-
-impl<F> Default for VectorSearchRequestBuilder<F, Missing, Missing> {
-    fn default() -> Self {
-        Self {
-            query: Missing,
-            samples: Missing,
-            threshold: None,
-            additional_params: None,
-            filter: None,
-        }
-    }
-}
-
-impl<F, Q, S> VectorSearchRequestBuilder<F, Q, S>
-where
-    F: SearchFilter,
-{
-    /// Sets the pre-embedded query from a single embedding. Required (or [`Self::queries`]).
-    pub fn query(
-        self,
-        query: Embedding,
-    ) -> VectorSearchRequestBuilder<F, Provided<OneOrMany<Embedding>>, S> {
-        self.queries(OneOrMany::one(query))
-    }
-
-    /// Sets the pre-embedded query from one or more embeddings. Required (or [`Self::query`]).
-    pub fn queries(
-        self,
-        query: OneOrMany<Embedding>,
-    ) -> VectorSearchRequestBuilder<F, Provided<OneOrMany<Embedding>>, S> {
-        VectorSearchRequestBuilder {
-            query: Provided(query),
-            samples: self.samples,
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
-        }
-    }
-
-    /// Sets the maximum number of results. Required.
-    pub fn samples(self, samples: u64) -> VectorSearchRequestBuilder<F, Q, Provided<u64>> {
-        VectorSearchRequestBuilder {
-            query: self.query,
-            samples: Provided(samples),
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
-        }
-    }
-
-    /// Sets the minimum similarity threshold.
-    pub fn threshold(mut self, threshold: f64) -> Self {
-        self.threshold = Some(threshold);
-        self
-    }
-
-    /// Sets backend-specific parameters.
-    pub fn additional_params(
-        mut self,
-        params: serde_json::Value,
-    ) -> Result<Self, VectorStoreError> {
-        self.additional_params = Some(params);
-        Ok(self)
-    }
-
-    /// Sets a filter expression.
-    pub fn filter(mut self, filter: F) -> Self {
-        self.filter = Some(filter);
-        self
-    }
-}
-
-/// Only implement `build()` when both `query` and `samples` have been provided.
-impl<F> VectorSearchRequestBuilder<F, Provided<OneOrMany<Embedding>>, Provided<u64>> {
-    /// Builds the request
-    pub fn build(self) -> VectorSearchRequest<F> {
-        VectorSearchRequest {
-            query: self.query.0,
-            samples: self.samples.0,
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
         }
     }
 }

@@ -3,6 +3,7 @@ use rig_bedrock::image::AMAZON_NOVA_CANVAS;
 use rig_core::client::ProviderClient;
 use rig_core::client::image_generation::ImageGenerationClient;
 use rig_core::image_generation::ImageGenerationModel;
+use rig_core::image_generation::ImageGenerationRequest;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -14,11 +15,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let client = Client::from_env()?;
     let image_generation_model = client.image_generation_model(AMAZON_NOVA_CANVAS);
     let response = image_generation_model
-        .image_generation_request()
-        .prompt("A castle sitting upon a large mountain, overlooking the water.")
-        .width(512)
-        .height(512)
-        .send()
+        .image_generation(
+            ImageGenerationRequest::new(
+                "A castle sitting upon a large mountain, overlooking the water.",
+            )
+            .with_width(512)
+            .with_height(512),
+        )
         .await?;
 
     // save image

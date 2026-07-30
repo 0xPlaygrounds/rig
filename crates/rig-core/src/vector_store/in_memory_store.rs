@@ -583,15 +583,13 @@ mod tests {
             .unwrap();
 
         let hits = vector_store
-            .top_n(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "glarby-glarble".to_string(),
-                        vec: vec![0.0, 0.1, 0.6],
-                    })
-                    .samples(1)
-                    .build(),
-            )
+            .top_n(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "glarby-glarble".to_string(),
+                    vec: vec![0.0, 0.1, 0.6],
+                }),
+                1,
+            ))
             .await
             .unwrap();
 
@@ -661,15 +659,13 @@ mod tests {
             .unwrap();
 
         let hits = vector_store
-            .top_n(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "glarby-glarble".to_string(),
-                        vec: vec![0.0, 0.1, 0.6],
-                    })
-                    .samples(1)
-                    .build(),
-            )
+            .top_n(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "glarby-glarble".to_string(),
+                    vec: vec![0.0, 0.1, 0.6],
+                }),
+                1,
+            ))
             .await
             .unwrap();
 
@@ -730,37 +726,32 @@ mod tests {
         };
 
         // No filter: every document is returned.
-        let all = ids(VectorSearchRequest::builder()
-            .query(query_embedding())
-            .samples(10)
-            .build())
+        let all = ids(VectorSearchRequest::new(
+            OneOrMany::one(query_embedding()),
+            10,
+        ))
         .await;
         assert_eq!(all, vec!["a", "b", "c"]);
 
         // Metadata filter: only documents whose `category` field is `fruit`.
-        let fruit = ids(VectorSearchRequest::builder()
-            .query(query_embedding())
-            .samples(10)
-            .filter(Filter::eq("category", json!("fruit")))
-            .build())
+        let fruit = ids(
+            VectorSearchRequest::new(OneOrMany::one(query_embedding()), 10)
+                .with_filter(Filter::eq("category", json!("fruit"))),
+        )
         .await;
         assert_eq!(fruit, vec!["a", "c"]);
 
         // Threshold above the maximum similarity (1.0): nothing qualifies.
-        let none = ids(VectorSearchRequest::builder()
-            .query(query_embedding())
-            .samples(10)
-            .threshold(2.0)
-            .build())
+        let none = ids(
+            VectorSearchRequest::new(OneOrMany::one(query_embedding()), 10).with_threshold(2.0),
+        )
         .await;
         assert!(none.is_empty());
 
         // Threshold at or below the similarity keeps all matches.
-        let kept = ids(VectorSearchRequest::builder()
-            .query(query_embedding())
-            .samples(10)
-            .threshold(0.5)
-            .build())
+        let kept = ids(
+            VectorSearchRequest::new(OneOrMany::one(query_embedding()), 10).with_threshold(0.5),
+        )
         .await;
         assert_eq!(kept, vec!["a", "b", "c"]);
     }
@@ -788,15 +779,13 @@ mod tests {
         .unwrap();
 
         let ids: Vec<String> = store
-            .top_n_ids(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "q".to_string(),
-                        vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                    })
-                    .samples(10)
-                    .build(),
-            )
+            .top_n_ids(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "q".to_string(),
+                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                }),
+                10,
+            ))
             .await
             .unwrap()
             .into_iter()
@@ -828,15 +817,13 @@ mod tests {
         .unwrap();
 
         let results = store
-            .top_n_ids(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "q".to_string(),
-                        vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-                    })
-                    .samples(10)
-                    .build(),
-            )
+            .top_n_ids(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "q".to_string(),
+                    vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                }),
+                10,
+            ))
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -875,15 +862,13 @@ mod tests {
 
         // The freshly inserted record is discoverable through the LSH index.
         let hits = store
-            .top_n(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "marbly".to_string(),
-                        vec: vec![0.7, -0.3, 0.0],
-                    })
-                    .samples(1)
-                    .build(),
-            )
+            .top_n(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "marbly".to_string(),
+                    vec: vec![0.7, -0.3, 0.0],
+                }),
+                1,
+            ))
             .await
             .unwrap();
         assert_eq!(hits.len(), 1);
@@ -913,15 +898,13 @@ mod tests {
             .unwrap();
 
         let results: Vec<(f64, String, Doc)> = store
-            .top_n_as(
-                VectorSearchRequest::builder()
-                    .query(Embedding {
-                        document: "q".to_string(),
-                        vec: vec![0.1, 0.2, 0.3],
-                    })
-                    .samples(1)
-                    .build(),
-            )
+            .top_n_as(VectorSearchRequest::new(
+                OneOrMany::one(Embedding {
+                    document: "q".to_string(),
+                    vec: vec![0.1, 0.2, 0.3],
+                }),
+                1,
+            ))
             .await
             .unwrap();
 

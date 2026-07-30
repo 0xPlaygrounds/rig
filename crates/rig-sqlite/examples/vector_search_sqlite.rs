@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -116,10 +117,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What is a linglingdong?";
     let query_embedding = model.embed_text(query).await?;
     let samples = 1;
-    let req = VectorSearchRequest::builder()
-        .samples(samples)
-        .query(query_embedding)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), samples);
 
     // Query the store
     let results = vector_store

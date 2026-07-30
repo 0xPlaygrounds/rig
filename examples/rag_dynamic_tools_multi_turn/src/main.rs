@@ -11,6 +11,7 @@
 //! A hook is an attach-and-forget record: a named `HookEntry` wrapping a
 //! closure over owned `HookEvent`s that returns a `HookDecision`.
 use anyhow::Result;
+use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::{
@@ -175,10 +176,7 @@ fn tool_retrieval_hook(
                     ));
                 }
             };
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(*samples)
-                .build();
+            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
             match store.top_n_ids(request).await {
                 // The store is keyed by tool name; narrow this turn's
                 // advertised tools to the retrieved names.

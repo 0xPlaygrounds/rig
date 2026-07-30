@@ -2,6 +2,7 @@
 //! Requires a local Ollama server and the `derive` feature.
 //! Run it to compare semantic search results and matching document ids.
 
+use rig::OneOrMany;
 use rig::client::Nothing;
 use rig::prelude::*;
 use rig::providers::ollama;
@@ -88,10 +89,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "I need to buy something in a fictional universe. What type of money can I use for this?";
     // Embed the query up front; the store only sees pre-embedded requests.
     let query_embedding = embedding_model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     let results = vector_store
         .top_n_as::<WordDefinition>(req.clone())

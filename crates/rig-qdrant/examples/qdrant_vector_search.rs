@@ -11,6 +11,7 @@ use qdrant_client::{
     Qdrant,
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
     client::ProviderClient,
@@ -87,23 +88,17 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What is a linglingdong?";
     let query_embedding = model.embed_text(query).await?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding.clone())
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 1);
 
     let results = vector_store.top_n_as::<Word>(req).await?;
 
     println!("Results: {results:?}");
 
-    let filtered_req = VectorSearchRequest::<QdrantFilter>::builder()
-        .query(query_embedding)
-        .samples(1)
-        .filter(QdrantFilter::eq(
+    let filtered_req = VectorSearchRequest::<QdrantFilter>::new(OneOrMany::one(query_embedding), 1)
+        .with_filter(QdrantFilter::eq(
             "id",
             serde_json::json!("f9e17d59-32e5-440c-be02-b2759a654824"),
-        ))
-        .build();
+        ));
 
     let filtered_results = vector_store.top_n_as::<Word>(filtered_req).await?;
 

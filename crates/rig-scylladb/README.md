@@ -36,10 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Embed the query, then query the store
     let query_embedding = model.embed_text("search query").await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(5)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5);
     let results = vector_store.top_n_as::<Document>(req).await?;
 
     for (score, id, doc) in results {

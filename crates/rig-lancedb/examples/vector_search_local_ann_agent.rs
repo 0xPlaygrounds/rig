@@ -1,6 +1,7 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::client::AgentClientExt;
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -77,10 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // retrieve the most relevant documents, and pass them to the agent as
     // context.
     let query_embedding = model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(top_k as u64)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), top_k as u64);
     let hits = vector_store_index.top_n(req).await?;
 
     // Build RAG agent with the retrieved context.

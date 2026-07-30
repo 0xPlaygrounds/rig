@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::OneOrMany;
 use rig::client::EmbeddingsClient;
 use rig::postgres::PostgresVectorStore;
 use rig::providers::openai;
@@ -131,10 +132,7 @@ async fn vector_search_test() {
         .embed_text(query)
         .await
         .expect("Failed to embed query");
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // search for a document
     let results = vector_store

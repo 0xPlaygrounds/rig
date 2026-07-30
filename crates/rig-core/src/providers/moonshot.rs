@@ -31,7 +31,9 @@ use crate::http_client::HttpClientExt;
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
-use crate::{completion::CompletionError, providers::openai};
+use crate::providers::descriptor::ChatCompletionsDialect;
+use crate::providers::descriptor::ProviderDescriptor;
+use crate::providers::openai;
 
 // ================================================================
 // Main Moonshot Client
@@ -226,12 +228,16 @@ impl<H> AnthropicClientBuilder<H> {
     }
 }
 
-impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
+/// The Anthropic-Messages dialect for this provider's Anthropic-compatible
+/// endpoint.
+const ANTHROPIC_DIALECT: crate::providers::anthropic::completion::AnthropicDialect =
+    crate::providers::anthropic::completion::AnthropicDialect {
+        provider: "moonshot",
+        default_max_tokens: |_model| Some(4096),
+    };
 
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
+impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
+    const DIALECT: crate::providers::anthropic::completion::AnthropicDialect = ANTHROPIC_DIALECT;
 }
 
 fn anthropic_base_override(
@@ -287,81 +293,40 @@ pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<MoonshotExt, H>;
 
 impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    type StreamingUsage = openai::Usage;
-
-    // Moonshot's API rejects the `json_schema` response format; keep the
-    // pre-migration behavior of dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = openai::CompletionResponse;
 
-    fn prepare_request(
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
+
+    fn build_body(
         &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Moonshot only supports `auto`/`none` tool choices. Forcing one
-        // specific tool has no workaround; fail fast like the pre-migration
-        // conversion did (on main, `openai::ToolChoice::try_from` returned
-        // "Provider doesn't support only using specific tools" for every
-        // `ToolChoice::Specific`, single- or multi-name).
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Function { .. })
-        ) {
-            return Err(CompletionError::ProviderError(
-                "Moonshot does not support forcing a specific tool".to_string(),
-            ));
-        }
-
-        // Moonshot does not support `tool_choice: "required"`; coerce it to
-        // `auto` and steer the model with an extra user message instead.
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Required)
-        ) {
-            tracing::warn!(
-                "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
-            );
-            request.tool_choice = Some(openai::completion::ToolChoice::Auto);
-            request.messages.push(openai::Message::User {
-                content: crate::OneOrMany::one(openai::UserContent::Text {
-                    text: "Please select a tool to handle the current issue.".to_string(),
-                }),
-                name: None,
-            });
-        }
-
-        Ok(())
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MoonshotExt, normalize_anthropic_base_url, resolve_anthropic_base_override};
+    use super::{functions, normalize_anthropic_base_url, resolve_anthropic_base_override};
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
     };
-    use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
-    };
+    use crate::providers::openai::completion::CompletionModelOptions;
 
     fn prepared_body(request: CompletionRequest, model: &str) -> serde_json::Value {
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: model.to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-        MoonshotExt
-            .prepare_request(&mut request)
-            .expect("prepare_request should succeed");
-        serde_json::to_value(request).expect("request should serialize")
+        let bytes =
+            functions::build_body(model, &request, CompletionModelOptions::default(), false)
+                .expect("body should build");
+        serde_json::from_slice(&bytes).expect("body should be json")
     }
 
     #[test]
@@ -474,19 +439,13 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "kimi-k2.5".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-
-        let error = MoonshotExt
-            .prepare_request(&mut request)
-            .expect_err("specific tool choice should be rejected");
+        let error = functions::build_body(
+            "kimi-k2.5",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect_err("specific tool choice should be rejected");
         assert!(error.to_string().contains("specific tool"));
     }
 
@@ -566,20 +525,25 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`MoonshotExt`](super::MoonshotExt) so Moonshot's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`'s stage helpers; this module owns Moonshot's own
+    //! dialect steps, paths, and provider name.
 
     use serde::{Deserialize, Serialize};
 
-    use super::MoonshotExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai;
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Moonshot API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.moonshot.ai/v1";
+
+    /// Moonshot's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Moonshot's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -630,13 +594,74 @@ pub mod functions {
         }
     }
 
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Moonshot's straight-line chat-completions body assembly.
+    ///
+    /// Two tool-choice quirks: forcing one specific tool is unsupported and
+    /// fails fast, and `tool_choice: "required"` is coerced to `auto` with an
+    /// extra steering user message appended. Moonshot's API also rejects the
+    /// `json_schema` response format, so `output_schema` is dropped during the
+    /// typed conversion (see [`DESCRIPTOR`]).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        // Moonshot only supports `auto`/`none` tool choices. Forcing one
+        // specific tool has no workaround; fail fast like the pre-migration
+        // conversion did (on main, `openai::ToolChoice::try_from` returned
+        // "Provider doesn't support only using specific tools" for every
+        // `ToolChoice::Specific`, single- or multi-name).
+        if matches!(
+            typed.tool_choice,
+            Some(openai::completion::ToolChoice::Function { .. })
+        ) {
+            return Err(CompletionError::ProviderError(
+                "Moonshot does not support forcing a specific tool".to_string(),
+            ));
+        }
+
+        // Moonshot does not support `tool_choice: "required"`; coerce it to
+        // `auto` and steer the model with an extra user message instead.
+        if matches!(
+            typed.tool_choice,
+            Some(openai::completion::ToolChoice::Required)
+        ) {
+            tracing::warn!(
+                "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
+            );
+            typed.tool_choice = Some(openai::completion::ToolChoice::Auto);
+            typed.messages.push(openai::Message::User {
+                content: crate::OneOrMany::one(openai::UserContent::Text {
+                    text: "Please select a tool to handle the current issue.".to_string(),
+                }),
+                name: None,
+            });
+        }
+
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
+    }
+
     /// Build the serialized chat-completions request body for `request`. Pure.
     pub fn build_request_body(
         cfg: &Config,
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -648,14 +673,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -665,7 +688,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -675,7 +702,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to Moonshot and return the normalized response.

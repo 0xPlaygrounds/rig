@@ -1,6 +1,7 @@
 //! AWS Bedrock image generation smoke test inspired by OpenAI image generation tests.
 
 use rig::image_generation::ImageGenerationModel;
+use rig::image_generation::ImageGenerationRequest;
 use rig::prelude::ImageGenerationClient;
 
 use super::{
@@ -13,11 +14,11 @@ use super::{
 async fn image_generation_smoke() {
     let model = client().image_generation_model(BEDROCK_IMAGE_MODEL);
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
-        .width(512)
-        .height(512)
-        .send()
+        .image_generation(
+            ImageGenerationRequest::new(IMAGE_PROMPT)
+                .with_width(512)
+                .with_height(512),
+        )
         .await
         .expect("image generation request should succeed");
 

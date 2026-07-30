@@ -216,10 +216,7 @@ async fn vector_search_test() {
     // was used to generate the document embeddings.
     let query = "What is a glarb?";
     let query_embedding = model.embed_text(query).await.expect("");
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
     let results = index.top_n(req).await.expect("");

@@ -3,6 +3,7 @@
 use rig::client::ProviderClient;
 use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
+use rig::image_generation::ImageGenerationRequest;
 use rig::providers::openai;
 
 use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
@@ -14,11 +15,11 @@ async fn image_generation_smoke() {
     let model = client.image_generation_model(openai::DALL_E_2);
 
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
-        .width(1024)
-        .height(1024)
-        .send()
+        .image_generation(
+            ImageGenerationRequest::new(IMAGE_PROMPT)
+                .with_width(1024)
+                .with_height(1024),
+        )
         .await
         .expect("image generation should succeed");
 
@@ -32,11 +33,11 @@ async fn gpt_image_2_image_generation_smoke() {
     let model = client.image_generation_model(openai::GPT_IMAGE_2);
 
     let response = model
-        .image_generation_request()
-        .prompt(IMAGE_PROMPT)
-        .width(1024)
-        .height(1024)
-        .send()
+        .image_generation(
+            ImageGenerationRequest::new(IMAGE_PROMPT)
+                .with_width(1024)
+                .with_height(1024),
+        )
         .await
         .expect("gpt-image-2 image generation should succeed");
 

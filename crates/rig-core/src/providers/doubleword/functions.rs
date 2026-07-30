@@ -7,20 +7,24 @@
 //! [`complete`]/[`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
 //! mechanics are shared with the other OpenAI-compatible providers via
-//! `openai::functions`; this module instantiates them with
-//! [`DoublewordExt`](super::client::DoublewordExt) so Doubleword's paths, hooks, and
-//! provider name apply.
+//! `openai::functions`' stage functions; this module is the source of truth for
+//! Doubleword's path, body assembly, and streaming dialect.
 
 use serde::{Deserialize, Serialize};
 
-use super::client::DoublewordExt as Ext;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+use crate::providers::openai::completion::CompletionModelOptions;
 use crate::providers::openai::functions as openai_functions;
 
 /// Default Doubleword API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.doubleword.ai/v1";
+
+/// Doubleword's Chat Completions streaming dialect.
+pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
 /// Doubleword's capability sheet.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -77,7 +81,32 @@ pub fn build_request_body(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
-    openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+    build_body(
+        &cfg.model,
+        request,
+        CompletionModelOptions::default(),
+        stream,
+    )
+}
+
+/// Doubleword's straight-line chat-completions body assembly.
+///
+/// Doubleword speaks the reference dialect: no wire-level quirks, so the body
+/// is the shared typed conversion serialized as-is.
+pub(crate) fn build_body(
+    model: &str,
+    request: &CompletionRequest,
+    options: CompletionModelOptions,
+    stream: bool,
+) -> Result<Vec<u8>, CompletionError> {
+    let typed = openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+    let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+    Ok(serde_json::to_vec(&body)?)
+}
+
+/// The chat-completions request path for `model`.
+pub(crate) fn completion_path(_model: &str) -> String {
+    "/chat/completions".to_string()
 }
 
 /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -89,14 +118,12 @@ pub fn build_request(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-    openai_functions::compatible_request(
-        &Ext,
+    openai_functions::compatible_http_request(
         &cfg.base_url,
+        &completion_path(&cfg.model),
         &cfg.api_key,
         &cfg.extra_headers,
-        &cfg.model,
-        request,
-        stream,
+        build_request_body(cfg, request, stream)?,
     )
 }
 
@@ -106,7 +133,11 @@ pub fn parse_response(
     status: http::StatusCode,
     body: &str,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    openai_functions::compatible_parse_response::<Ext>(status, body)
+    openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+        status,
+        body,
+        DESCRIPTOR.name,
+    )
 }
 
 /// Open a streaming completion for `request`.
@@ -116,7 +147,11 @@ pub async fn open_stream(
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let req = build_request(cfg, &request, true)?;
-    openai_functions::compatible_open_stream(Ext, rt, req).await
+    Ok(openai_functions::compatible_open_stream(
+        rt,
+        req,
+        STREAM_DIALECT,
+    ))
 }
 
 /// Send `request` to Doubleword and return the normalized response.

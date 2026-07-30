@@ -115,10 +115,10 @@ async fn test_insert_and_query() {
     // Wait for eventual consistency
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, doc.content.clone()).await)
-        .samples(5)
-        .build();
+    let request = VectorSearchRequest::new(
+        OneOrMany::one(embed_query(&model, doc.content.clone()).await),
+        5,
+    );
 
     let results = vector_store
         .top_n_ids(request)
@@ -164,10 +164,10 @@ async fn test_top_n_returns_full_documents() {
     // Wait for eventual consistency
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, "Rust programming language systems").await)
-        .samples(5)
-        .build();
+    let request = VectorSearchRequest::new(
+        OneOrMany::one(embed_query(&model, "Rust programming language systems").await),
+        5,
+    );
 
     let results = vector_store
         .top_n_as::<TestDocument>(request)
@@ -229,10 +229,10 @@ async fn test_top_n_with_multiple_documents() {
     // Wait for eventual consistency
     tokio::time::sleep(EVENTUAL_CONSISTENCY_DELAY).await;
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, "programming language").await)
-        .samples(10)
-        .build();
+    let request = VectorSearchRequest::new(
+        OneOrMany::one(embed_query(&model, "programming language").await),
+        10,
+    );
 
     let results = vector_store
         .top_n_as::<TestDocument>(request)
@@ -291,11 +291,9 @@ async fn test_query_with_eq_filter() {
 
     let filter = VectorizeFilter::eq("category", serde_json::json!("programming"));
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, "language").await)
-        .samples(10)
-        .filter(filter)
-        .build();
+    let request =
+        VectorSearchRequest::new(OneOrMany::one(embed_query(&model, "language").await), 10)
+            .with_filter(filter);
 
     match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {
@@ -370,11 +368,9 @@ async fn test_query_with_combined_filters() {
     let filter = VectorizeFilter::eq("category", serde_json::json!("programming"))
         .and(VectorizeFilter::ne("id", serde_json::json!("doc-rust")));
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, "programming").await)
-        .samples(10)
-        .filter(filter)
-        .build();
+    let request =
+        VectorSearchRequest::new(OneOrMany::one(embed_query(&model, "programming").await), 10)
+            .with_filter(filter);
 
     match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {
@@ -454,11 +450,11 @@ async fn test_query_with_in_filter() {
         ],
     );
 
-    let request = VectorSearchRequest::builder()
-        .query(embed_query(&model, "Rust Vectorize").await)
-        .samples(10)
-        .filter(filter)
-        .build();
+    let request = VectorSearchRequest::new(
+        OneOrMany::one(embed_query(&model, "Rust Vectorize").await),
+        10,
+    )
+    .with_filter(filter);
 
     match vector_store.top_n_as::<TestDocument>(request).await {
         Ok(results) => {

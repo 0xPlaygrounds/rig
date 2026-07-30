@@ -802,3 +802,244 @@ full facade suite green single-threaded (every provider cassette suite
 replays byte-identically, incl. gemini 108, anthropic 154, openai 130,
 chatgpt 63, openrouter 86); bedrock 57/57; `cargo test --workspace
 --all-features --doc` green; `git diff --stat -- tests/cassettes` **empty**.
+
+## R6 — Typestate request builders (COMPLETE)
+
+Every request typestate builder is gone; the already-concrete request structs
+carry plain constructors plus `with_*` setters, the P7 `CompletionRequest`
+precedent applied to the modality and vector-search requests.
+
+- **Deleted**: `VectorSearchRequestBuilder<F, Q, S>` (`vector_store/request.rs`),
+  `TranscriptionRequestBuilder<M, D>`, `ImageGenerationRequestBuilder<M, P>`,
+  `AudioGenerationRequestBuilder<M, T, V>`, the three builder-returning trait
+  default methods (`TranscriptionModel::transcription_request`,
+  `ImageGenerationModel::image_generation_request`,
+  `AudioGenerationModel::audio_generation_request`), the builders' `send()`
+  (the `M: …Model` behavioral bound that forced the builders to carry a model
+  went with it), and `markers::Provided<T>`.
+- **The sweep contract** (final signatures):
+  - `VectorSearchRequest::<F>::new(query: OneOrMany<Embedding>, samples: u64) -> Self`
+    + `with_query(Embedding)` / `with_queries(OneOrMany<Embedding>)` /
+    `with_samples(u64)` / `with_threshold(f64)` /
+    `with_additional_params(serde_json::Value)` / `with_filter(F)`.
+    `with_additional_params` is **infallible** (the builder's returned
+    `Result<Self, VectorStoreError>` was always `Ok`).
+  - `TranscriptionRequest::new(data: Vec<u8>) -> Self` (filename defaults to
+    `"file"`, as the builder's `build()` did) + `from_file(P) -> io::Result<Self>`
+    (replaces `load_file`, same read-then-take-filename behavior) +
+    `with_filename` / `with_language` / `with_prompt` / `with_temperature` /
+    `with_additional_params` (**merging**, via `json_utils::merge`, exactly as
+    the builder's `additional_params` did) / `with_additional_params_opt`
+    (replacing).
+  - `ImageGenerationRequest::new(prompt: impl Into<String>) -> Self`
+    (256×256 defaults preserved) + `with_prompt` / `with_width` / `with_height`
+    / `with_additional_params`.
+  - `AudioGenerationRequest::new(text: impl Into<String>, voice: impl Into<String>) -> Self`
+    (speed defaults to `1.0`) + `with_text` / `with_voice` / `with_speed` /
+    `with_additional_params`.
+- **Deferred, with phase-boundary reasoning**:
+  - **The modality traits stay.** `TranscriptionModel`, `ImageGenerationModel`,
+    `AudioGenerationModel` and `RerankModel` are coupled to `Capabilities` in
+    `client/mod.rs`, which dies in R7; retiring them here would breach that
+    boundary. Only their builder-returning default methods were removed.
+  - **`markers.rs` stays.** `Missing` still has ~30 live consumers — the
+    `ClientBuilder<Ext, ApiKey, H>` typestate in `client/mod.rs` plus the
+    per-provider `ClientBuilder<H = markers::Missing>` aliases. The file now
+    carries a doc note saying R7 removes its last consumer; `Provided<T>` was
+    orphaned by this phase and **is** deleted.
+  - **`Filter<V>` keeps its generic parameter**, and so does
+    `VectorSearchRequest<F>`. Concretizing to `Filter<serde_json::Value>` means
+    rewriting every backend's `SearchFilter` impl and `map_filter`/
+    `try_map_filter` call — that is R8's scope, and R6's job was the typestate.
+    The `SearchFilter` tagless-final trait is likewise untouched.
+- **Consumer sweep**: 114 `VectorSearchRequest::builder()` chains across 46
+  files and 25 modality-builder chains across 20 files, mechanically rewritten
+  (one-shot AST-ish chain rewriters, then `cargo fmt`): rig-core's in-memory
+  store + its request tests, all 12 store crates (`rig-{lancedb,qdrant,mongodb,
+  neo4j,postgres,sqlite,scylladb,surrealdb,milvus,s3vectors,helixdb,vectorize}`)
+  plus `rig-fastembed`/`rig-bedrock`, every store and modality example, 16 root
+  `examples/`, `tests/integrations/**`, `tests/providers/**`, and the
+  `rig-{sqlite,scylladb,postgres}` READMEs + `rig-{lancedb,mongodb,neo4j}` and
+  `rig-agent::agent` doc examples.
+- **Test ledger**: **zero tests deleted, zero assertions changed.** Every
+  rewritten site keeps its query/samples/threshold/filter values, so the store
+  crates' unit tests and rig-core's `vector_store::request` filter tests assert
+  identical behavior. The `#[cfg(test)]` sites that used the builders' `send()`
+  now call `model.transcription(TranscriptionRequest::new(…))` — same request,
+  same single request/response round trip, so the recorded cassettes and the
+  `RecordingHttpClient` error-preservation assertions are unaffected.
+  `git diff --stat -- tests/cassettes` empty.
+- **Boundary crossing to report**: 13 call sites in
+  `crates/rig-core/src/providers/**` — all inside `#[cfg(test)]` modules in
+  `azure.rs`, `groq.rs`, `huggingface/{transcription,image_generation}.rs`,
+  `mistral/transcription.rs`, `openai/{transcription,audio_generation}.rs`,
+  `openrouter/{transcription,audio_generation}.rs`, `xai/audio_generation.rs`
+  — had to be retargeted, since deleting a trait method breaks its callers and
+  the phase cannot otherwise compile. No provider trait, impl, or transport code
+  was touched.
+
+## R6 — provider trait-stack inversion (partial: items 1–3 of 4)
+
+**Commit scope:** the load-bearing inversion (plan §2.2 note F) plus the
+sans-IO stream parser and the `HttpRuntime::transport()` leak. The
+`Generic*Model<Ext, H>` deletions are **deferred** — see "Deferred" below.
+
+### What replaced `OpenAICompatibleProvider` (17 impls)
+
+The five-stage hook pipeline is gone. Each provider's `functions` module now
+owns its dialect as straight-line code:
+
+- `functions::build_body(model, request, options, stream) -> Vec<u8>` —
+  `openai::functions::compatible_typed_request` (stage 1, honors
+  `descriptor.supports_tools` / `supports_response_format`), then the
+  provider's former `prepare_request` body verbatim on the typed request, then
+  `compatible_body_value` (stage 2, merges `stream` /
+  `stream_options.include_usage` per `descriptor.stream_include_usage`), then
+  the provider's former `finalize_request_body(_with_options)` body verbatim on
+  the serialized body.
+- `functions::completion_path(…)` — the former trait override, verbatim.
+  Azure takes `(endpoint, api_version, model)`; HuggingFace takes
+  `(&SubProvider, model)`. Both are supplied by the shim from `self`.
+- `functions::parse_response` → `compatible_parse_response::<R>(status, body,
+  DESCRIPTOR.name)`, generic only over the provider's own concrete payload
+  type (the former `type Response`).
+- `functions::open_stream` → `compatible_open_stream(rt, req, STREAM_DIALECT)`.
+
+Two providers keep their own conversion instead of stage 1: **openrouter**
+(`OpenrouterCompletionRequest`) and **azure** (its own non-Bearer `api-key`
+HTTP request builder is untouched). Deepseek and mistral extracted their body
+quirks into named `pub(crate) fn apply_wire_dialect(body: &mut Value)` so the
+existing unit tests could target them directly.
+
+The trait survives as a **four-item lookup shim** (`const DESCRIPTOR`,
+`const STREAM_DIALECT`, `type Response`, `fn completion_path`, `fn build_body`)
+whose every impl is a one-line forward to the functions module. It exists only
+to feed the doomed `GenericCompletionModel<Ext, H>` and dies with it.
+
+**Descriptor audit:** all 17 descriptors were compared field-by-field against
+the (authoritative) old assoc consts, including the trait defaults.
+**Zero mismatches** — no descriptor value was changed.
+
+### What replaced `AnthropicCompatibleProvider` (5 impls)
+
+`PROVIDER_NAME` + `default_max_tokens(model)` collapsed into one plain-data
+`AnthropicDialect { provider: &'static str, default_max_tokens: fn(&str) ->
+Option<u64> }`. The trait is a single `const DIALECT`. The data-oriented path
+does not consult it: `anthropic::functions::Config.default_max_tokens` already
+stores the resolved value.
+
+### Stream-parser design (sans-IO)
+
+Deleted: `CompatibleStreamProfile`, `OpenAICompatibleProfile<Ext, U>` (+ its
+`PhantomData`), `send_compatible_streaming_request` (both the internal generic
+one and openai's public re-export), `CompatibleChoiceData<T, D>`,
+`normalize_first_choice_chunk`, `CopilotChatCompatibleProfile`, and the three
+`test_utils` profile structs.
+
+Replaced by:
+- **Pure per-dialect chunk parsers**: `&str -> NormalizedCompatibleChunk`,
+  living with the wire types they parse —
+  `openai::completion::streaming::normalize_chat_completions_chunk(data,
+  dialect)` (all 17 dialects; the only variation is which `usage` payload to
+  parse) and `copilot::normalize_copilot_chat_chunk(data)` (a narrower schema).
+- **`ChunkNormalizer`**, a concrete enum (`ChatCompletions(dialect)` /
+  `CopilotChat` / `#[cfg(test)] Test(TestNormalizer)`) with inherent methods
+  for the provider name, the wire-default usage, the eviction knob, the
+  single-chunk-tool-call knob, and the reasoning-detail decoration.
+- **`ChatCompletionsDialect`** in `providers::descriptor`: plain `Copy` data
+  built with `from_descriptor(&DESCRIPTOR)` (so the two boolean knobs *are*
+  descriptor fields) plus `.with_usage(…)` / `.with_reasoning_detail_decoration()`.
+- **`CompatibleChunk`/`CompatibleChoice` lost their generics**: `usage` is
+  already `crate::completion::Usage`, normalized at the parse site, so the
+  state machine carries no provider usage type. The terminal record's
+  never-sent-usage fallback is `default_usage_for(dialect)`, which evaluates
+  the *wire* type's `Default` and converts — byte-equivalent to the old
+  `U::default().into()`.
+- **`drive_compatible_stream(BoxedEventSource, ChunkNormalizer)`** — one
+  sync fn, not generic over `HttpClientExt`. The state machine body
+  (tool-call accumulation, eviction, immediate emission, finish-reason and EOF
+  cleanup, span recording) is unchanged.
+
+**Transport edge:** `http_client::sse::BoxedEventSource` (a `Pin<Box<dyn
+WasmCompatEventStream>>` — the helper-supertrait pattern, since
+`WasmCompatSend` is not an auto trait) plus
+`boxed_event_source(client, req, allow_missing_content_type)`.
+`HttpRuntime::transport()` is **deleted**; it is replaced by
+`HttpRuntime::sse_events(req, allow_missing_content_type)` and, for Ollama's
+NDJSON stream, `HttpRuntime::send_streaming(req)`. Eight provider stream
+drivers (anthropic, chatgpt, cohere, copilot ×2, gemini, openai responses_api,
+xai) lost their `HttpClientExt` bound and now take `BoxedEventSource`; the
+classic `Client<Ext, H>` callers box at their own call site.
+
+Five `GenericEventSource::close()` calls were dropped (dropping the boxed
+stream is equivalent). One of them —
+`openai/responses_api/streaming.rs`'s `Err(StreamEnded) => close()` — was the
+arm's only effect and became `break`, semantically identical.
+`gemini/interactions_api/streaming.rs` was deliberately left generic: it has
+no `HttpRuntime` caller, so converting it would be pure churn.
+
+### Deletion totals
+
+- `OpenAICompatibleProvider`: 5 assoc consts + 1 assoc type + 5 hook methods
+  removed from the trait; 17 impls rewritten to one-line forwards.
+- `AnthropicCompatibleProvider`: 1 const + 1 method → 1 const of plain data;
+  5 impls rewritten.
+- Streaming: 1 trait, 2 profile structs (+3 test profile structs), 2 generic
+  send functions, 1 generic chunk-assembly helper, 2 generic chunk types
+  and `HttpRuntime::transport()` deleted.
+
+### Test ledger
+
+- **Ported (assertion intent preserved, retargeted at `build_body` /
+  `apply_wire_dialect` / the new stream entry points):** groq
+  `…merges_native_tools_into_compound_custom`; deepseek's `finalized_body`
+  helper (4 dependent tests) + 2 wire-dialect tests; mistral's 3
+  `finalize_*` tests; moonshot's `prepared_body` helper (4 tests, one of which
+  now asserts `build_body` errors); perplexity's 4 dialect tests (2 of them
+  rebuilt on a real `CompletionRequest` rather than a hand-built message row);
+  hyperbolic's `…drops_tools_and_tool_choice`; the 3 state-machine profile
+  tests in `providers/internal/…` (now `TestNormalizer` arms) and openai's 8
+  streaming tests (now via local `send_compatible_streaming_request` /
+  `send_openai_streaming_request` test helpers over
+  `drive_compatible_stream`).
+- **Deleted: none.** No test lost its assertion.
+
+### Fidelity gate — byte-identical replay, `--test-threads=1`
+
+| suite | result |
+| --- | --- |
+| openai | 130 passed |
+| anthropic | 108 passed |
+| chatgpt | 63 passed |
+| copilot | 67 passed |
+| gemini | 154 passed |
+| deepseek | 75 passed |
+| groq | 49 passed |
+| mistral | 48 passed |
+| openrouter | 86 passed |
+| xai | 72 passed |
+| ollama | 56 passed |
+| perplexity | 48 passed |
+| doubleword | 65 passed |
+| llamafile | 44 passed |
+| core | 43 passed |
+| together, azure, moonshot, mira, hyperbolic, minimax, xiaomimimo, huggingface, llamacpp, cohere | all-ignored suites (no recorded cassettes exercised) |
+
+`git diff --stat -- tests/cassettes` empty. rig-core: 1103 unit + 99 doctests
+green; rig-agent 372 + 13 green; `cargo clippy --workspace --all-features
+--all-targets` zero warnings; workspace doctests green.
+
+### Deferred from R6 (NOT done in this commit)
+
+Plan item 4 and the leaf deletions were not reached:
+`GenericCompletionModel<Ext, H>` (openai + anthropic),
+`GenericResponsesCompletionModel`, `GenericEmbeddingModel`,
+`ResponsesProviderExt`, the per-provider `type CompletionModel<H> = …`
+aliases, the modality traits (B1–B7), the modality/vector typestate builders,
+and `markers.rs`. These are all coupled to R7's `Client<Ext, H>` /
+`HttpClientExt` deletion: a concrete per-provider `CompletionModel<H>` still
+needs `Client<Ext, H>` to send, so deleting the generic shell before R7 buys
+17 near-identical structs that R7 deletes again. The two surviving traits are
+now pure lookup shims with **zero behavior** — every wire byte is produced by
+the `functions` modules — so R7 can delete them mechanically alongside the
+client layer. Recorded as a sequencing deviation.

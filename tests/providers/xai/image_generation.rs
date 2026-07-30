@@ -2,6 +2,7 @@
 
 use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
+use rig::image_generation::ImageGenerationRequest;
 use rig::providers::xai;
 use serde_json::json;
 
@@ -17,13 +18,12 @@ async fn image_generation_smoke() {
                 client.image_generation_model(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);
 
             let response = model
-                .image_generation_request()
-                .prompt(IMAGE_PROMPT)
-                .additional_params(json!({
-                    "resolution": "2k",
-                    "aspect_ratio": "4:3",
-                }))
-                .send()
+                .image_generation(
+                    ImageGenerationRequest::new(IMAGE_PROMPT).with_additional_params(json!({
+                        "resolution": "2k",
+                        "aspect_ratio": "4:3",
+                    })),
+                )
                 .await
                 .expect("image generation should succeed");
 

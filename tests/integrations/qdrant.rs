@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::OneOrMany;
 use serde_json::json;
 use testcontainers::{
     GenericImage,
@@ -185,10 +186,7 @@ async fn vector_search_test() {
     // Queries arrive pre-embedded: embed the query text with the (mocked)
     // embedding model, then pass the embedding to the store.
     let query_embedding = model.embed_text("What is a linglingdong?").await.unwrap();
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     let results = vector_store
         .top_n_as::<serde_json::Value>(req)

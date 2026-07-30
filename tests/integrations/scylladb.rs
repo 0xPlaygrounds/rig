@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::OneOrMany;
 use rig::client::EmbeddingsClient;
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};
@@ -139,10 +140,7 @@ async fn vector_search_test() {
         .embed_text(query)
         .await
         .expect("Failed to embed query");
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Test vector search
     let results = vector_store
@@ -186,10 +184,7 @@ async fn vector_search_test() {
         .embed_text(query)
         .await
         .expect("Failed to embed query");
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Test with different query
     let results2 = vector_store

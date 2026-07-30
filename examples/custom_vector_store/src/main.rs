@@ -185,10 +185,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Embed the query, then create a pre-embedded request
     let query_embedding = embedding_model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     // Execute the query
     let results = store.top_n(req).await?;

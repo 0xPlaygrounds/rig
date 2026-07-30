@@ -12,6 +12,8 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::descriptor::ChatCompletionsDialect;
+use crate::providers::descriptor::ProviderDescriptor;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
@@ -52,60 +54,23 @@ impl<H> Capabilities<H> for MiraExt {
 impl DebugExt for MiraExt {}
 
 impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
-    const PROVIDER_NAME: &'static str = "mira";
-
-    // Mira's gateway rejects tool parameters.
-    const SUPPORTS_TOOLS: bool = false;
-
-    type StreamingUsage = crate::providers::openai::Usage;
-
-    // Mira's gateway does not accept OpenAI structured-output parameters.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    // The gateway also rejects unknown parameters like `stream_options`.
-    const STREAM_INCLUDE_USAGE: bool = false;
+    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = CompletionResponse;
 
-    // The client base URL is the bare host; `list_models` builds its own v1 path.
-    fn completion_path(&self, _model: &str) -> String {
-        "/v1/chat/completions".to_string()
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
     }
 
-    fn prepare_request(
+    fn build_body(
         &self,
-        request: &mut crate::providers::openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Mira's gateway rejects pass-through parameters (tools are dropped
-        // via `SUPPORTS_TOOLS = false` during conversion).
-        if request.additional_params.take().is_some() {
-            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
-        }
-
-        Ok(())
-    }
-
-    fn finalize_request_body(&self, body: &mut serde_json::Value) -> Result<(), CompletionError> {
-        let Some(map) = body.as_object_mut() else {
-            return Ok(());
-        };
-
-        // Mira only understands plain `{role, content}` string messages;
-        // strip tool-exchange remnants and message names, and flatten
-        // content-part arrays.
-        if let Some(messages) = map
-            .get_mut("messages")
-            .and_then(serde_json::Value::as_array_mut)
-        {
-            crate::providers::openai::completion::sanitize_plain_text_history(
-                messages,
-                Some(("\n", false)),
-                true,
-                false,
-            );
-        }
-
-        Ok(())
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -407,11 +372,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             )
         })?;
 
-        let mut normalized = completion::CompletionResponse::new(
-            choice,
-            usage,
-            <MiraExt as crate::providers::openai::completion::OpenAICompatibleProvider>::PROVIDER_NAME,
-        );
+        let mut normalized =
+            completion::CompletionResponse::new(choice, usage, functions::DESCRIPTOR.name);
         if let Some(model) = model {
             normalized = normalized.with_model(model);
         }
@@ -522,20 +484,24 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`MiraExt`](super::MiraExt) so Mira's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`'s stage helpers; this module owns Mira's own dialect
+    //! steps, paths, and provider name.
 
     use serde::{Deserialize, Serialize};
 
-    use super::MiraExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Mira API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.mira.network";
+
+    /// Mira's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Mira's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -586,13 +552,68 @@ pub mod functions {
         }
     }
 
+    /// The chat-completions request path for `model`.
+    ///
+    /// The client base URL is the bare host; `list_models` builds its own v1 path.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/v1/chat/completions".to_string()
+    }
+
+    /// Mira's straight-line chat-completions body assembly.
+    ///
+    /// Mira's gateway rejects pass-through `additional_params` and unknown
+    /// parameters like `stream_options`, and only understands plain
+    /// `{role, content}` string messages — so tool-exchange remnants and
+    /// message names are stripped from the serialized body and content-part
+    /// arrays are flattened. Tools and structured output are dropped during the
+    /// typed conversion (see [`DESCRIPTOR`]).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        // Mira's gateway rejects pass-through parameters (tools are dropped
+        // via `supports_tools: false` during conversion).
+        if typed.additional_params.take().is_some() {
+            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
+        }
+
+        let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        if let Some(map) = body.as_object_mut() {
+            // Mira only understands plain `{role, content}` string messages;
+            // strip tool-exchange remnants and message names, and flatten
+            // content-part arrays.
+            if let Some(messages) = map
+                .get_mut("messages")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                crate::providers::openai::completion::sanitize_plain_text_history(
+                    messages,
+                    Some(("\n", false)),
+                    true,
+                    false,
+                );
+            }
+        }
+
+        Ok(serde_json::to_vec(&body)?)
+    }
+
     /// Build the serialized chat-completions request body for `request`. Pure.
     pub fn build_request_body(
         cfg: &Config,
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -604,14 +625,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -621,7 +640,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<super::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -631,7 +654,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Send `request` to Mira and return the normalized response.

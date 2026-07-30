@@ -32,10 +32,26 @@ impl Provider for DoublewordExt {
 impl DebugExt for DoublewordExt {}
 
 impl crate::providers::openai::completion::OpenAICompatibleProvider for DoublewordExt {
-    const PROVIDER_NAME: &'static str = "doubleword";
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor =
+        super::functions::DESCRIPTOR;
+    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
+        super::functions::STREAM_DIALECT;
 
-    type StreamingUsage = crate::providers::openai::Usage;
     type Response = crate::providers::openai::CompletionResponse;
+
+    fn completion_path(&self, model: &str) -> String {
+        super::functions::completion_path(model)
+    }
+
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: crate::providers::openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
+        super::functions::build_body(model, request, options, stream)
+    }
 }
 
 impl<H> Capabilities<H> for DoublewordExt {

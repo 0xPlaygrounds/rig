@@ -1,18 +1,16 @@
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use http::Request;
 use serde::Deserialize;
-use serde_json::json;
 use tracing::{Level, enabled};
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::json_utils::{self, merge};
+use crate::json_utils;
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, ChatCompletionsDialect, ChunkNormalizer, CompatibleChoice, CompatibleFinishReason,
+    CompatibleToolCallChunk, NormalizedCompatibleChunk,
 };
 use crate::providers::openai::completion::{
-    CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
+    CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider,
 };
 use crate::streaming;
 
@@ -104,11 +102,73 @@ struct StreamingChoice {
 }
 
 #[derive(Deserialize, Debug)]
-struct StreamingCompletionChunk<U = Usage> {
+struct StreamingCompletionChunk {
     id: Option<String>,
     model: Option<String>,
     choices: Vec<StreamingChoice>,
-    usage: Option<U>,
+    /// Left as a raw value so the dialect's own wire usage type parses it (see
+    /// [`normalize_wire_usage`]); a malformed payload skips the whole chunk,
+    /// exactly as a typed field would.
+    usage: Option<serde_json::Value>,
+}
+
+/// Parse one OpenAI Chat Completions SSE `data` payload for `dialect`. Pure.
+///
+/// This is the sans-IO chunk normalizer for all 17 OpenAI-compatible dialects:
+/// the wire schema is shared, and the only variation — which `usage` payload to
+/// parse — is a match on plain dialect data.
+pub(crate) fn normalize_chat_completions_chunk(
+    data: &str,
+    dialect: ChatCompletionsDialect,
+) -> NormalizedCompatibleChunk {
+    let chunk = match serde_json::from_str::<StreamingCompletionChunk>(data) {
+        Ok(chunk) => chunk,
+        Err(error) => {
+            tracing::error!(?error, message = data, "Failed to parse SSE message");
+            return Ok(None);
+        }
+    };
+
+    let usage = match openai_chat_completions_compatible::normalize_wire_usage(
+        chunk.usage,
+        dialect.usage,
+    ) {
+        Ok(usage) => usage,
+        Err(error) => {
+            tracing::error!(?error, message = data, "Failed to parse SSE message");
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(
+        openai_chat_completions_compatible::first_choice_chunk(
+            chunk.id,
+            chunk.model,
+            usage,
+            &chunk.choices,
+            |choice| CompatibleChoice {
+                // `function_call` is the deprecated pre-tools finish reason
+                // some compatible providers still emit for tool calls.
+                finish_reason: match &choice.finish_reason {
+                    Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
+                    Some(FinishReason::Other(other)) if other == "function_call" => {
+                        CompatibleFinishReason::ToolCalls
+                    }
+                    _ => CompatibleFinishReason::Other,
+                },
+                text: choice.delta.content.clone(),
+                reasoning: choice
+                    .delta
+                    .reasoning_content
+                    .clone()
+                    .or_else(|| choice.delta.reasoning.clone()),
+                tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                    &choice.delta.tool_calls,
+                ),
+                details: choice.delta.reasoning_details.clone(),
+            },
+        ),
+    ))
 }
 
 impl<Ext, H> GenericCompletionModel<Ext, H>
@@ -131,53 +191,28 @@ where
             tool_result_array_content: self.tool_result_array_content,
             prompt_caching: self.prompt_caching,
         };
-        let mut request = self.client.ext().build_completion_request(
-            self.model.clone(),
-            completion_request,
-            options,
-        )?;
-        self.client.ext().prepare_request(&mut request)?;
-
-        // Deliberately the configured model, not the per-request override:
-        // Azure's deployment URL is pinned to the model handle.
-        let path = self.client.ext().completion_path(&self.model);
-        let resolved_model = request.model.clone();
-        let mut request_as_json = serde_json::to_value(request)?;
-
-        // `merge` is shallow, so include_usage is inserted into any
-        // caller-supplied stream_options rather than merged over it: the
-        // caller's keys survive and the usage chunk is still requested.
-        if Ext::STREAM_INCLUDE_USAGE {
-            match request_as_json.get_mut("stream_options") {
-                Some(serde_json::Value::Object(options)) => {
-                    options
-                        .entry("include_usage")
-                        .or_insert(serde_json::Value::Bool(true));
-                }
-                Some(_) => {}
-                None => {
-                    request_as_json = merge(
-                        request_as_json,
-                        json!({"stream_options": {"include_usage": true}}),
-                    );
-                }
-            }
-        }
-        request_as_json = merge(request_as_json, json!({"stream": true}));
-        self.client
-            .ext()
-            .finalize_request_body_with_options(&mut request_as_json, options)?;
+        let resolved_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
+        // The provider's own straight-line body assembly (its `functions`
+        // module) is the single source of truth for the wire bytes.
+        let req_body =
+            self.client
+                .ext()
+                .build_body(&self.model, &completion_request, options, true)?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
                 target: "rig::completions",
                 "OpenAI Chat Completions streaming completion request: {}",
-                serde_json::to_string_pretty(&request_as_json)?
+                String::from_utf8_lossy(&req_body)
             );
         }
 
-        let req_body = serde_json::to_vec(&request_as_json)?;
-
+        // Deliberately the configured model, not the per-request override:
+        // Azure's deployment URL is pinned to the model handle.
+        let path = self.client.ext().completion_path(&self.model);
         let req = self
             .client
             .post(&path)?
@@ -185,159 +220,46 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
+            Ext::DESCRIPTOR.name,
             &resolved_model,
             CompletionOperation::Chat,
         )
         .system_instructions(preamble.as_deref(), record_telemetry_content)
         .build();
 
-        let client = self.client.clone();
+        let event_source =
+            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false);
 
-        tracing::Instrument::instrument(
-            openai_chat_completions_compatible::send_compatible_streaming_request(
-                client,
-                req,
-                OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
-                    provider: self.client.ext().clone(),
-                    emits_complete_single_chunk_tool_calls:
-                        Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
-                    usage: std::marker::PhantomData,
-                },
-            ),
+        Ok(tracing::Instrument::instrument(
+            async move {
+                openai_chat_completions_compatible::drive_compatible_stream(
+                    event_source,
+                    ChunkNormalizer::ChatCompletions(Ext::STREAM_DIALECT),
+                )
+            },
             span,
         )
-        .await
+        .await)
     }
-}
-
-/// The concrete OpenAI profile for the free-function streaming path.
-pub(crate) fn openai_stream_profile()
--> OpenAICompatibleProfile<crate::providers::openai::OpenAICompletionsExt, Usage> {
-    OpenAICompatibleProfile::default()
-}
-
-/// The streaming profile for any OpenAI-compatible `ext`, for the
-/// per-provider free-function streaming paths. Compile-time provider
-/// plumbing; retired with the generic path later in the migration.
-pub(crate) fn stream_profile_for<Ext>(ext: Ext) -> OpenAICompatibleProfile<Ext, Ext::StreamingUsage>
-where
-    Ext: OpenAICompatibleProvider,
-{
-    OpenAICompatibleProfile {
-        provider: ext,
-        emits_complete_single_chunk_tool_calls: Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
-        usage: std::marker::PhantomData,
-    }
-}
-
-#[derive(Clone, Copy, Default)]
-pub(crate) struct OpenAICompatibleProfile<
-    Ext = crate::providers::openai::OpenAICompletionsExt,
-    U = Usage,
-> {
-    provider: Ext,
-    emits_complete_single_chunk_tool_calls: bool,
-    usage: std::marker::PhantomData<U>,
-}
-
-impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
-where
-    Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
-    U: Clone
-        + Default
-        + Into<crate::completion::Usage>
-        + serde::de::DeserializeOwned
-        + crate::wasm_compat::WasmCompatSend
-        + Unpin
-        + 'static,
-{
-    type Usage = U;
-    type Detail = serde_json::Value;
-
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk<U>>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                tracing::error!(?error, message = data, "Failed to parse SSE message");
-                return Ok(None);
-            }
-        };
-
-        Ok(Some(
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                &data.choices,
-                |choice| CompatibleChoiceData {
-                    // `function_call` is the deprecated pre-tools finish reason
-                    // some compatible providers still emit for tool calls.
-                    finish_reason: match &choice.finish_reason {
-                        Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
-                        Some(FinishReason::Other(other)) if other == "function_call" => {
-                            CompatibleFinishReason::ToolCalls
-                        }
-                        _ => CompatibleFinishReason::Other,
-                    },
-                    text: choice.delta.content.clone(),
-                    reasoning: choice
-                        .delta
-                        .reasoning_content
-                        .clone()
-                        .or_else(|| choice.delta.reasoning.clone()),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: choice.delta.reasoning_details.clone(),
-                },
-            ),
-        ))
-    }
-
-    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal {
-        crate::streaming::StreamFinal::new(Ext::PROVIDER_NAME, usage.into())
-    }
-
-    fn decorate_tool_call(
-        &self,
-        detail: &Self::Detail,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        self.provider
-            .decorate_streaming_tool_call(detail, tool_calls);
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-
-    fn emits_complete_single_chunk_tool_calls(&self) -> bool {
-        self.emits_complete_single_chunk_tool_calls
-    }
-}
-
-pub async fn send_compatible_streaming_request<T>(
-    http_client: T,
-    req: Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    openai_chat_completions_compatible::send_compatible_streaming_request(
-        http_client,
-        req,
-        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
-    )
-    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Drive the OpenAI chat-completions dialect over a test HTTP client.
+    fn send_compatible_streaming_request<T>(
+        client: T,
+        req: http::Request<Vec<u8>>,
+    ) -> streaming::StreamingCompletionResponse
+    where
+        T: HttpClientExt + Clone + 'static,
+    {
+        openai_chat_completions_compatible::drive_compatible_stream(
+            crate::http_client::sse::boxed_event_source(client, req, false),
+            ChunkNormalizer::ChatCompletions(crate::providers::openai::functions::STREAM_DIALECT),
+        )
+    }
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
     };
@@ -600,9 +522,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut final_usage = None;
         while let Some(chunk) = stream.next().await {
@@ -639,9 +559,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut reasoning_chunks = Vec::new();
         let mut text_chunks = Vec::new();
@@ -692,9 +610,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -745,9 +661,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -802,9 +716,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -858,9 +770,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let mut stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let mut stream = send_compatible_streaming_request(client, req);
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -909,9 +819,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let stream = send_compatible_streaming_request(client, req);
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
@@ -932,9 +840,7 @@ mod tests {
             .body(Vec::new())
             .unwrap();
 
-        let stream = send_compatible_streaming_request(client, req)
-            .await
-            .unwrap();
+        let stream = send_compatible_streaming_request(client, req);
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }

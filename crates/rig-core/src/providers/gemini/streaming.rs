@@ -14,7 +14,7 @@ use super::completion::{
 use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::Event;
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
@@ -116,7 +116,12 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let stream = generate_content_stream(self.client.clone(), req).instrument(span);
+        let stream = generate_content_stream(crate::http_client::sse::boxed_event_source(
+            self.client.clone(),
+            req,
+            false,
+        ))
+        .instrument(span);
 
         Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
             stream,
@@ -127,14 +132,10 @@ where
 /// Consume a `streamGenerateContent` SSE exchange as a raw streaming-choice
 /// stream. Shared by the [`CompletionModel`] trait path and the
 /// data-oriented [`super::functions::open_stream`] path.
-pub(crate) fn generate_content_stream<T>(
-    client: T,
-    req: http::Request<Vec<u8>>,
-) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    let mut event_source = GenericEventSource::new(client, req);
+pub(crate) fn generate_content_stream(
+    event_source: crate::http_client::sse::BoxedEventSource,
+) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>> {
+    let mut event_source = event_source;
 
     stream! {
         let mut final_usage = None;
@@ -288,8 +289,8 @@ where
             }
         }
 
-        // Ensure event source is closed when stream ends
-        event_source.close();
+        // Dropping the boxed event source when this stream ends is equivalent
+        // to closing it — the state machine is finished with it.
 
         if !stream_failed {
             let usage = final_usage.unwrap_or_default().token_usage();

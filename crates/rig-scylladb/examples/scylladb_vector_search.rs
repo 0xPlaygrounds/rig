@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
     client::{EmbeddingsClient, ProviderClient},
@@ -93,10 +94,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Test similarity search: embed the query, then send the pre-embedded request
     let query = "What is Rust programming language?";
     let query_embedding = model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(3)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
     tracing::info!("Searching for: '{}'", query);
 
     let results = vector_store.top_n_as::<Word>(req.clone()).await?;
@@ -125,10 +123,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let database_query = "distributed database system";
     tracing::info!("Searching for: '{}'", database_query);
     let query_embedding = model.embed_text(database_query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     let db_results = vector_store.top_n_as::<Word>(req).await?;
 

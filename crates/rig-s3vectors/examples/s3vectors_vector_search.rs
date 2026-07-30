@@ -2,6 +2,7 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
 use rig_core::Embed;
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 use rig_core::providers::openai::{self, Client as OpenAIClient};
@@ -73,10 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
     store.insert(records).await?;
     let query = "What is a linglingdong?";
     let query_embedding = model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     let results = store.top_n(req).await?;
 

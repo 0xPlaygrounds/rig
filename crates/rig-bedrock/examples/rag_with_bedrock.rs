@@ -1,3 +1,4 @@
+use rig_core::OneOrMany;
 use std::vec;
 
 use rig_agent::agent::hook::{CompletionCallAction, RequestPatch};
@@ -61,10 +62,7 @@ fn rag_hook(
                     ));
                 }
             };
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(*samples)
-                .build();
+            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
             match store.top_n(request).await {
                 Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
                     RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {

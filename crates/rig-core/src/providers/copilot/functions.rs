@@ -249,9 +249,6 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-    use crate::http_client::sse::GenericEventSource;
-    use crate::http_runtime::Transport;
-
     let req = build_request(cfg, &request, true)?;
     if route_for_model(&cfg.model) == CompletionRoute::Responses {
         let span = CompletionSpanBuilder::new(
@@ -264,36 +261,14 @@ pub async fn open_stream(
             request.record_telemetry_content,
         )
         .build();
-        return Ok(match rt.transport() {
-            Transport::Reqwest(client) => stream_copilot_responses_from_event_source(
-                GenericEventSource::new(client.clone(), req),
-                span,
-            ),
-            #[cfg(any(test, feature = "test-utils"))]
-            Transport::Recording(client) => stream_copilot_responses_from_event_source(
-                GenericEventSource::new(client.clone(), req),
-                span,
-            ),
-            #[cfg(any(test, feature = "test-utils"))]
-            Transport::Sequenced(client) => stream_copilot_responses_from_event_source(
-                GenericEventSource::new(client.clone(), req),
-                span,
-            ),
-        });
+        return Ok(stream_copilot_responses_from_event_source(
+            rt.sse_events(req, false),
+            span,
+        ));
     }
-    match rt.transport() {
-        Transport::Reqwest(client) => {
-            send_copilot_chat_streaming_request(client.clone(), req).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Recording(client) => {
-            send_copilot_chat_streaming_request(client.clone(), req).await
-        }
-        #[cfg(any(test, feature = "test-utils"))]
-        Transport::Sequenced(client) => {
-            send_copilot_chat_streaming_request(client.clone(), req).await
-        }
-    }
+    Ok(send_copilot_chat_streaming_request(
+        rt.sse_events(req, false),
+    ))
 }
 
 /// Send `request` to Copilot and return the normalized response.

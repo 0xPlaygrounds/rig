@@ -5,6 +5,7 @@
 //! runs up front and lands on [`AgentConfig::static_context`]. A one-call
 //! extraction retrieves exactly once either way, so the request the model sees
 //! is the same.
+use rig::OneOrMany;
 use std::sync::Arc;
 
 use rig::agent::AgentConfig;
@@ -65,10 +66,7 @@ async fn retrieve_questions(
     query: &str,
 ) -> Result<Vec<Document>, anyhow::Error> {
     let embedded = embedding_model.embed_text(query).await?;
-    let request = VectorSearchRequest::builder()
-        .query(embedded)
-        .samples(samples)
-        .build();
+    let request = VectorSearchRequest::new(OneOrMany::one(embedded), samples);
     Ok(store
         .top_n(request)
         .await?

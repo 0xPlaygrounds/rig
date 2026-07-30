@@ -1,6 +1,6 @@
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::Event;
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
@@ -116,7 +116,10 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        Ok(stream_cohere_sse(self.client.clone(), req, span))
+        Ok(stream_cohere_sse(
+            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false),
+            span,
+        ))
     }
 }
 
@@ -126,15 +129,11 @@ where
 /// Extracted from [`CompletionModel::stream`] so the data-oriented
 /// [`super::functions`] face reuses the exact same SSE machinery; both paths
 /// route through this single function.
-pub(super) fn stream_cohere_sse<H>(
-    client: H,
-    req: http::Request<Vec<u8>>,
+pub(super) fn stream_cohere_sse(
+    event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse
-where
-    H: HttpClientExt + Clone + 'static,
-{
-    let mut event_source = GenericEventSource::new(client, req);
+) -> streaming::StreamingCompletionResponse {
+    let mut event_source = event_source;
 
     let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
@@ -238,8 +237,8 @@ where
                 }
             }
 
-            // Ensure event source is closed when stream ends
-            event_source.close();
+            // Dropping the boxed event source when this stream ends is
+            // equivalent to closing it — the state machine is finished with it.
 
             yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
                 "cohere",

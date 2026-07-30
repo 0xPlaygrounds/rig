@@ -22,6 +22,7 @@ use crate::client::{
 };
 use crate::completion::CompletionError;
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::transcription::{self, TranscriptionError};
 
 // ================================================================
@@ -42,40 +43,23 @@ impl Provider for GroqExt {
 }
 
 impl openai::completion::OpenAICompatibleProvider for GroqExt {
-    const PROVIDER_NAME: &'static str = "groq";
-
-    type StreamingUsage = openai::Usage;
-
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
+    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
+    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
 
     type Response = openai::CompletionResponse;
 
-    fn prepare_request(
-        &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Groq's provider-native tools (`browser_search`, `code_interpreter`,
-        // ...) arrive via `additional_params.tools`. Left in place they would
-        // clobber the function-tool array on serialization, so fold them into
-        // `compound_custom.enabled_tools` (deduplicated by tool type).
-        let Some(map) = request
-            .additional_params
-            .as_mut()
-            .and_then(Value::as_object_mut)
-        else {
-            return Ok(());
-        };
-        let Some(raw_tools) = map.remove("tools") else {
-            return Ok(());
-        };
-        let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
-            )
-        })?;
-        apply_native_tools_to_additional_params(map, native_tools);
+    fn completion_path(&self, model: &str) -> String {
+        functions::completion_path(model)
+    }
 
-        Ok(())
+    fn build_body(
+        &self,
+        model: &str,
+        request: &crate::completion::CompletionRequest,
+        options: openai::completion::CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        functions::build_body(model, request, options, stream)
     }
 }
 
@@ -305,7 +289,7 @@ where
 mod tests {
     use crate::completion::CompletionRequest;
     use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+        CompletionModelOptions, CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
     };
 
     #[test]
@@ -363,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn groq_prepare_request_merges_native_tools_into_compound_custom() {
+    fn groq_build_body_merges_native_tools_into_compound_custom() {
         let request = CompletionRequest {
             tools: vec![crate::completion::ToolDefinition {
                 name: "local_tool".to_string(),
@@ -376,21 +360,15 @@ mod tests {
             ..CompletionRequest::from_prompt("search")
         };
 
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "llama-3.3-70b-versatile".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: true,
-            supports_tools: true,
-        })
-        .expect("request should convert");
+        let body = super::functions::build_body(
+            "llama-3.3-70b-versatile",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect("build_body should succeed");
 
-        super::GroqExt
-            .prepare_request(&mut request)
-            .expect("prepare_request should succeed");
-
-        let json = serde_json::to_value(request).expect("request should serialize");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("body should be JSON");
         assert_eq!(
             json["compound_custom"]["enabled_tools"],
             serde_json::json!([{"type": "browser_search"}])
@@ -507,7 +485,9 @@ mod tests {
     async fn transcription_http_non_success_preserves_status_and_body() {
         use crate::client::transcription::TranscriptionClient;
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+        use crate::transcription::{
+            TranscriptionError, TranscriptionModel as _, TranscriptionRequest,
+        };
 
         let body = r#"{"error":{"message":"bad audio","code":"400"}}"#;
         let http_client =
@@ -520,9 +500,7 @@ mod tests {
         let model = client.transcription_model("whisper-large-v3");
 
         let error = match model
-            .transcription_request()
-            .data(vec![0u8; 16])
-            .send()
+            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
             .await
         {
             Err(error) => error,
@@ -553,15 +531,21 @@ pub mod functions {
     //! provider name apply.
 
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
 
-    use super::GroqExt as Ext;
     use crate::completion::{self, CompletionError, CompletionRequest};
     use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::ChatCompletionsDialect;
     use crate::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
+    use crate::providers::openai::completion::CompletionModelOptions;
     use crate::providers::openai::functions as openai_functions;
 
     /// Default Groq API base URL.
     pub const DEFAULT_BASE_URL: &str = "https://api.groq.com/openai/v1";
+
+    /// Groq's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
 
     /// Groq's capability sheet.
     pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
@@ -618,7 +602,52 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        openai_functions::compatible_request_body(&Ext, &cfg.model, request, stream)
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Groq's straight-line chat-completions body assembly.
+    ///
+    /// One dialect quirk: Groq's provider-native tools (`browser_search`,
+    /// `code_interpreter`, ...) arrive via `additional_params.tools`, where they
+    /// would clobber the function-tool array on serialization, so they are folded
+    /// into `compound_custom.enabled_tools` (deduplicated by tool type).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        // Groq's provider-native tools (`browser_search`, `code_interpreter`,
+        // ...) arrive via `additional_params.tools`. Left in place they would
+        // clobber the function-tool array on serialization, so fold them into
+        // `compound_custom.enabled_tools` (deduplicated by tool type).
+        if let Some(map) = typed
+            .additional_params
+            .as_mut()
+            .and_then(Value::as_object_mut)
+            && let Some(raw_tools) = map.remove("tools")
+        {
+            let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+                CompletionError::RequestError(
+                    format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+                )
+            })?;
+            super::apply_native_tools_to_additional_params(map, native_tools);
+        }
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
     }
 
     /// Build the complete HTTP request (URL, headers, body) for `request`.
@@ -630,14 +659,12 @@ pub mod functions {
         request: &CompletionRequest,
         stream: bool,
     ) -> Result<http::Request<Vec<u8>>, CompletionError> {
-        openai_functions::compatible_request(
-            &Ext,
+        openai_functions::compatible_http_request(
             &cfg.base_url,
+            &completion_path(&cfg.model),
             &cfg.api_key,
             &cfg.extra_headers,
-            &cfg.model,
-            request,
-            stream,
+            build_request_body(cfg, request, stream)?,
         )
     }
 
@@ -647,7 +674,11 @@ pub mod functions {
         status: http::StatusCode,
         body: &str,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        openai_functions::compatible_parse_response::<Ext>(status, body)
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
     }
 
     /// Open a streaming completion for `request`.
@@ -657,7 +688,11 @@ pub mod functions {
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         let req = build_request(cfg, &request, true)?;
-        openai_functions::compatible_open_stream(Ext, rt, req).await
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
     }
 
     /// Transcribe `request` with Groq's OpenAI-compatible

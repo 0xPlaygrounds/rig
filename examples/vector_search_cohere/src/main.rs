@@ -2,6 +2,7 @@
 //! Requires `COHERE_API_KEY` and the `derive` feature.
 //! Run it to see a semantic query retrieve the closest matching document.
 
+use rig::OneOrMany;
 use rig::{
     Embed,
     client::ProviderClient,
@@ -76,10 +77,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "Which instrument is found in the Nebulon Mountain Ranges?";
     // Embed the query with the search model; the store receives it pre-embedded.
     let query_embedding = search_model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     let results = vector_store
         .top_n_as::<WordDefinition>(req)

@@ -1,7 +1,6 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
-use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{http_client, json_utils, provider_response};
 use std::io;
@@ -73,11 +72,6 @@ pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<
         Output = Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
     > + WasmCompatSend;
-
-    /// Generates a transcription request builder for the given `file`
-    fn transcription_request(&self) -> TranscriptionRequestBuilder<Self, Missing> {
-        TranscriptionRequestBuilder::new(self.clone())
-    }
 }
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
@@ -95,193 +89,103 @@ pub struct TranscriptionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Builder struct for a transcription request
-///
-/// Example usage:
-/// ```no_run
-/// use rig_core::{
-///     prelude::TranscriptionClient,
-///     providers::openai::{Client, self},
-///     transcription::{TranscriptionModel, TranscriptionRequestBuilder},
-/// };
-///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.transcription_model(openai::WHISPER_1);
-///
-/// // Create the transcription request and execute it separately.
-/// let request = TranscriptionRequestBuilder::new(model.clone())
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .build();
-///
-/// let response = model.transcription(request).await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// Alternatively, you can execute the transcription request directly from the builder:
-/// ```no_run
-/// use rig_core::{
-///     prelude::TranscriptionClient,
-///     providers::openai::{Client, self},
-///     transcription::TranscriptionRequestBuilder,
-/// };
-///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.transcription_model(openai::WHISPER_1);
-///
-/// // Create the transcription request and execute it directly.
-/// let response = TranscriptionRequestBuilder::new(model)
-///     .data(vec![0; 16])
-///     .filename(Some("audio.mp3".to_string()))
-///     .temperature(0.5)
-///     .send()
-///     .await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// Note: It is usually unnecessary to create a completion request builder directly.
-/// Instead, use the [TranscriptionModel::transcription_request] method.
-pub struct TranscriptionRequestBuilder<M, D>
-where
-    M: TranscriptionModel,
-{
-    model: M,
-    data: D, // starts Missing, becomes Provided<Vec<u8>> after data is set or load_file is called
-    filename: Option<String>,
-    language: Option<String>,
-    prompt: Option<String>,
-    temperature: Option<f64>,
-    additional_params: Option<serde_json::Value>,
-}
-
-impl<M> TranscriptionRequestBuilder<M, Missing>
-where
-    M: TranscriptionModel,
-{
-    pub fn new(model: M) -> Self {
-        TranscriptionRequestBuilder {
-            model,
-            data: Missing,
-            filename: None,
+impl TranscriptionRequest {
+    /// Creates a request from the audio bytes, with the default filename `file`.
+    ///
+    /// Refine with the `with_*` methods, then execute it with
+    /// [`TranscriptionModel::transcription`]:
+    ///
+    /// ```no_run
+    /// use rig_core::{
+    ///     prelude::TranscriptionClient,
+    ///     providers::openai::{self, Client},
+    ///     transcription::{TranscriptionModel, TranscriptionRequest},
+    /// };
+    ///
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let openai = Client::new("your-openai-api-key")?;
+    /// let model = openai.transcription_model(openai::WHISPER_1);
+    ///
+    /// let request = TranscriptionRequest::new(vec![0; 16])
+    ///     .with_filename("audio.mp3")
+    ///     .with_temperature(0.5);
+    ///
+    /// let response = model.transcription(request).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(data: Vec<u8>) -> Self {
+        Self {
+            data,
+            filename: "file".to_string(),
             language: None,
             prompt: None,
             temperature: None,
             additional_params: None,
         }
     }
-}
 
-impl<M, D> TranscriptionRequestBuilder<M, D>
-where
-    M: TranscriptionModel,
-{
-    pub fn filename(mut self, filename: Option<String>) -> Self {
-        self.filename = filename;
-        self
-    }
-
-    /// Sets the data for the request and transitions the builder to the next state where data is provided.
-    pub fn data(self, data: Vec<u8>) -> TranscriptionRequestBuilder<M, Provided<Vec<u8>>> {
-        TranscriptionRequestBuilder {
-            model: self.model,
-            data: Provided(data),
-            filename: self.filename,
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// Load the specified file into data and transitions the builder to the next state where data is provided.
-    pub fn load_file<P>(
-        self,
-        path: P,
-    ) -> io::Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>>
+    /// Reads `path` into a request, taking the filename from the path.
+    ///
+    /// Falls back to the default filename `file` when the path has no final component.
+    pub fn from_file<P>(path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let path = path.as_ref();
         let data = fs::read(path)?;
 
-        let filename = path.file_name().map(|n| n.to_string_lossy().into_owned());
+        let mut request = Self::new(data);
+        if let Some(filename) = path.file_name().map(|n| n.to_string_lossy().into_owned()) {
+            request.filename = filename;
+        }
 
-        Ok(TranscriptionRequestBuilder {
-            model: self.model,
-            data: Provided(data),
-            filename: filename.or(self.filename),
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        })
+        Ok(request)
     }
 
-    /// Sets the output language for the transcription request
-    pub fn language(mut self, language: String) -> Self {
-        self.language = Some(language);
+    /// Sets the file name to be used in the request.
+    pub fn with_filename(mut self, filename: impl Into<String>) -> Self {
+        self.filename = filename.into();
         self
     }
 
-    /// Sets the prompt to be sent in the transcription request
-    pub fn prompt(mut self, prompt: String) -> Self {
-        self.prompt = Some(prompt);
+    /// Sets the output language for the transcription request.
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
         self
     }
 
-    /// Set the temperature to be sent in the transcription request
-    pub fn temperature(mut self, temperature: f64) -> Self {
+    /// Sets the prompt to be sent in the transcription request.
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = Some(prompt.into());
+        self
+    }
+
+    /// Sets the temperature to be sent in the transcription request.
+    pub fn with_temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
-    /// Adds additional parameters to the transcription request.
-    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
-        match self.additional_params {
-            Some(params) => {
-                self.additional_params = Some(json_utils::merge(params, additional_params));
-            }
-            None => {
-                self.additional_params = Some(additional_params);
-            }
-        }
+    /// Merges additional parameters into the transcription request.
+    ///
+    /// Existing parameters are merged with (not replaced by) `additional_params`; use
+    /// [`Self::with_additional_params_opt`] to replace them outright.
+    pub fn with_additional_params(mut self, additional_params: serde_json::Value) -> Self {
+        self.additional_params = Some(match self.additional_params {
+            Some(params) => json_utils::merge(params, additional_params),
+            None => additional_params,
+        });
         self
     }
 
-    /// Sets the additional parameters for the transcription request.
-    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
+    /// Replaces the additional parameters for the transcription request.
+    pub fn with_additional_params_opt(
+        mut self,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
         self.additional_params = additional_params;
         self
-    }
-}
-
-/// The build and send methods are only available when data is provided, ensuring that the request cannot be sent without the required data.
-impl<M> TranscriptionRequestBuilder<M, Provided<Vec<u8>>>
-where
-    M: TranscriptionModel,
-{
-    /// Builds the transcription request
-    /// Panics if data is empty.
-    pub fn build(self) -> TranscriptionRequest {
-        TranscriptionRequest {
-            data: self.data.0,
-            filename: self.filename.unwrap_or("file".to_string()),
-            language: self.language,
-            prompt: self.prompt,
-            temperature: self.temperature,
-            additional_params: self.additional_params,
-        }
-    }
-
-    /// Sends the transcription request to the transcription model provider and returns the transcription response
-    pub async fn send(self) -> Result<TranscriptionResponse<M::Response>, TranscriptionError> {
-        let model = self.model.clone();
-        model.transcription(self.build()).await
     }
 }
 

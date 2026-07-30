@@ -1,4 +1,5 @@
 use fixture::{as_record_batch, words};
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -53,10 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
     let query_embedding = model.embed_text(query).await?;
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
     let results = vector_store.top_n_ids(req).await?;

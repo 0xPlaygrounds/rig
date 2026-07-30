@@ -178,11 +178,8 @@ async fn vector_search_test() {
     let query = "What is a glarb?";
     let query_embedding = model.embed_text(query).await.expect("");
     let samples = 1;
-    let req = VectorSearchRequest::builder()
-        .samples(samples)
-        .query(query_embedding)
-        .filter(SqliteSearchFilter::eq("id", "doc1".into()))
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), samples)
+        .with_filter(SqliteSearchFilter::eq("id", "doc1".into()));
 
     // Query the store
     let results = vector_store

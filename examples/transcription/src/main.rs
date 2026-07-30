@@ -1,5 +1,6 @@
 use rig::prelude::*;
 use rig::providers::{huggingface, mistral};
+use rig::transcription::TranscriptionRequest;
 use rig::{
     providers::{azure, gemini, groq, openai},
     transcription::TranscriptionModel,
@@ -34,9 +35,7 @@ async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
     let openai = openai::Client::from_env()?;
     let whisper = openai.transcription_model(openai::WHISPER_1);
     let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("Whisper-1: {}", response.text);
     Ok(())
@@ -46,9 +45,7 @@ async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
     let gemini = gemini::Client::from_env()?;
     let model = gemini.transcription_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
     let response = model
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("Gemini: {}", response.text);
     Ok(())
@@ -58,9 +55,7 @@ async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
     let azure = azure::Client::from_env()?;
     let whisper = azure.transcription_model("whisper");
     let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("Azure Whisper-1: {}", response.text);
     Ok(())
@@ -70,9 +65,7 @@ async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
     let groq = groq::Client::from_env()?;
     let whisper = groq.transcription_model(groq::WHISPER_LARGE_V3);
     let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("Groq Whisper-Large-V3: {}", response.text);
     Ok(())
@@ -82,9 +75,7 @@ async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
     let huggingface = huggingface::Client::from_env()?;
     let whisper = huggingface.transcription_model("whisper-large-v3");
     let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("HuggingFace Whisper-Large-V3: {}", response.text);
     Ok(())
@@ -94,9 +85,7 @@ async fn mistral(file_path: &str) -> Result<(), anyhow::Error> {
     let client = mistral::Client::from_env()?;
     let model = client.transcription_model(mistral::VOXTRAL_MINI);
     let response = model
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
+        .transcription(TranscriptionRequest::from_file(file_path)?)
         .await?;
     println!("Mistral: {}", response.text);
     Ok(())

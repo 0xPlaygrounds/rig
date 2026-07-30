@@ -10,7 +10,7 @@ use super::completion::{
     Content, GenericCompletionModel, Usage,
 };
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::Event;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
 use crate::streaming::{
@@ -209,7 +209,7 @@ where
             .clone()
             .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
+            Ext::DIALECT.provider,
             &request_model,
             CompletionOperation::ChatStreaming,
         )
@@ -254,9 +254,8 @@ where
             .map_err(http_client::Error::Protocol)?;
 
         Ok(stream_anthropic_sse(
-            self.client.clone(),
-            req,
-            Ext::PROVIDER_NAME,
+            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false),
+            Ext::DIALECT.provider,
             span,
         ))
     }
@@ -268,23 +267,19 @@ where
 /// Extracted from [`GenericCompletionModel::stream`] so the data-oriented
 /// [`super::functions`] face reuses the exact same SSE machinery; both paths
 /// route through this single function.
-pub(super) fn stream_anthropic_sse<H>(
-    client: H,
-    req: http::Request<Vec<u8>>,
+pub(super) fn stream_anthropic_sse(
+    event_source: crate::http_client::sse::BoxedEventSource,
     provider_name: &'static str,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse
-where
-    H: HttpClientExt + Clone + 'static,
-{
-    let stream = GenericEventSource::new(client, req);
+) -> streaming::StreamingCompletionResponse {
+    let stream = event_source;
 
     // Use our SSE decoder to directly handle Server-Sent Events format
     let stream: StreamingResult = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
-            let mut sse_stream = Box::pin(stream);
+            let mut sse_stream = stream;
             let mut input_tokens = 0;
             let mut final_usage = None;
             let mut message_id: Option<String> = None;
@@ -360,8 +355,8 @@ where
                 }
             }
 
-            // Ensure event source is closed when stream ends
-            sse_stream.close();
+            // Dropping the boxed event source when this stream ends is
+            // equivalent to closing it — the state machine is finished with it.
 
             let mut final_response = streaming::StreamFinal::new(
                 provider_name,

@@ -1,5 +1,6 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::{DistanceType, index::vector::IvfPqIndexBuilder};
+use rig_core::OneOrMany;
 use rig_core::client::{EmbeddingsClient, ProviderClient};
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -85,10 +86,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?";
     let query_embedding = model.embed_text(query).await?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query_embedding)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
     let results = vector_store.top_n_as::<Word>(req).await?;

@@ -9,7 +9,6 @@ use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
 use crate::providers::openai::responses_api::streaming::{
     ResponsesStreamOptions, stream_from_event_source_with_options,
 };
@@ -50,22 +49,21 @@ where
                 .system_instructions(preamble.as_deref(), record_telemetry_content)
                 .build();
 
-        send_xai_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
+        send_xai_streaming_request(crate::http_client::sse::boxed_event_source(
+            self.client.clone(),
+            req,
+            false,
+        ))
+        .instrument(span)
+        .await
     }
 }
 
 /// Send a streaming request
-pub(crate) async fn send_xai_streaming_request<T>(
-    http_client: T,
-    req: http::Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-{
+pub(crate) async fn send_xai_streaming_request(
+    event_source: crate::http_client::sse::BoxedEventSource,
+) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
     let span = tracing::Span::current();
-    let event_source = GenericEventSource::new(http_client, req);
 
     Ok(stream_from_event_source_with_options(
         event_source,
@@ -170,9 +168,11 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_xai_streaming_request(client, req)
-            .await
-            .expect("stream should start");
+        let mut stream = send_xai_streaming_request(crate::http_client::sse::boxed_event_source(
+            client, req, false,
+        ))
+        .await
+        .expect("stream should start");
 
         match stream
             .next()
