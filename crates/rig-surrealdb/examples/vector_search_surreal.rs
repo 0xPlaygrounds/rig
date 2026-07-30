@@ -1,11 +1,9 @@
+use rig_core::Embed;
 use rig_core::OneOrMany;
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;
@@ -29,9 +27,12 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     let surreal = Surreal::new::<Mem>(()).await?;
 
@@ -52,10 +53,13 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
-        .await?;
+    let documents = embed_documents(
+        words,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     // init vector store; embedding happens *outside* the store
     let vector_store = SurrealVectorStore::with_defaults(surreal);
@@ -74,7 +78,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What does \"glarb-glarb\" mean?";
     println!("Attempting vector search with query: {query}");
 
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 2);
 
     let results = vector_store.top_n_as::<WordDefinition>(req).await?;

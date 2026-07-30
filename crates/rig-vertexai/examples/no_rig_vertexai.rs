@@ -1,7 +1,15 @@
+//! Vertex AI driven with the raw `google-cloud-aiplatform-v1` SDK and no Rig,
+//! to put the Rig integration into context.
+//!
+//! Everything below — ADC client construction, the `projects/.../models/...`
+//! resource path, the `Content`/`Part` assembly, and candidate extraction —
+//! is what `rig_vertexai::functions::client_from_config`,
+//! `functions::model_path` and `functions::complete` do for you over Rig's
+//! normalized `CompletionRequest` / `CompletionResponse`. Compare with
+//! `completion_vertexai.rs`.
+
 use anyhow::Context;
 use google_cloud_aiplatform_v1 as vertexai;
-
-// Example of using vertexai without Rig in order to put the Rig integration into context
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {

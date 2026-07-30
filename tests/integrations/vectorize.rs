@@ -24,7 +24,7 @@
 //! ```
 
 use rig::OneOrMany;
-use rig::embeddings::{Embedding, EmbeddingModel};
+use rig::embeddings::Embedding;
 use rig::vector_store::StoreRecord;
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
@@ -506,21 +506,8 @@ impl MockEmbeddingModel {
     fn new(dimensions: usize) -> Self {
         Self { dimensions }
     }
-}
 
-struct MockClient;
-
-impl EmbeddingModel for MockEmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
-
-    type Client = MockClient;
-
-    fn make(_client: &Self::Client, _model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            dimensions: dims.unwrap_or(1536),
-        }
-    }
-
+    #[allow(dead_code)]
     fn ndims(&self) -> usize {
         self.dimensions
     }

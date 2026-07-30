@@ -4,17 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = live_client()
-        .agent(LIVE_MODEL)
+    let agent = live_agent(LIVE_MODEL)
+        .await
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))

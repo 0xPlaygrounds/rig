@@ -15,8 +15,10 @@
 //! (`:generateContent` / `:streamGenerateContent`) and the credential rides
 //! as a `key` query parameter (with `alt=sse` for streaming).
 //!
-//! Future work: the same treatment for the Gemini Interactions API surface
-//! (`super::interactions_api`), which this module deliberately does not cover.
+//! This module covers `generateContent` only. The Interactions API is a
+//! separate surface with its own credential placement (an `x-goog-api-key`
+//! header rather than `?key=`); its face is
+//! [`super::interactions_api::functions`].
 
 use http::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
@@ -30,6 +32,7 @@ use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{
     ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
 };
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 /// Default Gemini API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
@@ -49,6 +52,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     // without gating.
     composes_native_output_with_tools: true,
     max_embedding_documents: Some(1024),
+    verify_path: Some("/v1beta/models"),
 };
 
 /// Plain-data Gemini provider configuration.
@@ -187,10 +191,21 @@ pub async fn open_stream(
     rt: &HttpRuntime,
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    let model = resolve_request_model(&cfg.model, &request);
+    // `gcp.gemini` is the OTel `gen_ai.provider.name` value the deleted
+    // `CompletionModel::stream` recorded; `DESCRIPTOR.name` ("gemini") is the
+    // normalized-response provider field, a different vocabulary.
+    let span = CompletionSpanBuilder::new("gcp.gemini", &model, CompletionOperation::ChatStreaming)
+        .system_instructions(
+            request.preamble.as_deref(),
+            request.record_telemetry_content,
+        )
+        .build();
     let req = build_request(cfg, &request, true)?;
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         Box::pin(super::streaming::generate_content_stream(
             rt.sse_events(req, false),
+            span,
         )),
     ))
 }
@@ -441,7 +456,11 @@ pub fn build_list_models_request(
         Some(key) => format!("{}{}&key={}", cfg.base_url.trim_end_matches('/'), path, key),
         None => format!("{}{}", cfg.base_url.trim_end_matches('/'), path),
     };
-    let mut builder = http::Request::get(url);
+    // Classic parity: the deleted client stamped `accept`/`content-type` on
+    // every request, bodyless GETs included, and the recordings match on them.
+    let mut builder = http::Request::get(url)
+        .header(http::header::ACCEPT, "*/*")
+        .header(http::header::CONTENT_TYPE, "application/json");
     for (name, value) in &cfg.extra_headers {
         builder = builder.header(name.as_str(), value.as_str());
     }
@@ -488,6 +507,55 @@ pub async fn list_models(
     }
 
     Ok(ModelList::new(all_models))
+}
+/// Build the `GET /v1beta/models` credential-verification request.
+///
+/// Gemini authenticates with a `key` query parameter, not a header, so this
+/// builds the request itself rather than using
+/// [`crate::providers::verify::verify_bearer`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError) when the
+/// credential cannot be resolved.
+pub fn build_verify_request(
+    cfg: &Config,
+) -> Result<http::Request<Vec<u8>>, crate::providers::verify::VerifyError> {
+    use crate::providers::verify::{VerifyError, verify_url};
+
+    let base = verify_url(&DESCRIPTOR, &cfg.base_url)?;
+    let key = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| VerifyError::ProviderError(e.to_string()))?;
+    let url = match key {
+        Some(key) => format!("{base}?key={key}"),
+        None => base,
+    };
+    let mut builder = http::Request::get(url);
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| VerifyError::ProviderError(e.to_string()))
+}
+
+/// Verify that `cfg`'s credential is accepted by Gemini.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/v1beta/models`, the value
+/// the deleted `Provider::VERIFY_PATH` carried) and the status mapping is
+/// the classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::send_verify(rt, build_verify_request(cfg)?).await
 }
 
 #[cfg(test)]
@@ -615,5 +683,111 @@ mod tests {
         let err = parse_response(http::StatusCode::SERVICE_UNAVAILABLE, "boom")
             .expect_err("non-success status must error");
         assert!(matches!(err, CompletionError::HttpError(_)));
+    }
+}
+#[cfg(test)]
+mod telemetry_tests {
+    use super::*;
+    use futures::StreamExt;
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use crate::OneOrMany;
+    use crate::message::Message;
+    use crate::test_utils::MockStreamingClient;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if let Ok(mut sink) = self.0.lock() {
+                sink.extend_from_slice(buf);
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn sample_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// The deleted `gemini::completion::CompletionModel::stream` built a
+    /// `CompletionSpanBuilder` span (`gcp.gemini`, `ChatStreaming`) and
+    /// instrumented the SSE stream with it; `functions::open_stream` had lost
+    /// it, so `record_token_usage` wrote to whatever ambient span existed.
+    #[tokio::test]
+    async fn open_stream_emits_the_chat_streaming_completion_span() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW)
+            .with_writer({
+                let captured = captured.clone();
+                move || SharedWriter(captured.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let sse = format!(
+            "data: {}\n\n",
+            serde_json::json!({
+                "responseId": "resp-1",
+                "modelVersion": "gemini-2.0-flash-001",
+                "candidates": [{
+                    "content": { "parts": [{"text": "hi"}], "role": "model" },
+                    "finishReason": "STOP",
+                    "index": 0
+                }],
+                "usageMetadata": {
+                    "promptTokenCount": 3,
+                    "candidatesTokenCount": 2,
+                    "totalTokenCount": 5
+                }
+            })
+        );
+        let rt = HttpRuntime::mock_streaming(MockStreamingClient {
+            sse_bytes: bytes::Bytes::from(sse),
+        });
+        let cfg = Config::new("gemini-2.0-flash").with_api_key("secret");
+
+        let mut stream = open_stream(&cfg, &rt, sample_request())
+            .await
+            .expect("stream opens");
+        while stream.next().await.is_some() {}
+
+        let logs = String::from_utf8(captured.lock().map(|sink| sink.clone()).unwrap_or_default())
+            .expect("utf8 logs");
+        assert!(
+            logs.contains("chat_streaming"),
+            "no chat_streaming span was created: {logs}"
+        );
+        assert!(
+            logs.contains("gcp.gemini"),
+            "span did not carry the classic `gcp.gemini` provider name: {logs}"
+        );
+        assert!(
+            logs.contains("gemini-2.0-flash"),
+            "span did not carry the request model: {logs}"
+        );
     }
 }

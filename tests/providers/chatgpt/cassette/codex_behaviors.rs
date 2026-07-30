@@ -6,9 +6,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::tool::Tool;
 

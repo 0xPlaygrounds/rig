@@ -1,8 +1,8 @@
 //! Focused DeepSeek cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
+use rig::http_runtime::HttpRuntime;
 use rig::providers::deepseek;
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,8 +47,9 @@ fn assistant_text(choice: &OneOrMany<AssistantContent>) -> String {
 async fn chat_completions_keeps_documents_after_system_before_history() {
     with_deepseek_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
-        |client| async move {
-            let model = client.completion_model(deepseek::DEEPSEEK_V4_FLASH);
+        |env| async move {
+            let model_cfg = env.config(deepseek::DEEPSEEK_V4_FLASH);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 documents: vec![ordering_document()],
                 temperature: Some(0.0),
@@ -64,8 +65,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                     PROMPT,
                 )
             };
-            let response = model
-                .completion(request)
+            let response = deepseek::functions::complete(&model_cfg, &rt, request)
                 .await
                 .expect("DeepSeek document ordering request should succeed");
 

@@ -8,9 +8,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::completion::CompletionRequest;
-use rig::completion::{CompletionModel, FinishReason};
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 

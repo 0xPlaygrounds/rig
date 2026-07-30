@@ -82,9 +82,8 @@ impl SessionIdHook {
 async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_xai_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
-        |client| async move {
-            let agent = client
-                .agent(xai::GROK_3_MINI)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider_config(xai::GROK_3_MINI))
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

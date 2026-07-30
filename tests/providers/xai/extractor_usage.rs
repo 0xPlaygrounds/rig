@@ -6,17 +6,16 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::xai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::support::with_xai_cassette_result;
+use super::support::{XaiCassetteEnv, with_xai_cassette_result};
 
-/// Run a classic-extractor-shaped extraction against `client`.
+/// Run a classic-extractor-shaped extraction against `env`.
 async fn classic_extract<T>(
-    client: &xai::Client,
+    env: &XaiCassetteEnv,
     prompt: impl Into<Message>,
     options: ExtractOptions,
 ) -> Result<ExtractionOutcome<T>, ExtractError>
@@ -25,7 +24,7 @@ where
 {
     extract_with_options(
         AgentConfig::new(),
-        client.provider_config(xai::GROK_3_MINI),
+        env.provider_config(xai::GROK_3_MINI),
         Arc::new(Runtime::new()),
         prompt,
         options,
@@ -66,9 +65,9 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 async fn extract_backward_compatibility() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_backward_compatibility",
-        |client| async move {
+        |env| async move {
             let person = classic_extract::<Person>(
-                &client,
+                &env,
                 "John Doe is a 30 year old software engineer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -89,9 +88,9 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
-        |client| async move {
+        |env| async move {
             let response = classic_extract::<Person>(
-                &client,
+                &env,
                 "Jane Smith is a 45 year old data scientist.",
                 ExtractOptions::classic_extractor(),
             )
@@ -114,13 +113,13 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
-        |client| async move {
+        |env| async move {
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
             )];
 
             let response = classic_extract::<Address>(
-                &client,
+                &env,
                 "The address is 123 Main St in Springfield, IL 62701.",
                 ExtractOptions::classic_extractor().with_history(chat_history),
             )
@@ -143,15 +142,13 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
-        |client| async move {
+        |env| async move {
             let text = "Bob Johnson is a 55 year old retired teacher.";
-            let person =
-                classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor())
-                    .await?
-                    .value;
+            let person = classic_extract::<Person>(&env, text, ExtractOptions::classic_extractor())
+                .await?
+                .value;
             let response =
-                classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor())
-                    .await?;
+                classic_extract::<Person>(&env, text, ExtractOptions::classic_extractor()).await?;
 
             anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
             anyhow::ensure!(response.value.name.as_deref() == Some("Bob Johnson"));
@@ -171,9 +168,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
-        |client| async move {
+        |env| async move {
             let person_response = classic_extract::<Person>(
-                &client,
+                &env,
                 "Alice is a 25 year old developer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -181,7 +178,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             anyhow::ensure!(person_response.usage.total_tokens > 0);
 
             let address_response = classic_extract::<Address>(
-                &client,
+                &env,
                 "456 Oak Avenue, Cambridge, MA 02139",
                 ExtractOptions::classic_extractor(),
             )

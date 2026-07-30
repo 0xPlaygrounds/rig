@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 
 use rig::agent::ToolCallAction;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;

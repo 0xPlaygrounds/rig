@@ -6,12 +6,10 @@
 //! it. When the main agent receives text that is not in English (or has
 //! grammatical errors), it calls the translator tool first, then answers.
 use anyhow::Result;
-use rig::client::ToProviderConfig;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
-use rig::{agent::AgentBuilder, providers::openai::Client as OpenAIClient};
 use serde_json::json;
 
 const TRANSLATOR_TOOL_NAME: &str = "translator";
@@ -23,9 +21,8 @@ const TRANSLATOR_TOOL_NAME: &str = "translator";
 /// The answer in english is returned.
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = OpenAIClient::from_env()?;
-    let provider = openai_client.provider_config(openai::GPT_4O);
+    // One plain-data provider config, cloned into both agents.
+    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O)?);
 
     let translator_agent = AgentBuilder::new(provider.clone())
                 .preamble(

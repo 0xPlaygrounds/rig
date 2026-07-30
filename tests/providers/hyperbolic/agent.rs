@@ -8,9 +8,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires HYPERBOLIC_API_KEY"]
 async fn completion_smoke() {
-    let client = hyperbolic::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(hyperbolic::DEEPSEEK_R1)
+    let cfg = hyperbolic::functions::Config::from_env(hyperbolic::DEEPSEEK_R1)
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Hyperbolic(cfg))
         .preamble(BASIC_PREAMBLE)
         .build();
 

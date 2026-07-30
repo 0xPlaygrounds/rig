@@ -1,10 +1,10 @@
 use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
+    embeddings::embed_documents,
     vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
-use rig_fastembed::FastembedModel;
+use rig_fastembed::{EmbeddingConfig, FastembedModel, functions};
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
@@ -19,13 +19,15 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let fastembed_client = rig_fastembed::Client::new();
+    // Load the local FastEmbed model. There is no client type: the config
+    // says which weights to load, and `load()` hands back the runtime handle.
+    let embedding_model = EmbeddingConfig::new(FastembedModel::AllMiniLML6V2Q).load()?;
 
-    let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q)?;
-
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(vec![
+    // `embed_documents` replaces the old `EmbeddingsBuilder`: it flattens each
+    // document's `#[embed]` fields, embeds them in batches, and re-associates
+    // the vectors with their document.
+    let embeddings = embed_documents(
+        vec![
             WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
@@ -50,9 +52,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])?
-        .build()
-        .await?;
+        ],
+        rig_fastembed::MAX_DOCUMENTS,
+        1,
+        |texts| async { functions::embed(&embedding_model, texts) },
+    )
+    .await?;
 
     // Create vector store with the embeddings. The store never embeds text
     // itself: queries arrive pre-embedded.
@@ -61,7 +66,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
-    let query_embedding = embedding_model.embed_text(query).await?;
+    let query_embedding = functions::embed_text(&embedding_model, query)?;
 
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 

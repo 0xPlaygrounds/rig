@@ -100,9 +100,13 @@ pub struct Product {
 Example usage
 
 ```rust
-    // Create OpenAI client
-    let openai_client = rig::providers::openai::Client::from_env();
-    let model = openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    use rig::providers::openai;
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
+    let rt = rig::http_runtime::HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // connect to Postgres
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
@@ -114,11 +118,14 @@ Example usage
     // init documents
     let products: Vec<Product> = ...;
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(products)
-        .unwrap()
-        .build()
-        .await?;
+    // `embed_documents` replaced the retired `EmbeddingsBuilder`.
+    let documents = rig::embeddings::embed_documents(
+        products,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     // Create your vector store; queries arrive pre-embedded
     let vector_store = PostgresVectorStore::with_defaults(pool);
@@ -134,7 +141,16 @@ Example usage
         .await?;
 
     // embed the query, then retrieve matches
-    let query_embedding = model.embed_text("Which phones have more than 16Gb and support 5G").await?;
+    let query_embedding = openai::functions::embed(
+        &embed_cfg,
+        &rt,
+        vec!["Which phones have more than 16Gb and support 5G".to_string()],
+    )
+    .await?
+    .embeddings
+    .into_iter()
+    .next()
+    .expect("one embedding per input text");
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 50);
     let results = vector_store.top_n_as::<Product>(req).await?;
 

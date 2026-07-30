@@ -10,9 +10,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
+use rig::providers::groq;
 use rig::providers::openai;
 use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
@@ -492,11 +494,10 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse, scen
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -542,11 +543,10 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -612,9 +612,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -660,9 +659,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -693,9 +691,10 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&tool)],
@@ -709,7 +708,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 )
             };
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(groq::functions::open_stream(&model_cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -740,8 +739,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let tool_call_id = "call_REDACTED_1";
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
@@ -774,7 +774,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = groq::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -794,11 +794,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/tool_choice_auto_required_specific_and_none",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
 
-            let auto = model
-                .completion(CompletionRequest {
+            let auto = groq::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Auto),
                     ..CompletionRequest::from_prompt(
@@ -816,8 +816,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "auto tool choice should allow lookup_harbor_label"
             );
 
-            let required = model
-                .completion(CompletionRequest {
+            let required = groq::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Required),
                     ..CompletionRequest::from_prompt(
@@ -835,8 +834,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 "required tool choice should force lookup_harbor_label"
             );
 
-            let specific = model
-                .completion(CompletionRequest {
+            let specific = groq::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![
                         rig::tool::portable_tool_definition(&AlphaSignal),
                         rig::tool::portable_tool_definition(&BetaSignal),
@@ -863,8 +861,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
                 specific_calls
             );
 
-            let none = model
-                .completion(CompletionRequest {
+            let none = groq::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::None),
                     ..CompletionRequest::from_prompt(
@@ -892,8 +889,9 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
 async fn json_object_response_format_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
-        |client| async move {
-            let model = client.completion_model(JSON_OBJECT_MODEL);
+        |env| async move {
+            let model_cfg = env.config(JSON_OBJECT_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 additional_params: Some(json!({"response_format": { "type": "json_object" }})),
                 max_tokens: Some(128),
@@ -904,7 +902,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = groq::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
@@ -942,8 +940,9 @@ struct StructuredChecks {
 async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
-        |client| async move {
-            let model = client.completion_model(JSON_SCHEMA_MODEL);
+        |env| async move {
+            let model_cfg = env.config(JSON_SCHEMA_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 output_schema: Some(schemars::schema_for!(StructuredReleasePlan)),
                 max_tokens: Some(128),
@@ -954,7 +953,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = groq::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("structured response should contain text"))?;
             let plan: StructuredReleasePlan = serde_json::from_str(&text)?;
@@ -978,10 +977,10 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
 async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
-            let mut stream = model
-                .stream(CompletionRequest {
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
+            let mut stream = groq::functions::open_stream(&model_cfg, &rt, CompletionRequest {
                     max_tokens: Some(64),
                     ..CompletionRequest::with_history(
                         Some("Stream the requested short sequence exactly."),

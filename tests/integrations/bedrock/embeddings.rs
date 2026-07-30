@@ -1,21 +1,22 @@
 //! AWS Bedrock embedding smoke test inspired by provider embedding coverage.
 
-use rig::client::EmbeddingsClient;
-use rig::embeddings::EmbeddingModel as _;
-
 use super::{
-    BEDROCK_EMBEDDING_MODEL, client,
+    BEDROCK_EMBEDDING_MODEL, aws_client,
     support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent},
 };
 
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock embedding model access"]
 async fn embeddings_smoke() {
-    let model = client().embedding_model_with_ndims(BEDROCK_EMBEDDING_MODEL, 256);
-    let embeddings = model
-        .embed_texts(EMBEDDING_INPUTS.into_iter().map(str::to_string))
-        .await
-        .expect("embedding request should succeed");
+    let response = rig::bedrock::functions::embed(
+        &aws_client().await,
+        BEDROCK_EMBEDDING_MODEL,
+        Some(256),
+        EMBEDDING_INPUTS.into_iter().map(str::to_string).collect(),
+    )
+    .await
+    .expect("embedding request should succeed");
+    let embeddings = response.embeddings;
 
     assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
     assert!(

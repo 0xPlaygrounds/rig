@@ -7,7 +7,6 @@ use rig::agent::ModelTurnAction;
 use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;

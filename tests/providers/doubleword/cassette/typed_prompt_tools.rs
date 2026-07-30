@@ -59,10 +59,9 @@ impl Tool for WeatherTool {
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_doubleword_cassette_result(
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
-        |client| async move {
+        |env| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(TOOL_MODEL)
+            let agent = AgentBuilder::new(env.provider(TOOL_MODEL))
                 .preamble(
                     "When asked about weather, use the weather tool. Afterward return only JSON \
                      matching {\"city\": string, \"weather\": string}, preserving the tool result.",

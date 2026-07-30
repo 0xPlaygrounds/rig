@@ -1,5 +1,4 @@
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers;
 use rig_derive::rig_tool;
 
@@ -29,12 +28,13 @@ fn string_processor(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let string_agent = providers::openai::Client::from_env()?
-        .agent(providers::openai::GPT_4O)
-        .preamble("You are an agent with tools access, always use the tools")
-        .max_tokens(1024)
-        .tool(StringProcessor)
-        .build();
+    let string_agent = AgentBuilder::new(ProviderConfig::OpenAi(
+        providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?,
+    ))
+    .preamble("You are an agent with tools access, always use the tools")
+    .max_tokens(1024)
+    .tool(StringProcessor)
+    .build();
 
     println!("Tool definition:");
     println!(

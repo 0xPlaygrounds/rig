@@ -13,13 +13,10 @@ use mongodb::{
     options::ClientOptions,
 };
 use rig::OneOrMany;
+use rig::http_runtime::HttpRuntime;
 use rig::mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
-use rig::{
-    Embed,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai,
-};
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
+use rig::vector_store::request::VectorSearchRequest;
+use rig::{Embed, embeddings::embed_documents, providers::openai};
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -141,15 +138,11 @@ async fn vector_search_test() {
             ));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Configure the (mocked) OpenAI embeddings face
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
@@ -168,7 +161,7 @@ async fn vector_search_test() {
 
     let collection = bootstrap_collection(host, port).await;
 
-    let embeddings = create_embeddings(model.clone()).await;
+    let embeddings = create_embeddings(&cfg, &rt).await;
 
     collection.insert_many(embeddings).await.unwrap();
 
@@ -180,7 +173,13 @@ async fn vector_search_test() {
 
     // Embed the query outside the store (reuse the same model that was used to
     // generate the document embeddings), then search with the pre-embedded query.
-    let query = model.embed_text("What is a linglingdong?").await.unwrap();
+    let query = openai::functions::embed(&cfg, &rt, vec!["What is a linglingdong?".to_string()])
+        .await
+        .unwrap()
+        .embeddings
+        .into_iter()
+        .next()
+        .unwrap();
     let req = VectorSearchRequest::<MongoDbSearchFilter>::new(OneOrMany::one(query), 1);
 
     let mut observed_results = Vec::new();
@@ -272,14 +271,11 @@ async fn insert_documents_test() {
             }));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Configure the (mocked) OpenAI embeddings face
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
     // Setup MongoDB container
     let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
@@ -309,13 +305,18 @@ async fn insert_documents_test() {
         },
     ];
 
-    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, OneOrMany<Embedding>)>)
-    let documents_with_embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(test_words)
-        .unwrap()
-        .build()
-        .await
-        .expect("Failed to create embeddings");
+    // Generate embeddings (returns Vec<(Word, OneOrMany<Embedding>)>)
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let documents_with_embeddings = embed_documents(
+        test_words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .expect("Failed to create embeddings");
 
     // Clear collection before test
     collection.delete_many(doc! {}).await.unwrap();
@@ -470,7 +471,10 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     collection
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document> {
+async fn create_embeddings(
+    cfg: &openai::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+) -> Vec<bson::Document> {
     let words = vec![
         Word {
             id: "doc0".to_string(),
@@ -486,12 +490,17 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
         }
     ];
 
-    let embeddings = EmbeddingsBuilder::new(model)
-        .documents(words)
-        .unwrap()
-        .build()
-        .await
-        .unwrap();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(cfg, rt, texts),
+    )
+    .await
+    .unwrap();
 
     embeddings
         .iter()

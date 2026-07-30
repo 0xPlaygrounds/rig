@@ -12,14 +12,10 @@ use qdrant_client::{
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
 use rig_core::OneOrMany;
-use rig_core::{
-    Embed,
-    client::ProviderClient,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::{self, Client},
-    vector_store::{StoreRecord, request::SearchFilter},
-};
-use rig_core::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
+use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::{Embed, providers::openai, vector_store::StoreRecord};
 use rig_qdrant::{QdrantFilter, QdrantVectorStore};
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -47,29 +43,38 @@ async fn main() -> Result<(), anyhow::Error> {
             .await?;
     }
 
-    // Initialize OpenAI client.
+    // Embedding configuration is plain data plus a shared HTTP runtime —
+    // there is no client object to construct.
     // Get your API key from https://platform.openai.com/api-keys
-    let openai_client = Client::from_env()?;
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
 
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Embedding happens *outside* the store: the store only ever sees
     // precomputed vectors.
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .document(Word {
-            id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        })?
-        .document(Word {
-            id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        })?
-        .document(Word {
-            id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        })?
-        .build()
-        .await?;
+    let documents = embed_documents(
+        vec![
+            Word {
+                id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
+                definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+            },
+            Word {
+                id: "62a36d43-80b6-4fd6-990c-f75bb02287d1".to_string(),
+                definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            },
+            Word {
+                id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
+                definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+            },
+        ],
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
     let vector_store = QdrantVectorStore::new(client, query_params.build());
@@ -86,7 +91,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Embed the query, then create a pre-embedded request.
     let query = "What is a linglingdong?";
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("no embedding returned for the query"))?;
 
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 1);
 

@@ -6,7 +6,8 @@ Vector store implementation for [ScyllaDB](https://www.scylladb.com/). This inte
 
 ```rust
 use rig::{
-    embeddings::EmbeddingModel, providers::openai, vector_store::request::VectorSearchRequest, Embed,
+    http_runtime::HttpRuntime, providers::openai, vector_store::request::VectorSearchRequest,
+    Embed, OneOrMany,
 };
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 
@@ -22,9 +23,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create ScyllaDB session
     let session = create_session("127.0.0.1:9042").await?;
 
-    // Create OpenAI client and embedding model
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
 
     // Create vector store; queries arrive pre-embedded
     let vector_store = ScyllaDbVectorStore::new(
@@ -35,7 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).await?;
 
     // Embed the query, then query the store
-    let query_embedding = model.embed_text("search query").await?;
+    let query_embedding =
+        openai::functions::embed(&embed_cfg, &rt, vec!["search query".to_string()])
+            .await?
+            .embeddings
+            .into_iter()
+            .next()
+            .expect("one embedding per input text");
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5);
     let results = vector_store.top_n_as::<Document>(req).await?;
 

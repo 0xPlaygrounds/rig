@@ -3,8 +3,6 @@
 //! Run it to see the model identify the example that uses `FileLoader::with_glob`.
 
 use anyhow::Result;
-use rig::agent::AgentBuilder;
-use rig::client::ToProviderConfig;
 use rig::loaders::FileLoader;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -21,8 +19,7 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
-    let provider = client.provider_config(openai::GPT_4O);
+    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O)?);
     let files = load_example_contexts()?;
 
     let agent = files

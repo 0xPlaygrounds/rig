@@ -13,9 +13,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::stream::AgentStreamItem;
 use rig::tool::Tool;
@@ -311,7 +310,8 @@ async fn long_history_replay_nonstreaming() {
     with_openai_cassette(
         "responses_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo
@@ -324,10 +324,10 @@ async fn long_history_replay_nonstreaming() {
                     "Look up the harbor label with the tool.",
                 )
             };
-            let first_response = model
-                .completion(first_request)
-                .await
-                .expect("first turn should succeed");
+            let first_response =
+                openai::responses_api::functions::complete(&cfg, &rt, first_request)
+                    .await
+                    .expect("first turn should succeed");
             let tool_call = first_response
                 .choice
                 .iter()
@@ -374,8 +374,7 @@ async fn long_history_replay_nonstreaming() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("long history replay should be accepted by the Responses API");
 

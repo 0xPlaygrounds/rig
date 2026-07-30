@@ -16,7 +16,12 @@ mod cassette {
     mod opus_4_7;
     mod opus_4_8;
     mod plaintext_document;
-    mod prompt_caching;
+    // TODO(R7): `anthropic::functions::Config` deliberately does not carry the
+    // prompt-caching knobs yet ("requests are built with caching off"), so the
+    // deleted `CompletionModel::with_prompt_caching()` /
+    // `.with_automatic_caching()` have no replacement. Re-enable once the
+    // config grows those fields.
+    // mod prompt_caching;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod request_override;

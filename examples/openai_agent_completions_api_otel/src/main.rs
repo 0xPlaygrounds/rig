@@ -1,5 +1,9 @@
 //! This example shows how you can use OpenAI's Completions API.
 //! By default, the OpenAI integration uses the Responses API. However, for the sake of backwards compatibility you may wish to use the Completions API.
+//!
+//! Choosing the API face is now a choice of `ProviderConfig` arm over plain
+//! data: `ProviderConfig::OpenAi` speaks chat completions (this example),
+//! while `ProviderConfig::OpenAiResponses` speaks the Responses API.
 
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
@@ -7,7 +11,7 @@ use rig::prelude::*;
 
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use rig::providers::{self, openai};
+use rig::providers::openai;
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -41,10 +45,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create OpenAI client
-    let agent = providers::openai::Client::from_env()?
-        .completions_api()
-        .agent(openai::GPT_4O)
+    // The chat-completions face is `ProviderConfig::OpenAi`; the Responses
+    // API face would be `ProviderConfig::OpenAiResponses`.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a helpful assistant")
         .build();
 

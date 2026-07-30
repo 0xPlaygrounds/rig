@@ -9,7 +9,6 @@ use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
-use rig::providers::groq;
 
 use crate::support::assert_nonempty_response;
 
@@ -81,9 +80,7 @@ impl SessionIdHook {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = groq::Client::from_env()
-        .expect("client should build")
-        .agent(REQUEST_HOOK_MODEL)
+    let agent = AgentBuilder::new(super::live(REQUEST_HOOK_MODEL))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

@@ -8,7 +8,6 @@ use rig::completion::Message;
 use rig::completion::message::Image;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::message::{DocumentSourceKind, ImageMediaType};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
 use rig_agent::test_utils::validate_extraction_fields;
@@ -220,7 +219,7 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_nonstreaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
+                client.provider_config(CLAUDE_OPUS_4_7),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;
@@ -235,7 +234,7 @@ async fn messages_adaptive_thinking_streaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_streaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
+                client.provider_config(CLAUDE_OPUS_4_7),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;

@@ -14,9 +14,7 @@ use aws_smithy_runtime_api::http::StatusCode;
 use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
 use rig::agent::AgentBuilder;
-use rig::bedrock::client::Client;
 use rig::bedrock::functions::Config;
-use rig::client::{CompletionClient, EmbeddingsClient};
 use rig::provider::{ProviderConfig, Runtime};
 
 use crate::cassettes::{
@@ -27,23 +25,28 @@ use crate::cassettes::{
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
 
-/// The per-test Bedrock handle: the classic provider [`Client`] plus a
-/// provider [`Runtime`] whose Bedrock cache is seeded with the same
-/// cassette-wired AWS client, so `ProviderConfig::Bedrock` agents replay
-/// through the recording/replaying transport.
+/// The per-test Bedrock handle: the cassette-wired AWS SDK client (which the
+/// `rig::bedrock::functions::*` free functions take directly) plus a provider
+/// [`Runtime`] whose Bedrock cache is seeded with that same client, so
+/// `ProviderConfig::Bedrock` agents replay through the recording/replaying
+/// transport.
 pub(super) struct BedrockHarness {
     aws_client: aws_sdk_bedrockruntime::Client,
-    client: Client,
     runtime: Arc<Runtime>,
 }
 
 impl BedrockHarness {
     fn new(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
         Self {
-            client: Client::from(aws_client.clone()),
             aws_client,
             runtime: Arc::new(Runtime::new()),
         }
+    }
+
+    /// The cassette-wired AWS client, for the model-level
+    /// `rig::bedrock::functions::{complete, open_stream, embed}` entry points.
+    pub fn aws_client(&self) -> &aws_sdk_bedrockruntime::Client {
+        &self.aws_client
     }
 
     /// An [`AgentBuilder`] over `cfg`, with this harness's AWS client seeded
@@ -58,24 +61,6 @@ impl BedrockHarness {
     /// An [`AgentBuilder`] for `model` with default Bedrock configuration.
     pub async fn agent(&self, model: &str) -> AgentBuilder {
         self.agent_from_config(Config::new(model)).await
-    }
-
-    /// The classic provider completion model, driving the cassette-wired
-    /// AWS client directly.
-    pub fn completion_model(
-        &self,
-        model: impl Into<String>,
-    ) -> rig::bedrock::completion::CompletionModel {
-        self.client.completion_model(model)
-    }
-
-    /// The classic provider embedding model with fixed dimensions.
-    pub fn embedding_model_with_ndims(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> rig::bedrock::embedding::EmbeddingModel {
-        self.client.embedding_model_with_ndims(model, ndims)
     }
 }
 

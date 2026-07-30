@@ -4,7 +4,6 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -73,9 +72,8 @@ async fn batch_multi_extract_chain() -> Result<()> {
         return Ok(());
     }
 
-    let client = support::client();
     let model = support::model_name();
-    let provider = client.provider_config(&model);
+    let provider = support::provider(model);
     let names_options = classic_options_with_preamble("Extract names from the given text.");
     let topics_options = classic_options_with_preamble("Extract topics from the given text.");
     let sentiment_options = classic_options_with_preamble(

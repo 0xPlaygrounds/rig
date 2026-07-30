@@ -9,7 +9,7 @@ use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relev
 
 #[tokio::test]
 async fn loaders_smoke() {
-    with_xai_cassette("loaders/loaders_smoke", |client| async move {
+    with_xai_cassette("loaders/loaders_smoke", |env| async move {
         let examples = FileLoader::with_glob(LOADERS_GLOB)
             .expect("examples glob should parse")
             .read_with_path()
@@ -17,7 +17,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(client.agent(xai::GROK_4), |builder, (path, content)| {
+            .fold(AgentBuilder::new(env.provider_config(xai::GROK_4)), |builder, (path, content)| {
                 let file_name = path
                     .file_name()
                     .and_then(|name| name.to_str())

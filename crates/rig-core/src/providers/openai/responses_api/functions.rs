@@ -47,6 +47,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     // `text.format`; tools are still called across turns. See issue #1928.
     composes_native_output_with_tools: true,
     max_embedding_documents: Some(1024),
+    verify_path: Some("/models"),
 };
 
 /// Plain-data OpenAI Responses API provider configuration.
@@ -282,6 +283,30 @@ pub async fn complete(
     let req = build_request(cfg, &request, false)?;
     let (status, body) = rt.send(req).await?;
     parse_response(status, &body)
+}
+/// Verify that `cfg`'s credential is accepted by the provider.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+/// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+/// classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::verify_bearer(
+        &DESCRIPTOR,
+        &cfg.base_url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        rt,
+    )
+    .await
 }
 
 #[cfg(test)]

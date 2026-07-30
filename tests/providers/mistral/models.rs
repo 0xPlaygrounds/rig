@@ -1,13 +1,16 @@
 //! Mistral model listing smoke test.
 
-use rig::client::{ModelListingClient, ProviderClient};
+use rig::http_runtime::HttpRuntime;
 use rig::providers::mistral;
+
+use super::DEFAULT_MODEL;
 
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn list_models_smoke() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let models = match client.list_models().await {
+    let cfg = mistral::functions::Config::from_env(DEFAULT_MODEL).expect("config should build");
+    let rt = HttpRuntime::new();
+    let models = match mistral::functions::list_models(&cfg, &rt).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Mistral models should succeed\nDisplay: {error}\nDebug: {error:#?}")

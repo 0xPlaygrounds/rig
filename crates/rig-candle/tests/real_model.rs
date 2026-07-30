@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 use futures::StreamExt;
 use rig_candle::{CandleModel, ModelData};
-use rig_core::completion::CompletionModel;
 use rig_core::streaming::StreamedAssistantContent;
 
 /// Concatenated visible text from a buffered completion's choice.
@@ -49,7 +48,7 @@ async fn loads_and_generates_with_a_real_local_model()
         "Reply with one short greeting."
     };
     let request = rig_core::completion::CompletionRequest::from_prompt(prompt);
-    let response = model.completion(request.clone()).await?;
+    let response = rig_candle::functions::complete(&model, request.clone()).await?;
     let buffered_text = choice_text(&response);
     if buffered_text.is_empty() {
         return Err(std::io::Error::other("real model returned empty generated text").into());
@@ -63,7 +62,7 @@ async fn loads_and_generates_with_a_real_local_model()
         ))
         .into());
     }
-    let mut stream = model.stream(request).await?;
+    let mut stream = rig_candle::functions::open_stream(&model, request).await?;
     let mut streamed_text = String::new();
     let mut final_response = None;
     while let Some(item) = stream.next().await {

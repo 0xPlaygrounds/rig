@@ -21,8 +21,7 @@ use rig_neo4j::Neo4jClient;
 
 use std::env;
 
-use rig_core::client::EmbeddingsClient;
-use rig_core::{embeddings::EmbeddingModel, providers::openai::Client};
+use rig_core::http_runtime::HttpRuntime;
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -37,9 +36,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     const INDEX_NAME: &str = "moviePlotsEmbedding";
 
-    // Initialize OpenAI client
+    // Embedding configuration is plain data plus a shared HTTP runtime.
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client: Client = Client::new(&openai_api_key)?;
+    let embed_cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key(&openai_api_key);
+    let rt = HttpRuntime::new();
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";
@@ -55,9 +56,6 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .await?;
 
-    // // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]
     struct Movie {
@@ -71,8 +69,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query = "a historical movie on quebec";
     // Queries are pre-embedded: embed them with the same model the index was built with.
-    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 5)
-        .with_filter(SearchFilter::gt("node.year", 1990.into()));
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        5,
+    )
+    .with_filter(SearchFilter::gt("node.year", 1990.into()));
 
     // Query the index
     let results = index
@@ -90,7 +98,17 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{:#}", display::SearchResults(&results));
 
     let query = "A movie where the bad guy wins";
-    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query).await?), 1);
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        1,
+    );
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

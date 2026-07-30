@@ -34,11 +34,11 @@ struct DocumentSentiment {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
+    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
 
     let sentiment = extract_with_options::<DocumentSentiment>(
         AgentConfig::new(),
-        client.provider_config(openai::GPT_4),
+        ProviderConfig::OpenAi(cfg),
         Arc::new(Runtime::new()),
         "I am happy",
         ExtractOptions::classic_extractor(),

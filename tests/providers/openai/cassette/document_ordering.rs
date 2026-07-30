@@ -1,8 +1,7 @@
 //! Focused OpenAI cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,7 +46,8 @@ async fn responses_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_cassette(
         "document_ordering/responses_keeps_documents_after_system_before_history",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 documents: vec![ordering_document()],
                 temperature: Some(0.0),
@@ -61,8 +61,7 @@ async fn responses_keeps_documents_after_system_before_history() {
                     PROMPT,
                 )
             };
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("OpenAI Responses document ordering request should succeed");
 
@@ -84,7 +83,8 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_completions_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 documents: vec![ordering_document()],
                 temperature: Some(0.0),
@@ -98,8 +98,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
                     PROMPT,
                 )
             };
-            let response = model
-                .completion(request)
+            let response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("OpenAI Chat Completions document ordering request should succeed");
 

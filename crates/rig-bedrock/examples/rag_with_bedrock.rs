@@ -1,16 +1,23 @@
+//! RAG over Bedrock: embed a corpus once, then inject vector-search hits as
+//! per-turn context from a hook.
+//!
+//! `EmbeddingsBuilder` and the embedding-model trait are gone; the corpus is
+//! embedded with `rig_core::embeddings::embed_documents` over
+//! `rig_bedrock::functions::embed`, and the hook re-uses the same AWS client
+//! to embed each query.
 use rig_core::OneOrMany;
 use std::vec;
 
 use rig_agent::agent::hook::{CompletionCallAction, RequestPatch};
 use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
-use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
-use rig_bedrock::client::Client;
-use rig_bedrock::completion::AMAZON_NOVA_LITE;
+use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_bedrock::functions;
+use rig_bedrock::{aws_sdk_bedrockruntime, completion::AMAZON_NOVA_LITE};
 use rig_core::completion::Document;
+use rig_core::embeddings::batching::{default_concurrency, embed_documents};
 use rig_core::vector_store::VectorSearchRequest;
-use rig_core::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
+use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
 use serde::Serialize;
 use tracing::info;
 
@@ -30,14 +37,16 @@ struct WordDefinition {
 ///
 /// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
 /// closure over owned `HookEvent`s that returns a `HookDecision`; the
-/// embedding model, the store, and the sample count are captured behind an
-/// `Arc` so the returned future stays `'static + Send + Sync`.
+/// AWS client, the embedding config, the store, and the sample count are
+/// captured behind an `Arc` so the returned future stays
+/// `'static + Send + Sync`.
 fn rag_hook(
-    embedding_model: rig_bedrock::embedding::EmbeddingModel,
+    client: aws_sdk_bedrockruntime::Client,
+    embedding_config: functions::EmbeddingConfig,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_model, store, samples));
+    let state = std::sync::Arc::new((client, embedding_config, store, samples));
     HookEntry::new("rag", move |event| {
         let state = state.clone();
         Box::pin(async move {
@@ -47,15 +56,29 @@ fn rag_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_model, store, samples) = state.as_ref();
+            let (client, embedding_config, store, samples) = state.as_ref();
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
             let Some(query) = query else {
                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
             };
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
+            let embedded = match functions::embed(
+                client,
+                &embedding_config.model,
+                embedding_config.ndims,
+                vec![query],
+            )
+            .await
+            {
+                Ok(response) => match response.embeddings.into_iter().next() {
+                    Some(embedding) => embedding,
+                    None => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "bedrock returned no embedding for the RAG query",
+                        ));
+                    }
+                },
                 Err(error) => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
                         error.to_string(),
@@ -86,12 +109,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env()?;
-    let embedding_model = client.embedding_model_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
+    // Bedrock authenticates through the AWS SDK's default credential chain,
+    // so both faces are plain configuration.
+    let embedding_config =
+        functions::EmbeddingConfig::new(AMAZON_TITAN_EMBED_TEXT_V2_0).with_ndims(256);
+    let client = functions::client_from_config(&embedding_config.client_config()).await;
+    let max_documents = functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(vec![
+    let embeddings = embed_documents(
+        vec![
             WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
@@ -116,16 +145,17 @@ async fn main() -> Result<(), anyhow::Error> {
                     "2. *linglingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])?
-        .build()
-        .await?;
+        ],
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| functions::embed(&client, &embedding_config.model, embedding_config.ndims, texts),
+    )
+    .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    // The classic bedrock client is not expressible as portable provider
-    // configuration; build the agent from a bedrock provider config directly
-    // (default AWS credential chain and region, like `Client::from_env`).
+    // The agent speaks to Bedrock through the same plain configuration.
     let rag_agent = AgentBuilder::new(ProviderConfig::Bedrock(
         rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
     ))
@@ -133,7 +163,12 @@ async fn main() -> Result<(), anyhow::Error> {
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .add_hook(rag_hook(embedding_model, vector_store, 1))
+        .add_hook(rag_hook(
+            client.clone(),
+            embedding_config,
+            vector_store,
+            1,
+        ))
         .build();
 
     // Prompt the agent and print the response

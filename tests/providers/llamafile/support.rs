@@ -1,5 +1,6 @@
 //! Shared helpers for Llamafile live tests.
 
+use rig::provider::ProviderConfig;
 use rig::providers::llamafile;
 use url::Url;
 
@@ -14,8 +15,22 @@ pub(super) fn model_name() -> String {
     std::env::var("LLAMAFILE_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
 }
 
-pub(super) fn client() -> llamafile::Client {
-    llamafile::Client::from_url(&api_base_url()).expect("client should build")
+/// `LLAMAFILE_API_BASE_URL` is a bare host URL; the functions path builds
+/// wire URLs verbatim, so the `/v1` the deleted client appended lives here.
+fn versioned_base_url() -> String {
+    format!("{}/v1", api_base_url().trim_end_matches('/'))
+}
+
+pub(super) fn config(model: impl Into<String>) -> llamafile::functions::Config {
+    llamafile::functions::Config::new(model).with_base_url(versioned_base_url())
+}
+
+pub(super) fn provider(model: impl Into<String>) -> ProviderConfig {
+    ProviderConfig::Llamafile(config(model))
+}
+
+pub(super) fn embedding_config(model: impl Into<String>) -> llamafile::functions::EmbeddingConfig {
+    llamafile::functions::EmbeddingConfig::new(model).with_base_url(versioned_base_url())
 }
 
 fn server_addr() -> Option<String> {

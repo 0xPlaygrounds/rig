@@ -168,11 +168,10 @@ impl PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     with_xai_cassette_result(
         "permission_control/permission_control_prompt_example",
-        |client| async move {
+        |env| async move {
             let cleanup = FileCleanup::new("blocking")?;
 
-            let agent = client
-                .agent(xai::GROK_4)
+            let agent = AgentBuilder::new(env.provider_config(xai::GROK_4))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),
@@ -213,11 +212,10 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     with_xai_cassette_result(
         "permission_control/permission_control_streaming_example",
-        |client| async move {
+        |env| async move {
             let cleanup = FileCleanup::new("streaming")?;
 
-            let agent = client
-                .agent(xai::GROK_4)
+            let agent = AgentBuilder::new(env.provider_config(xai::GROK_4))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: cleanup.path().to_path_buf(),

@@ -14,7 +14,6 @@ use rig::agent::{InvalidToolCallAction, ToolCallAction};
 use rig::completion::{PromptError, Usage};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::stream::AgentStreamItem;
 use rig::streaming::StreamedAssistantContent;
@@ -54,11 +53,10 @@ async fn run_streamed_turn(
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
-    let mut stream = agent
-        .model
-        .stream(agent.request(prompt, history))
-        .await
-        .expect("gemini stream should open");
+    let mut stream =
+        gemini::functions::open_stream(&agent.cfg, &agent.rt, agent.request(prompt, history))
+            .await
+            .expect("gemini stream should open");
     let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
     let mut recorded = false;
 
@@ -158,7 +156,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             );
 
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -239,7 +237,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -298,7 +296,7 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -370,7 +368,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,

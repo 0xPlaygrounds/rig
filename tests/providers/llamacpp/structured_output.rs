@@ -51,8 +51,7 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn structured_output_smoke() {
-    let client = support::completions_client();
-    let agent = client.agent(support::model_name()).build();
+    let agent = AgentBuilder::new(support::provider(support::model_name())).build();
 
     let response: SmokeStructuredOutput = agent
         .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -65,10 +64,8 @@ async fn structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn prompt_typed_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
-    let agent = client
-        .agent(model)
+    let agent = AgentBuilder::new(support::provider(model))
         .preamble(WEATHER_PREAMBLE)
         .temperature(0.0)
         .build();
@@ -85,7 +82,6 @@ async fn prompt_typed_structured_output() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn prompt_typed_extended_details_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
     // `prompt_typed(..).extended_details()` is gone; `extract_native` is the
     // typed-plus-usage successor (same native structured-output request).
@@ -93,7 +89,7 @@ async fn prompt_typed_extended_details_structured_output() {
         rig::agent::AgentConfig::new()
             .with_preamble(WEATHER_PREAMBLE)
             .with_temperature(0.0),
-        client.provider_config(&model),
+        support::provider(model.clone()),
         std::sync::Arc::new(rig::provider::Runtime::new()),
         "Return JSON weather data for Los Angeles with fields city, current.temperature_f, current.humidity_pct, and current.description.",
         0,
@@ -107,10 +103,8 @@ async fn prompt_typed_extended_details_structured_output() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn output_schema_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
-    let agent_with_schema = client
-        .agent(model)
+    let agent_with_schema = AgentBuilder::new(support::provider(model))
         .preamble(WEATHER_PREAMBLE)
         .temperature(0.0)
         .output_schema::<WeatherForecast>()

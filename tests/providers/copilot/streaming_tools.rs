@@ -1,9 +1,9 @@
 //! Copilot streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message, ToolChoice};
-use rig::prelude::*;
+use rig::providers::copilot;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{
@@ -71,13 +71,16 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(LIVE_MODEL);
+            let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![zero_arg_tool_definition("ping")],
                 tool_choice: Some(ToolChoice::Required),
                 ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
             };
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = copilot::functions::open_stream(&cfg, &rt, request)
+                .await
+                .expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -90,7 +93,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(LIVE_MODEL);
+            let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![
                     rig::tool::portable_tool_definition(&AlphaSignal),
@@ -104,8 +108,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             };
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                copilot::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw stream should start"),
             )
@@ -153,7 +156,8 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_copilot_cassette("streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls", |client| async move {
-        let model = client.completion_model(LIVE_MODEL);
+        let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
         let request = CompletionRequest {
             tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
             ..CompletionRequest::with_history(
@@ -164,8 +168,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         };
 
         let first_turn = collect_raw_stream_observation(
-            model
-                .stream(request)
+            copilot::functions::open_stream(&cfg, &rt, request)
                 .await
                 .expect("raw stream should start"),
         )
@@ -192,8 +195,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         );
 
         let second_turn = collect_raw_stream_observation(
-            model
-                .stream(followup_request)
+            copilot::functions::open_stream(&cfg, &rt, followup_request)
                 .await
                 .expect("raw followup stream should start"),
         )

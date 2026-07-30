@@ -7,14 +7,11 @@
 )]
 
 use rig::OneOrMany;
-use rig::client::EmbeddingsClient;
+use rig::http_runtime::HttpRuntime;
 use rig::postgres::PostgresVectorStore;
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;
-use rig::{
-    Embed,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-};
+use rig::{Embed, embeddings::embed_documents};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -73,13 +70,10 @@ async fn vector_search_test() {
 
     // init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(openai_mock.base_url())
-        .build()
-        .unwrap();
-
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_3_SMALL)
+        .with_api_key("TEST")
+        .with_base_url(openai_mock.base_url());
+    let rt = HttpRuntime::new();
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -100,12 +94,17 @@ async fn vector_search_test() {
         }
     ];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
-        .build()
-        .await
-        .expect("Failed to create embeddings");
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let documents = embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .expect("Failed to create embeddings");
 
     // insert documents into vector store; embedding happens outside the store
     let vector_store = PostgresVectorStore::with_defaults(pg_pool.clone());
@@ -128,10 +127,13 @@ async fn vector_search_test() {
     assert_eq!(documents_count, 3);
 
     let query = "What does \"glarb-glarb\" mean?";
-    let query_embedding = model
-        .embed_text(query)
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
         .await
-        .expect("Failed to embed query");
+        .expect("Failed to embed query")
+        .embeddings
+        .into_iter()
+        .next()
+        .expect("one embedding");
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // search for a document

@@ -1,18 +1,21 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
+use rig::providers::openai;
 
 use rig::prelude::*;
 use serde_json::Value;
 
-use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
+use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
 
 #[tokio::test]
 async fn raw_chat_completion_surfaces_reasoning_or_text() {
-    with_mistralrs_completions_cassette(
+    with_mistralrs_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
-        |client| async move {
-            let model = client.completion_model(model_name());
+        |env| async move {
+            let cfg = env.chat_config(model_name());
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 max_tokens: Some(256),
                 ..CompletionRequest::with_history(
@@ -21,8 +24,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                     "Think briefly, then answer in one sentence why token usage should be reported.",
                 )
             };
-            let _response = model
-                .completion(request)
+            let _response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("raw chat completion should succeed");
             // The normalized response no longer exposes the raw payload, so the
@@ -70,11 +72,10 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
 
 #[tokio::test]
 async fn chat_completions_agent_prompt_completes() {
-    with_mistralrs_completions_cassette(
+    with_mistralrs_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
-        |client| async move {
-            let agent = client
-                .agent(model_name())
+        |env| async move {
+            let agent = AgentBuilder::new(env.chat_provider(model_name()))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

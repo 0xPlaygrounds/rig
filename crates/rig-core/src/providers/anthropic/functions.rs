@@ -44,7 +44,12 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: true,
     max_embedding_documents: None,
+    verify_path: Some("/v1/models"),
 };
+
+/// `max_tokens` fallback for models outside the known table, matching the
+/// value the deleted classic model applied.
+pub const DEFAULT_MAX_TOKENS_FALLBACK: u64 = 2_048;
 
 /// Plain-data Anthropic provider configuration.
 ///
@@ -77,7 +82,11 @@ impl Config {
     /// Config for `model` reading `ANTHROPIC_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         let model = model.into();
-        let default_max_tokens = default_max_tokens_for_model(&model);
+        // Classic parity: the deleted `GenericCompletionModel::make` fell back
+        // to 2048 for models outside the known table, so an unknown model
+        // never failed the `max_tokens`-is-required check.
+        let default_max_tokens =
+            Some(default_max_tokens_for_model(&model).unwrap_or(DEFAULT_MAX_TOKENS_FALLBACK));
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: ApiKeyLocation::Env("ANTHROPIC_API_KEY".to_string()),
@@ -297,8 +306,12 @@ pub fn build_list_models_request(
 
     let path = super::model_listing::list_models_path(after_id);
     let url = format!("{}{}", cfg.base_url.trim_end_matches('/'), path);
-    let mut builder =
-        http::Request::get(url).header("anthropic-version", cfg.anthropic_version.as_str());
+    // Classic parity: the deleted client stamped `accept`/`content-type` on
+    // every request, bodyless GETs included, and the recordings match on them.
+    let mut builder = http::Request::get(url)
+        .header(http::header::ACCEPT, "*/*")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .header("anthropic-version", cfg.anthropic_version.as_str());
     if !cfg.anthropic_betas.is_empty() {
         builder = builder.header("anthropic-beta", cfg.anthropic_betas.join(","));
     }
@@ -344,6 +357,57 @@ pub async fn list_models(
     }
 
     Ok(crate::model::ModelList::new(all_models))
+}
+/// Build the `GET /v1/models` credential-verification request.
+///
+/// Anthropic authenticates with the `x-api-key` header, not a Bearer token,
+/// so this builds the request itself rather than using
+/// [`crate::providers::verify::verify_bearer`]. The `anthropic-version`
+/// header is sent for the same reason [`build_request`] sends it: Anthropic
+/// rejects requests without it.
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError) when the
+/// credential cannot be resolved.
+pub fn build_verify_request(
+    cfg: &Config,
+) -> Result<http::Request<Vec<u8>>, crate::providers::verify::VerifyError> {
+    use crate::providers::verify::{VerifyError, verify_url};
+
+    let url = verify_url(&DESCRIPTOR, &cfg.base_url)?;
+    let mut builder =
+        http::Request::get(url).header("anthropic-version", cfg.anthropic_version.as_str());
+    if let Some(key) = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| VerifyError::ProviderError(e.to_string()))?
+    {
+        builder = builder.header("x-api-key", key);
+    }
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(Vec::new())
+        .map_err(|e| VerifyError::ProviderError(e.to_string()))
+}
+
+/// Verify that `cfg`'s credential is accepted by Anthropic.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/v1/models`, the value the
+/// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+/// classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::send_verify(rt, build_verify_request(cfg)?).await
 }
 
 #[cfg(test)]

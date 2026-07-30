@@ -1,9 +1,9 @@
 //! Cassette-backed OpenRouter streaming tools coverage.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
+use rig::providers::openrouter;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -48,7 +48,8 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
     with_openrouter_cassette(
         "streaming_tools/raw_stream_decorates_reasoning_tool_call_metadata",
         |client| async move {
-            let model = client.completion_model("openai/o4-mini");
+            let cfg = client.config("openai/o4-mini");
+            let rt = client.http();
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::portable_tool_definition(&weather_tool);
             let request = CompletionRequest {
@@ -65,7 +66,7 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
                 )
             };
 
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = openrouter::functions::open_stream(&cfg, &rt, request).await.expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
             assert!(
                 observation.errors.is_empty(),
@@ -102,7 +103,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_openrouter_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(TOOL_MODEL);
+            let cfg = client.config(TOOL_MODEL);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![
                     rig::tool::portable_tool_definition(&AlphaSignal),
@@ -116,8 +118,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             };
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openrouter::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw stream should start"),
             )
@@ -137,7 +138,8 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_openrouter_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion_model(TOOL_MODEL);
+            let cfg = client.config(TOOL_MODEL);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
@@ -148,8 +150,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             };
 
             let first_turn = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openrouter::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw stream should start"),
             )
@@ -179,8 +180,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             );
 
             let second_turn = collect_raw_stream_observation(
-                model
-                    .stream(followup_request)
+                openrouter::functions::open_stream(&cfg, &rt, followup_request)
                     .await
                     .expect("raw followup stream should start"),
             )

@@ -8,9 +8,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -192,8 +191,7 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
@@ -227,8 +225,8 @@ async fn long_history_replay_nonstreaming() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = client
+                .complete(model, request)
                 .await
                 .expect("long history replay should be accepted by generateContent");
 
@@ -271,7 +269,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 additional_params: Some(serde_json::json!({
@@ -285,8 +283,8 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = client
+                .complete(model, request)
                 .await
                 .expect("thinking-enabled completion should succeed");
 

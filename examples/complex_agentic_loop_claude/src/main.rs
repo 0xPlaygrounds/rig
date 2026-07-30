@@ -7,22 +7,29 @@
 use anyhow::Result;
 use rig::OneOrMany;
 use rig::agent::Agent;
+use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
-use rig::providers::anthropic::{self, Client};
+use rig::providers::{anthropic, openai};
 use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, message::Message, tool::builtin::ThinkTool,
+    Embed,
+    embeddings::{default_concurrency, embed_documents},
+    message::Message,
+    tool::builtin::ThinkTool,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
-use std::env;
 
 /// A custom tool exposing the knowledge base to the agent. It embeds the
 /// model's query, then runs a pre-embedded search against the store.
+///
+/// Embedding is plain config data plus a free function, so the tool holds an
+/// `EmbeddingConfig` and an `HttpRuntime` rather than a model handle.
 struct KnowledgeBaseTool {
     store: InMemoryVectorStore,
-    embedding_model: rig::providers::openai::EmbeddingModel,
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -54,7 +61,13 @@ impl rig::tool::PortableTool for KnowledgeBaseTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let query_embedding = self.embedding_model.embed_text(&args.query).await?;
+        let response =
+            openai::functions::embed(&self.embedding_config, &self.rt, vec![args.query]).await?;
+        let Some(query_embedding) = response.embeddings.into_iter().next() else {
+            return Err(VectorStoreError::DatastoreError(
+                "the embedding provider returned no embedding".into(),
+            ));
+        };
         let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
         self.store.top_n(req).await
     }
@@ -112,15 +125,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
-    let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
-    let anthropic_client = Client::builder().api_key(&anthropic_api_key).build()?;
+    // Anthropic provider selection is plain data: one config value, cloned
+    // into each agent built below. `from_env` reads `ANTHROPIC_API_KEY`.
+    let claude = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
 
-    // Create the embedding model for our vector store
-    // We'll use OpenAI's embedding model for this example
-    let openai_client = rig::providers::openai::Client::from_env()?;
-    let embedding_model =
-        openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding config for our vector store — OpenAI's embedding model here.
+    let rt = HttpRuntime::new();
+    let embedding_config =
+        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -155,10 +167,16 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     // Create embeddings for our knowledge base
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(knowledge_entries)?
-        .build()
-        .await?;
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        knowledge_entries,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embedding_config, &rt, texts),
+    )
+    .await?;
 
     // Create vector store with the embeddings
     let vector_store =
@@ -167,12 +185,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Expose the knowledge base as a custom tool
     let knowledge_base = KnowledgeBaseTool {
         store: vector_store,
-        embedding_model,
+        embedding_config,
+        rt,
     };
 
     // Create specialized research agent that will be used as a tool
-    let research_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let research_agent = AgentBuilder::new(ProviderConfig::Anthropic(claude.clone()))
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
             Your role is to provide detailed, accurate information about climate change, renewable energy,
@@ -183,8 +201,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a data analysis agent that will be used as a tool
-    let analysis_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let analysis_agent = AgentBuilder::new(ProviderConfig::Anthropic(claude.clone()))
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
             When given data or statistics, you analyze trends, identify patterns, and draw meaningful conclusions.
@@ -195,8 +212,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a recommendation agent that will be used as a tool
-    let recommendation_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let recommendation_agent = AgentBuilder::new(ProviderConfig::Anthropic(claude.clone()))
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
             Based on research findings and analysis, you provide actionable recommendations for individuals,
@@ -208,8 +224,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create the main orchestrator agent that will use all the tools
-    let orchestrator_agent = anthropic_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let orchestrator_agent = AgentBuilder::new(ProviderConfig::Anthropic(claude.clone()))
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
             and find practical solutions. You have access to several specialized tools:

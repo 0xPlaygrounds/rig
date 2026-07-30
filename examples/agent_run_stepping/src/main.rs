@@ -19,15 +19,14 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use rig::client::ToProviderConfig;
 use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{InvalidToolCallAction, ToolCallAction};
-use rig::completion::CompletionModel;
 use rig::executor::ToolExecutor;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
+use rig::http_runtime::HttpRuntime;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -98,9 +97,12 @@ fn tool_logger_hook() -> HookEntry {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = openai::Client::from_env()?;
-    let model = openai.completion_model(openai::GPT_4O);
-    let agent = rig::agent::AgentBuilder::new(openai.provider_config(openai::GPT_4O))
+    // One piece of plain data serves both halves: `openai::functions::Config`
+    // names the model, and the hand-driven half pairs it with an `HttpRuntime`
+    // to call the provider's free `complete` function directly.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let http = HttpRuntime::new();
+    let agent = rig::agent::AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
@@ -130,7 +132,7 @@ async fn main() -> Result<()> {
                         prompt,
                     )
                 };
-                let response = model.completion(request).await?;
+                let response = openai::functions::complete(&cfg, &http, request).await?;
 
                 // The tools advertised to the provider for this turn. With
                 // static tools these are the agent's registered tools; agents

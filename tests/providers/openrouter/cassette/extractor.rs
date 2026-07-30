@@ -2,7 +2,6 @@
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use std::sync::Arc;
 

@@ -26,7 +26,11 @@ mod cassette {
     mod hook_stress_tools;
     #[cfg(feature = "image")]
     mod image_generation;
-    mod interactions_api;
+    // TODO(R7): the Gemini Interactions API has no `functions` face yet
+    // (`gemini::InteractionsClient` was deleted with the classic client
+    // layer), so this module cannot compile. Its recordings are listed in
+    // `DEFERRED_CASSETTE_SCENARIOS` in tests/common/cassette_safety.rs.
+    // mod interactions_api;
     mod models;
     mod multi_turn_streaming;
     mod reasoning_roundtrip;

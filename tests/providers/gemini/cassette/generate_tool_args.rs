@@ -8,9 +8,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, Message, ToolDefinition};
+use rig::completion::{CompletionRequest, Message, ToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -197,7 +196,7 @@ async fn nested_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![rig::tool::portable_tool_definition(&PlanTrip)],
@@ -209,8 +208,8 @@ async fn nested_arguments_streaming() {
             };
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                client
+                    .stream(model, request)
                     .await
                     .expect("nested-args streaming request should start"),
             )
@@ -237,7 +236,7 @@ async fn unicode_arguments_streaming() {
     with_gemini_cassette(
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![ToolDefinition {
@@ -263,8 +262,8 @@ async fn unicode_arguments_streaming() {
             };
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                client
+                    .stream(model, request)
                     .await
                     .expect("unicode-args streaming request should start"),
             )
@@ -302,7 +301,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
     with_gemini_cassette(
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![ToolDefinition {
@@ -332,8 +331,8 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = client
+                .complete(model, request)
                 .await
                 .expect("optional-arg completion should succeed");
 

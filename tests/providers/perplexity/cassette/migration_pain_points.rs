@@ -1,9 +1,9 @@
 //! Perplexity cassette coverage for regressions found during the #2040 provider migration.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, ToolFunction, UserContent};
-use rig::prelude::*;
 use rig::providers::perplexity;
 use serde_json::json;
 
@@ -18,8 +18,9 @@ use super::super::support::with_perplexity_cassette;
 async fn text_only_content_parts_are_flattened() {
     with_perplexity_cassette(
         "migration_pain_points/text_only_content_parts_are_flattened",
-        |client| async move {
-            let model = client.completion_model(perplexity::SONAR);
+        |env| async move {
+            let cfg = env.config(perplexity::SONAR);
+            let rt = HttpRuntime::new();
             let prompt = Message::User {
                 content: OneOrMany::many(vec![
                     UserContent::text("First text part: amber."),
@@ -37,8 +38,7 @@ async fn text_only_content_parts_are_flattened() {
                     prompt,
                 )
             };
-            let response = model
-                .completion(request)
+            let response = perplexity::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("Perplexity should accept flattened text-only content parts");
 
@@ -54,8 +54,9 @@ async fn text_only_content_parts_are_flattened() {
 async fn tool_exchange_history_is_stripped_and_remerged() {
     with_perplexity_cassette(
         "migration_pain_points/tool_exchange_history_is_stripped_and_remerged",
-        |client| async move {
-            let model = client.completion_model(perplexity::SONAR);
+        |env| async move {
+            let cfg = env.config(perplexity::SONAR);
+            let rt = HttpRuntime::new();
             let tool_call = ToolCall::new(
                 "call_amber".to_string(),
                 ToolFunction::new("lookup_code_word".to_string(), json!({})),
@@ -78,8 +79,7 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     "What code word appears in the surviving conversation history?",
                 )
             };
-            let response = model
-                .completion(request)
+            let response = perplexity::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("Perplexity should accept sanitized tool-exchange history");
 
@@ -95,8 +95,9 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
 async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
     with_perplexity_cassette(
         "migration_pain_points/unsupported_tools_and_multi_name_tool_choice_are_dropped",
-        |client| async move {
-            let model = client.completion_model(perplexity::SONAR);
+        |env| async move {
+            let cfg = env.config(perplexity::SONAR);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 tools: vec![
                     zero_arg_tool_definition("lookup_alpha"),
@@ -113,7 +114,7 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
                     "Reply with exactly: tools dropped ok",
                 )
             };
-            let response = model.completion(request).await.expect(
+            let response = perplexity::functions::complete(&cfg, &rt, request).await.expect(
                 "unsupported tools and multi-name tool choice should be dropped before validation",
             );
 
@@ -129,8 +130,9 @@ async fn unsupported_tools_and_multi_name_tool_choice_are_dropped() {
 async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
     with_perplexity_cassette(
         "migration_pain_points/output_schema_is_dropped_instead_of_sent_as_response_format",
-        |client| async move {
-            let model = client.completion_model(perplexity::SONAR);
+        |env| async move {
+            let cfg = env.config(perplexity::SONAR);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 output_schema: Some(schemars::schema_for!(SmokeStructuredOutput)),
                 max_tokens: Some(48),
@@ -141,8 +143,7 @@ async fn output_schema_is_dropped_instead_of_sent_as_response_format() {
                     "Name one Rust programming language benefit in a short sentence.",
                 )
             };
-            let response = model
-                .completion(request)
+            let response = perplexity::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("Perplexity should ignore unsupported response_format mapping");
 

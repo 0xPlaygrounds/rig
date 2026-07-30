@@ -1,8 +1,7 @@
 //! Gemini streaming coverage, including the migrated example path.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
-use rig::prelude::*;
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
@@ -89,12 +88,15 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 ..CompletionRequest::from_prompt("Reply with exactly: final metadata ok")
             };
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = client
+                .stream(model, request)
+                .await
+                .expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -140,14 +142,17 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 ..CompletionRequest::from_prompt(
                     "Reply with exactly: contentless final metadata ok",
                 )
             };
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut stream = client
+                .stream(model, request)
+                .await
+                .expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;

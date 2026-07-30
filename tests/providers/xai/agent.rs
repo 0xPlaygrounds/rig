@@ -8,9 +8,8 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 async fn completion_smoke() {
-    with_xai_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(xai::completion::GROK_3_MINI)
+    with_xai_cassette("agent/completion_smoke", |env| async move {
+        let agent = AgentBuilder::new(env.provider_config(xai::completion::GROK_3_MINI))
             .preamble(BASIC_PREAMBLE)
             .build();
 

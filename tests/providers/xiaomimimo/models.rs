@@ -1,6 +1,6 @@
 //! Xiaomi MiMo model listing smoke test.
 
-use rig::client::{ModelListingClient, ProviderClient};
+use rig::http_runtime::HttpRuntime;
 use rig::providers::xiaomimimo::{
     self, MIMO_V2_5, MIMO_V2_5_PRO, MIMO_V2_FLASH, MIMO_V2_OMNI, MIMO_V2_PRO,
 };
@@ -8,8 +8,9 @@ use rig::providers::xiaomimimo::{
 #[tokio::test]
 #[ignore = "requires XIAOMI_MIMO_API_KEY"]
 async fn list_models_smoke() {
-    let client = xiaomimimo::Client::from_env().expect("client should build");
-    let models = match client.list_models().await {
+    let cfg = xiaomimimo::functions::Config::from_env(MIMO_V2_5_PRO).expect("config should build");
+    let rt = HttpRuntime::new();
+    let models = match xiaomimimo::functions::list_models(&cfg, &rt).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Xiaomi MiMo models should succeed\nDisplay: {error}\nDebug: {error:#?}")

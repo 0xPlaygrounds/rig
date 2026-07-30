@@ -10,9 +10,9 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn tools_smoke() {
-    let client = huggingface::Client::from_env().expect("client should build");
-    let agent = client
-        .agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+    let cfg = huggingface::functions::Config::from_env("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::HuggingFace(cfg))
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

@@ -66,6 +66,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: true,
     max_embedding_documents: Some(1024),
+    verify_path: None,
 };
 
 /// Plain-data Copilot provider configuration.
@@ -652,7 +653,12 @@ pub fn build_list_models_request(
     let url = format!("{}/models", base_url.trim_end_matches('/'));
 
     let headers = default_headers(&key, "user", false, CopilotIntent::Panel);
-    let mut builder = apply_headers(http::Request::get(url), &headers);
+    // Classic parity: the deleted client stamped `accept`/`content-type` on
+    // every request, bodyless GETs included, and the recordings match on them.
+    let base = http::Request::get(url)
+        .header(http::header::ACCEPT, "*/*")
+        .header(http::header::CONTENT_TYPE, "application/json");
+    let mut builder = apply_headers(base, &headers);
     for (name, value) in &cfg.extra_headers {
         builder = builder.header(name.as_str(), value.as_str());
     }
@@ -671,6 +677,24 @@ pub async fn list_models(
     let req = build_list_models_request(cfg)?;
     let (status, body) = rt.send_bytes(req).await?;
     super::parse_list_models_response(status, &body)
+}
+/// Credential verification is not available for this provider.
+///
+/// The deleted client declared `const VERIFY_PATH: &'static str = ""`, so the
+/// classic `verify()` issued a bare `GET` of the base URL — a request that
+/// checked no credential. [`DESCRIPTOR`] therefore carries no `verify_path`
+/// and this reports the fact rather than repeating the empty check.
+///
+/// # Errors
+/// Always [`VerifyError::Unsupported`](crate::providers::verify::VerifyError::Unsupported).
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    let _ = (cfg, rt);
+    Err(crate::providers::verify::VerifyError::Unsupported {
+        provider: DESCRIPTOR.name,
+    })
 }
 
 #[cfg(test)]

@@ -6,9 +6,7 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
-use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -92,8 +90,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
-    let provider = client.provider_config(DEFAULT_MODEL);
+    let provider = super::live(DEFAULT_MODEL);
     let rt = Arc::new(Runtime::new());
     let names_options =
         classic_extractor_with_extra_preamble("Extract names from the given text.").with_retries(2);

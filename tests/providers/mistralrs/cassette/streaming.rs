@@ -3,15 +3,14 @@
 use crate::support::collect_stream_observation;
 use rig::prelude::*;
 
-use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
+use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
 
 #[tokio::test]
 async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
-    with_mistralrs_completions_cassette(
+    with_mistralrs_cassette(
         "streaming/chat_completions_stream_emits_reasoning_and_text_incrementally",
-        |client| async move {
-            let agent = client
-                .agent(model_name())
+        |env| async move {
+            let agent = AgentBuilder::new(env.chat_provider(model_name()))
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
                 .build();

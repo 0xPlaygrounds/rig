@@ -1,14 +1,11 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_agent::client::AgentClientExt;
+use rig_agent::prelude::*;
 use rig_core::OneOrMany;
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
-};
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
@@ -16,28 +13,32 @@ mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_client = Client::from_env()?;
-
-    // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embeddings come from a free function over plain configuration plus a
+    // shared HTTP runtime — there is no client or model object.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
 
     // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words())?
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        )?
-        .build()
-        .await?;
+    let mut corpus = words();
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    corpus.extend((0..256).map(|i| Word {
+        id: format!("doc{i}"),
+        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string(),
+    }));
+
+    let embeddings = embed_documents(
+        corpus,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let top_k = embeddings.len();
 
@@ -51,7 +52,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.ndims())?],
+            vec![as_record_batch(embeddings, fixture::EMBEDDING_DIMS)?],
         )
         .execute()
         .await?
@@ -77,17 +78,23 @@ async fn main() -> Result<(), anyhow::Error> {
     // Queries are pre-embedded: embed the query text with the embedding model,
     // retrieve the most relevant documents, and pass them to the agent as
     // context.
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), top_k as u64);
     let hits = vector_store_index.top_n(req).await?;
 
-    // Build RAG agent with the retrieved context.
-    // Use the OpenAI chat-completions API interface to build the agent.
-    let mut agent_builder = openai_client
-        .completions_api()
-        .agent(openai::GPT_4O)
-        .temperature(0.5)
-        .preamble("You are a helpful AI assistant.");
+    // Build RAG agent with the retrieved context. The agent is configured
+    // from plain provider data — `openai::functions::Config` wrapped in a
+    // `ProviderConfig` arm — rather than from a client handle.
+    let mut agent_builder = AgentBuilder::new(ProviderConfig::OpenAi(
+        openai::functions::Config::from_env(openai::GPT_4O)?,
+    ))
+    .temperature(0.5)
+    .preamble("You are a helpful AI assistant.");
     for hit in &hits {
         agent_builder = agent_builder.context(&hit.payload.to_string());
     }

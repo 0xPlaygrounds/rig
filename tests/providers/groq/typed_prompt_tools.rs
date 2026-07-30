@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::prelude::*;
-use rig::providers::groq;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -72,9 +71,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(TYPED_PROMPT_TOOLS_MODEL)
+    let agent = AgentBuilder::new(super::live(TYPED_PROMPT_TOOLS_MODEL))
         .preamble(
             "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
              The only valid tool name is `weather`; never invent or call any other tool. \

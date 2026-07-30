@@ -14,8 +14,9 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
+use rig::AgentBuilder;
 use rig::completion::Message;
-use rig::prelude::*;
+use rig::provider::ProviderConfig;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -34,10 +35,9 @@ const REASONING_TEXT: &str =
 async fn nonstreaming_reasoning_content_tool_roundtrip() {
     with_local_reasoning_content_cassette(
         "openai_compatible/reasoning_content_tool_roundtrip",
-        |client| async move {
+        |builder| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent("llama-cpp-reasoning-model")
+            let agent = builder
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(json!({
@@ -61,18 +61,17 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
 
 async fn with_local_reasoning_content_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(AgentBuilder) -> Fut,
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
     let cassette = ProviderCassette::start("openai", scenario, &server.base_url()).await;
-    let client = openai::Client::builder()
-        .api_key("dummy-openai-compatible-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("OpenAI-compatible cassette client should build");
+    let cfg = openai::responses_api::functions::Config::new("llama-cpp-reasoning-model")
+        .with_api_key("dummy-openai-compatible-key")
+        .with_base_url(cassette.base_url());
+    let builder = AgentBuilder::new(ProviderConfig::OpenAiResponses(cfg));
 
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(builder)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 

@@ -8,7 +8,6 @@
 //! (which tools are advertised, called, and executed) stay pinned.
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{history_has_assistant_tool_call, tool_result_texts};
@@ -17,7 +16,7 @@ use super::super::tools_support::{CountingAdd, CountingSubtract, FORCE_TOOLS_PRE
 use crate::support::assert_mentions_expected_number;
 
 fn calculator_agent(
-    client: &gemini::Client,
+    client: &super::super::support::GeminiCassette,
     add: CountingAdd,
     subtract: Option<CountingSubtract>,
 ) -> rig::agent::Agent {

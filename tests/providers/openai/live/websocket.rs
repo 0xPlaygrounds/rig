@@ -3,7 +3,6 @@
 use anyhow::Result;
 use rig::completion::CompletionRequest;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
@@ -24,9 +23,9 @@ fn extract_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn websocket_session_roundtrip() -> Result<()> {
-    let client = openai::Client::from_env().expect("client should build");
-    let model_name = openai::GPT_4O_MINI;
-    let mut session = client.responses_websocket(model_name).await?;
+    let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_4O_MINI)
+        .expect("config should build");
+    let mut session = openai::responses_api::websocket::connect(cfg).await?;
 
     let warmup_request = CompletionRequest::with_history(
         Some("Be precise and concise."),

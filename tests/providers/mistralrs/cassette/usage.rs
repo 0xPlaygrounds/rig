@@ -1,17 +1,19 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
-use rig::completion::{CompletionModel, CompletionRequest};
-use rig::prelude::*;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
+use rig::providers::openai;
 use serde_json::Value;
 
-use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
+use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
 
 #[tokio::test]
 async fn chat_completion_usage_without_output_tokens_details_deserializes() {
-    with_mistralrs_completions_cassette(
+    with_mistralrs_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
-        |client| async move {
-            let model = client.completion_model(model_name());
+        |env| async move {
+            let cfg = env.chat_config(model_name());
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 max_tokens: Some(64),
                 ..CompletionRequest::with_history(
@@ -20,8 +22,7 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
                     "/no_think Explain usage accounting in one sentence.",
                 )
             };
-            let _response = model
-                .completion(request)
+            let _response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("usage check completion should succeed");
             // The normalized response no longer exposes the raw payload, so the

@@ -6,7 +6,6 @@
 //! Assertions are loose for model-shaped values and exact only for
 //! rig-synthesized values (see `tools_support`'s note).
 
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::hook_stress_support::{

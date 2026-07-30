@@ -1,19 +1,20 @@
 //! Fan one statement out to three structured "scorers" concurrently.
 //!
-//! `client.extractor::<T>(model).preamble(..).build()` is gone: a scorer is now
-//! just the plain data one [`extract_with_options`] call needs — an
-//! [`AgentConfig`] carrying the role preamble plus the classic extractor
-//! protocol from [`ExtractOptions::classic_extractor()`]. The parallelization
+//! The extractor builder is gone: a scorer is now just the plain data one
+//! [`extract_with_options`] call needs — an [`AgentConfig`] carrying the role
+//! preamble plus the classic extractor protocol from
+//! [`ExtractOptions::classic_extractor()`], aimed at a [`ProviderConfig`] built
+//! from `openai::functions::Config::from_env(MODEL)`. The parallelization
 //! itself is unchanged.
+//!
+//! Requires `OPENAI_API_KEY`.
 use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
-use rig::provider::{ProviderConfig, Runtime};
 
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
@@ -52,9 +53,8 @@ async fn score(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let provider = openai_client.provider_config(openai::GPT_4);
+    // The provider is plain data: a config that names the model.
+    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4)?);
     let rt = Arc::new(Runtime::new());
 
     let manipulation_scorer = scorer(

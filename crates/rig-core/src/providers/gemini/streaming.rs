@@ -11,6 +11,7 @@ use crate::completion::message::ReasoningContent;
 use crate::http_client::sse::Event;
 use crate::streaming;
 use crate::telemetry::SpanCombinator;
+use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -74,8 +75,13 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 
 /// Consume a `streamGenerateContent` SSE exchange as a raw streaming-choice
 /// stream. Driven by the data-oriented [`super::functions::open_stream`] path.
+///
+/// The stream is instrumented with `span` so `record_token_usage` and the
+/// response-metadata records land on the caller's completion span, as they
+/// did on the deleted `CompletionModel::stream`.
 pub(crate) fn generate_content_stream(
     event_source: crate::http_client::sse::BoxedEventSource,
+    span: tracing::Span,
 ) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>> {
     let mut event_source = event_source;
 
@@ -249,6 +255,7 @@ pub(crate) fn generate_content_stream(
             yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
         }
     }
+    .instrument(span)
 }
 
 #[cfg(test)]

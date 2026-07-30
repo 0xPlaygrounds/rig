@@ -1,9 +1,11 @@
 //! Llamafile streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
+use rig::providers::llamafile;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
@@ -26,9 +28,7 @@ async fn streaming_tools_smoke() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -49,9 +49,7 @@ async fn example_streaming_with_tools() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -76,14 +74,16 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         return;
     }
 
-    let client = support::client();
-    let model = client.completion_model(support::model_name());
+    let cfg = support::config(support::model_name());
+    let rt = HttpRuntime::new();
     let request = CompletionRequest {
         tools: vec![zero_arg_tool_definition("ping")],
         tool_choice: Some(ToolChoice::Required),
         ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
     };
-    let stream = model.stream(request).await.expect("stream should start");
+    let stream = llamafile::functions::open_stream(&cfg, &rt, request)
+        .await
+        .expect("stream should start");
 
     assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
 }
@@ -95,8 +95,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         return;
     }
 
-    let client = support::client();
-    let model = client.completion_model(support::model_name());
+    let cfg = support::config(support::model_name());
+    let rt = HttpRuntime::new();
     let request = CompletionRequest {
         tools: vec![
             rig::tool::portable_tool_definition(&AlphaSignal),
@@ -110,8 +110,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     };
 
     let observation = collect_raw_stream_observation(
-        model
-            .stream(request)
+        llamafile::functions::open_stream(&cfg, &rt, request)
             .await
             .expect("raw stream should start"),
     )
@@ -130,9 +129,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal)
@@ -160,9 +157,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .build();
@@ -189,8 +184,8 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         return;
     }
 
-    let client = support::client();
-    let model = client.completion_model(support::model_name());
+    let cfg = support::config(support::model_name());
+    let rt = HttpRuntime::new();
     let request = CompletionRequest {
         tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
         ..CompletionRequest::with_history(
@@ -201,8 +196,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     };
 
     let first_turn = collect_raw_stream_observation(
-        model
-            .stream(request)
+        llamafile::functions::open_stream(&cfg, &rt, request)
             .await
             .expect("raw stream should start"),
     )
@@ -229,8 +223,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     );
 
     let second_turn = collect_raw_stream_observation(
-        model
-            .stream(followup_request)
+        llamafile::functions::open_stream(&cfg, &rt, followup_request)
             .await
             .expect("raw followup stream should start"),
     )

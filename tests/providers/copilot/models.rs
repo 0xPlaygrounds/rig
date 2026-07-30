@@ -21,13 +21,16 @@
 //! cargo test -p rig --test copilot list_models_smoke -- --ignored --nocapture
 //! ```
 
-use crate::copilot::with_copilot_cassette;
-use rig::client::ModelListingClient;
+use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
+use rig::providers::copilot;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_copilot_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.list_models().await {
+        // `functions::build_list_models_request` sets neither `accept` nor
+        let cfg = client.config(LIVE_MODEL);
+
+        let models = match copilot::functions::list_models(&cfg, &client.http()).await {
             Ok(models) => models,
             Err(error) => {
                 panic!("listing Copilot models should succeed\nDisplay: {error}\nDebug: {error:#?}")

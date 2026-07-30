@@ -65,6 +65,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: false,
     max_embedding_documents: None,
+    verify_path: None,
 };
 
 /// Plain-data ChatGPT provider configuration (access-token auth only — see
@@ -386,6 +387,24 @@ pub async fn complete(
     let req = build_request(cfg, &request, false)?;
     let (status, body) = rt.send(req).await?;
     super::parse_codex_sse_response(status, &body).await
+}
+/// Credential verification is not available for this provider.
+///
+/// The deleted client declared `const VERIFY_PATH: &'static str = ""`, so the
+/// classic `verify()` issued a bare `GET` of the base URL — a request that
+/// checked no credential. [`DESCRIPTOR`] therefore carries no `verify_path`
+/// and this reports the fact rather than repeating the empty check.
+///
+/// # Errors
+/// Always [`VerifyError::Unsupported`](crate::providers::verify::VerifyError::Unsupported).
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    let _ = (cfg, rt);
+    Err(crate::providers::verify::VerifyError::Unsupported {
+        provider: DESCRIPTOR.name,
+    })
 }
 
 #[cfg(test)]

@@ -1194,3 +1194,58 @@ rig-core 1070 unit + 93 doctests green; rig-agent 368 + 12 green; `cargo fmt
 both crates; `cargo doc` broken-intra-doc-link count back to zero (the 19
 remaining `redundant explicit link target` warnings are unchanged from the R6
 baseline); `git diff --stat -- tests/cassettes` empty.
+
+## R7 — consumer sweep + capability restoration (COMPLETE)
+
+R7-A's deletion (commits 81dc21fc6/29511e9af) removed the entire classic
+client layer; this section records the sweep and the capability work that
+had to accompany it.
+
+**Sweep** (4 agents + central triage): 119 client-constructing test files
+across 33 targets, ~95 examples, five companion crates (rig-bedrock,
+rig-gemini-grpc, rig-vertexai, rig-candle, rig-fastembed — all five lost
+their model-trait impls; their `functions` modules are now the only face),
+the facade's `pub mod client`, and `tests/common/reasoning.rs`. Zero tests
+deleted. The harness idiom that made it mechanical: each provider's
+`support.rs` now hands tests connection data with a `config(model)`
+accessor instead of a live `Client`, so most call sites were unchanged.
+
+**Capabilities restored** (the deletion had dropped them; "remove
+mechanisms, never capabilities"):
+- gemini Interactions API — full `interactions_api::functions` face
+  (header auth, `alt=sse`, create/get/resume/stream, list_models, verify)
+  plus a `ProviderConfig::GeminiInteractions` arm.
+- `verify` — re-homed as data: `ProviderDescriptor::verify_path` +
+  `providers::verify` helpers + 27 per-provider `functions::verify`,
+  with a test pinning every provider's path against its pre-deletion
+  `VERIFY_PATH` and the full status mapping. Five providers whose classic
+  `VERIFY_PATH` was `""` now return `VerifyError::Unsupported` rather than
+  reissuing a credential-blind GET (logged deviation).
+- streaming telemetry spans on ollama + gemini; `ndims` on ollama +
+  voyageai embedding configs; openrouter `encoding_format`/`user` (+ the
+  base64 guard); anthropic's unknown-model `max_tokens` 2048 fallback.
+- Cohere usage: confirmed the functions path (`usage.tokens`) is correct
+  and the classic telemetry reader (`billed_units`) was the outlier;
+  pinned with a fixture carrying both blocks.
+
+**Core regression found by the sweep and fixed in core, not papered over**:
+`list_models` GETs lost the `accept`/`content-type` headers the deleted
+reqwest client stamped on every request, so seven recorded exchanges
+header-mismatched. Fixed in all four request builders (`bearer_get` for
+the 19 bearer providers, anthropic's `x-api-key` path, copilot's
+editor-header path, gemini's query-key path); the five test-side
+`extra_headers` workarounds were then removed.
+
+**Open items for maintainer review**: embedding default dimensions are no
+longer applied by config construction (three examples hardcode
+`EMBEDDING_DIMS`; a `ProviderDescriptor` default-dimensions field would
+remove them); `openai::CompletionsClient`'s legacy `/completions` face has
+no functions successor (llamacpp's suite exercises chat-completions under
+the old name, all `#[ignore]`d); anthropic prompt-caching (3 tests) and
+custom HTTP backends (`Transport` is a closed enum) remain deferred by
+design.
+
+**Verification**: fmt ok; clippy 0 warnings (`--all-features
+--all-targets`); workspace check 0 errors; every crate suite and all 33
+facade test targets green single-threaded; bedrock 57/57; doctests green;
+cassettes untouched.

@@ -8,7 +8,6 @@ use rig::agent::{CompletionCallAction, ObservationAction};
 use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
-use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette_result};
 use crate::support::assert_nonempty_response;

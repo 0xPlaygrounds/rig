@@ -36,9 +36,8 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
     // Plain data, built once and cloned per extraction.
-    let provider = client.provider_config(openai::GPT_4);
+    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4)?);
     let rt = Arc::new(Runtime::new());
 
     let outcome = extract_with_options::<Person>(

@@ -143,8 +143,8 @@ fn turn_counter_entry(count: Arc<AtomicUsize>) -> HookEntry {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
-        .agent(openai::GPT_4O)
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

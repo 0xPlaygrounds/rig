@@ -18,9 +18,8 @@ struct Character {
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn structured_output_prompt() {
-    let client = ollama::Client::from_env().expect("client should build");
-    let agent = client
-        .agent("qwen3:4b")
+    let cfg = ollama::functions::Config::from_env("qwen3:4b").expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
         .preamble("You are a creative fiction writer. Create detailed characters.")
         .output_schema::<Character>()
         .build();

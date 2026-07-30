@@ -2,11 +2,10 @@
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use std::sync::Arc;
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_provider};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[tokio::test]
@@ -14,7 +13,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     let response = extract_with_options::<SmokePerson>(
         AgentConfig::new(),
-        live_client().provider_config(LIVE_MODEL),
+        live_provider(LIVE_MODEL).await,
         Arc::new(Runtime::new()),
         EXTRACTOR_TEXT,
         ExtractOptions::classic_extractor(),

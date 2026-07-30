@@ -12,6 +12,11 @@ pub struct Word {
     pub definition: String,
 }
 
+/// Vector width of `text-embedding-ada-002`. Embedding configuration is plain
+/// data and carries no model metadata, so the examples state the Arrow column
+/// width here.
+pub const EMBEDDING_DIMS: usize = 1536;
+
 pub fn words() -> Vec<Word> {
     vec![
         Word {

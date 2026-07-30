@@ -15,9 +15,7 @@ async fn streaming_smoke() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -36,9 +34,7 @@ async fn example_streaming_prompt() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

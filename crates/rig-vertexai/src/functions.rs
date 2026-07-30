@@ -1,13 +1,12 @@
-//! Vertex AI as config + free functions (data-oriented face).
+//! Vertex AI as config + free functions — the crate's entry point.
 //!
 //! Vertex AI is a non-HTTP transport: requests go through the
 //! `google-cloud-aiplatform-v1` SDK's `GenerateContent` RPC rather than a
-//! rig-owned HTTP runtime. The data-oriented face is therefore a serde
-//! [`Config`] describing how to *build* a [`Client`] (never holding one), a
-//! [`client_from_config`] constructor mirroring the existing
-//! [`crate::client::ClientBuilder`] and `from_env` paths, and free
-//! [`complete`]/[`open_stream`] functions the existing
-//! [`crate::completion::CompletionModel`] trait impl is rewired through.
+//! rig-owned HTTP runtime, and authentication runs through Google's OAuth
+//! credential chain. The face is therefore a serde [`Config`] describing how
+//! to *build* a [`Client`] (never holding one), a [`client_from_config`]
+//! constructor over [`crate::client::ClientBuilder`], and free
+//! [`complete`]/[`open_stream`] functions taking that live handle.
 //!
 //! Credential material never lives in the config: like rig-bedrock's
 //! [`Config`](https://docs.rs/rig-bedrock), [`CredentialSource`] describes
@@ -137,8 +136,6 @@ pub fn client_from_config(cfg: &Config) -> Result<Client, VertexAiClientError> {
 }
 
 /// The full Vertex AI model resource path for `model`. Pure.
-///
-/// Extracted from the trait impl's `model_path`, which is rewired through it.
 pub fn model_path(project: &str, location: &str, model: &str) -> String {
     format!("projects/{project}/locations/{location}/publishers/google/models/{model}")
 }
@@ -146,9 +143,7 @@ pub fn model_path(project: &str, location: &str, model: &str) -> String {
 /// Send `request` through the `GenerateContent` RPC and return the
 /// normalized response.
 ///
-/// Extracted from the `CompletionModel::completion` trait impl, which is
-/// rewired through this function; behavior is unchanged. The request
-/// conversion itself ([`VertexCompletionRequest`]'s accessors and
+/// The request conversion itself ([`VertexCompletionRequest`]'s accessors and
 /// [`model_path`]) is pure; only the RPC does IO.
 pub async fn complete(
     client: &Client,
@@ -208,8 +203,8 @@ pub async fn complete(
 
 /// Open a streaming completion.
 ///
-/// Streaming is not supported by this integration; this always errors,
-/// matching the `CompletionModel::stream` trait impl rewired through it.
+/// Streaming is not supported by this integration; this always errors. It
+/// exists so hosts can treat Vertex AI uniformly with streaming providers.
 pub async fn open_stream(
     _client: &Client,
     _model: &str,

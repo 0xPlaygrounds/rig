@@ -19,13 +19,10 @@ async fn tool_prompt_across_subproviders() {
     ];
 
     for (model, subprovider) in cases {
-        let client = huggingface::Client::builder()
-            .api_key(&api_key)
-            .subprovider(subprovider)
-            .build()
-            .expect("client should build");
-        let agent = client
-            .agent(model)
+        let cfg = huggingface::functions::Config::new(model)
+            .with_api_key(&api_key)
+            .with_sub_provider(subprovider);
+        let agent = AgentBuilder::new(ProviderConfig::HuggingFace(cfg))
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the provided tools to answer the user's question.",

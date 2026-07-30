@@ -1,10 +1,11 @@
-//! Gemini gRPC as config + free functions (data-oriented face).
+//! Gemini gRPC as config + free functions — the crate's entry point.
 //!
 //! gRPC is a non-HTTP transport: instead of a pure request-builder there is a
 //! serde [`Config`] describing how to *build* the connected tonic channel and
-//! API-key interceptor (never holding them), an async [`client_from_config`],
-//! and free [`complete`]/[`open_stream`] functions the existing
-//! [`crate::completion::CompletionModel`] trait impl is rewired through.
+//! API-key interceptor (never holding them), an async [`client_from_config`]
+//! producing the live [`Client`] handle, and free
+//! [`complete`]/[`open_stream`]/[`embed`]/[`embed_batches`] functions taking
+//! that handle.
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
@@ -90,9 +91,6 @@ pub async fn client_from_config(
 
 /// Send `request` over the unary `GenerateContent` RPC and return the
 /// normalized response.
-///
-/// Extracted from the `CompletionModel::completion` trait impl, which is
-/// rewired through this function; behavior is unchanged.
 pub async fn complete(
     client: &Client,
     model: &str,
@@ -114,9 +112,6 @@ pub async fn complete(
 }
 
 /// Open a `StreamGenerateContent` streaming completion for `request`.
-///
-/// Returns the concrete [`StreamingCompletionResponse`]; the
-/// `CompletionModel::stream` trait impl is rewired through this function.
 pub async fn open_stream(
     client: &Client,
     model: &str,
@@ -191,11 +186,7 @@ impl EmbeddingConfig {
 
 /// Embed `texts` with `model`, one `EmbedContent` RPC per document (the
 /// gRPC embedding API is single-document). Gemini gRPC reports no
-/// embedding usage.
-///
-/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
-/// rewired through this function; behavior is unchanged (the first RPC
-/// failure aborts the batch).
+/// embedding usage. The first RPC failure aborts the batch.
 pub async fn embed(
     client: &Client,
     model: &str,

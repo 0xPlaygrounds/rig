@@ -10,9 +10,8 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 async fn completion_smoke() {
-    with_llamafile_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
-            .agent(CASSETTE_CHAT_MODEL)
+    with_llamafile_cassette("agent/completion_smoke", |env| async move {
+        let agent = AgentBuilder::new(ProviderConfig::Llamafile(env.config(CASSETTE_CHAT_MODEL)))
             .preamble(BASIC_PREAMBLE)
             .build();
 

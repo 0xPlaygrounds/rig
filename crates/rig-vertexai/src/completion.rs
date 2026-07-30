@@ -1,10 +1,11 @@
+//! Model identifiers and completion error mapping.
+//!
 //! All supported models: <https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini>
+//!
+//! Completions are driven through [`crate::functions`]; pass one of the
+//! constants below as the `model` argument.
 
-use super::Client;
-use rig_core::completion::{
-    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
-};
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::completion::CompletionError;
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
@@ -22,50 +23,6 @@ pub const GEMINI_2_5_FLASH_LITE: &str = "gemini-2.5-flash-lite";
 pub const GEMINI_2_5_FLASH: &str = "gemini-2.5-flash";
 /// `gemini-2.5-pro`
 pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
-
-#[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: crate::client::Client,
-    pub model: String,
-}
-
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl CompletionModelTrait for CompletionModel {
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        crate::functions::complete(&self.client, &self.model, request).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        crate::functions::open_stream(&self.client, &self.model, request).await
-    }
-}
 
 /// Map a failed `send()` RPC into a [`CompletionError`] that preserves the
 /// provider's gRPC error text verbatim.

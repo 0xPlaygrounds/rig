@@ -9,6 +9,8 @@ use crate::message::{self, MimeType, Reasoning};
 use serde_json::{Map, Value};
 use url::form_urlencoded;
 
+/// Config + pure functions face for the Interactions API.
+pub mod functions;
 /// Streaming helpers for the Interactions API.
 pub mod streaming;
 pub use interactions_api_types::*;

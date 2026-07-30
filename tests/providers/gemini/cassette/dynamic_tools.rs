@@ -11,8 +11,9 @@
 use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::Message;
-use rig::embeddings::{EmbeddingsBuilder, ToolSchema};
+use rig::embeddings::ToolSchema;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
+use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::vector_store::VectorSearchRequest;
@@ -28,18 +29,23 @@ use crate::support::assert_mentions_expected_number;
 /// Build an in-memory store over the embeddable tool schemas, keyed by
 /// tool name.
 async fn build_tool_store(
-    client: &gemini::Client,
+    client: &super::super::support::GeminiCassette,
     schemas: Vec<ToolSchema>,
 ) -> InMemoryVectorStore {
-    let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+    let cfg = client.embedding_config(gemini::embedding::EMBEDDING_001);
+    let rt = client.http();
     // The schemas are supplied in the classic registration order, so the
     // recorded embedding batch replays deterministically.
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(schemas)
-        .expect("documents should be added")
-        .build()
-        .await
-        .expect("tool schema embeddings should succeed");
+    let embeddings = rig::embeddings::embed_documents(
+        schemas,
+        gemini::functions::DESCRIPTOR
+            .max_embedding_documents
+            .expect("gemini declares a batch limit"),
+        1,
+        |texts| gemini::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .expect("tool schema embeddings should succeed");
 
     InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())
         .expect("tool schema store should build")
@@ -49,7 +55,7 @@ async fn build_tool_store(
 /// retrieve the best-matching tool names from the store, and advertise those
 /// names (plus the always-exposed static ones) for the turn.
 fn tool_retrieval_hook(
-    embedding_model: gemini::embedding::EmbeddingModel,
+    embedding_model: (gemini::functions::EmbeddingConfig, HttpRuntime),
     store: InMemoryVectorStore,
     samples: u64,
     always_exposed: Vec<String>,
@@ -72,14 +78,24 @@ fn tool_retrieval_hook(
                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
             };
 
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
-                Err(error) => {
-                    return HookDecision::CompletionCall(CompletionCallAction::stop(
-                        error.to_string(),
-                    ));
-                }
-            };
+            let (embedding_cfg, embedding_rt) = embedding_model;
+            let embedded =
+                match gemini::functions::embed(embedding_cfg, embedding_rt, vec![query.clone()])
+                    .await
+                    .map(|response| response.embeddings)
+                {
+                    Ok(mut embeddings) if !embeddings.is_empty() => embeddings.remove(0),
+                    Ok(_) => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "gemini returned no embedding for the retrieval query".to_string(),
+                        ));
+                    }
+                    Err(error) => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            error.to_string(),
+                        ));
+                    }
+                };
             let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
             match store.top_n_ids(request).await {
                 Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
@@ -111,7 +127,10 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
                 ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
             ];
             let store = build_tool_store(&client, schemas).await;
-            let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let embedding_model = (
+                client.embedding_config(gemini::embedding::EMBEDDING_001),
+                client.http(),
+            );
 
             // Retrieval candidates register before the static tool so the
             // per-turn declarations keep the recorded retrieved-first order.
@@ -165,7 +184,10 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
                 ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
             ];
             let store = build_tool_store(&client, schemas).await;
-            let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let embedding_model = (
+                client.embedding_config(gemini::embedding::EMBEDDING_001),
+                client.http(),
+            );
 
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -207,12 +229,20 @@ async fn sample_caps_retrieved_definitions() {
                 ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
             ];
             let store = build_tool_store(&client, schemas).await;
-            let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let embedding_model = (
+                client.embedding_config(gemini::embedding::EMBEDDING_001),
+                client.http(),
+            );
 
-            let query = embedding_model
-                .embed_text("Multiply two numbers together to get their product.")
-                .await
-                .expect("query embedding should succeed");
+            let query = gemini::functions::embed(
+                &embedding_model.0,
+                &embedding_model.1,
+                vec!["Multiply two numbers together to get their product.".to_string()],
+            )
+            .await
+            .expect("query embedding should succeed")
+            .embeddings
+            .remove(0);
             let request = VectorSearchRequest::new(OneOrMany::one(query), 2);
             let hits = store
                 .top_n_ids(request)

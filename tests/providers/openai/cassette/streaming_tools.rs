@@ -1,9 +1,8 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 
@@ -166,7 +165,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_openai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 ..CompletionRequest::with_history(
@@ -177,8 +177,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             };
 
             let first_turn = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw responses stream should start"),
             )
@@ -205,8 +204,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             );
 
             let second_turn = collect_raw_stream_observation(
-                model
-                    .stream(followup_request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, followup_request)
                     .await
                     .expect("raw followup responses stream should start"),
             )

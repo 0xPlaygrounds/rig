@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
+use rig::http_runtime::HttpRuntime;
 
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -437,11 +438,10 @@ fn image_content() -> UserContent {
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider_config(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -479,11 +479,10 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider_config(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -542,9 +541,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider_config(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -590,9 +588,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider_config(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -623,9 +620,10 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&tool)],
@@ -639,7 +637,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 )
             };
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(xai::functions::open_stream(&cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -666,8 +664,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::None),
@@ -700,7 +699,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -725,18 +724,22 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
 
-            let required = model
-                .completion(CompletionRequest {
+            let required = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Required),
                     ..CompletionRequest::from_prompt(
                         "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
                     )
-                })
-                .await?;
+                },
+            )
+            .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
                     content,
@@ -747,8 +750,10 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 "required tool choice should force lookup_harbor_label"
             );
 
-            let specific = model
-                .completion(CompletionRequest {
+            let specific = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest {
                     tools: vec![
                         rig::tool::portable_tool_definition(&AlphaSignal),
                         rig::tool::portable_tool_definition(&BetaSignal),
@@ -759,8 +764,9 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                     ..CompletionRequest::from_prompt(
                         "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
                     )
-                })
-                .await?;
+                },
+            )
+            .await?;
             let specific_calls = specific
                 .choice
                 .iter()
@@ -775,15 +781,18 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 specific_calls
             );
 
-            let none = model
-                .completion(CompletionRequest {
+            let none = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::None),
                     ..CompletionRequest::from_prompt(
                         "Do not call tools. Reply with exactly this phrase: no-tool-answer",
                     )
-                })
-                .await?;
+                },
+            )
+            .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
             assert_contains_all_case_insensitive(&none_text, &["no-tool-answer"]);
@@ -804,8 +813,9 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
 async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
-        |client| async move {
-            let model = client.completion_model(REASONING_MODEL);
+        |env| async move {
+            let cfg = env.config(REASONING_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 additional_params: Some(json!({
                     "reasoning": { "effort": "low", "summary": "detailed" }
@@ -817,7 +827,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
 
             anyhow::ensure!(
                 response
@@ -866,8 +876,9 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
 async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 additional_params: Some(json!({
                     "text": {
@@ -913,7 +924,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
@@ -950,9 +961,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
 async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
-        |client| async move {
-            let agent = client
-                .agent(VISION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider_config(VISION_MODEL))
                 .preamble("You answer image questions concisely and directly.")
                 .build();
 

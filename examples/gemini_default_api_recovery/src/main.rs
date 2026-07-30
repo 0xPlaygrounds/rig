@@ -333,10 +333,11 @@ fn workspace_canary_prompt(attempt: usize) -> String {
 async fn run_workspace_canary_attempt(
     attempt: usize,
 ) -> Result<WorkspaceStreamObservation, String> {
-    let client = gemini::Client::from_env().map_err(|error| error.to_string())?;
+    // The provider is plain data: a config naming the canary model.
+    let cfg = gemini::functions::Config::from_env(GEMINI_CANARY_MODEL)
+        .map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
-    let agent = client
-        .agent(GEMINI_CANARY_MODEL)
+    let agent = AgentBuilder::new(ProviderConfig::Gemini(cfg))
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)
         .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)

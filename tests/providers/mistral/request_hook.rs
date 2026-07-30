@@ -10,7 +10,6 @@ use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
-use rig::providers::mistral;
 
 use crate::support::assert_nonempty_response;
 
@@ -82,9 +81,7 @@ impl SessionIdHook {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = mistral::Client::from_env()
-        .expect("client should build")
-        .agent(DEFAULT_MODEL)
+    let agent = AgentBuilder::new(super::live(DEFAULT_MODEL))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

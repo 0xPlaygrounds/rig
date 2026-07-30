@@ -44,6 +44,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: true,
     max_embedding_documents: Some(1024),
+    verify_path: Some("/models"),
 };
 
 /// Plain-data OpenAI provider configuration.
@@ -209,7 +210,12 @@ pub(crate) fn bearer_get(
     api_key: &ApiKeyLocation,
     extra_headers: &[(String, String)],
 ) -> Result<http::Request<Vec<u8>>, ModelListingError> {
-    let mut builder = http::Request::get(url);
+    // Classic parity: the deleted reqwest-backed client stamped `accept` and
+    // `content-type` on every request, including bodyless GETs, and the
+    // recorded model-listing exchanges match on them.
+    let mut builder = http::Request::get(url)
+        .header(http::header::ACCEPT, "*/*")
+        .header(CONTENT_TYPE, "application/json");
     if let Some(key) = api_key
         .resolve()
         .map_err(|e| ModelListingError::request_error(e.to_string()))?
@@ -832,6 +838,30 @@ pub(crate) fn compatible_open_stream(
         rt.sse_events(req, false),
         compat::ChunkNormalizer::ChatCompletions(dialect),
     )
+}
+/// Verify that `cfg`'s credential is accepted by the provider.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+/// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+/// classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::verify_bearer(
+        &DESCRIPTOR,
+        &cfg.base_url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        rt,
+    )
+    .await
 }
 
 #[cfg(test)]

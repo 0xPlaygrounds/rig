@@ -18,7 +18,7 @@
 
 // Provider configuration and transport.
 pub use crate::http_runtime::HttpRuntime;
-pub use crate::providers::{ApiKeyLocation, ConfigError, ProviderDescriptor};
+pub use crate::providers::{ApiKeyLocation, ConfigError, ProviderDescriptor, VerifyError};
 
 // Completion.
 pub use crate::completion::{CompletionError, CompletionRequest, CompletionResponse, Message};

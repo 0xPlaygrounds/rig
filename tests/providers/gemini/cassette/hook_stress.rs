@@ -29,7 +29,6 @@ use rig::agent::{
 };
 use rig::completion::Document;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};

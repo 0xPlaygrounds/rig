@@ -6,7 +6,6 @@ use rig::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
     Message, UserContent, VideoMediaType,
 };
-use rig::prelude::*;
 
 use crate::support::{
     AUDIO_FIXTURE_PATH, IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH,

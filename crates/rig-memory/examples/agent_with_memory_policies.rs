@@ -17,7 +17,6 @@
 use anyhow::Result;
 use rig_agent::agent::Agent;
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers::openai;
 use rig_memory::{
     Compactor, HeuristicTokenCounter, InMemoryConversationMemory, MemoryPolicy, PolicyMemory,
@@ -64,11 +63,13 @@ async fn ask(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
-    let agent = client
-        .agent(openai::GPT_4O)
-        .preamble("You are a helpful assistant. Keep responses short.")
-        .build();
+    // Providers are plain configuration: no client object, just a
+    // `ProviderConfig` arm wrapping `openai::functions::Config`.
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(openai::functions::Config::from_env(
+        openai::GPT_4O,
+    )?))
+    .preamble("You are a helpful assistant. Keep responses short.")
+    .build();
 
     // Sliding window: keep the last 20 messages, roll the rest into a summary.
     let sliding_memory = PolicyMemory::new(

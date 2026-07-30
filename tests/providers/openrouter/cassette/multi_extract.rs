@@ -4,7 +4,6 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

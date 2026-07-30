@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig_agent::test_utils::validate_extraction_fields;
 
@@ -13,10 +12,10 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 
 #[tokio::test]
 async fn extractor_smoke() {
-    with_doubleword_cassette("extractor/extractor_smoke", |client| async move {
+    with_doubleword_cassette("extractor/extractor_smoke", |env| async move {
         let response = extract_with_options::<SmokePerson>(
             AgentConfig::new(),
-            client.provider_config(DEFAULT_MODEL),
+            env.provider(DEFAULT_MODEL),
             Arc::new(Runtime::new()),
             EXTRACTOR_TEXT,
             ExtractOptions::classic_extractor(),

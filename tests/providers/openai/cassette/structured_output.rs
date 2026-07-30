@@ -1,7 +1,6 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;

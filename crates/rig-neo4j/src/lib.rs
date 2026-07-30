@@ -43,9 +43,8 @@
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
 //! use rig_core::{
-//!     client::EmbeddingsClient,
-//!     embeddings::EmbeddingModel,
-//!     providers::openai::*,
+//!     http_runtime::HttpRuntime,
+//!     providers::openai::{self, *},
 //!     vector_store::request::VectorSearchRequest,
 //! };
 //! use serde::Deserialize;
@@ -54,8 +53,10 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-//!     let openai_client = Client::new(&openai_api_key).unwrap();
-//!     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+//!     // Embedding is a free function over plain configuration plus a shared runtime.
+//!     let embed_cfg = openai::functions::EmbeddingConfig::new(TEXT_EMBEDDING_ADA_002)
+//!         .with_api_key(&openai_api_key);
+//!     let rt = HttpRuntime::new();
 //!
 //!
 //!     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
@@ -84,7 +85,13 @@
 //!     }
 //!
 //!     // Queries arrive pre-embedded: embed with the same model the index was built with.
-//!     let query = model.embed_text("Batman").await.unwrap();
+//!     let query = openai::functions::embed(&embed_cfg, &rt, vec!["Batman".to_string()])
+//!         .await
+//!         .unwrap()
+//!         .embeddings
+//!         .into_iter()
+//!         .next()
+//!         .unwrap();
 //!     let req = VectorSearchRequest::new(rig_core::OneOrMany::one(query), 3);
 //!     let results = index.top_n_as::<Movie>(req).await.unwrap();
 //!     println!("{:#?}", results);

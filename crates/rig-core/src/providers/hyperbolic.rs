@@ -156,7 +156,6 @@ mod audio_generation {
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -411,6 +410,7 @@ pub mod functions {
         emits_complete_single_chunk_tool_calls: false,
         composes_native_output_with_tools: false,
         max_embedding_documents: None,
+        verify_path: Some("/models"),
     };
 
     /// Plain-data Hyperbolic provider configuration.
@@ -719,6 +719,31 @@ pub mod functions {
         let req = build_request(cfg, &request, false)?;
         let (status, body) = rt.send(req).await?;
         parse_response(status, &body)
+    }
+
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
     }
 
     #[cfg(test)]

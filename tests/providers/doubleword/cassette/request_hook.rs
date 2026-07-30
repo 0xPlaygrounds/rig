@@ -63,10 +63,9 @@ impl ObservingHook {
 async fn request_hook_records_prompt_and_response() {
     with_doubleword_cassette(
         "request_hook/request_hook_records_prompt_and_response",
-        |client| async move {
+        |env| async move {
             let hook = ObservingHook::default();
-            let response = client
-                .agent(DEFAULT_MODEL)
+            let response = AgentBuilder::new(env.provider(DEFAULT_MODEL))
                 .build()
                 .runner("Entertain me with one short joke.")
                 .add_hook(hook.entry())

@@ -1,9 +1,10 @@
-//! Demonstrates manual tool-call handling with a raw `CompletionModel` request.
+//! Demonstrates manual tool-call handling with a raw completion request.
 //! Requires `OPENAI_API_KEY`.
 //!
 //! Unlike `agent.prompt(...)`, this example never lets Rig execute tools automatically.
 //! It:
-//! 1. sends a low-level completion request,
+//! 1. sends a low-level completion request through the provider's free
+//!    `complete` function (config + `HttpRuntime`, no model type),
 //! 2. collects one or more `ToolCall`s from the model output,
 //! 3. executes them locally with a `ToolExecutor` of portable tool records,
 //! 4. feeds the tool results back to the model, and
@@ -11,10 +12,10 @@
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::executor::ToolExecutor;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
@@ -126,7 +127,10 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O_MINI);
+    // Below the Agent abstraction the provider is just a config plus a
+    // transport: `openai::functions::complete(&cfg, &rt, request)`.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O_MINI)?;
+    let rt = HttpRuntime::new();
     let preamble = "You are a calculator. Never do arithmetic from memory. \
                     Use the provided tools for every intermediate step. \
                     You may emit one or multiple tool calls in a single turn. \
@@ -159,7 +163,7 @@ async fn main() -> Result<()> {
             request.tool_choice = Some(ToolChoice::Required);
         }
 
-        let response = model.completion(request).await?;
+        let response = openai::functions::complete(&cfg, &rt, request).await?;
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());

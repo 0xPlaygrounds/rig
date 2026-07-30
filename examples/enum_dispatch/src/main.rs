@@ -32,8 +32,8 @@ struct AgentConfig<'a> {
 struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents>>);
 
 fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = anthropic::Client::from_env()?
-        .agent(CLAUDE_SONNET_4_6)
+    let cfg = anthropic::functions::Config::from_env(CLAUDE_SONNET_4_6)?;
+    let agent = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
         .name(name)
         .preamble(preamble)
         .build();
@@ -42,9 +42,10 @@ fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Ag
 }
 
 fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = openai::Client::from_env()?
-        .completions_api()
-        .agent(GPT_4O)
+    // `ProviderConfig::OpenAi` is the chat-completions face; the Responses API
+    // is the separate `ProviderConfig::OpenAiResponses` arm.
+    let cfg = openai::functions::Config::from_env(GPT_4O)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .name(name)
         .preamble(preamble)
         .build();

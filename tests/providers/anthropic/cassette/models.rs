@@ -1,13 +1,17 @@
 //! Anthropic model listing smoke test.
 
-use rig::client::ModelListingClient;
+use rig::providers::anthropic;
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::with_anthropic_cassette;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_anthropic_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.list_models().await {
+        // `list_models` needs a config; the model does not affect the request.
+        let cfg = client.config(CLAUDE_SONNET_4_6);
+        let http = client.http();
+        let models = match anthropic::functions::list_models(&cfg, &http).await {
             Ok(models) => models,
             Err(error) => {
                 panic!(

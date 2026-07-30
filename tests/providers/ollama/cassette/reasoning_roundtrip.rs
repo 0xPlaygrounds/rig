@@ -17,9 +17,9 @@ fn think_params() -> Option<serde_json::Value> {
 
 #[tokio::test]
 async fn nonstreaming() {
-    with_ollama_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
+    with_ollama_cassette("reasoning_roundtrip/nonstreaming", |env| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model(MODEL),
+            ProviderConfig::Ollama(env.config(MODEL)),
             think_params(),
         ))
         .await;
@@ -29,9 +29,9 @@ async fn nonstreaming() {
 
 #[tokio::test]
 async fn streaming() {
-    with_ollama_cassette("reasoning_roundtrip/streaming", |client| async move {
+    with_ollama_cassette("reasoning_roundtrip/streaming", |env| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion_model(MODEL),
+            ProviderConfig::Ollama(env.config(MODEL)),
             think_params(),
         ))
         .await;

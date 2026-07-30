@@ -39,6 +39,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: false,
     max_embedding_documents: Some(96),
+    verify_path: Some("/models"),
 };
 
 /// Plain-data Cohere provider configuration.
@@ -330,6 +331,30 @@ pub async fn embed_batches(
     let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
     Ok((groups, response.usage))
 }
+/// Verify that `cfg`'s credential is accepted by the provider.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+/// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+/// classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::verify_bearer(
+        &DESCRIPTOR,
+        &cfg.base_url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        rt,
+    )
+    .await
+}
 
 #[cfg(test)]
 mod tests {
@@ -418,5 +443,75 @@ mod tests {
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
+    }
+}
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    /// A Cohere v2 `/v2/chat` success body carrying **both** usage blocks, as
+    /// the wire does.
+    const RESPONSE_WITH_BOTH_USAGE_BLOCKS: &str = r#"{
+        "id": "abc123",
+        "finish_reason": "COMPLETE",
+        "message": {
+            "role": "assistant",
+            "content": [{ "type": "text", "text": "hello" }]
+        },
+        "usage": {
+            "billed_units": { "input_tokens": 78, "output_tokens": 27 },
+            "tokens": { "input_tokens": 1028, "output_tokens": 63 }
+        }
+    }"#;
+
+    /// Cohere reports two usage blocks: `usage.tokens` is the actual token
+    /// count the model processed, and `usage.billed_units` is the (smaller)
+    /// billable subset. The normalized [`crate::completion::Usage`] fields are
+    /// token counts, so `usage.tokens` is the correct source — and it is what
+    /// the streaming path's `streamed_token_usage` has always read.
+    ///
+    /// The deleted classic model's `Usage::token_usage` read `billed_units`
+    /// for its telemetry span while its own `TryFrom` read `tokens`, so the
+    /// two halves of one response disagreed. This pins the surviving,
+    /// consistent answer.
+    #[test]
+    fn parse_response_reads_usage_tokens_not_billed_units() {
+        let response =
+            parse_response(http::StatusCode::OK, RESPONSE_WITH_BOTH_USAGE_BLOCKS).expect("parse");
+
+        assert_eq!(response.usage.input_tokens, 1028);
+        assert_eq!(response.usage.output_tokens, 63);
+        assert_eq!(response.usage.total_tokens, 1091);
+
+        // The billed-unit counts must not leak into any usage field.
+        assert_ne!(response.usage.input_tokens, 78);
+        assert_ne!(response.usage.output_tokens, 27);
+    }
+
+    /// A response with only `billed_units` reports zero usage rather than
+    /// silently substituting billed units for token counts.
+    #[test]
+    fn parse_response_reports_zero_usage_without_a_tokens_block() {
+        let body = r#"{
+            "id": "abc123",
+            "finish_reason": "COMPLETE",
+            "message": {
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "hello" }]
+            },
+            "usage": {
+                "billed_units": { "input_tokens": 78, "output_tokens": 27 }
+            }
+        }"#;
+
+        let response = parse_response(http::StatusCode::OK, body).expect("parse");
+        assert_eq!(response.usage.input_tokens, 0);
+        assert_eq!(response.usage.output_tokens, 0);
+        assert_eq!(response.usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn verify_path_matches_the_deleted_provider_const() {
+        assert_eq!(DESCRIPTOR.verify_path, Some("/models"));
     }
 }

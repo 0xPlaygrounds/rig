@@ -1,7 +1,6 @@
 //! Groq streaming smoke test.
 
 use rig::prelude::*;
-use rig::providers::groq;
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -12,9 +11,7 @@ use super::STREAMING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_smoke() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(STREAMING_MODEL)
+    let agent = AgentBuilder::new(super::live(STREAMING_MODEL))
         .preamble(STREAMING_PREAMBLE)
         .build();
 

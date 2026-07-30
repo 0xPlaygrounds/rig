@@ -16,9 +16,8 @@ const MODEL: &str = "qwen3:4b";
 async fn structured_output_smoke() {
     with_ollama_cassette(
         "structured_output/structured_output_smoke",
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
                 .output_schema::<SmokeStructuredOutput>()
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();

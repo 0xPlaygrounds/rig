@@ -1,5 +1,4 @@
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers;
 use rig_core::tool::ToolExecutionError;
 use rig_derive::rig_tool;
@@ -26,12 +25,13 @@ async fn async_operation(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let async_agent = providers::openai::Client::from_env()?
-        .agent(providers::openai::GPT_4O)
-        .preamble("You are an agent with tools access, always use the tools")
-        .max_tokens(1024)
-        .tool(AsyncOperation)
-        .build();
+    let async_agent = AgentBuilder::new(ProviderConfig::OpenAi(
+        providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?,
+    ))
+    .preamble("You are an agent with tools access, always use the tools")
+    .max_tokens(1024)
+    .tool(AsyncOperation)
+    .build();
 
     println!("Tool definition:");
     println!(

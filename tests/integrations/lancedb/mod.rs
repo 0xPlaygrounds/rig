@@ -12,12 +12,13 @@ use serde_json::json;
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
+use rig::provider::ProviderConfig;
 use rig::{
-    client::{AgentClientExt, EmbeddingsClient},
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai,
+    AgentBuilder, embeddings::embed_documents, http_runtime::HttpRuntime, providers::openai,
     vector_store::request::VectorSearchRequest,
 };
+
+const ADA_002_NDIMS: usize = 1536;
 
 #[path = "./fixtures/lib.rs"]
 mod fixture;
@@ -111,15 +112,11 @@ async fn vector_search_test() {
             ));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-
-    // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Configure the (mocked) OpenAI embeddings face.
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -128,18 +125,24 @@ async fn vector_search_test() {
         .unwrap();
 
     // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words()).unwrap()
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        ).unwrap()
-        .build()
-        .await.unwrap();
+    let mut documents = words();
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    documents.extend((0..256).map(|i| Word {
+        id: format!("doc{i}"),
+        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
+    }));
+
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        documents,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .unwrap();
 
     let table_name = "definitions";
     let table = if db
@@ -153,7 +156,7 @@ async fn vector_search_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, ADA_002_NDIMS).unwrap()],
         )
         .execute()
         .await
@@ -181,7 +184,13 @@ async fn vector_search_test() {
     // Queries are pre-embedded: embed the query text with the embedding model
     // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
-    let query_embedding = model.embed_text(query).await.unwrap();
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .unwrap()
+        .embeddings
+        .into_iter()
+        .next()
+        .unwrap();
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
@@ -321,15 +330,11 @@ async fn agent_with_retrieved_context_test() {
             }));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-
-    // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Configure the (mocked) OpenAI embeddings face.
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -338,18 +343,24 @@ async fn agent_with_retrieved_context_test() {
         .unwrap();
 
     // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words()).unwrap()
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        ).unwrap()
-        .build()
-        .await.unwrap();
+    let mut documents = words();
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    documents.extend((0..256).map(|i| Word {
+        id: format!("doc{i}"),
+        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
+    }));
+
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        documents,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .unwrap();
 
     let top_k = embeddings.len();
 
@@ -365,7 +376,7 @@ async fn agent_with_retrieved_context_test() {
     } else {
         db.create_table(
             table_name,
-            vec![as_record_batch(embeddings, model.ndims()).unwrap()],
+            vec![as_record_batch(embeddings, ADA_002_NDIMS).unwrap()],
         )
         .execute()
         .await
@@ -395,13 +406,23 @@ async fn agent_with_retrieved_context_test() {
     // The vector-store trait surface is gone: embed the query, retrieve the
     // most relevant documents ourselves, and hand them to the agent as
     // context (previously done implicitly by `dynamic_context`).
-    let query_embedding = model.embed_text(query).await.unwrap();
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .unwrap()
+        .embeddings
+        .into_iter()
+        .next()
+        .unwrap();
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), top_k as u64);
     let hits = vector_store_index.top_n(req).await.unwrap();
     assert!(!hits.is_empty());
 
     // Build RAG agent with the retrieved context.
-    let mut agent_builder = openai_client.completions_api().agent(openai::GPT_4O);
+    let mut agent_builder = AgentBuilder::new(ProviderConfig::OpenAi(
+        openai::functions::Config::new(openai::GPT_4O)
+            .with_api_key("TEST")
+            .with_base_url(server.base_url()),
+    ));
     for hit in &hits {
         agent_builder = agent_builder.context(&hit.payload.to_string());
     }

@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

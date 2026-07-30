@@ -4,10 +4,13 @@ use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::message::AssistantContent;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::streaming::StreamedAssistantContent;
 
-use crate::chatgpt::{LIVE_MODEL, live_builder, live_client};
+use rig::AgentBuilder;
+use rig::http_runtime::HttpRuntime;
+use rig::provider::ProviderConfig;
+
+use crate::chatgpt::{LIVE_MODEL, live_config};
 use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
@@ -25,12 +28,10 @@ fn aggregated_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn default_instructions_fill_required_instructions() {
-    let client = live_builder()
-        .default_instructions("Always answer with the single word cedar.")
-        .build()
-        .expect("ChatGPT client should build");
+    let mut cfg = live_config(LIVE_MODEL).await;
+    cfg.default_instructions = Some("Always answer with the single word cedar.".to_string());
 
-    let agent = client.agent(LIVE_MODEL).build();
+    let agent = AgentBuilder::new(ProviderConfig::ChatGpt(cfg)).build();
     let mut stream = Box::pin(
         agent
             .runner("Reply with the exact word from the instructions.")
@@ -46,15 +47,15 @@ async fn default_instructions_fill_required_instructions() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn system_messages_are_lifted_into_instructions() {
-    let model = live_client().completion_model(LIVE_MODEL);
+    let cfg = live_config(LIVE_MODEL).await;
+    let rt = HttpRuntime::new();
 
     let request = CompletionRequest::with_history(
         None,
         vec![Message::system("Always answer with the single word maple.")],
         "Reply with the exact word from the system message.",
     );
-    let mut stream = model
-        .stream(request)
+    let mut stream = rig::providers::chatgpt::functions::open_stream(&cfg, &rt, request)
         .await
         .expect("system-message stream should succeed");
 

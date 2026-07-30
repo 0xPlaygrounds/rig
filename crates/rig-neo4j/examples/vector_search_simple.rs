@@ -10,14 +10,11 @@ use rig_core::OneOrMany;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::Embed;
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
-};
 use rig_neo4j::{Neo4jClient, ToBoltType};
 
 #[derive(Embed, Clone, Debug)]
@@ -29,8 +26,12 @@ pub struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Initialize Neo4j client
     let neo4j_uri = env::var("NEO4J_URI")?;
@@ -39,24 +40,27 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .document(Word {
-            id: "doc0".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        })?
-        .document(Word {
-            id: "doc1".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        })?
-        .document(Word {
-            id: "doc2".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        })?
-        .build()
-        .await?;
+    // Embedding happens outside the store, in one batched call.
+    let embeddings = embed_documents(
+        vec![
+            Word {
+                id: "doc0".to_string(),
+                definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+            },
+            Word {
+                id: "doc1".to_string(),
+                definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            },
+            Word {
+                id: "doc2".to_string(),
+                definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+            },
+        ],
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
@@ -127,9 +131,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let query1 = "What is a glarb?";
     let query2 = "What is a linglingdong?";
 
-    // Queries are pre-embedded: embed them with the same model that was used
-    // to generate the document embeddings.
-    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query1).await?), 1);
+    // Queries are pre-embedded: embed them with the same configuration that
+    // generated the document embeddings.
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query1.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        1,
+    );
 
     // Query the index
     let results = index
@@ -141,7 +155,17 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {results:?}");
 
-    let req = VectorSearchRequest::new(OneOrMany::one(model.embed_text(query2).await?), 1);
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query2.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        1,
+    );
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

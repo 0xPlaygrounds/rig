@@ -8,9 +8,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
-    let response = moonshot::AnthropicClient::from_env()
-        .expect("moonshot anthropic client should build")
-        .agent(moonshot::KIMI_K2_5)
+    let cfg = moonshot::functions::anthropic_config_from_env(moonshot::KIMI_K2_5)
+        .expect("moonshot anthropic config should build");
+    let response = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

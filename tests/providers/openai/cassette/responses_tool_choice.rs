@@ -8,9 +8,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
 
@@ -32,7 +31,8 @@ async fn required_forces_a_tool_call() {
     with_openai_cassette(
         "responses_tool_choice/required_forces_a_tool_call",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::Required),
@@ -43,8 +43,7 @@ async fn required_forces_a_tool_call() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -68,7 +67,8 @@ async fn none_suppresses_tool_calls() {
     with_openai_cassette(
         "responses_tool_choice/none_suppresses_tool_calls",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 tool_choice: Some(ToolChoice::None),
@@ -79,8 +79,7 @@ async fn none_suppresses_tool_calls() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("none tool choice completion should succeed");
 
@@ -111,7 +110,8 @@ async fn specific_single_function_targets_named_tool() {
     with_openai_cassette(
         "responses_tool_choice/specific_single_function_targets_named_tool",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![
                     rig::tool::portable_tool_definition(&Adder),
@@ -127,8 +127,7 @@ async fn specific_single_function_targets_named_tool() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("specific tool choice completion should succeed");
 
@@ -175,7 +174,8 @@ async fn specific_multiple_functions_use_allowed_tools() {
     with_openai_cassette(
         "responses_tool_choice/specific_multiple_functions_use_allowed_tools",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![
                     rig::tool::portable_tool_definition(&Adder),
@@ -192,8 +192,7 @@ async fn specific_multiple_functions_use_allowed_tools() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("allowed-tools tool choice completion should succeed");
 

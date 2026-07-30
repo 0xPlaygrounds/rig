@@ -9,9 +9,8 @@ use rig::providers::cohere;
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn streaming_smoke() {
-    let client = cohere::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(cohere::COMMAND)
+    let cfg = cohere::functions::Config::from_env(cohere::COMMAND).expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Cohere(cfg))
         .preamble(STREAMING_PREAMBLE)
         .build();
 

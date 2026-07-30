@@ -7,9 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
-use rig::client::ProviderClient;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use rig::providers::openai;
 use schemars::JsonSchema;
@@ -41,12 +39,12 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
     // `client.extractor::<T>(model)` is gone: an extraction is a call to
     // `extract_with_options`, so the per-extractor "configuration" is just the
     // data it will be handed — the preamble on an `AgentConfig`, the retry
     // budget on `ExtractOptions`.
-    let provider = client.provider_config(openai::GPT_4O_MINI);
+    let provider =
+        ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O_MINI)?);
     let rt = Arc::new(Runtime::new());
 
     let names_config = AgentConfig::new();

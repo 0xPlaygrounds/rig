@@ -85,8 +85,10 @@ fn print_usage(label: &str, usage: Usage) {
 async fn main() -> Result<()> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| openai::GPT_4O_MINI.to_string());
 
-    let agent = openai::CompletionsClient::from_env()?
-        .agent(model)
+    // `OPENAI_BASE_URL` is honored by `Config::from_env`, so the same binary
+    // points at an OpenAI-compatible server without any client type.
+    let cfg = openai::functions::Config::from_env(model)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble(
             "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \

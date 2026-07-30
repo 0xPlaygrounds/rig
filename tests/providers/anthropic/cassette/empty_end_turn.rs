@@ -9,9 +9,8 @@ use std::sync::{
 };
 
 use rig::{
-    completion::{CompletionModel, CompletionRequest, ToolDefinition},
+    completion::{CompletionRequest, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     tool::Tool,
 };

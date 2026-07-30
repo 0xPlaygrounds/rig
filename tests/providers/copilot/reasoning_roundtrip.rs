@@ -1,6 +1,6 @@
 //! Copilot reasoning roundtrip tests.
 
-use rig::prelude::*;
+use rig::provider::ProviderConfig;
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -15,7 +15,7 @@ async fn streaming() {
         });
         reasoning::run_reasoning_roundtrip_streaming_with_final(
             ReasoningRoundtripAgent::new(
-                client.completion_model(live_responses_model()),
+                ProviderConfig::Copilot(client.config(live_responses_model())),
                 Some(serde_json::json!({
                     "reasoning": { "effort": "medium" }
                 })),
@@ -75,7 +75,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_copilot_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model(live_responses_model()),
+            ProviderConfig::Copilot(client.config(live_responses_model())),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),

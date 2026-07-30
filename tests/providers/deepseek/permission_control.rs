@@ -161,11 +161,10 @@ impl PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     with_deepseek_cassette_result(
         "permission_control/permission_control_prompt_example",
-        |client| async move {
+        |env| async move {
             let _cleanup = FileCleanup::new("prompt")?;
 
-            let agent = client
-                .agent(deepseek::DEEPSEEK_V4_FLASH)
+            let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),
@@ -213,11 +212,10 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     with_deepseek_cassette_result(
         "permission_control/permission_control_streaming_example",
-        |client| async move {
+        |env| async move {
             let _cleanup = FileCleanup::new("streaming")?;
 
-            let agent = client
-                .agent(deepseek::DEEPSEEK_V4_FLASH)
+            let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),

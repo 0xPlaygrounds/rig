@@ -28,51 +28,46 @@ fn think_params() -> serde_json::Value {
 #[tokio::test]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    with_ollama_cassette(
-        "reasoning_tool_roundtrip/nonstreaming",
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(think_params())
-                .default_max_turns(2)
-                .build();
+    with_ollama_cassette("reasoning_tool_roundtrip/nonstreaming", |env| async move {
+        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .tool(WeatherTool::new(call_count.clone()))
+            .additional_params(think_params())
+            .default_max_turns(2)
+            .build();
 
-            let mut chat_history = Vec::<Message>::new();
-            let result = agent
-                .chat(reasoning::TOOL_USER_PROMPT, &mut chat_history)
-                .await
-                .expect("[ollama] non-streaming chat failed");
+        let mut chat_history = Vec::<Message>::new();
+        let result = agent
+            .chat(reasoning::TOOL_USER_PROMPT, &mut chat_history)
+            .await
+            .expect("[ollama] non-streaming chat failed");
 
-            reasoning::assert_nonstreaming_universal(&result, &call_count, "ollama");
-            // #1926: the tool-call turn's `thinking` must survive into history as
-            // an AssistantContent::Reasoning. Pre-fix, the non-streaming choice
-            // contained only the ToolCall and this assertion failed.
-            reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
-                &chat_history,
-                &result,
-                "ollama",
-            );
-            assert!(
-                chat_history.iter().any(|msg| matches!(
-                    msg,
-                    Message::Assistant { content, .. }
-                        if content.iter().any(|c| matches!(c, AssistantContent::Reasoning(_)))
-                )),
-                "[ollama] expected at least one assistant turn carrying Reasoning in history",
-            );
-        },
-    )
+        reasoning::assert_nonstreaming_universal(&result, &call_count, "ollama");
+        // #1926: the tool-call turn's `thinking` must survive into history as
+        // an AssistantContent::Reasoning. Pre-fix, the non-streaming choice
+        // contained only the ToolCall and this assertion failed.
+        reasoning::assert_chat_history_preserves_reasoning_tool_roundtrip(
+            &chat_history,
+            &result,
+            "ollama",
+        );
+        assert!(
+            chat_history.iter().any(|msg| matches!(
+                msg,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|c| matches!(c, AssistantContent::Reasoning(_)))
+            )),
+            "[ollama] expected at least one assistant turn carrying Reasoning in history",
+        );
+    })
     .await;
 }
 
 #[tokio::test]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    with_ollama_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
-        let agent = client
-            .agent(MODEL)
+    with_ollama_cassette("reasoning_tool_roundtrip/streaming", |env| async move {
+        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(think_params())

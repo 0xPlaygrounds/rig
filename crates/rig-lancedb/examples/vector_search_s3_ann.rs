@@ -1,13 +1,10 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::{DistanceType, index::vector::IvfPqIndexBuilder};
 use rig_core::OneOrMany;
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
-};
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
@@ -17,11 +14,13 @@ mod fixture;
 // https://lancedb.github.io/lancedb/guides/storage/
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_client = Client::from_env()?;
-
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embeddings come from a free function over plain configuration plus a
+    // shared HTTP runtime — there is no client or model object.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Initialize LanceDB on S3.
     // Note: see below docs for more options and IAM permission required to read/write to S3.
@@ -31,18 +30,20 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words())?
-        // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
-        .documents(
-            (0..256)
-                .map(|i| Word {
-                    id: format!("doc{i}"),
-                    definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string()
-                })
-        )?
-        .build()
-        .await?;
+    let mut corpus = words();
+    // Note: need at least 256 rows in order to create an index so copy the definition 256 times for testing purposes.
+    corpus.extend((0..256).map(|i| Word {
+        id: format!("doc{i}"),
+        definition: "Definition of *flumbuzzle (noun)*: A sudden, inexplicable urge to rearrange or reorganize small objects, such as desk items or books, for no apparent reason.".to_string(),
+    }));
+
+    let embeddings = embed_documents(
+        corpus,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let table = if db
         .table_names()
@@ -54,7 +55,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.ndims())?],
+            vec![as_record_batch(embeddings, fixture::EMBEDDING_DIMS)?],
         )
         .execute()
         .await?
@@ -84,7 +85,12 @@ async fn main() -> Result<(), anyhow::Error> {
     // Queries are pre-embedded: embed the query text with the embedding model
     // and pass the embedding to the search request.
     let query = "I'm always looking for my phone, I always seem to forget it in the most counterintuitive places. What's the word for this feeling?";
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
 
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 

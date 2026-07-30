@@ -4,7 +4,6 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -68,9 +67,8 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = support::completions_client();
     let model = support::model_name();
-    let provider = client.provider_config(&model);
+    let provider = support::provider(model);
     let names_options = classic_options("Extract names from the given text.").with_retries(2);
     let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
     let sentiment_options =

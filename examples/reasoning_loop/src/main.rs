@@ -100,16 +100,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
-    let anthropic_client = anthropic::Client::from_env()?;
+    // The provider is plain data: one config, cloned into both roles.
+    let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
     let agent = ReasoningAgent {
-        chain_of_thought_provider: anthropic_client
-            .provider_config(anthropic::completion::CLAUDE_SONNET_4_6),
+        chain_of_thought_provider: ProviderConfig::Anthropic(cfg.clone()),
         chain_of_thought_options: chain_of_thought_options(),
         rt: Arc::new(Runtime::new()),
 
-        executor: anthropic_client
-            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+        executor: AgentBuilder::new(ProviderConfig::Anthropic(cfg))
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

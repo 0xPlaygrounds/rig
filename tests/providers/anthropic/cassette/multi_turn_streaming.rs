@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};

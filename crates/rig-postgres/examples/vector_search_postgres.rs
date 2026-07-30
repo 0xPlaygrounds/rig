@@ -1,12 +1,16 @@
+//! Postgres vector search over precomputed embeddings.
+//!
+//! Embedding is a free function over plain configuration
+//! (`openai::functions::EmbeddingConfig` + a shared `HttpRuntime`), and
+//! `embed_documents` replaces the retired `EmbeddingsBuilder`. The store
+//! itself only ever sees vectors.
+
+use rig_core::Embed;
 use rig_core::OneOrMany;
-use rig_core::client::EmbeddingsClient;
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    client::ProviderClient,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-};
 use rig_postgres::PostgresVectorStore;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -35,9 +39,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // load environment variables from .env file
     dotenvy::dotenv().ok();
 
-    // Create OpenAI client
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+    // Embedding configuration is plain data; the HTTP runtime is the shared
+    // transport handed to every provider free function.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // setup Postgres
     let database_url = std::env::var("DATABASE_URL")?;
@@ -78,10 +86,13 @@ async fn main() -> Result<(), anyhow::Error> {
         }];
 
     // Embedding happens *outside* the store: it only ever sees precomputed vectors.
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
-        .await?;
+    let documents = embed_documents(
+        words,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     // delete documents from table to have a clean start (optional, not recommended for production)
     sqlx::query("TRUNCATE documents").execute(&pool).await?;
@@ -101,7 +112,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // query vector: embed the query, then send the pre-embedded request
     let query = "What does \"glarb-glarb\" mean?";
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     let results = vector_store.top_n_as::<WordDefinition>(req).await?;

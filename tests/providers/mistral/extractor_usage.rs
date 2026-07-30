@@ -6,17 +6,14 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::Runtime;
-use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::DEFAULT_MODEL;
 
-/// Run a classic-extractor-shaped extraction against `client`.
+/// Run a classic-extractor-shaped extraction against the live provider.
 async fn classic_extract<T>(
-    client: &mistral::Client,
     prompt: impl Into<Message>,
     options: ExtractOptions,
 ) -> Result<ExtractionOutcome<T>, ExtractError>
@@ -25,7 +22,7 @@ where
 {
     extract_with_options(
         AgentConfig::new(),
-        client.provider_config(DEFAULT_MODEL),
+        super::live(DEFAULT_MODEL),
         Arc::new(Runtime::new()),
         prompt,
         options,
@@ -65,9 +62,7 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_backward_compatibility() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
     let person = classic_extract::<Person>(
-        &client,
         "John Doe is a 30 year old software engineer.",
         ExtractOptions::classic_extractor(),
     )
@@ -84,9 +79,7 @@ async fn extract_backward_compatibility() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
     let response = classic_extract::<Person>(
-        &client,
         "Jane Smith is a 45 year old data scientist.",
         ExtractOptions::classic_extractor(),
     )
@@ -105,13 +98,11 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
     )];
 
     let response = classic_extract::<Address>(
-        &client,
         "The address is 123 Main St in Springfield, IL 62701.",
         ExtractOptions::classic_extractor().with_history(chat_history),
     )
@@ -130,13 +121,11 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
     let text = "Bob Johnson is a 55 year old retired teacher.";
-    let person = classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor())
+    let person = classic_extract::<Person>(text, ExtractOptions::classic_extractor())
         .await?
         .value;
-    let response =
-        classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor()).await?;
+    let response = classic_extract::<Person>(text, ExtractOptions::classic_extractor()).await?;
 
     anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
     anyhow::ensure!(response.value.name.as_deref() == Some("Bob Johnson"));
@@ -152,10 +141,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
-
     let person_response = classic_extract::<Person>(
-        &client,
         "Alice is a 25 year old developer.",
         ExtractOptions::classic_extractor(),
     )
@@ -163,7 +149,6 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     anyhow::ensure!(person_response.usage.total_tokens > 0);
 
     let address_response = classic_extract::<Address>(
-        &client,
         "456 Oak Avenue, Cambridge, MA 02139",
         ExtractOptions::classic_extractor(),
     )

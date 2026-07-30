@@ -13,18 +13,17 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::openai;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::super::support::with_openai_cassette_result;
+use super::super::support::{OpenAiCassette, with_openai_cassette_result};
 
 /// Run a classic-extractor-shaped extraction against `client`.
 async fn classic_extract<T>(
-    client: &openai::Client,
+    client: &OpenAiCassette,
     prompt: impl Into<Message>,
     options: ExtractOptions,
 ) -> Result<ExtractionOutcome<T>, ExtractError>

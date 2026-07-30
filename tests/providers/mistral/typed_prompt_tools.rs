@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::prelude::*;
-use rig::providers::mistral;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -72,9 +71,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = mistral::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(TOOL_MODEL)
+    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
              After calling the tool, respond with ONLY minified JSON matching this schema: \

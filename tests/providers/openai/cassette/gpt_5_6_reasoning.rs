@@ -15,9 +15,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, Message, Reasoning};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamedAssistantContent;
 use serde::{Deserialize, Serialize};
@@ -95,17 +94,17 @@ fn completed_response_from_sse(body: &str) -> openai::responses_api::CompletionR
         .expect("recorded SSE body should contain a response.completed event")
 }
 
-async fn prompt_with_reasoning<M>(model: &M, reasoning: serde_json::Value) -> CompletionResponse
-where
-    M: CompletionModel,
-{
+async fn prompt_with_reasoning(
+    cfg: &openai::responses_api::functions::Config,
+    rt: &rig::http_runtime::HttpRuntime,
+    reasoning: serde_json::Value,
+) -> CompletionResponse {
     let request = CompletionRequest {
         additional_params: Some(json!({ "reasoning": reasoning })),
         ..CompletionRequest::from_prompt(PROMPT)
     };
 
-    model
-        .completion(request)
+    openai::responses_api::functions::complete(cfg, rt, request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed")
 }
@@ -164,8 +163,9 @@ fn assert_has_text(response: &CompletionResponse) {
 async fn effort_max() {
     const SCENARIO: &str = "gpt_5_6_reasoning/effort_max";
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6);
-        let response = prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
+        let cfg = client.config(openai::GPT_5_6);
+        let rt = client.http();
+        let response = prompt_with_reasoning(&cfg, &rt, json!({ "effort": "max" })).await;
         assert_has_text(&response);
         if replaying() {
             let raw = recorded_wire_responses(SCENARIO);
@@ -190,9 +190,10 @@ async fn mode_pro_with_independent_effort() {
     with_openai_cassette(
         "gpt_5_6_reasoning/mode_pro_with_independent_effort",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let cfg = client.config(openai::GPT_5_6_SOL);
+            let rt = client.http();
             let response =
-                prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
+                prompt_with_reasoning(&cfg, &rt, json!({ "effort": "high", "mode": "pro" })).await;
             assert_has_text(&response);
             if replaying() {
                 let raw = recorded_wire_responses(SCENARIO);
@@ -218,9 +219,11 @@ async fn context_current_turn() {
     with_openai_cassette(
         "gpt_5_6_reasoning/context_current_turn",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let cfg = client.config(openai::GPT_5_6_SOL);
+            let rt = client.http();
             let response = prompt_with_reasoning(
-                &model,
+                &cfg,
+                &rt,
                 json!({ "effort": "low", "context": "current_turn" }),
             )
             .await;
@@ -249,7 +252,8 @@ async fn five_turn_reasoning_metadata_roundtrip() {
     with_openai_cassette(
         "gpt_5_6_reasoning/five_turn_metadata_roundtrip",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let cfg = client.config(openai::GPT_5_6_SOL);
+            let rt = client.http();
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -273,9 +277,11 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     })),
                     ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
                 };
-                let response = model.completion(request).await.unwrap_or_else(|error| {
-                    panic!("turn {} should succeed: {error}", turn_index + 1)
-                });
+                let response = openai::responses_api::functions::complete(&cfg, &rt, request)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("turn {} should succeed: {error}", turn_index + 1)
+                    });
 
                 assert_has_text(&response);
                 let text = response
@@ -337,7 +343,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
     with_openai_cassette(
         "gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let cfg = client.config(openai::GPT_5_6_SOL);
+            let rt = client.http();
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -361,9 +368,11 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     })),
                     ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
                 };
-                let mut stream = model.stream(request).await.unwrap_or_else(|error| {
-                    panic!("turn {} stream should start: {error}", turn_index + 1)
-                });
+                let mut stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("turn {} stream should start: {error}", turn_index + 1)
+                    });
                 let mut text = String::new();
                 let mut reasoning_blocks = Vec::new();
                 let mut reasoning_delta = String::new();
@@ -450,7 +459,8 @@ async fn streaming_reasoning_metadata() {
     with_openai_cassette(
         "gpt_5_6_reasoning/streaming_metadata",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let cfg = client.config(openai::GPT_5_6_SOL);
+            let rt = client.http();
             let request = CompletionRequest {
                 additional_params: Some(json!({
                     "reasoning": {
@@ -461,8 +471,7 @@ async fn streaming_reasoning_metadata() {
                 })),
                 ..CompletionRequest::from_prompt(PROMPT)
             };
-            let mut stream = model
-                .stream(request)
+            let mut stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
                 .await
                 .expect("GPT-5.6 reasoning stream should start");
             let mut saw_final = false;

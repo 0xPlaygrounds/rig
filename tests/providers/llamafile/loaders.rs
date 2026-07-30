@@ -14,7 +14,6 @@ async fn loaders_smoke() {
         return;
     }
 
-    let client = support::client();
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()
@@ -22,7 +21,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(client.agent(support::model_name()), |builder, (path, content)| {
+        .fold(AgentBuilder::new(support::provider(support::model_name())), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

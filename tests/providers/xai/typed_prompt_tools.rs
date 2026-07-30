@@ -71,10 +71,9 @@ impl Tool for WeatherTool {
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
-        |client| async move {
+        |env| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(xai::GROK_4)
+            let agent = AgentBuilder::new(env.provider_config(xai::GROK_4))
                 .preamble(
                     "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
                      After calling the tool, respond with ONLY minified JSON matching this schema: \

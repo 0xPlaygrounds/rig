@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
-use rig::providers::mistral;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -148,9 +147,7 @@ impl PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = mistral::Client::from_env()
-        .expect("client should build")
-        .agent(TOOL_MODEL)
+    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -185,9 +182,7 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = mistral::Client::from_env()
-        .expect("client should build")
-        .agent(TOOL_MODEL)
+    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)

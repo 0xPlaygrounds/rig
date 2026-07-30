@@ -18,10 +18,9 @@ fn thinking_params() -> serde_json::Value {
 
 #[tokio::test]
 async fn streaming() {
-    with_deepseek_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
+    with_deepseek_cassette("reasoning_tool_roundtrip/streaming", |env| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = client
-            .agent(deepseek::DEEPSEEK_V4_FLASH)
+        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -52,26 +51,22 @@ async fn streaming() {
 
 #[tokio::test]
 async fn nonstreaming() {
-    with_deepseek_cassette(
-        "reasoning_tool_roundtrip/nonstreaming",
-        |client| async move {
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(thinking_params())
-                .default_max_turns(2)
-                .build();
+    with_deepseek_cassette("reasoning_tool_roundtrip/nonstreaming", |env| async move {
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
+            .max_tokens(4096)
+            .tool(WeatherTool::new(call_count.clone()))
+            .additional_params(thinking_params())
+            .default_max_turns(2)
+            .build();
 
-            let result = agent
-                .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
-                .await
-                .expect("[deepseek] Non-streaming chat failed - likely 400 from dropped reasoning");
+        let result = agent
+            .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
+            .await
+            .expect("[deepseek] Non-streaming chat failed - likely 400 from dropped reasoning");
 
-            reasoning::assert_nonstreaming_universal(&result, &call_count, "deepseek");
-        },
-    )
+        reasoning::assert_nonstreaming_universal(&result, &call_count, "deepseek");
+    })
     .await;
 }

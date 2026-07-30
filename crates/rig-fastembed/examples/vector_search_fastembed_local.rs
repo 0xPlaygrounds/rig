@@ -6,10 +6,10 @@ use fastembed::{
 use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::{EmbeddingModel as _, EmbeddingsBuilder},
+    embeddings::embed_documents,
     vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
-use rig_fastembed::EmbeddingModel;
+use rig_fastembed::{EmbeddingModel, functions};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -82,11 +82,14 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    // Create embeddings using EmbeddingsBuilder
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(documents)?
-        .build()
-        .await?;
+    // Create embeddings. `embed_documents` replaces the old
+    // `EmbeddingsBuilder`: it flattens each document's `#[embed]` fields,
+    // embeds them in batches, and re-associates the vectors with their
+    // document.
+    let embeddings = embed_documents(documents, rig_fastembed::MAX_DOCUMENTS, 1, |texts| async {
+        functions::embed(&embedding_model, texts)
+    })
+    .await?;
 
     // Create vector store. The store never embeds text itself: queries arrive
     // pre-embedded.
@@ -95,7 +98,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
-    let query_embedding = embedding_model.embed_text(query).await?;
+    let query_embedding = functions::embed_text(&embedding_model, query)?;
 
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 

@@ -10,9 +10,9 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires MIRA_API_KEY"]
 async fn tools_smoke() {
-    let client = mira::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    let cfg = mira::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Mira(cfg))
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

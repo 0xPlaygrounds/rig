@@ -10,9 +10,9 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn tools_smoke() {
-    let client = together::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
+    let cfg = together::functions::Config::from_env(together::MIXTRAL_8X7B_INSTRUCT_V0_1)
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Together(cfg))
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

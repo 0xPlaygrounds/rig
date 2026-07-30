@@ -9,9 +9,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, ReasoningContent};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamedAssistantContent;
 

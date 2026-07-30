@@ -34,6 +34,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Public shape
+
+`rig_candle::functions` is the crate's only face: `Config` (plain-data load and
+generation settings), `model_from_config` / `model_from_config_async`, and the
+free `complete` / `open_stream` functions. `CandleModel` is a *loaded handle*
+rather than configuration — tensors are materialized at construction — so it is
+an ordinary inherent type with inherent `complete` / `stream` methods that the
+free functions delegate to. It implements no model trait; the deleted
+`CompletionModel` impl (and the `make`-shaped "unsupported" placeholder state it
+required) are gone, so a `CandleModel` value is now always a ready model.
+
 ## Validated model profiles
 
 - Llama 3 instruct: one unsharded safetensors checkpoint, explicit Llama 3

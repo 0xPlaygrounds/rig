@@ -10,14 +10,13 @@ use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::completion::Document;
+use rig::embeddings::default_concurrency;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::gemini;
-use rig::providers::gemini::client::Client;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, vector_store::VectorSearchRequest,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,18 +53,23 @@ struct QuestionnaireResponses {
 /// input text, search the questionnaire store, and inject the best-matching
 /// questions as per-turn context documents.
 ///
-/// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
-/// closure that receives an owned `HookEvent` and returns a `HookDecision`;
-/// the embedding model, the store, and the sample count are captured behind an
-/// `Arc` so the returned future stays `'static + Send + Sync`.
 /// Retrieve the `samples` most relevant questionnaire entries for `query`.
+///
+/// Embedding is a free function over plain data — an `EmbeddingConfig` plus
+/// the shared `HttpRuntime` — and the store only sees pre-embedded requests.
 async fn retrieve_questions(
-    embedding_model: &gemini::embedding::EmbeddingModel,
+    ecfg: &gemini::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
     store: &InMemoryVectorStore,
     samples: u64,
     query: &str,
 ) -> Result<Vec<Document>, anyhow::Error> {
-    let embedded = embedding_model.embed_text(query).await?;
+    let embedded = gemini::functions::embed(ecfg, rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let request = VectorSearchRequest::new(OneOrMany::one(embedded), samples);
     Ok(store
         .top_n(request)
@@ -106,13 +110,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create Gemini client
-    let gemini_client = Client::from_env()?;
-    let embedding_model = gemini_client.embedding_model(gemini::EMBEDDING_001);
+    // Both Gemini faces are plain data over one shared HTTP runtime.
+    let ecfg = gemini::functions::EmbeddingConfig::from_env(gemini::EMBEDDING_001)?;
+    let http = HttpRuntime::new();
 
-    // Generate embeddings for the definitions of all the documents using the specified embedding model.
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(vec![
+    // Generate embeddings for the definitions of all the documents.
+    // `EmbeddingsBuilder` is gone: `embed_documents` batches the documents
+    // through the provider's free `embed` function.
+    let questions = vec![
             Question {
                 id: "question_1".to_string(),
                 text: "Complete name".to_string(),
@@ -130,15 +135,24 @@ async fn main() -> Result<(), anyhow::Error> {
                 text: "Which technical skills do you have related to the job offer?".to_string(),
                 answer_options: "Open question. Examples are: Python, SQL, Excel, Git, CI, PLC/HMI troubleshooting (Siemens/Allen-Bradley basics)".to_string(),
             },
-        ])?
-        .build()
-        .await?;
+        ];
+
+    let max_documents = gemini::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        questions,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| gemini::functions::embed(&ecfg, &http, texts),
+    )
+    .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
     // Samples should match the number of questions.
-    let context = retrieve_questions(&embedding_model, &vector_store, 3, APPLICANT_INFO).await?;
+    let context = retrieve_questions(&ecfg, &http, &vector_store, 3, APPLICANT_INFO).await?;
 
     const ROLE: &str = "
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
@@ -157,8 +171,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the model and print the response
     let response = extract_with_options::<QuestionnaireResponses>(
         config,
-        gemini_client.provider_config("gemini-2.5-flash"),
-        Arc::new(Runtime::new()),
+        ProviderConfig::Gemini(gemini::functions::Config::from_env("gemini-2.5-flash")?),
+        // The agent runtime reuses the same HTTP transport as the embeddings.
+        Arc::new(Runtime::with_http(http.clone())),
         APPLICANT_INFO,
         options,
     )

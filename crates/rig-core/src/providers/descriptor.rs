@@ -32,6 +32,15 @@ pub struct ProviderDescriptor {
     /// Maximum documents per embedding request, for providers with an
     /// embeddings API.
     pub max_embedding_documents: Option<usize>,
+    /// Path of a cheap authenticated `GET` endpoint used to check that a
+    /// credential is accepted, relative to the provider's base URL.
+    ///
+    /// This is the data form of the deleted `Provider::VERIFY_PATH`.
+    /// [`None`] means the provider exposes no such endpoint, and
+    /// [`verify`](super::verify) reports
+    /// [`VerifyError::Unsupported`](super::verify::VerifyError::Unsupported)
+    /// rather than issuing a request that could not validate anything.
+    pub verify_path: Option<&'static str>,
 }
 
 impl ProviderDescriptor {
@@ -46,6 +55,7 @@ impl ProviderDescriptor {
             emits_complete_single_chunk_tool_calls: false,
             composes_native_output_with_tools: false,
             max_embedding_documents: None,
+            verify_path: None,
         }
     }
 
@@ -82,6 +92,12 @@ impl ProviderDescriptor {
     /// Set the embedding batch limit.
     pub const fn with_max_embedding_documents(mut self, value: usize) -> Self {
         self.max_embedding_documents = Some(value);
+        self
+    }
+
+    /// Set the credential-verification endpoint path.
+    pub const fn with_verify_path(mut self, value: &'static str) -> Self {
+        self.verify_path = Some(value);
         self
     }
 }

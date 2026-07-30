@@ -235,8 +235,8 @@ fn approval_hook() -> HookEntry {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
-        .agent(openai::GPT_4O)
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble(
             "You are an operations assistant. Use the available tools to carry out the user's \
              request. Call one tool at a time and wait for its result before the next step.",

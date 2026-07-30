@@ -72,9 +72,7 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     }
 
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = AgentBuilder::new(support::provider(support::model_name()))
         .preamble(
             "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
              The only valid tool name is `weather`; never invent or call any other tool. \

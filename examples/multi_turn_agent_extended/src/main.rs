@@ -10,12 +10,11 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = anthropic::Client::from_env()?;
+    // The provider is plain data: a config that names the model.
+    let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let agent = openai_client
-        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+    // Create a tool-using agent over that config
+    let agent = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

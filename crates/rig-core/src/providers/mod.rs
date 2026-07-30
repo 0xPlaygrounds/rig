@@ -107,6 +107,10 @@ pub use descriptor::{
     required_env_var,
 };
 
+pub mod verify;
+
+pub use verify::VerifyError;
+
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;

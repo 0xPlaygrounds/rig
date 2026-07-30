@@ -1,61 +1,27 @@
 // ================================================================
-//! Google Gemini gRPC Embedding Integration
+//! Google Gemini gRPC embedding wire conversions.
+//!
+//! Embedding model identifiers plus the single-document `EmbedContent` RPC
+//! that [`crate::functions::embed`] loops over. Drive embeddings through
+//! [`crate::functions`], not this module.
 // ================================================================
 
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
+
+/// Default `output_dimensionality` for [`EMBEDDING_004`] when a config leaves
+/// [`EmbeddingConfig::ndims`](crate::functions::EmbeddingConfig::ndims) unset.
+pub const DEFAULT_NDIMS: usize = 768;
 
 use rig_core::embeddings::{self, EmbeddingError};
 
 use super::Client;
 use super::proto::{self, EmbedContentRequest};
 
-#[derive(Clone, Debug)]
-pub struct EmbeddingModel {
-    client: Client,
-    model: String,
-    ndims: usize,
-}
-
-impl EmbeddingModel {
-    pub fn new(client: Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
-        }
-    }
-}
-
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
-
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents_vec: Vec<String> = documents.into_iter().collect();
-        let response =
-            crate::functions::embed(&self.client, &self.model, Some(self.ndims), documents_vec)
-                .await?;
-        Ok(response.embeddings)
-    }
-}
-
 /// Embed one document over the `EmbedContent` RPC.
 ///
-/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
-/// rewired through [`crate::functions::embed`] (single source of truth).
+/// The single source of truth is [`crate::functions::embed`], which calls
+/// this once per document (the gRPC embedding API is single-document).
 pub(crate) async fn embed_one(
     client: &Client,
     model: &str,

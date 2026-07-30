@@ -4,7 +4,7 @@ use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
 use rig_core::OneOrMany;
-use rig_core::completion::{CompletionModel, Document, ToolDefinition};
+use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::StreamedAssistantContent;
@@ -296,7 +296,7 @@ fn controlled_model(
     loaded.test_control = Some(Arc::clone(&control));
     Ok((
         LlamaModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            loaded: Arc::new(loaded),
         },
         control,
         concurrency,
@@ -432,7 +432,7 @@ fn validates_tensor_shapes_dtypes_and_tied_embeddings()
         tokenizer: tiny_tokenizer()?,
         weights: checkpoint_custom(true, tensor(&[8, 4]), false)?,
     })?;
-    assert!(matches!(model.state, ModelState::Ready(_)));
+    assert_eq!(model.architecture(), ModelArchitecture::Llama);
     Ok(())
 }
 
@@ -655,9 +655,7 @@ fn context_limit_boundaries_clamp_and_detect_conversion_overflow() {
 #[test]
 fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::from_safetensors(model_data()?)?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model did not enter ready state".into());
-    };
+    let loaded = &model.loaded;
     assert!(loaded.runtime.is_consistent_cpu());
     assert_eq!(
         loaded.profile.definition.loader,
@@ -667,7 +665,7 @@ fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + S
         loaded.profile.definition.artifact_format,
         ArtifactFormat::Safetensors
     );
-    assert_eq!(model.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(model.model_family(), ModelFamily::Llama3);
     assert_eq!(model.quantization(), None);
     Ok(())
 }
@@ -709,7 +707,7 @@ fn borrowed_gguf_builder_keeps_borrowed_artifacts_and_all_settings() {
 async fn async_loading_succeeds_and_preserves_builder_settings()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let direct = CandleModel::from_safetensors_async(model_data()?).await?;
-    assert_eq!(direct.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(direct.model_family(), ModelFamily::Llama3);
 
     let configured = CandleModel::builder(model_data()?)
         .max_tokens(17)
@@ -722,9 +720,7 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
         .max_concurrent_requests(3)
         .build_async()
         .await?;
-    let ModelState::Ready(loaded) = &configured.state else {
-        return Err("async model did not enter ready state".into());
-    };
+    let loaded = &configured.loaded;
     assert_eq!(loaded.generation.max_tokens, 17);
     assert_eq!(loaded.generation.temperature, 0.25);
     assert_eq!(loaded.generation.top_k, Some(4));
@@ -750,9 +746,7 @@ async fn async_loading_preserves_typed_errors_and_converts_panics() {
     let panicked = join_model_load(tokio::task::spawn_blocking(|| {
         std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
         #[allow(unreachable_code)]
-        Ok(CandleModel {
-            state: ModelState::UnsupportedMake,
-        })
+        Err(CandleError::InvalidConcurrencyLimit)
     }))
     .await;
     assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
@@ -868,7 +862,7 @@ async fn buffered_and_streaming_generation_are_equivalent()
         .max_tokens(3)
         .build()?;
     let completion_request = request(vec![Message::user("hello")]);
-    let buffered = model.completion(completion_request.clone()).await?;
+    let buffered = model.complete(completion_request.clone()).await?;
     let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
 
     assert_eq!(streamed_text, choice_text(&buffered));
@@ -890,7 +884,7 @@ async fn streaming_reports_eos_and_excludes_the_stop_token()
     loaded.generation.temperature = 0.0;
     loaded.profile.stop_tokens.insert(0);
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        loaded: Arc::new(loaded),
     };
     let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
     assert!(text.is_empty());
@@ -914,7 +908,7 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        loaded: Arc::new(loaded),
     };
     let (_, raw) = collect_stream(&model, completion_request).await?;
     // The clamp's observable effect at the public stream boundary: 10 tokens
@@ -1167,8 +1161,8 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
         .max_tokens(2)
         .max_concurrent_requests(2)
         .build()?;
-    let first = model.completion(request(vec![Message::user("hello")]));
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let first = model.complete(request(vec![Message::user("hello")]));
+    let second = model.complete(request(vec![Message::user("hello")]));
     let (first, second) = tokio::join!(first, second);
     let first = first?;
     let second = second?;
@@ -1199,12 +1193,10 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::builder(model_data()?).build()?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model was not ready".into());
-    };
+    let loaded = &model.loaded;
     loaded.concurrency.close();
     let completion_error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("closed completion admission unexpectedly succeeded")?;
@@ -1234,12 +1226,12 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     let first_model = model.clone();
     let first = tokio::spawn(async move {
         first_model
-            .completion(request(vec![Message::user("hello")]))
+            .complete(request(vec![Message::user("hello")]))
             .await
     });
     control.wait_until_entered().await;
 
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let second = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(second);
     assert!(futures::poll!(&mut second).is_pending());
 
@@ -1261,7 +1253,7 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
     let stream = model.stream(request(vec![Message::user("hello")])).await?;
     control.wait_until_entered().await;
 
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
 
@@ -1284,7 +1276,7 @@ async fn public_stream_cancel_stops_worker_without_dropping_response()
 
     stream.cancel();
     assert!(stream.next().await.is_none());
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
     assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
@@ -1323,7 +1315,7 @@ async fn blocking_task_panic_maps_to_typed_completion_error()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, _, _) = controlled_model(false, true, 1)?;
     let error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("blocking task panic unexpectedly succeeded")?;
@@ -1551,32 +1543,5 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.time_to_first_token_ms, Some(10));
     assert_eq!(response.generation_duration_ms, 20);
     assert_eq!(response.tokens_per_second, Some(100.0));
-    Ok(())
-}
-
-#[test]
-fn unsupported_make_fails_for_buffered_and_streaming()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    runtime.block_on(async {
-        let model = <LlamaModel as CompletionModel>::make(&(), "llama");
-        let completion_error = model
-            .completion(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(
-            completion_error
-                .to_string()
-                .contains("CompletionModel::make")
-        );
-        let stream_error = model
-            .stream(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(stream_error.to_string().contains("CompletionModel::make"));
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })?;
     Ok(())
 }

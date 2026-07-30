@@ -1,12 +1,9 @@
 use rig_core::OneOrMany;
-use rig_core::client::ProviderClient;
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
+use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    client::EmbeddingsClient,
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    vector_store::StoreRecord,
-};
+use rig_core::{Embed, vector_store::StoreRecord};
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -28,9 +25,12 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = rig_core::providers::openai::Client::from_env()?;
-    let model = openai_client.embedding_model(rig_core::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;
@@ -58,10 +58,13 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
-        .await?;
+    let documents = embed_documents(
+        words,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let records = documents
         .into_iter()
@@ -73,7 +76,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // query vector
     let query = "What does \"glarb-glarb\" mean?";
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
 
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 

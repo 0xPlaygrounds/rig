@@ -179,6 +179,20 @@ pub mod functions {
         pub api_key: ApiKeyLocation,
         /// Embedding model identifier requests are built for.
         pub model: String,
+        /// Dimensionality of the vectors this model returns.
+        ///
+        /// The data form of the deleted `EmbeddingModel::ndims()`, which the
+        /// classic model took at construction
+        /// (`Client::embedding_model_with_ndims`) and reported to callers
+        /// sizing a vector-store index. Voyage AI's `/embeddings` request has
+        /// no dimensionality parameter, so — exactly as before — this never
+        /// reaches the wire; [`build_embedding_body`](super::build_embedding_body)
+        /// sends only `model` and `input`.
+        ///
+        /// [`new`](Self::new) seeds it from
+        /// [`model_dimensions_from_identifier`](super::model_dimensions_from_identifier),
+        /// the same lookup the classic `make` used for a known model.
+        pub ndims: Option<usize>,
         /// Extra headers attached to every request.
         pub extra_headers: Vec<(String, String)>,
     }
@@ -186,12 +200,24 @@ pub mod functions {
     impl EmbeddingConfig {
         /// Config for `model` reading `VOYAGE_API_KEY` from the environment.
         pub fn new(model: impl Into<String>) -> Self {
+            let model = model.into();
+            let ndims = super::model_dimensions_from_identifier(&model);
             Self {
                 base_url: DEFAULT_BASE_URL.to_string(),
                 api_key: ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
-                model: model.into(),
+                model,
+                ndims,
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Declare the dimensionality of the vectors this model returns.
+        ///
+        /// The replacement for `Client::embedding_model_with_ndims`, for
+        /// models the built-in lookup does not know.
+        pub fn with_ndims(mut self, ndims: usize) -> Self {
+            self.ndims = Some(ndims);
+            self
         }
 
         /// Config for `model` built from the process environment.
@@ -486,6 +512,24 @@ pub mod functions {
         let (status, body) = rt.send_bytes(req).await?;
         parse_rerank_response(status, &body)
     }
+    /// Credential verification is not available for this provider.
+    ///
+    /// The deleted client declared `const VERIFY_PATH: &'static str = ""`, so the
+    /// classic `verify()` issued a bare `GET` of the base URL — a request that
+    /// checked no credential. [`DESCRIPTOR`] therefore carries no `verify_path`
+    /// and this reports the fact rather than repeating the empty check.
+    ///
+    /// # Errors
+    /// Always [`VerifyError::Unsupported`](crate::providers::verify::VerifyError::Unsupported).
+    pub async fn verify(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        let _ = (cfg, rt);
+        Err(crate::providers::verify::VerifyError::Unsupported {
+            provider: DESCRIPTOR.name,
+        })
+    }
 }
 
 // ================================================================
@@ -524,7 +568,6 @@ pub struct RerankApiData {
     #[serde(default)]
     pub document: Option<String>,
 }
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -614,5 +657,47 @@ mod tests {
             }
             other => panic!("expected ProviderResponse, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod ndims_tests {
+    use super::functions::EmbeddingConfig;
+    use super::{VOYAGE_3_LARGE, VOYAGE_CODE_2, model_dimensions_from_identifier};
+
+    /// The deleted `EmbeddingModel` carried an `ndims` and reported it through
+    /// `EmbeddingModel::ndims()`; `EmbeddingConfig` now carries the same
+    /// value, seeded from the same lookup table the classic `make` used.
+    #[test]
+    fn embedding_config_carries_ndims_for_known_models() {
+        assert_eq!(
+            EmbeddingConfig::new(VOYAGE_3_LARGE).ndims,
+            model_dimensions_from_identifier(VOYAGE_3_LARGE)
+        );
+        assert_eq!(EmbeddingConfig::new(VOYAGE_3_LARGE).ndims, Some(1024));
+        assert_eq!(EmbeddingConfig::new(VOYAGE_CODE_2).ndims, Some(1536));
+        assert_eq!(EmbeddingConfig::new("some-future-model").ndims, None);
+        assert_eq!(
+            EmbeddingConfig::new("some-future-model")
+                .with_ndims(2048)
+                .ndims,
+            Some(2048)
+        );
+    }
+
+    /// Voyage AI's `/embeddings` request has no dimensionality parameter, and
+    /// the classic model never sent one either — `ndims` is carried, not
+    /// serialized.
+    #[test]
+    fn ndims_does_not_reach_the_request_body() {
+        let cfg = EmbeddingConfig::new(VOYAGE_3_LARGE).with_api_key("secret");
+        let req =
+            super::functions::build_embedding_request(&cfg, &["hello".to_string()]).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+        assert_eq!(value["model"], VOYAGE_3_LARGE);
+        assert_eq!(value["input"], serde_json::json!(["hello"]));
+        assert!(value.get("ndims").is_none());
+        assert!(value.get("dimensions").is_none());
+        assert!(value.get("output_dimension").is_none());
     }
 }

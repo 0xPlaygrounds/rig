@@ -6,7 +6,6 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::openai;
 use schemars::JsonSchema;

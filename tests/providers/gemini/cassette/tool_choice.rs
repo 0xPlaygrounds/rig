@@ -1,8 +1,7 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Message};
+use rig::completion::{AssistantContent, CompletionRequest, Message};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -51,7 +50,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
@@ -63,7 +62,10 @@ async fn specific_add_raw_streaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
             };
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = client
+                .stream(model, request)
+                .await
+                .expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -106,7 +108,7 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 tools: vec![
@@ -118,8 +120,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
             };
-            let response = model
-                .completion(request)
+            let response = client
+                .complete(model, request)
                 .await
                 .expect("specific add raw completion should succeed");
 

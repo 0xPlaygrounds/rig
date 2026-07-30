@@ -1,13 +1,24 @@
+//! Gemini Deep Research over the Interactions API, in both the background
+//! polling and the resumable streaming shapes.
+//!
+//! Requires `GEMINI_API_KEY`. Add `--stream` for the streaming shape.
+//!
+//! The Interactions API is a second, incompatible face on the Gemini host, so
+//! it has no `ProviderConfig` arm: it is driven directly through
+//! `gemini::interactions_api::functions`, a plain-data `Config` plus free
+//! functions taking `(&cfg, &rt, ..)`. Deep Research itself is selected by the
+//! `agent` field of the Interactions `AdditionalParameters`, which ride on the
+//! `CompletionRequest`; when an agent is named the request omits `model`,
+//! matching the official Gemini Deep Research examples.
+
 use anyhow::Result;
 use futures::StreamExt;
+use rig::completion::CompletionRequest;
 use rig::prelude::*;
-use rig::providers::gemini::{
-    self,
-    interactions_api::{
-        AgentConfig, Content, ContentDelta, CreateInteractionRequest, Interaction,
-        InteractionInput, InteractionSseEvent, InteractionStatus, Step, TextDelta,
-        ThinkingSummaries, ThoughtSummaryContent, ThoughtSummaryDelta,
-    },
+use rig::providers::gemini::interactions_api::{
+    self, AdditionalParameters, AgentConfig, Content, ContentDelta, Interaction,
+    InteractionSseEvent, InteractionStatus, Step, TextDelta, ThinkingSummaries,
+    ThoughtSummaryContent, ThoughtSummaryDelta,
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -30,32 +41,28 @@ fn deep_research_agent() -> String {
         .unwrap_or_else(|| DEFAULT_DEEP_RESEARCH_AGENT.to_string())
 }
 
+/// The Deep Research knobs, expressed as Interactions `AdditionalParameters`
+/// on a plain [`CompletionRequest`].
 fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> CreateInteractionRequest {
-    CreateInteractionRequest {
-        model: None,
+) -> Result<CompletionRequest> {
+    let params = AdditionalParameters {
         agent: Some(agent.into()),
-        input: InteractionInput::Text(prompt.into()),
-        system_instruction: None,
-        tools: None,
-        response_format: None,
-        response_mime_type: None,
-        stream: stream.then_some(true),
-        store: None,
         background: Some(true),
-        generation_config: None,
+        stream: stream.then_some(true),
         agent_config: stream.then_some(AgentConfig::DeepResearch {
             // The Gemini docs recommend enabling thinking summaries for Deep
             // Research streams; otherwise a stream may only include final text.
             thinking_summaries: Some(ThinkingSummaries::Auto),
         }),
-        response_modalities: None,
-        previous_interaction_id: None,
-        additional_params: None,
-    }
+        ..Default::default()
+    };
+    Ok(CompletionRequest {
+        additional_params: Some(serde_json::to_value(params)?),
+        ..CompletionRequest::from_prompt(prompt.into())
+    })
 }
 
 fn extract_text(contents: &[Content]) -> String {
@@ -91,11 +98,13 @@ fn print_interaction_result(interaction: &Interaction) {
 }
 
 async fn poll_until_terminal(
-    client: &gemini::InteractionsClient,
+    cfg: &interactions_api::functions::Config,
+    rt: &HttpRuntime,
     interaction_id: &str,
 ) -> Result<Interaction> {
     loop {
-        let interaction = client.get_interaction(interaction_id).await?;
+        let interaction =
+            interactions_api::functions::get_interaction(cfg, rt, interaction_id).await?;
         if interaction.is_terminal() {
             return Ok(interaction);
         }
@@ -200,11 +209,12 @@ async fn main() -> Result<()> {
 
     let use_streaming = std::env::args().any(|arg| arg == "--stream");
     let agent = deep_research_agent();
-    let client = gemini::Client::from_env()?.interactions_api();
+    // The config's model is unused once an agent is named (the request omits
+    // `model` entirely), but `Config` always carries one.
+    let cfg = interactions_api::functions::Config::from_env(agent.clone())?;
+    let rt = HttpRuntime::new();
 
-    // Deep Research is selected by `request.agent`; the request intentionally
-    // omits `model`, matching the official Gemini Deep Research examples.
-    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming);
+    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
 
     if use_streaming {
         println!("== Deep Research (streaming) ==");
@@ -214,11 +224,16 @@ async fn main() -> Result<()> {
 
         loop {
             let stream = if attempt == 0 {
-                client.stream_interaction_events(request.clone()).await
-            } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                client
-                    .stream_interaction_events_by_id(interaction_id, state.last_event_id.as_deref())
+                interactions_api::functions::stream_interaction_events(&cfg, &rt, request.clone())
                     .await
+            } else if let Some(interaction_id) = state.interaction_id.as_deref() {
+                interactions_api::functions::stream_interaction_events_by_id(
+                    &cfg,
+                    &rt,
+                    interaction_id,
+                    state.last_event_id.as_deref(),
+                )
+                .await
             } else {
                 eprintln!("Stream closed before interaction_id was received.");
                 break;
@@ -256,7 +271,8 @@ async fn main() -> Result<()> {
 
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
-            let interaction = client.get_interaction(interaction_id).await?;
+            let interaction =
+                interactions_api::functions::get_interaction(&cfg, &rt, interaction_id).await?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -275,7 +291,7 @@ async fn main() -> Result<()> {
             && let Some(interaction_id) = state.interaction_id.as_deref()
         {
             println!("Switching to polling for interaction {interaction_id}...");
-            let interaction = poll_until_terminal(&client, interaction_id).await?;
+            let interaction = poll_until_terminal(&cfg, &rt, interaction_id).await?;
             print_interaction_result(&interaction);
         }
 
@@ -291,14 +307,14 @@ async fn main() -> Result<()> {
 
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
-    let interaction = client.create_interaction(request).await?;
+    let interaction = interactions_api::functions::create_interaction(&cfg, &rt, request).await?;
     if interaction.id.is_empty() {
         println!("No interaction id returned; aborting.");
         return Ok(());
     }
     println!("Research started: {}", interaction.id);
 
-    let interaction = poll_until_terminal(&client, &interaction.id).await?;
+    let interaction = poll_until_terminal(&cfg, &rt, &interaction.id).await?;
     print_interaction_result(&interaction);
 
     Ok(())

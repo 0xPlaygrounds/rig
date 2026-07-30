@@ -4,17 +4,14 @@ use mongodb::{
     options::ClientOptions,
 };
 use rig_core::OneOrMany;
-use rig_core::{
-    client::ProviderClient, providers::openai, vector_store::request::VectorSearchRequest,
-};
+use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
 
-use rig_core::client::EmbeddingsClient;
-use rig_core::{
-    Embed, embeddings::EmbeddingModel, embeddings::EmbeddingsBuilder, providers::openai::Client,
-};
+use rig_core::Embed;
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
 
 // Shape of data that needs to be RAG'ed.
@@ -51,9 +48,6 @@ where
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
-
     // Initialize MongoDB client
     let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;
     let options = ClientOptions::parse(mongodb_connection_string).await?;
@@ -65,8 +59,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .database("knowledgebase")
         .collection("context");
 
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime — no
+    // client object, no model handle.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     let words = vec![
         Word {
@@ -83,10 +82,13 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     ];
 
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
-        .await?;
+    let embeddings = embed_documents(
+        words,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let mongo_documents = embeddings
         .iter()
@@ -108,9 +110,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // Note: a vector index called "vector_index" must exist on the MongoDB collection you are querying.
     let index = MongoDbVectorIndex::new(collection, "vector_index", SearchParams::new()).await?;
 
-    // Embed the query outside the store (reuse the same model that was used to
-    // generate the document embeddings), then search with the pre-embedded query.
-    let query = model.embed_text("What is a linglingdong?").await?;
+    // Embed the query outside the store (reuse the same configuration that
+    // generated the document embeddings), then search with the pre-embedded query.
+    let query =
+        openai::functions::embed(&embed_cfg, &rt, vec!["What is a linglingdong?".to_string()])
+            .await?
+            .embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let req = VectorSearchRequest::<MongoDbSearchFilter>::new(OneOrMany::one(query), 1);
 
     // Query the index

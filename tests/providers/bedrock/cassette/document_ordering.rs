@@ -3,7 +3,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
 use rig::bedrock;
-use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Document, Message};
+use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -47,7 +47,8 @@ async fn documents_are_prepended_before_history() {
     with_bedrock_cassette(
         "document_ordering/documents_are_prepended_before_history",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let aws = client.aws_client();
+            let model_id = bedrock::completion::AMAZON_NOVA_LITE;
             let request = CompletionRequest {
                 temperature: Some(0.0),
                 max_tokens: Some(32),
@@ -61,8 +62,7 @@ async fn documents_are_prepended_before_history() {
                     PROMPT,
                 )
             };
-            let response = model
-                .completion(request)
+            let response = rig::bedrock::functions::complete(aws, model_id, request)
                 .await
                 .expect("Bedrock document ordering request should succeed");
 

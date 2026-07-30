@@ -9,9 +9,9 @@ use rig::providers::together;
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]
 async fn streaming_smoke() {
-    let client = together::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(together::LLAMA_3_8B_CHAT_HF)
+    let cfg = together::functions::Config::from_env(together::LLAMA_3_8B_CHAT_HF)
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Together(cfg))
         .preamble(STREAMING_PREAMBLE)
         .build();
 

@@ -49,8 +49,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::{CompletionError, CompletionModel, Usage};
-use rig::prelude::*;
+use rig::completion::{CompletionError, Usage};
+use rig::http_runtime::HttpRuntime;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
@@ -316,8 +316,8 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let client = gemini::Client::from_env()?;
-    let model = client.completion_model(MODEL);
+    let cfg = gemini::functions::Config::from_env(MODEL)?;
+    let rt = HttpRuntime::new();
 
     let request = rig::completion::CompletionRequest {
         temperature: Some(0.7),
@@ -325,7 +325,7 @@ async fn run_scenario(
         additional_params: Some(no_thinking_params()?),
         ..rig::completion::CompletionRequest::from_prompt(prompt)
     };
-    let stream = model.stream(request).await?;
+    let stream = gemini::functions::open_stream(&cfg, &rt, request).await?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

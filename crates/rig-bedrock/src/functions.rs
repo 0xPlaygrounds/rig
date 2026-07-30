@@ -4,12 +4,17 @@
 //! Converse API rather than a rig-owned HTTP runtime. The data-oriented
 //! face is therefore a serde [`Config`] describing how to *build* an
 //! `aws_sdk_bedrockruntime::Client` (never holding one), an async
-//! [`client_from_config`] mirroring the existing [`crate::client::ClientBuilder`]
-//! and `from_env` paths, and free [`complete`]/[`open_stream`] functions the
-//! existing [`crate::completion::CompletionModel`] trait impl is rewired
-//! through.
+//! [`client_from_config`] that resolves the AWS credential chain, and free
+//! [`complete`] / [`open_stream`] / [`embed`] / [`generate_image`] functions
+//! taking that client explicitly.
+//!
+//! This module is the crate's only face: there is no Bedrock client type and
+//! no model traits. Sibling modules hold the model-id constants
+//! ([`crate::completion`], [`crate::embedding`], [`crate::image`]) and the
+//! wire-type conversions these functions call.
 
 use aws_config::{BehaviorVersion, Region};
+use aws_smithy_types::Blob;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::ProviderDescriptor;
 use rig_core::streaming::StreamingCompletionResponse;
@@ -19,8 +24,11 @@ use tracing::Instrument;
 
 use crate::completion::resolve_request_model;
 use crate::types::{
-    assistant_content::AwsConverseOutput, completion_request::AwsCompletionRequest,
-    converse_output::InternalConverseOutput, errors::AwsSdkConverseError,
+    assistant_content::AwsConverseOutput,
+    completion_request::AwsCompletionRequest,
+    converse_output::InternalConverseOutput,
+    errors::{AwsSdkConverseError, AwsSdkInvokeModelError},
+    text_to_image::{TextToImageGeneration, TextToImageResponse},
 };
 
 /// Bedrock's capability sheet.
@@ -41,23 +49,25 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("aws_bedroc
 /// This describes client *construction* (region / profile / endpoint) as
 /// data; it never holds an AWS client or credentials. Credential material is
 /// resolved by the AWS SDK's default credential chain at
-/// [`client_from_config`] time, exactly as the existing
-/// [`crate::client::ClientBuilder`] and `Client::from_env` paths do.
+/// [`client_from_config`] time.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
-    /// AWS region (`None` defers to the SDK's default region resolution,
-    /// matching `Client::from_env`).
+    /// AWS region (`None` defers to the SDK's default region resolution).
     pub region: Option<String>,
-    /// Named AWS profile to load credentials from (mirrors
-    /// [`crate::client::Client::with_profile_name`]).
+    /// Named AWS profile to load credentials from.
     pub profile: Option<String>,
     /// Custom endpoint URL override (local stacks, VPC endpoints).
     pub endpoint_url: Option<String>,
     /// Model identifier requests are built for.
     pub model: String,
-    /// Enable Bedrock prompt caching (the old `CompletionModel`
-    /// `with_prompt_caching` knob), inserting cache points into requests.
+    /// Enable Bedrock prompt caching, inserting cache points into requests.
+    ///
+    /// `CachePoint` blocks are placed after the serialized `system` content
+    /// and after the final `messages` entry of each Converse request, so
+    /// Bedrock can reuse repeated prompt prefixes. Cacheability and token
+    /// thresholds are model-specific; too-short prefixes are ignored by
+    /// Bedrock. Tool definitions are not cached yet.
     #[serde(default)]
     pub prompt_caching: bool,
 }
@@ -102,10 +112,9 @@ impl Config {
 
 /// Build an `aws_sdk_bedrockruntime::Client` from `cfg`.
 ///
-/// Loads the AWS credential chain asynchronously, mirroring the existing
-/// paths: no fields set behaves like `aws_config::load_from_env()`
-/// (`Client::from_env`), `profile` mirrors `Client::with_profile_name`, and
-/// `region` mirrors `ClientBuilder::region`.
+/// Loads the AWS credential chain asynchronously: with no fields set this
+/// behaves like `aws_config::load_from_env()`, while `profile`, `region`, and
+/// `endpoint_url` override the corresponding SDK resolution steps.
 pub async fn client_from_config(cfg: &Config) -> aws_sdk_bedrockruntime::Client {
     let mut loader = aws_config::defaults(BehaviorVersion::latest());
     if let Some(profile) = &cfg.profile {
@@ -124,9 +133,6 @@ pub async fn client_from_config(cfg: &Config) -> aws_sdk_bedrockruntime::Client 
 /// Send `request` through the Converse API and return the normalized
 /// response. `model` is the default model, overridable per-request via
 /// `CompletionRequest::model`.
-///
-/// Extracted from the `CompletionModel::completion` trait impl, which is
-/// rewired through [`complete_with_options`]; behavior is unchanged.
 pub async fn complete(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
@@ -135,8 +141,8 @@ pub async fn complete(
     complete_with_options(client, model, false, request).await
 }
 
-/// [`complete`] with Bedrock prompt caching controllable (the trait impl's
-/// `with_prompt_caching` knob).
+/// [`complete`] with Bedrock prompt caching controllable
+/// ([`Config::prompt_caching`]).
 pub async fn complete_with_options(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
@@ -194,9 +200,6 @@ pub async fn complete_with_options(
 }
 
 /// Open a streaming Converse completion for `request`.
-///
-/// Extracted from the `CompletionModel::stream` trait impl, which is rewired
-/// through [`open_stream_with_options`]; behavior is unchanged.
 pub async fn open_stream(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
@@ -295,9 +298,7 @@ impl EmbeddingConfig {
 /// Bedrock embedding API is single-document), summing reported input token
 /// counts into usage.
 ///
-/// Extracted from the `EmbeddingModel::embed_texts` trait impl, which is
-/// rewired through this function; per-document error handling is unchanged
-/// (all documents are attempted, the first failure is reported).
+/// Every document is attempted; the first failure is reported.
 pub async fn embed(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
@@ -357,6 +358,110 @@ pub async fn embed_batches(
     let response = embed(client, model, ndims, flat).await?;
     let groups = rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
     Ok((groups, response.usage))
+}
+
+// ================================================================
+// Image generation
+// ================================================================
+
+/// Plain-data Bedrock image-generation configuration.
+///
+/// The image sibling of [`Config`] / [`EmbeddingConfig`]: the same
+/// client-construction fields plus the image model identifier.
+/// [`Self::client_config`] projects the connection half so a host runtime can
+/// share its cached AWS client machinery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ImageConfig {
+    /// AWS region (`None` defers to the SDK's default region resolution).
+    pub region: Option<String>,
+    /// Named AWS profile to load credentials from.
+    pub profile: Option<String>,
+    /// Custom endpoint URL override (local stacks, VPC endpoints).
+    pub endpoint_url: Option<String>,
+    /// Image-generation model identifier (see [`crate::image`]).
+    pub model: String,
+}
+
+impl ImageConfig {
+    /// Config for `model` using the SDK's default credential chain and
+    /// region resolution.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            region: None,
+            profile: None,
+            endpoint_url: None,
+            model: model.into(),
+        }
+    }
+
+    /// Pin the AWS region.
+    pub fn with_region(mut self, region: impl Into<String>) -> Self {
+        self.region = Some(region.into());
+        self
+    }
+
+    /// Load credentials from a named AWS profile.
+    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
+        self.profile = Some(profile.into());
+        self
+    }
+
+    /// Override the endpoint URL.
+    pub fn with_endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
+        self.endpoint_url = Some(endpoint_url.into());
+        self
+    }
+
+    /// The client-construction half of this config as a [`Config`], for
+    /// sharing a host runtime's cached [`client_from_config`] machinery.
+    pub fn client_config(&self) -> Config {
+        Config {
+            region: self.region.clone(),
+            profile: self.profile.clone(),
+            endpoint_url: self.endpoint_url.clone(),
+            model: self.model.clone(),
+            prompt_caching: false,
+        }
+    }
+}
+
+/// Generate an image with `model` through Bedrock's `InvokeModel` text-to-image
+/// API, returning the decoded bytes alongside the raw Bedrock payload.
+pub async fn generate_image(
+    client: &aws_sdk_bedrockruntime::Client,
+    model: &str,
+    request: rig_core::image_generation::ImageGenerationRequest,
+) -> Result<
+    rig_core::image_generation::ImageGenerationResponse<TextToImageResponse>,
+    rig_core::image_generation::ImageGenerationError,
+> {
+    use rig_core::image_generation::ImageGenerationError;
+
+    let mut body = TextToImageGeneration::new(request.prompt);
+    body.width(request.width);
+    body.height(request.height);
+
+    let body = serde_json::to_string(&body)?;
+    let model_response = client
+        .invoke_model()
+        .model_id(model)
+        .content_type("application/json")
+        .accept("application/json")
+        .body(Blob::new(body))
+        .send()
+        .await
+        .map_err(|sdk_error| {
+            Into::<ImageGenerationError>::into(AwsSdkInvokeModelError(sdk_error))
+        })?;
+
+    let response_str = String::from_utf8(model_response.body.into_inner())
+        .map_err(|e| ImageGenerationError::ResponseError(e.to_string()))?;
+
+    let result: TextToImageResponse = serde_json::from_str(&response_str)
+        .map_err(|e| ImageGenerationError::ResponseError(e.to_string()))?;
+
+    result.try_into()
 }
 
 #[cfg(test)]

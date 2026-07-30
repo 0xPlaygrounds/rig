@@ -5,6 +5,10 @@
 //! `StoreRecord`). There is no store trait: a backend exposes concrete
 //! inherent async methods (`top_n`, `top_n_ids`, `insert`, ...) and receives
 //! pre-embedded queries. Use this as a template for your own backend.
+//!
+//! Embedding likewise needs no model handle: an
+//! `openai::functions::EmbeddingConfig` names the model and the free
+//! `openai::functions::embed` sends it over an `HttpRuntime`.
 use redis::{
     AsyncCommands, Client,
     aio::MultiplexedConnection,
@@ -12,8 +16,8 @@ use redis::{
 };
 use rig::{
     OneOrMany,
-    client::{EmbeddingsClient, ProviderClient},
-    embeddings::{Embedding, EmbeddingModel},
+    embeddings::Embedding,
+    http_runtime::HttpRuntime,
     providers::openai,
     vector_store::{SearchHit, StoreRecord, VectorSearchRequest, VectorStoreError},
 };
@@ -124,6 +128,20 @@ impl RedisVectorStore {
     }
 }
 
+/// Embed a single text with the free provider function.
+async fn embed_one(
+    cfg: &openai::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+    text: &str,
+) -> Result<Embedding, anyhow::Error> {
+    let response = openai::functions::embed(cfg, rt, vec![text.to_string()]).await?;
+    response
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("embedding response was empty"))
+}
+
 /// Our content
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Document {
@@ -133,10 +151,10 @@ struct Document {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client from environment
-    let openai_client = openai::Client::from_env()?;
-    // Convert it to an EmbeddingModel
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding provider selection is plain data plus a shared transport.
+    let rt = HttpRuntime::new();
+    let embedding_config =
+        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
 
     // Create the Redis vector store
     let mut store = RedisVectorStore::new("redis://127.0.0.1:6379", "test_vectors").await?;
@@ -169,7 +187,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Adding documents to Redis vector store...");
     let mut records = Vec::new();
     for (i, doc) in documents.iter().enumerate() {
-        let embedding: Embedding = embedding_model.embed_text(&doc.content).await?;
+        let embedding: Embedding = embed_one(&embedding_config, &rt, &doc.content).await?;
         records.push(StoreRecord::new(
             format!("doc_{i}"),
             doc,
@@ -184,7 +202,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("\nQuery: '{}'", query);
 
     // Embed the query, then create a pre-embedded request
-    let query_embedding = embedding_model.embed_text(query).await?;
+    let query_embedding = embed_one(&embedding_config, &rt, query).await?;
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
     // Execute the query

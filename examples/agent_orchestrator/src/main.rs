@@ -1,17 +1,17 @@
 //! Orchestrator/worker/judge, all three built on structured extraction.
 //!
-//! `client.extractor::<T>(model).preamble(..).build()` is gone: each stage is
-//! one [`extract_with_options`] call over plain data — an [`AgentConfig`], the
-//! client's [`ProviderConfig`], a shared [`Runtime`] — with the stage's
-//! instructions appended to the classic extraction preamble.
+//! The extractor builder is gone: each stage is one [`extract_with_options`]
+//! call over plain data — an [`AgentConfig`], a [`ProviderConfig`] built from
+//! `openai::functions::Config::from_env(MODEL)`, and a shared [`Runtime`] —
+//! with the stage's instructions appended to the classic extraction preamble.
+//!
+//! Requires `OPENAI_API_KEY`.
 use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
-use rig::provider::{ProviderConfig, Runtime};
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 use schemars::JsonSchema;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
@@ -61,9 +61,8 @@ where
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let provider = openai_client.provider_config(openai::GPT_4);
+    // The provider is plain data: a config that names the model.
+    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4)?);
     let rt = Arc::new(Runtime::new());
 
     // Note that you can also create your own semantic router for this

@@ -1,12 +1,17 @@
-use futures::Stream;
+use async_stream::stream;
+use futures::{Stream, StreamExt};
 use std::pin::Pin;
+use tracing_futures::Instrument;
 
 use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, InteractionSseEvent, Step,
-    TextDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
+    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
+    InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSummaryContent,
+    ThoughtSummaryDelta,
 };
 use crate::completion::CompletionError;
+use crate::http_client::sse::{BoxedEventSource, Event};
 use crate::streaming;
+use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -16,6 +21,151 @@ pub type InteractionEventStream =
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
+
+/// Drive an Interactions SSE stream into the normalized streaming response.
+///
+/// The transport-free half of the deleted
+/// `InteractionsCompletionModel::stream`: identical event handling, identical
+/// terminal [`StreamFinal`](streaming::StreamFinal) assembly, identical span
+/// recording — only the event source is now the concrete
+/// [`BoxedEventSource`] rather than an `H: HttpClientExt` generic.
+pub(crate) fn interaction_completion_stream(
+    event_source: BoxedEventSource,
+    span: tracing::Span,
+) -> streaming::StreamingCompletionResponse {
+    let mut event_source = event_source;
+
+    let stream = stream! {
+        let mut final_interaction: Option<Interaction> = None;
+        let mut final_usage: Option<InteractionUsage> = None;
+
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::debug!("SSE connection opened");
+                    continue;
+                }
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() {
+                        continue;
+                    }
+
+                    let data = match serde_json::from_str::<InteractionSseEvent>(&message.data) {
+                        Ok(data) => data,
+                        Err(err) => {
+                            tracing::debug!("Failed to deserialize interactions SSE event: {err}");
+                            continue;
+                        }
+                    };
+
+                    match data {
+                        InteractionSseEvent::StepDelta { delta, .. } => {
+                            if let Some(choice) = content_delta_to_choice(delta) {
+                                yield Ok(choice);
+                            }
+                        }
+                        InteractionSseEvent::StepStart { step, .. } => {
+                            if let Some(choice) = step_start_to_choice(step) {
+                                yield Ok(choice);
+                            }
+                        }
+                        InteractionSseEvent::InteractionCompleted { interaction, .. } => {
+                            let span = tracing::Span::current();
+                            span.record("gen_ai.response.id", &interaction.id);
+                            if let Some(model) = interaction.model.clone() {
+                                span.record("gen_ai.response.model", model);
+                            }
+
+                            if let Some(usage) = interaction.usage.clone() {
+                                span.record_token_usage(&usage.token_usage());
+                                final_usage = Some(usage);
+                            }
+                            final_interaction = Some(interaction);
+                        }
+                        InteractionSseEvent::Error { .. } => {
+                            // Preserve the full provider error payload (code +
+                            // message) by reusing the raw SSE event JSON, matching
+                            // the SSE path's `completion_error_from_body`. The error
+                            // arrives over an established stream, so there is no HTTP
+                            // status to attach (status: None).
+                            yield Err(crate::provider_response::completion_error_from_body(
+                                message.data,
+                            ));
+                            break;
+                        }
+                        _ => continue,
+                    }
+                }
+                Err(crate::http_client::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::from_stream_transport(error));
+                    break;
+                }
+            }
+        }
+
+        // The Interactions API has no `FinishReason` field; use
+        // `interaction.status` for lifecycle state.
+        let usage = final_usage
+            .or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone()))
+            .as_ref()
+            .map(InteractionUsage::token_usage)
+            .unwrap_or_default();
+        let mut final_response = streaming::StreamFinal::new("gemini", usage);
+        if let Some(interaction) = final_interaction.as_ref() {
+            if !interaction.id.is_empty() {
+                final_response = final_response.with_message_id(interaction.id.clone());
+            }
+            if let Some(model) = interaction.model.as_deref() {
+                final_response = final_response.with_model(model);
+            }
+        }
+        yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+    }
+    .instrument(span);
+
+    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+}
+
+/// Decode an Interactions SSE stream into raw [`InteractionSseEvent`]s.
+///
+/// The transport-free replacement for the deleted
+/// `stream_interaction_events`, which was generic over `H: HttpClientExt`.
+pub(crate) fn interaction_event_stream(event_source: BoxedEventSource) -> InteractionEventStream {
+    let mut event_source = event_source;
+
+    let stream = stream! {
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => continue,
+                Ok(Event::Message(message)) => {
+                    if message.data.trim().is_empty() {
+                        continue;
+                    }
+
+                    match serde_json::from_str::<InteractionSseEvent>(&message.data) {
+                        Ok(data) => yield Ok(data),
+                        Err(err) => {
+                            tracing::debug!("Failed to deserialize interactions SSE event: {err}");
+                            continue;
+                        }
+                    }
+                }
+                Err(crate::http_client::Error::StreamEnded) => break,
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    yield Err(CompletionError::from_stream_transport(error));
+                    break;
+                }
+            }
+        }
+    };
+
+    Box::pin(stream)
+}
 
 /// Map an Interactions `step.start` payload onto a raw streaming choice. Pure.
 pub fn step_start_to_choice(step: Step) -> Option<streaming::RawStreamingChoice> {

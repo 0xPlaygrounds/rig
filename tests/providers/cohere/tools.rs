@@ -10,9 +10,8 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn tools_smoke() {
-    let client = cohere::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(cohere::COMMAND_R)
+    let cfg = cohere::functions::Config::from_env(cohere::COMMAND_R).expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::Cohere(cfg))
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

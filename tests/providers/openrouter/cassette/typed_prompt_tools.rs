@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;

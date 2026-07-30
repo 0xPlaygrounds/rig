@@ -1,8 +1,7 @@
 //! Gemini streaming tools coverage, including the migrated example path.
 
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -57,14 +56,17 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             let request = CompletionRequest {
                 tools: vec![zero_arg_tool_definition("ping")],
                 tool_choice: Some(ToolChoice::Required),
                 additional_params: Some(streaming_tool_params()),
                 ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
             };
-            let stream = model.stream(request).await.expect("stream should start");
+            let stream = client
+                .stream(model, request)
+                .await
+                .expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },

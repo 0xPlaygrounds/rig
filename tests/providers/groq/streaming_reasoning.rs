@@ -1,7 +1,6 @@
 //! Migrated from `examples/groq_streaming_reasoning.rs`.
 
 use rig::prelude::*;
-use rig::providers::groq;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -10,9 +9,7 @@ use super::STREAMING_REASONING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn parsed_reasoning_stream() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(STREAMING_REASONING_MODEL)
+    let agent = AgentBuilder::new(super::live(STREAMING_REASONING_MODEL))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
         .build();

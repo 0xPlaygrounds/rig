@@ -4,7 +4,6 @@ use anyhow::{Result, anyhow};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use rig::providers::deepseek;
 use schemars::JsonSchema;
@@ -66,9 +65,9 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 async fn extract_backward_compatibility() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_backward_compatibility",
-        |client| async move {
+        |env| async move {
             let person = classic_extract::<Person>(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 "John Doe is a 30 year old software engineer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -97,9 +96,9 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
-        |client| async move {
+        |env| async move {
             let response: ExtractionOutcome<Person> = classic_extract(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 "Jane Smith is a 45 year old data scientist.",
                 ExtractOptions::classic_extractor(),
             )
@@ -130,13 +129,13 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
-        |client| async move {
+        |env| async move {
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
             )];
 
             let response: ExtractionOutcome<Address> = classic_extract(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 "The address is 123 Main St in Springfield, IL 62701.",
                 ExtractOptions::classic_extractor().with_history(chat_history),
             )
@@ -175,17 +174,17 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
-        |client| async move {
+        |env| async move {
             let text = "Bob Johnson is a 55 year old retired teacher.";
             let person = classic_extract::<Person>(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 text,
                 ExtractOptions::classic_extractor(),
             )
             .await?
             .value;
             let response = classic_extract::<Person>(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 text,
                 ExtractOptions::classic_extractor(),
             )
@@ -225,9 +224,9 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_deepseek_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
-        |client| async move {
+        |env| async move {
             let person_response = classic_extract::<Person>(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 "Alice is a 25 year old developer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -238,7 +237,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             );
 
             let address_response = classic_extract::<Address>(
-                client.provider_config(deepseek::DEEPSEEK_V4_FLASH),
+                env.provider(deepseek::DEEPSEEK_V4_FLASH),
                 "456 Oak Avenue, Cambridge, MA 02139",
                 ExtractOptions::classic_extractor(),
             )

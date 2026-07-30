@@ -4,13 +4,12 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_provider};
 use crate::support::assert_nonempty_response;
 
 /// `ExtractorBuilder::preamble(extra)` appended the extra instructions to the
@@ -67,8 +66,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = live_client();
-    let provider = client.provider_config(LIVE_MODEL);
+    let provider = live_provider(LIVE_MODEL).await;
     let names_options = classic_options("Extract names from the given text.").with_retries(2);
     let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
     let sentiment_options =

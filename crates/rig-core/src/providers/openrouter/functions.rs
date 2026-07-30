@@ -23,6 +23,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     ChatCompletionsDialect, ChatCompletionsUsageDialect,
 };
 use crate::providers::openai::completion::CompletionModelOptions;
+use crate::providers::openai::embedding::EncodingFormat;
 use crate::providers::openai::functions as openai_functions;
 
 /// Default OpenRouter API base URL.
@@ -47,6 +48,7 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     emits_complete_single_chunk_tool_calls: false,
     composes_native_output_with_tools: true,
     max_embedding_documents: Some(1024),
+    verify_path: Some("/key"),
 };
 
 /// Plain-data OpenRouter provider configuration.
@@ -300,6 +302,19 @@ pub struct EmbeddingConfig {
     pub model: String,
     /// Requested embedding dimensions, sent verbatim as `dimensions`.
     pub dimensions: Option<usize>,
+    /// Requested response encoding, sent as `encoding_format`.
+    ///
+    /// OpenRouter's embeddings API accepts it (the deleted
+    /// `OpenAIEmbeddingsCompatible` default was
+    /// `SUPPORTS_ENCODING_FORMAT = true`).
+    /// [`EncodingFormat::Base64`] is rejected at request-build time, as the
+    /// deleted model did: Rig's parser only decodes float vectors.
+    pub encoding_format: Option<EncodingFormat>,
+    /// Opaque end-user identifier, sent as `user`.
+    ///
+    /// OpenRouter accepts it (the deleted default was
+    /// `SUPPORTS_USER = true`).
+    pub user: Option<String>,
     /// Extra headers attached to every request.
     pub extra_headers: Vec<(String, String)>,
 }
@@ -312,6 +327,8 @@ impl EmbeddingConfig {
             api_key: ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
             model: model.into(),
             dimensions: None,
+            encoding_format: None,
+            user: None,
             extra_headers: Vec::new(),
         }
     }
@@ -345,6 +362,22 @@ impl EmbeddingConfig {
         self.dimensions = Some(dimensions);
         self
     }
+
+    /// Request a wire encoding for the returned vectors.
+    ///
+    /// [`EncodingFormat::Base64`] is accepted here but rejected when the
+    /// request is built — Rig cannot decode base64 vectors, and the deleted
+    /// model raised the same error.
+    pub fn with_encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
+        self.encoding_format = Some(encoding_format);
+        self
+    }
+
+    /// Attach an opaque end-user identifier to embedding requests.
+    pub fn with_user(mut self, user: impl Into<String>) -> Self {
+        self.user = Some(user.into());
+        self
+    }
 }
 
 /// Build the complete HTTP `/embeddings` request for one chunk of `texts`.
@@ -358,13 +391,23 @@ pub fn build_embedding_request(
     use crate::embeddings::EmbeddingError;
     use http::header::{AUTHORIZATION, CONTENT_TYPE};
 
+    // The guard the deleted `GenericEmbeddingModel::embed_texts_with_usage`
+    // applied before sending: Rig's response parser reads float vectors, so a
+    // base64 request would produce embeddings it cannot decode.
+    if cfg.encoding_format == Some(EncodingFormat::Base64) {
+        return Err(EmbeddingError::UnsupportedResponseEncoding {
+            provider: DESCRIPTOR.name,
+            encoding_format: "base64",
+        });
+    }
+
     let body = crate::providers::openai::embedding::build_embedding_body(
         &cfg.model,
         texts,
         cfg.dimensions
             .map(crate::providers::openai::embedding::EmbeddingDimensions::Dimensions),
-        None,
-        None,
+        cfg.encoding_format,
+        cfg.user.as_deref(),
     )?;
     let url = format!("{}/embeddings", cfg.base_url.trim_end_matches('/'));
     let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
@@ -436,6 +479,30 @@ pub async fn embed_batches(
     let response = embed(cfg, rt, flat).await?;
     let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
     Ok((groups, response.usage))
+}
+/// Verify that `cfg`'s credential is accepted by the provider.
+///
+/// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+/// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/key`, the value the
+/// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+/// classic one — see [`crate::providers::verify`].
+///
+/// # Errors
+/// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+/// authentication on `401`/`403`, otherwise the preserved provider response
+/// or a transport failure.
+pub async fn verify(
+    cfg: &Config,
+    rt: &HttpRuntime,
+) -> Result<(), crate::providers::verify::VerifyError> {
+    crate::providers::verify::verify_bearer(
+        &DESCRIPTOR,
+        &cfg.base_url,
+        &cfg.api_key,
+        &cfg.extra_headers,
+        rt,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -561,5 +628,64 @@ mod tests {
         assert_eq!(response.provider, "openrouter");
         assert_eq!(response.usage.input_tokens, 3);
         assert_eq!(response.usage.total_tokens, 5);
+    }
+}
+#[cfg(test)]
+mod embedding_parameter_tests {
+    use super::*;
+
+    /// The deleted `GenericEmbeddingModel` exposed `encoding_format` and
+    /// `user` builders and OpenRouter accepted both
+    /// (`SUPPORTS_ENCODING_FORMAT` / `SUPPORTS_USER` defaulted to `true`);
+    /// `EmbeddingConfig` had lost the two knobs entirely.
+    #[test]
+    fn embedding_body_carries_encoding_format_and_user() {
+        let cfg = EmbeddingConfig::new("text-embedding-3-small")
+            .with_api_key("secret")
+            .with_dimensions(1_536)
+            .with_encoding_format(EncodingFormat::Float)
+            .with_user("user-123");
+
+        let req = build_embedding_request(&cfg, &["hello".to_string()]).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+
+        assert_eq!(value["model"], "text-embedding-3-small");
+        assert_eq!(value["input"], serde_json::json!(["hello"]));
+        assert_eq!(value["dimensions"], serde_json::json!(1_536));
+        assert_eq!(value["encoding_format"], serde_json::json!("float"));
+        assert_eq!(value["user"], serde_json::json!("user-123"));
+    }
+
+    /// Unset knobs stay off the wire, so the default body is byte-identical to
+    /// the one this face produced before the fields existed.
+    #[test]
+    fn embedding_body_omits_unset_parameters() {
+        let cfg = EmbeddingConfig::new("text-embedding-3-small").with_api_key("secret");
+        let req = build_embedding_request(&cfg, &["hello".to_string()]).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+
+        assert!(value.get("encoding_format").is_none());
+        assert!(value.get("user").is_none());
+        assert!(value.get("dimensions").is_none());
+    }
+
+    /// Rig's response parser reads float vectors, so a base64 request would
+    /// yield embeddings it cannot decode. The deleted model rejected it with
+    /// `UnsupportedResponseEncoding`; so does this one, before sending.
+    #[test]
+    fn base64_encoding_format_is_rejected_before_sending() {
+        let cfg = EmbeddingConfig::new("text-embedding-3-small")
+            .with_api_key("secret")
+            .with_encoding_format(EncodingFormat::Base64);
+
+        let error = build_embedding_request(&cfg, &["hello".to_string()])
+            .expect_err("base64 must be rejected");
+        assert!(matches!(
+            error,
+            crate::embeddings::EmbeddingError::UnsupportedResponseEncoding {
+                provider: "openrouter",
+                encoding_format: "base64",
+            }
+        ));
     }
 }

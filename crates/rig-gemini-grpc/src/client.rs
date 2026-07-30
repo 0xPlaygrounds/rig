@@ -1,4 +1,11 @@
-use rig_core::prelude::*;
+//! The live gRPC handle.
+//!
+//! gRPC is a non-HTTP transport, so a connected tonic [`Channel`] cannot be
+//! plain configuration. [`Client`] is that live handle; build it from data
+//! with [`crate::functions::client_from_config`] (or directly with
+//! [`Client::new`]) and pass it to the free functions in
+//! [`crate::functions`].
+
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
@@ -6,8 +13,6 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 
 use super::GenerativeServiceClient;
-use crate::completion::CompletionModel;
-use crate::embedding::EmbeddingModel;
 
 // ================================================================
 // Google Gemini gRPC Client
@@ -92,45 +97,13 @@ impl Client {
             interceptor,
         ))
     }
-}
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
-    /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = std::env::var("GEMINI_API_KEY")?;
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(Self::new(api_key))
-        })
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(Self::new(input)))
-    }
-}
-
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
-
-    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
-    }
-
-    fn embedding_model_with_ndims(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
+    /// Connect using the `GEMINI_API_KEY` environment variable.
+    ///
+    /// A shortcut for the zero-configuration case; prefer
+    /// [`crate::functions::client_from_config`] when you already hold a
+    /// [`Config`](crate::functions::Config).
+    pub async fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::new(std::env::var("GEMINI_API_KEY")?).await
     }
 }

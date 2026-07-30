@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::deepseek;
@@ -439,11 +440,10 @@ fn recorded_wire_response(scenario: &str) -> deepseek::CompletionResponse {
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -484,11 +484,10 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -550,9 +549,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -601,9 +599,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
+        |env| async move {
+            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -637,9 +634,10 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&tool)],
@@ -654,7 +652,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 )
             };
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(deepseek::functions::open_stream(&model_cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -681,8 +679,9 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                 tool_choice: Some(ToolChoice::None),
@@ -711,7 +710,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = deepseek::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -731,11 +730,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
 
-            let required = model
-                .completion(CompletionRequest {
+            let required = deepseek::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::Required),
                     additional_params: Some(non_thinking_params()),
@@ -754,8 +753,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 "required tool choice should force lookup_harbor_label"
             );
 
-            let specific = model
-                .completion(CompletionRequest {
+            let specific = deepseek::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![
                         rig::tool::portable_tool_definition(&AlphaSignal),
                         rig::tool::portable_tool_definition(&BetaSignal),
@@ -783,8 +781,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 specific_calls
             );
 
-            let none = model
-                .completion(CompletionRequest {
+            let none = deepseek::functions::complete(&model_cfg, &rt, CompletionRequest {
                     tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
                     tool_choice: Some(ToolChoice::None),
                     additional_params: Some(non_thinking_params()),
@@ -813,8 +810,9 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
 async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 additional_params: Some(thinking_params()),
                 ..CompletionRequest::with_history(
@@ -824,7 +822,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = deepseek::functions::complete(&model_cfg, &rt, request).await?;
 
             anyhow::ensure!(
                 response
@@ -859,7 +857,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 additional_params: Some(thinking_params()),
                 ..CompletionRequest::from_prompt("Briefly solve 2 + 2, then answer with the number.")
             };
-            let observation = collect_raw_stream_observation(model.stream(stream_request).await?).await;
+            let observation = collect_raw_stream_observation(deepseek::functions::open_stream(&model_cfg, &rt, stream_request).await?).await;
             anyhow::ensure!(
                 observation.events.contains(&"reasoning_delta"),
                 "streaming DeepSeek reasoning should emit reasoning deltas, saw {:?}",
@@ -891,13 +889,15 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
 async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior",
-        |client| async move {
-            let chat_model = client.completion_model(CHAT_ALIAS_MODEL);
-            let chat = chat_model
-                .completion(CompletionRequest::from_prompt(
-                    "Reply with exactly: chat-mode-ok",
-                ))
-                .await?;
+        |env| async move {
+            let chat_model_cfg = env.config(CHAT_ALIAS_MODEL);
+            let rt = HttpRuntime::new();
+            let chat = deepseek::functions::complete(
+                &chat_model_cfg,
+                &rt,
+                CompletionRequest::from_prompt("Reply with exactly: chat-mode-ok"),
+            )
+            .await?;
             let chat_text = assistant_text_response(&chat.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-chat should return text"))?;
             assert_contains_all_case_insensitive(&chat_text, &["chat-mode-ok"]);
@@ -908,12 +908,14 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 "deepseek-chat alias should not emit reasoning content"
             );
 
-            let reasoner_model = client.completion_model(REASONER_ALIAS_MODEL);
-            let reasoner = reasoner_model
-                .completion(CompletionRequest::from_prompt(
-                    "Reply with exactly: reasoner-mode-ok",
-                ))
-                .await?;
+            let reasoner_model_cfg = env.config(REASONER_ALIAS_MODEL);
+            let rt = HttpRuntime::new();
+            let reasoner = deepseek::functions::complete(
+                &reasoner_model_cfg,
+                &rt,
+                CompletionRequest::from_prompt("Reply with exactly: reasoner-mode-ok"),
+            )
+            .await?;
             let reasoner_text = assistant_text_response(&reasoner.choice)
                 .ok_or_else(|| anyhow::anyhow!("deepseek-reasoner should return text"))?;
             assert_contains_all_case_insensitive(&reasoner_text, &["reasoner-mode-ok"]);
@@ -939,8 +941,9 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
 async fn json_object_response_format_roundtrip() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let model_cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let request = CompletionRequest {
                 additional_params: Some(json_utils_merge(non_thinking_params(), json!({
                     "response_format": { "type": "json_object" }
@@ -952,7 +955,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = deepseek::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

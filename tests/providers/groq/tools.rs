@@ -1,7 +1,6 @@
 //! Groq tools smoke test.
 
 use rig::prelude::*;
-use rig::providers::groq;
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};
 
@@ -10,9 +9,7 @@ use super::TOOLS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn tools_smoke() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(TOOLS_MODEL)
+    let agent = AgentBuilder::new(super::live(TOOLS_MODEL))
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
              After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

@@ -80,9 +80,7 @@ use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
-use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-};
+use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
 use rig_core::streaming::{
@@ -119,16 +117,18 @@ pub(crate) const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
-#[derive(Clone)]
-enum ModelState {
-    Ready(Arc<LoadedModel>),
-    UnsupportedMake,
-}
-
 /// A cheaply cloneable, CPU-only Candle completion model.
+///
+/// This is a *loaded* handle, not a config: constructing one always means
+/// validating artifacts and materializing tensors. It is therefore an
+/// inherent type with inherent [`complete`](Self::complete) /
+/// [`stream`](Self::stream) methods rather than an implementation of any
+/// model trait — the documented entry points are
+/// [`crate::functions::complete`] and [`crate::functions::open_stream`],
+/// which delegate here.
 #[derive(Clone)]
 pub struct CandleModel {
-    state: ModelState,
+    loaded: Arc<LoadedModel>,
 }
 
 /// Builder for loading a [`CandleModel`] and customizing generation defaults.
@@ -236,32 +236,45 @@ impl CandleModel {
     }
 
     /// Returns the validated conversation/output protocol.
-    pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
-        }
+    pub fn conversation_protocol(&self) -> ConversationProtocol {
+        self.loaded.profile.definition.protocol
     }
 
     /// Backwards-compatible alias for [`Self::conversation_protocol`].
-    pub fn model_family(&self) -> Option<ModelFamily> {
+    pub fn model_family(&self) -> ModelFamily {
         self.conversation_protocol()
     }
 
     /// Returns the validated transformer architecture of the loaded checkpoint.
-    pub fn architecture(&self) -> Option<ModelArchitecture> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
-        }
+    pub fn architecture(&self) -> ModelArchitecture {
+        self.loaded.profile.definition.architecture
     }
 
     /// Returns the detected checkpoint quantization, if the model is quantized.
     pub fn quantization(&self) -> Option<Quantization> {
-        match &self.state {
-            ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
-        }
+        self.loaded.profile.definition.quantization
+    }
+
+    /// Runs a buffered completion against the loaded weights.
+    ///
+    /// Prefer [`crate::functions::complete`], which is the crate's
+    /// documented data-oriented entry point and delegates here.
+    pub async fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        complete_request(self, request).await
+    }
+
+    /// Opens a streaming completion against the loaded weights.
+    ///
+    /// Prefer [`crate::functions::open_stream`], which is the crate's
+    /// documented data-oriented entry point and delegates here.
+    pub async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        open_stream_request(self, request).await
     }
 }
 
@@ -349,7 +362,7 @@ impl<'a> CandleModelBuilder<'a> {
             )?,
         };
         Ok(CandleModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            loaded: Arc::new(loaded),
         })
     }
 }
@@ -437,17 +450,14 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-/// Buffered completion over a loaded [`CandleModel`], shared by the
-/// `CompletionModel` trait impl and [`crate::functions::complete`].
-/// Extracted unchanged from the former trait-impl body.
+/// Buffered completion over a loaded [`CandleModel`], shared by
+/// [`CandleModel::complete`] and [`crate::functions::complete`].
 pub(crate) async fn complete_request(
     model: &CandleModel,
     request: CompletionRequest,
 ) -> Result<CompletionResponse, CompletionError> {
     {
-        let ModelState::Ready(loaded) = &model.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+        let loaded = &model.loaded;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -480,17 +490,14 @@ pub(crate) async fn complete_request(
     }
 }
 
-/// Streaming completion over a loaded [`CandleModel`], shared by the
-/// `CompletionModel` trait impl and [`crate::functions::open_stream`].
-/// Extracted unchanged from the former trait-impl body.
+/// Streaming completion over a loaded [`CandleModel`], shared by
+/// [`CandleModel::stream`] and [`crate::functions::open_stream`].
 pub(crate) async fn open_stream_request(
     model: &CandleModel,
     request: CompletionRequest,
 ) -> Result<StreamingCompletionResponse, CompletionError> {
     {
-        let ModelState::Ready(loaded) = &model.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+        let loaded = &model.loaded;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -537,30 +544,6 @@ pub(crate) async fn open_stream_request(
             let stream: StreamingResult = Box::pin(futures::stream::iter(events));
             Ok(StreamingCompletionResponse::stream(stream))
         }
-    }
-}
-
-impl CompletionModel for CandleModel {
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        complete_request(self, request).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        open_stream_request(self, request).await
     }
 }
 

@@ -1,20 +1,46 @@
-//! Google Gemini gRPC API client and Rig integration
+//! Google Gemini gRPC API integration for Rig.
 //!
-//! This module provides gRPC-based access to the Gemini API, offering better
-//! performance and type safety compared to the REST API.
+//! gRPC-based access to the Gemini API, offering better performance and type
+//! safety than the REST API.
 //!
-//! # Example
+//! # Entry point: [`functions`]
+//!
+//! The crate's face is data-oriented: a serde
+//! [`functions::Config`] / [`functions::EmbeddingConfig`] describing *how* to
+//! reach Gemini, plus free functions
+//! [`functions::complete`] / [`functions::open_stream`] /
+//! [`functions::embed`] / [`functions::embed_batches`].
+//!
+//! Because gRPC is a non-HTTP transport, a connected tonic channel cannot be
+//! plain data — [`Client`] is that live handle, built from a config by
+//! [`functions::client_from_config`] (or from the environment by
+//! [`Client::from_env`]) and passed to each free function.
+//!
 //! ```no_run
-//! use rig_core::client::CompletionClient;
-//! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
+//! use rig_gemini_grpc::{completion::GEMINI_2_0_FLASH, functions};
+//! use rig_core::completion::CompletionRequest;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//! let client = Client::new("YOUR_API_KEY").await?;
+//! let cfg = functions::Config::new(GEMINI_2_0_FLASH);
+//! let client = functions::client_from_config(&cfg).await?;
 //!
-//! let completion_model = client.completion_model(GEMINI_2_0_FLASH);
+//! let response = functions::complete(
+//!     &client,
+//!     &cfg.model,
+//!     CompletionRequest::from_prompt("Hello!"),
+//! )
+//! .await?;
+//! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! To drive an agent loop, hand the same [`functions::Config`] to
+//! `rig_agent::provider::ProviderConfig::GeminiGrpc` (rig-agent's
+//! `gemini-grpc` feature); the agent runtime caches the channel for you.
+//!
+//! [`completion`], [`embedding`] and [`streaming`] hold the wire conversions
+//! and model-identifier constants the free functions are built from.
 
 pub mod client;
 pub mod completion;

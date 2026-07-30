@@ -1,9 +1,6 @@
 //! Migrated from `examples/transcription.rs`.
 
-use rig::client::ProviderClient;
-use rig::prelude::TranscriptionClient;
 use rig::providers::openai;
-use rig::transcription::TranscriptionModel;
 use rig::transcription::TranscriptionRequest;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
@@ -11,15 +8,16 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn transcription_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let model = client.transcription_model(openai::WHISPER_1);
-    let response = model
-        .transcription(
-            TranscriptionRequest::from_file(AUDIO_FIXTURE_PATH)
-                .expect("should be able to load audio fixture"),
-        )
-        .await
-        .expect("transcription should succeed");
+    let cfg = openai::functions::Config::from_env(openai::WHISPER_1).expect("config should build");
+    let rt = rig::http_runtime::HttpRuntime::new();
+    let response = openai::functions::transcribe(
+        &cfg,
+        &rt,
+        TranscriptionRequest::from_file(AUDIO_FIXTURE_PATH)
+            .expect("should be able to load audio fixture"),
+    )
+    .await
+    .expect("transcription should succeed");
 
     assert_nonempty_response(&response.text);
 }

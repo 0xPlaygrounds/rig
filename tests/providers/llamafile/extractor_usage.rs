@@ -4,7 +4,6 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, ExtractionOutcome, extract_with_options};
 use rig::message::Message;
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -69,9 +68,8 @@ async fn extract_backward_compatibility() -> Result<()> {
     }
 
     let model = support::model_name();
-    let client = support::client();
     let person = classic_extract::<Person>(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         "John Doe is a 30 year old software engineer.",
         ExtractOptions::classic_extractor(),
     )
@@ -93,9 +91,8 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     }
 
     let model = support::model_name();
-    let client = support::client();
     let response: ExtractionOutcome<Person> = classic_extract(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         "Jane Smith is a 45 year old data scientist.",
         ExtractOptions::classic_extractor(),
     )
@@ -119,13 +116,12 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     }
 
     let model = support::model_name();
-    let client = support::client();
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
     )];
 
     let response: ExtractionOutcome<Address> = classic_extract(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         "The address is 123 Main St in Springfield, IL 62701.",
         ExtractOptions::classic_extractor().with_history(chat_history),
     )
@@ -149,17 +145,16 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     }
 
     let model = support::model_name();
-    let client = support::client();
     let text = "Bob Johnson is a 55 year old retired teacher.";
     let person = classic_extract::<Person>(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         text,
         ExtractOptions::classic_extractor(),
     )
     .await?
     .value;
     let response: ExtractionOutcome<Person> = classic_extract(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         text,
         ExtractOptions::classic_extractor(),
     )
@@ -184,10 +179,9 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     }
 
     let model = support::model_name();
-    let client = support::client();
 
     let person_response = classic_extract::<Person>(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         "Alice is a 25 year old developer.",
         ExtractOptions::classic_extractor(),
     )
@@ -195,7 +189,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     anyhow::ensure!(person_response.usage.total_tokens > 0);
 
     let address_response = classic_extract::<Address>(
-        client.provider_config(&model),
+        support::provider(model.clone()),
         "456 Oak Avenue, Cambridge, MA 02139",
         ExtractOptions::classic_extractor(),
     )

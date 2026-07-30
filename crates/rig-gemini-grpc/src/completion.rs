@@ -1,5 +1,10 @@
 // ================================================================
-//! Google Gemini gRPC Completion Integration
+//! Google Gemini gRPC completion wire conversions.
+//!
+//! Model identifiers plus the pure `CompletionRequest` -> proto and proto ->
+//! `CompletionResponse` conversions used by [`crate::functions::complete`]
+//! and [`crate::functions::open_stream`]. Drive completions through
+//! [`crate::functions`], not this module.
 // ================================================================
 
 /// `gemini-2.5-flash` completion model
@@ -19,49 +24,7 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
-use super::Client;
 use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-#[derive(Clone, Debug)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
-    pub model: String,
-}
-
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        crate::functions::complete(&self.client, &self.model, completion_request).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
-        crate::functions::open_stream(&self.client, &self.model, request).await
-    }
-}
 
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no

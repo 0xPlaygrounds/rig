@@ -3,7 +3,6 @@
 use anyhow::Result;
 use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -11,7 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::copilot::{LIVE_LIGHT_MODEL, live_client, with_copilot_cassette_result};
+use crate::copilot::{LIVE_LIGHT_MODEL, live_agent, with_copilot_cassette_result};
 use crate::support::assert_nonempty_response;
 
 const TEST_FILE: &str = "test.txt";
@@ -192,8 +191,8 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client()
-        .agent(LIVE_LIGHT_MODEL)
+    let agent = live_agent(LIVE_LIGHT_MODEL)
+        .await
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)

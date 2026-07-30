@@ -12,9 +12,7 @@ use anyhow::Result;
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
-use rig::provider::{ProviderConfig, Runtime};
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
@@ -28,7 +26,7 @@ const TARGET_NUMBER: u32 = 2000;
 const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The counting extractor as data: where to call, and how to ask.
-fn build_counter_extractor(client: &Client) -> (ProviderConfig, ExtractOptions) {
+fn build_counter_extractor() -> Result<(ProviderConfig, ExtractOptions)> {
     const ROLE: &str = "
             Add a random whole number between 1 and 64 to the number you receive.
             Return only the updated number.
@@ -38,13 +36,13 @@ fn build_counter_extractor(client: &Client) -> (ProviderConfig, ExtractOptions) 
     let options = classic.with_preamble(format!(
         "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{ROLE}"
     ));
-    (client.provider_config(openai::GPT_4), options)
+    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
+    Ok((ProviderConfig::OpenAi(cfg), options))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env()?;
-    let (provider, options) = build_counter_extractor(&client);
+    let (provider, options) = build_counter_extractor()?;
     let rt = Arc::new(Runtime::new());
     let mut current_number = 0;
     let mut step = 1;

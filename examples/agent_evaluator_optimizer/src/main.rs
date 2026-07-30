@@ -1,7 +1,12 @@
-//! Generator/evaluator loop. The generator is a classic [`Agent`]; the
-//! evaluator is structured extraction, which is a free function now —
-//! `client.extractor::<Evaluation>(model)` is gone, so the evaluator's
-//! instructions are appended to the classic extraction preamble instead.
+//! Generator/evaluator loop. The generator is an [`Agent`]; the evaluator is
+//! structured extraction, which is a free function now — the extractor builder
+//! is gone, so the evaluator's instructions are appended to the classic
+//! extraction preamble instead.
+//!
+//! Both stages share one piece of plain data: an
+//! `openai::functions::Config` (which names the model), wrapped in
+//! [`ProviderConfig`] for the agent and passed straight to the extraction call.
+//! Requires `OPENAI_API_KEY`.
 use std::sync::Arc;
 
 use rig::agent::AgentConfig;
@@ -10,7 +15,6 @@ use rig::prelude::*;
 use rig::provider::Runtime;
 
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
@@ -33,11 +37,11 @@ All operations should be O(1).
 ";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // Providers are plain data: one config names the model, and it is shared
+    // (cloned) by both the generator agent and the evaluator extraction.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
 
-    let generator_agent = openai_client
-        .agent(openai::GPT_4)
+    let generator_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
         .preamble(
             "
             Your goal is to complete the task based on <user input>. If there are feedback
@@ -73,7 +77,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let evaluator_options = classic.with_preamble(format!(
         "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{EVALUATOR_ROLE}"
     ));
-    let evaluator_provider = openai_client.provider_config(openai::GPT_4);
+    let evaluator_provider = ProviderConfig::OpenAi(cfg);
     let rt = Arc::new(Runtime::new());
 
     let mut memories: Vec<String> = Vec::new();

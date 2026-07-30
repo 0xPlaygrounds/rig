@@ -8,9 +8,8 @@ use rig::agent::{CompletionCallAction, ObservationAction};
 use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
-use rig::prelude::*;
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::support::assert_nonempty_response;
 
 #[derive(Clone)]
@@ -79,8 +78,8 @@ impl SessionIdHook {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = live_client()
-        .agent(LIVE_MODEL)
+    let agent = live_agent(LIVE_MODEL)
+        .await
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

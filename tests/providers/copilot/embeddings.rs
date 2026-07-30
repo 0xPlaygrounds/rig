@@ -2,18 +2,28 @@
 
 use crate::copilot::{live_embedding_model, with_copilot_cassette};
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
-use rig::client::EmbeddingsClient;
-use rig::embeddings::EmbeddingModel;
+use rig::providers::copilot;
 
 #[tokio::test]
 async fn embeddings_smoke() {
     with_copilot_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding_model(live_embedding_model());
+        // The deleted `client.embedding_model(m)` sent the model's native
+        // dimension count; `text-embedding-3-small` is 1536.
+        let cfg = client
+            .embedding_config(live_embedding_model())
+            .with_dimensions(1536);
 
-        let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
-            .await
-            .expect("embedding request should succeed");
+        let embeddings = copilot::functions::embed(
+            &cfg,
+            &client.http(),
+            EMBEDDING_INPUTS
+                .iter()
+                .map(|input| (*input).to_string())
+                .collect(),
+        )
+        .await
+        .expect("embedding request should succeed")
+        .embeddings;
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
     })

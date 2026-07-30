@@ -1,15 +1,20 @@
 //! Demonstrates retrieval-augmented prompting: look up context from a vector
 //! store, fold it into the prompt, then prompt the agent.
+//!
+//! Embedding is a free function over plain config data
+//! (`openai::functions::embed` + an `EmbeddingConfig` that names the model),
+//! and `rig::embeddings::embed_documents` is the document-level entry point
+//! that replaced `EmbeddingsBuilder`.
+//!
 //! Requires `OPENAI_API_KEY`.
 
 use rig::OneOrMany;
+use rig::embeddings::{default_concurrency, embed_documents};
+use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig::vector_store::in_memory_store::InMemoryVectorStore;
 use rig::vector_store::request::VectorSearchRequest;
-use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client,
-    vector_store::in_memory_store::InMemoryVectorStore,
-};
 
 const QUERY: &str = "What does \"glarb-glarb\" mean?";
 
@@ -21,9 +26,8 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(client: &Client) -> rig::agent::Agent {
-    client
-        .agent(openai::GPT_4)
+fn build_dictionary_agent(provider: ProviderConfig) -> rig::agent::Agent {
+    AgentBuilder::new(provider)
         .preamble(
             "
             You are a dictionary assistant here to help the user understand non-standard words.
@@ -46,21 +50,36 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    let client = Client::from_env()?;
-    let embedding_model = client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = HttpRuntime::new();
+    let ecfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
 
-    let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
-    for definition in sample_definitions() {
-        builder = builder.document(definition)?;
-    }
-    let vector_store = InMemoryVectorStore::from_documents(builder.build().await?)?;
-    let agent = build_dictionary_agent(&client);
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let documents: Vec<String> = sample_definitions().iter().map(|s| s.to_string()).collect();
+    let embeddings = embed_documents(
+        documents,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&ecfg, &rt, texts),
+    )
+    .await?;
+    let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
+
+    let agent = build_dictionary_agent(ProviderConfig::OpenAi(
+        openai::functions::Config::from_env(openai::GPT_4)?,
+    ));
 
     // Retrieve the most relevant definition, fold it into the prompt, then
     // prompt the agent. (The old pipeline ran the lookup "in parallel" with a
     // passthrough of the query; since the passthrough is instant, a plain
     // sequential lookup is equivalent and clearer.)
-    let query_embedding = embedding_model.embed_text(QUERY).await?;
+    let query_embedding = openai::functions::embed(&ecfg, &rt, vec![QUERY.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("the embedding provider returned no embedding"))?;
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
     let prompt = match vector_store.top_n_as::<String>(req).await {
         Ok(docs) => lookup_context(docs, QUERY),

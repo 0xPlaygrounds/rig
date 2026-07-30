@@ -9,18 +9,19 @@
 //!
 //! A hook is an attach-and-forget record: a named `HookEntry` wrapping a
 //! closure over owned `HookEvent`s that returns a `HookDecision`.
+//!
+//! Embedding is plain data too: an `openai::functions::EmbeddingConfig` plus
+//! an [`HttpRuntime`], batched through [`embed_documents`] (the replacement
+//! for `EmbeddingsBuilder`). The hook captures the config and the transport
+//! rather than an embedding model.
 use anyhow::Result;
-use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::{EmbeddingsBuilder, ToolSchema},
-    providers::openai::Client,
+    embeddings::{ToolSchema, default_concurrency},
     tool::{PortableToolEmbedding, Tool},
-    vector_store::VectorSearchRequest,
-    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -135,14 +136,15 @@ impl PortableToolEmbedding for Subtract {
 
 /// Selects which registered tools the model sees on each turn by similarity
 /// between the prompt and the tools' embedded documentation. The embedding
-/// model, store, and sample count are captured behind an `Arc` so the hook's
-/// future stays `'static + Send + Sync`.
+/// config, transport, store, and sample count are captured behind an `Arc` so
+/// the hook's future stays `'static + Send + Sync`.
 fn tool_retrieval_hook(
-    embedding_model: openai::EmbeddingModel,
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_model, store, samples));
+    let state = std::sync::Arc::new((embedding_config, rt, store, samples));
     HookEntry::new("tool-retrieval", move |event| {
         let state = state.clone();
         Box::pin(async move {
@@ -152,7 +154,7 @@ fn tool_retrieval_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_model, store, samples) = state.as_ref();
+            let (embedding_config, rt, store, samples) = state.as_ref();
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
@@ -160,8 +162,15 @@ fn tool_retrieval_hook(
                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
             };
 
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
+            let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+                Ok(response) => match response.embeddings.into_iter().next() {
+                    Some(embedding) => embedding,
+                    None => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "no embedding returned for the query".to_string(),
+                        ));
+                    }
+                },
                 Err(error) => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
                         error.to_string(),
@@ -192,19 +201,27 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Providers are data: an embedding config, a completion config, and a
+    // shared HTTP transport.
+    let embedding_config =
+        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
         ToolSchema::try_from(&Add)?,
         ToolSchema::try_from(&Subtract)?,
     ];
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(schemas)?
-        .build()
-        .await?;
+    let embeddings = embed_documents(
+        schemas,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embedding_config, &rt, texts),
+    )
+    .await?;
 
     // Create vector store with the embeddings, keyed by tool name
     let vector_store =
@@ -212,12 +229,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create an agent that carries every candidate tool but advertises only
     // the retrieved one per prompt (sample rate 1).
-    let calculator_rag = openai_client
-        .agent(openai::GPT_4)
+    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
+    let calculator_rag = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         .tool(Add)
         .tool(Subtract)
-        .add_hook(tool_retrieval_hook(embedding_model, vector_store, 1))
+        .add_hook(tool_retrieval_hook(embedding_config, rt, vector_store, 1))
         .default_max_turns(2)
         .build();
 

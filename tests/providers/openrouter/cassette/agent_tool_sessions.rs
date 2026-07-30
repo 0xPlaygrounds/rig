@@ -9,9 +9,9 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::prelude::*;
+use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -568,7 +568,8 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let cfg = client.config(SESSION_MODEL);
+            let rt = client.http();
             let tool = InspectManifest { log };
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&tool)],
@@ -582,7 +583,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 )
             };
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(openrouter::functions::open_stream(&cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -610,7 +611,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let cfg = client.config(SESSION_MODEL);
+            let rt = client.http();
             let history = vec![
                 Message::user("My favorite color is teal. Please remember it."),
                 Message::assistant("Noted: your favorite color is teal."),
@@ -639,7 +641,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 )
             };
 
-            let response = model.completion(request).await?;
+            let response = openrouter::functions::complete(&cfg, &rt, request).await?;
             let text = response
                 .choice
                 .iter()

@@ -86,6 +86,16 @@ macro_rules! define_provider_config {
             /// module path doesn't fit the one-module-per-row macro shape;
             /// the chat-completions face stays on [`Self::OpenAi`].
             OpenAiResponses(rig_core::providers::openai::responses_api::functions::Config),
+            /// Gemini's Interactions API
+            /// (`gemini::interactions_api::functions`). Hand-written for the
+            /// same reason as [`Self::OpenAiResponses`]: it is a second,
+            /// incompatible surface on a provider whose macro row already
+            /// carries the `generateContent` config, and it authenticates with
+            /// an `x-goog-api-key` header rather than a `?key=` query
+            /// parameter. The `generateContent` face stays on [`Self::Gemini`].
+            GeminiInteractions(
+                rig_core::providers::gemini::interactions_api::functions::Config,
+            ),
             /// AWS Bedrock (Converse API over the AWS SDK).
             #[cfg(feature = "bedrock")]
             Bedrock(rig_bedrock::functions::Config),
@@ -107,6 +117,9 @@ macro_rules! define_provider_config {
                     Self::OpenAiResponses(_) => {
                         &rig_core::providers::openai::responses_api::functions::DESCRIPTOR
                     }
+                    Self::GeminiInteractions(_) => {
+                        &rig_core::providers::gemini::interactions_api::functions::DESCRIPTOR
+                    }
                     #[cfg(feature = "bedrock")]
                     Self::Bedrock(_) => &rig_bedrock::functions::DESCRIPTOR,
                     #[cfg(feature = "gemini-grpc")]
@@ -121,6 +134,7 @@ macro_rules! define_provider_config {
                 match self {
                     $(Self::$variant(cfg) => &cfg.model,)*
                     Self::OpenAiResponses(cfg) => &cfg.model,
+                    Self::GeminiInteractions(cfg) => &cfg.model,
                     #[cfg(feature = "bedrock")]
                     Self::Bedrock(cfg) => &cfg.model,
                     #[cfg(feature = "gemini-grpc")]
@@ -146,6 +160,12 @@ macro_rules! define_provider_config {
                 )*
                 ProviderConfig::OpenAiResponses(cfg) => {
                     rig_core::providers::openai::responses_api::functions::complete(
+                        cfg, &rt.http, request,
+                    )
+                    .await
+                }
+                ProviderConfig::GeminiInteractions(cfg) => {
+                    rig_core::providers::gemini::interactions_api::functions::complete(
                         cfg, &rt.http, request,
                     )
                     .await
@@ -188,6 +208,12 @@ macro_rules! define_provider_config {
                 )*
                 ProviderConfig::OpenAiResponses(cfg) => {
                     rig_core::providers::openai::responses_api::functions::open_stream(
+                        cfg, &rt.http, request,
+                    )
+                    .await
+                }
+                ProviderConfig::GeminiInteractions(cfg) => {
+                    rig_core::providers::gemini::interactions_api::functions::open_stream(
                         cfg, &rt.http, request,
                     )
                     .await
@@ -236,6 +262,9 @@ pub async fn list_models(
         ProviderConfig::Copilot(cfg) => p::copilot::functions::list_models(cfg, &rt.http).await,
         ProviderConfig::DeepSeek(cfg) => p::deepseek::functions::list_models(cfg, &rt.http).await,
         ProviderConfig::Gemini(cfg) => p::gemini::functions::list_models(cfg, &rt.http).await,
+        ProviderConfig::GeminiInteractions(cfg) => {
+            p::gemini::interactions_api::functions::list_models(cfg, &rt.http).await
+        }
         ProviderConfig::Mistral(cfg) => p::mistral::functions::list_models(cfg, &rt.http).await,
         ProviderConfig::Ollama(cfg) => p::ollama::functions::list_models(cfg, &rt.http).await,
         ProviderConfig::OpenAi(cfg) => p::openai::functions::list_models(cfg, &rt.http).await,

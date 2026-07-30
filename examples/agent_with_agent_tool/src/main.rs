@@ -4,6 +4,12 @@
 //! [`PortableDynamicTool`] whose callback closes over the inner agent and
 //! prompts it. The outer agent simply registers that record with
 //! `.dynamic_tool(...)`.
+//!
+//! Both agents are built from the same plain-data provider config
+//! (`openai::functions::Config`, which names the model) wrapped in
+//! `ProviderConfig` — there is no client to share.
+//!
+//! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
 use rig::prelude::*;
@@ -102,12 +108,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = providers::openai::Client::from_env()?;
+    // The provider is plain data: one config, cloned into both agents.
+    let cfg = providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?;
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = openai_client
-        .agent(providers::openai::GPT_4O)
+    let calculator_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
@@ -149,8 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     // Create agent which has the calculator agent as a tool
-    let agent_using_agent = openai_client
-        .agent(providers::openai::GPT_4O)
+    let agent_using_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)

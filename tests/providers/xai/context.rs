@@ -14,13 +14,14 @@ const XAI_CONTEXT_DOCS: [&str; 3] = [
 
 #[tokio::test]
 async fn context_smoke() {
-    with_xai_cassette("context/context_smoke", |client| async move {
+    with_xai_cassette("context/context_smoke", |env| async move {
         let agent = XAI_CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(xai::completion::GROK_4), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                AgentBuilder::new(env.provider_config(xai::completion::GROK_4)),
+                |builder, doc| builder.context(doc),
+            )
             .preamble(
                 "Use only the provided context snippets. \
                  One snippet explicitly defines glarb-glarb. \

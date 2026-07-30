@@ -1,13 +1,21 @@
+//! A calculator RAG chatbot: every tool is registered on the agent, and a
+//! retrieval hook re-selects which ones to advertise on each turn.
+//!
+//! Embedding is plain data plus a free function: an
+//! `openai::functions::EmbeddingConfig` names the model, an
+//! `HttpRuntime` carries the transport, and
+//! `rig::embeddings::embed_documents` replaced `EmbeddingsBuilder`.
+
 use anyhow::Result;
 use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
+use rig::http_runtime::HttpRuntime;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::{EmbeddingsBuilder, ToolSchema},
-    providers::openai::Client,
+    embeddings::{ToolSchema, default_concurrency, embed_documents},
     tool::{PortableToolEmbedding, Tool},
     vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -23,14 +31,16 @@ use std::sync::Arc;
 /// tool retrieval).
 ///
 /// A hook is an attach-and-forget record: a named [`HookEntry`] whose closure
-/// captures everything it needs (here the embedding model and the tool store,
-/// shared through an `Arc` so the callback is `'static`).
+/// captures everything it needs — here the embedding config, the HTTP
+/// runtime, and the tool store, shared through an `Arc` so the callback is
+/// `'static`.
 fn tool_retrieval_hook(
-    embedding_model: openai::EmbeddingModel,
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = Arc::new((embedding_model, store, samples));
+    let state = Arc::new((embedding_config, rt, store, samples));
     HookEntry::new("tool-retrieval", move |event| {
         let state = state.clone();
         Box::pin(async move {
@@ -40,7 +50,7 @@ fn tool_retrieval_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_model, store, samples) = state.as_ref();
+            let (embedding_config, rt, store, samples) = state.as_ref();
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
@@ -48,8 +58,15 @@ fn tool_retrieval_hook(
                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
             };
 
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
+            let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+                Ok(response) => match response.embeddings.into_iter().next() {
+                    Some(embedding) => embedding,
+                    None => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "embedding response was empty",
+                        ));
+                    }
+                },
                 Err(error) => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
                         error.to_string(),
@@ -286,8 +303,9 @@ impl PortableToolEmbedding for Divide {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    let rt = HttpRuntime::new();
+    let embedding_config =
+        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
@@ -296,20 +314,26 @@ async fn main() -> Result<(), anyhow::Error> {
         ToolSchema::try_from(&Multiply)?,
         ToolSchema::try_from(&Divide)?,
     ];
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(schemas)?
-        .build()
-        .await?;
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        schemas,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embedding_config, &rt, texts),
+    )
+    .await?;
 
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
     // Create a RAG agent that carries every calculator tool and re-selects
     // which ones to advertise on each turn through the retrieval hook.
-    let calculator_rag = openai_client
-        .agent(openai::GPT_4)
-        .preamble(
+    let calculator_rag = AgentBuilder::new(ProviderConfig::OpenAi(
+        openai::functions::Config::from_env(openai::GPT_4)?,
+    ))
+    .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.
             1. Consider the user's request carefully and identify the core elements of the request.
@@ -326,7 +350,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(Multiply)
         .tool(Divide)
         // Advertise up to 4 retrieved tools per turn.
-        .add_hook(tool_retrieval_hook(embedding_model, vector_store, 4))
+        .add_hook(tool_retrieval_hook(
+            embedding_config,
+            rt,
+            vector_store,
+            4,
+        ))
         .build();
 
     // Create a CLI chatbot from the agent

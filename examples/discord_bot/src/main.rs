@@ -6,12 +6,11 @@ use rig::providers::openai;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let discord_bot_token = std::env::var("DISCORD_BOT_TOKEN")?;
-    // Create OpenAI client
-    let client = rig::providers::openai::Client::from_env()?;
+    // Provider selection is plain data — no client type.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
 
     // Create agent with a single context prompt
-    let mut discord_bot = client
-        .agent(openai::GPT_4O)
+    let mut discord_bot = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a helpful assistant.")
         .build()
         .into_discord_bot(&discord_bot_token)

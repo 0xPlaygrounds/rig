@@ -55,8 +55,9 @@ pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
 /// Known embedding dimensionality for a built-in Ollama embedding model.
 ///
-/// The `functions` path does not carry an `ndims` field, so callers that need
-/// the vector width (index creation, store schemas) read it from here.
+/// Seeds [`functions::EmbeddingConfig::ndims`], and available directly to
+/// callers that need the vector width (index creation, store schemas) without
+/// building a config.
 pub fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         ALL_MINILM => Some(384),
@@ -986,6 +987,7 @@ pub mod functions {
     use crate::providers::descriptor::{
         ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
     };
+    use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
     /// Default Ollama API base URL (local instance).
     pub const DEFAULT_BASE_URL: &str = super::OLLAMA_API_BASE_URL;
@@ -1007,6 +1009,7 @@ pub mod functions {
         // to that recorded behavior.
         composes_native_output_with_tools: false,
         max_embedding_documents: Some(1024),
+        verify_path: Some("api/tags"),
     };
 
     /// Plain-data Ollama provider configuration.
@@ -1145,15 +1148,31 @@ pub mod functions {
         rt: &HttpRuntime,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        use tracing_futures::Instrument;
+
+        let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
+        let span =
+            CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
+                .system_instructions(
+                    request.preamble.as_deref(),
+                    request.record_telemetry_content,
+                )
+                .build();
         let req = build_request(cfg, &request, true)?;
         // Ollama's native stream is NDJSON, not SSE, so this path takes the
         // raw byte-stream transport edge rather than `HttpRuntime::sse_events`.
         // `consume_chat_streaming_response` already consumes the type-erased
         // `http_client::StreamingResponse`, so no genericity leaks out.
         let response = rt.send_streaming(req).await?;
-        let stream = super::consume_chat_streaming_response(response).await?;
+        // `consume_chat_streaming_response` records usage and response
+        // metadata onto `tracing::Span::current()`, so the stream must run
+        // inside the completion span — this is what the deleted
+        // `CompletionModel::stream` did with `.instrument(span)`.
+        let stream = super::consume_chat_streaming_response(response)
+            .instrument(span.clone())
+            .await?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
-            Box::pin(stream),
+            Box::pin(stream.instrument(span)),
         ))
     }
 
@@ -1185,6 +1204,20 @@ pub mod functions {
         pub api_key: ApiKeyLocation,
         /// Embedding model identifier requests are built for.
         pub model: String,
+        /// Dimensionality of the vectors this model returns.
+        ///
+        /// The data form of the deleted `EmbeddingModel::ndims()`, which the
+        /// classic model took at construction
+        /// (`Client::embedding_model_with_ndims`) and reported to callers
+        /// sizing a vector-store index. Ollama's `/api/embed` request has no
+        /// dimensionality parameter, so — exactly as before — this never
+        /// reaches the wire; [`build_embedding_body`](super::build_embedding_body)
+        /// sends only `model` and `input`.
+        ///
+        /// [`new`](Self::new) seeds it from
+        /// [`model_dimensions_from_identifier`](super::model_dimensions_from_identifier),
+        /// the same lookup the classic `make` used for a known model.
+        pub ndims: Option<usize>,
         /// Extra headers attached to every request.
         pub extra_headers: Vec<(String, String)>,
     }
@@ -1192,12 +1225,24 @@ pub mod functions {
     impl EmbeddingConfig {
         /// Config for `model` against a local unauthenticated Ollama.
         pub fn new(model: impl Into<String>) -> Self {
+            let model = model.into();
+            let ndims = super::model_dimensions_from_identifier(&model);
             Self {
                 base_url: DEFAULT_BASE_URL.to_string(),
                 api_key: ApiKeyLocation::None,
-                model: model.into(),
+                model,
+                ndims,
                 extra_headers: Vec::new(),
             }
+        }
+
+        /// Declare the dimensionality of the vectors this model returns.
+        ///
+        /// The replacement for `Client::embedding_model_with_ndims`, for
+        /// models the built-in lookup does not know.
+        pub fn with_ndims(mut self, ndims: usize) -> Self {
+            self.ndims = Some(ndims);
+            self
         }
 
         /// Config for `model` built from the process environment.
@@ -1336,6 +1381,30 @@ pub mod functions {
         let req = build_list_models_request(cfg)?;
         let (status, body) = rt.send_bytes(req).await?;
         super::parse_list_models_response(status, &body)
+    }
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`api/tags`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
     }
 
     #[cfg(test)]
@@ -2610,5 +2679,155 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+}
+
+#[cfg(test)]
+mod telemetry_tests {
+    use super::functions;
+    use crate::OneOrMany;
+    use crate::completion::CompletionRequest;
+    use crate::http_runtime::HttpRuntime;
+    use crate::message::Message;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if let Ok(mut sink) = self.0.lock() {
+                sink.extend_from_slice(buf);
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn sample_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::one(Message::user("hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// The deleted `ollama::CompletionModel::stream` built a
+    /// `CompletionSpanBuilder` span (`ollama`, `ChatStreaming`) and
+    /// instrumented the NDJSON stream with it; `functions::open_stream` had
+    /// lost it, so `record_token_usage` wrote to whatever ambient span
+    /// existed.
+    #[tokio::test]
+    async fn open_stream_emits_the_chat_streaming_completion_span() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW)
+            .with_writer({
+                let captured = captured.clone();
+                move || SharedWriter(captured.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // Ollama's native stream is NDJSON, one JSON object per line.
+        let ndjson = format!(
+            "{}\n{}\n",
+            serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": { "role": "assistant", "content": "hi" },
+                "done": false
+            }),
+            serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": { "role": "assistant", "content": "" },
+                "done": true,
+                "done_reason": "stop",
+                "prompt_eval_count": 3,
+                "eval_count": 2
+            })
+        );
+        let rt = HttpRuntime::mock_streaming(MockStreamingClient {
+            sse_bytes: bytes::Bytes::from(ndjson),
+        });
+        let cfg = functions::Config::new("llama3.2");
+
+        let mut stream = functions::open_stream(&cfg, &rt, sample_request())
+            .await
+            .expect("stream opens");
+        while stream.next().await.is_some() {}
+
+        let logs = String::from_utf8(captured.lock().map(|sink| sink.clone()).unwrap_or_default())
+            .expect("utf8 logs");
+        assert!(
+            logs.contains("chat_streaming"),
+            "no chat_streaming span was created: {logs}"
+        );
+        assert!(
+            logs.contains("ollama"),
+            "span did not carry the provider name: {logs}"
+        );
+        assert!(
+            logs.contains("llama3.2"),
+            "span did not carry the request model: {logs}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod ndims_tests {
+    use super::functions::{EmbeddingConfig, build_embedding_request};
+    use super::{ALL_MINILM, NOMIC_EMBED_TEXT, model_dimensions_from_identifier};
+
+    /// The deleted `EmbeddingModel` carried an `ndims` and reported it through
+    /// `EmbeddingModel::ndims()`; `EmbeddingConfig` now carries the same
+    /// value, seeded from the same lookup table the classic `make` used.
+    #[test]
+    fn embedding_config_carries_ndims_for_known_models() {
+        assert_eq!(
+            EmbeddingConfig::new(ALL_MINILM).ndims,
+            model_dimensions_from_identifier(ALL_MINILM)
+        );
+        assert_eq!(EmbeddingConfig::new(ALL_MINILM).ndims, Some(384));
+        assert_eq!(EmbeddingConfig::new(NOMIC_EMBED_TEXT).ndims, Some(768));
+        assert_eq!(EmbeddingConfig::new("custom-local-model").ndims, None);
+        assert_eq!(
+            EmbeddingConfig::new("custom-local-model")
+                .with_ndims(512)
+                .ndims,
+            Some(512)
+        );
+    }
+
+    /// Ollama's `/api/embed` request has no dimensionality parameter, and the
+    /// classic model never sent one either — `ndims` is carried, not
+    /// serialized.
+    #[test]
+    fn ndims_does_not_reach_the_request_body() {
+        let cfg = EmbeddingConfig::new(ALL_MINILM);
+        let req = build_embedding_request(&cfg, &["hello".to_string()]).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+        assert_eq!(value["model"], ALL_MINILM);
+        assert!(value.get("ndims").is_none());
+        assert!(value.get("dimensions").is_none());
     }
 }

@@ -1,8 +1,15 @@
+//! Bedrock embedding model identifiers and the single-document
+//! `InvokeModel` wire types.
+//!
+//! Embedding calls are the free functions [`crate::functions::embed`] /
+//! [`crate::functions::embed_batches`], which drive
+//! [`invoke_embedding`] once per document.
+
 use aws_smithy_types::Blob;
-use rig_core::embeddings::{self, Embedding, EmbeddingError};
+use rig_core::embeddings::EmbeddingError;
 use serde::{Deserialize, Serialize};
 
-use crate::{client::Client, types::errors::AwsSdkInvokeModelError};
+use crate::types::errors::AwsSdkInvokeModelError;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,35 +37,10 @@ pub const COHERE_EMBED_ENGLISH_V3: &str = "cohere.embed-english-v3";
 /// `cohere.embed-multilingual-v3`
 pub const COHERE_EMBED_MULTILINGUAL_V3: &str = "cohere.embed-multilingual-v3";
 
-#[derive(Clone)]
-pub struct EmbeddingModel {
-    client: Client,
-    model: String,
-    ndims: Option<usize>,
-}
-
-impl EmbeddingModel {
-    pub fn new(client: Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-
-    pub async fn document_to_embeddings(
-        &self,
-        request: EmbeddingRequest,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
-        invoke_embedding(self.client.get_inner().await, self.model.as_str(), request).await
-    }
-}
-
 /// Invoke `model` for one embedding document over the AWS SDK.
 ///
-/// Extracted from [`EmbeddingModel::document_to_embeddings`], which is
-/// rewired through it (single source of truth); also drives
-/// [`crate::functions::embed`].
+/// Drives [`crate::functions::embed`], which calls it once per document
+/// (Bedrock's embedding API is single-document).
 pub(crate) async fn invoke_embedding(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
@@ -86,28 +68,4 @@ pub(crate) async fn invoke_embedding(
         serde_json::from_str(&response_str).map_err(EmbeddingError::JsonError)?;
 
     Ok(result)
-}
-
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims.unwrap_or_default()
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String> + Send,
-    ) -> Result<Vec<Embedding>, EmbeddingError> {
-        let documents: Vec<_> = documents.into_iter().collect();
-        let client = self.client.get_inner().await;
-        let response = crate::functions::embed(client, &self.model, self.ndims, documents).await?;
-        Ok(response.embeddings)
-    }
 }

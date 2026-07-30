@@ -1,8 +1,7 @@
 //! Migrated from `examples/ollama_streaming_pause_control.rs`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::http_runtime::HttpRuntime;
 use rig::providers::ollama;
 use rig::streaming::StreamedAssistantContent;
 use tokio::time::{Duration, sleep};
@@ -10,9 +9,8 @@ use tokio::time::{Duration, sleep};
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn streaming_pause_and_resume() {
-    let model = ollama::Client::from_env()
-        .expect("client should build")
-        .completion_model("gemma3:4b");
+    let cfg = ollama::functions::Config::from_env("gemma3:4b").expect("config should build");
+    let rt = HttpRuntime::new();
     let request = rig::completion::CompletionRequest {
         temperature: Some(0.7),
         ..rig::completion::CompletionRequest::with_history(
@@ -21,7 +19,9 @@ async fn streaming_pause_and_resume() {
             "Explain backpropagation in neural networks.",
         )
     };
-    let mut stream = model.stream(request).await.expect("stream should start");
+    let mut stream = ollama::functions::open_stream(&cfg, &rt, request)
+        .await
+        .expect("stream should start");
 
     let mut chunk_count = 0usize;
     let mut paused_once = false;

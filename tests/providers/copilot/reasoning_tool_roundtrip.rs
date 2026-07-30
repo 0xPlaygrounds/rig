@@ -4,17 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 
-use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};
+use crate::copilot::{live_agent, live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = live_client()
-        .agent(live_responses_model())
+    let agent = live_agent(live_responses_model())
+        .await
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))

@@ -2,8 +2,8 @@
 
 #[cfg(feature = "derive")]
 use rig::Embed;
-use rig::client::EmbeddingsClient;
-use rig::embeddings::EmbeddingModel;
+use rig::http_runtime::HttpRuntime;
+use rig::providers::llamafile;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 
@@ -23,13 +23,20 @@ async fn embeddings_smoke() {
         return;
     }
 
-    let client = support::client();
-    let model = client.embedding_model(support::model_name());
+    let cfg = support::embedding_config(support::model_name());
+    let rt = HttpRuntime::new();
 
-    let embeddings = model
-        .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))
-        .await
-        .expect("embedding request should succeed");
+    let embeddings = llamafile::functions::embed(
+        &cfg,
+        &rt,
+        EMBEDDING_INPUTS
+            .iter()
+            .map(|input| (*input).to_string())
+            .collect(),
+    )
+    .await
+    .expect("embedding request should succeed")
+    .embeddings;
 
     assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
 }
@@ -42,20 +49,25 @@ async fn derive_document_embeddings() {
         return;
     }
 
-    let client = support::client();
-    let embeddings = client
-        .embeddings(support::model_name())
-        .document(Greetings {
-            message: "Hello, world!".to_string(),
-        })
-        .expect("first document should build")
-        .document(Greetings {
-            message: "Goodbye, world!".to_string(),
-        })
-        .expect("second document should build")
-        .build()
-        .await
-        .expect("embedding request should succeed");
+    let cfg = support::embedding_config(support::model_name());
+    let rt = HttpRuntime::new();
+    let embeddings = rig::embeddings::embed_documents(
+        vec![
+            Greetings {
+                message: "Hello, world!".to_string(),
+            },
+            Greetings {
+                message: "Goodbye, world!".to_string(),
+            },
+        ],
+        llamafile::functions::DESCRIPTOR
+            .max_embedding_documents
+            .unwrap_or(usize::MAX),
+        1,
+        |texts| llamafile::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .expect("embedding request should succeed");
 
     assert_eq!(embeddings.len(), 2);
     for (_document, embeddings_for_document) in embeddings {

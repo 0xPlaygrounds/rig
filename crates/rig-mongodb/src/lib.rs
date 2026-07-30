@@ -80,7 +80,7 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # Example
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, MongoDbSearchFilter, SearchParams};
-/// use rig_core::{providers::openai, vector_store::VectorSearchRequest, client::{ProviderClient, EmbeddingsClient}, embeddings::embedding::EmbeddingModel};
+/// use rig_core::{providers::openai, vector_store::VectorSearchRequest, http_runtime::HttpRuntime};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -92,11 +92,12 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai_client = openai::Client::from_env()?;
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
-/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+/// // Embedding is a free function over plain configuration plus a shared runtime.
+/// let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?; // <-- replace with your embedding model.
+/// let rt = HttpRuntime::new();
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
@@ -105,9 +106,16 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// .await?;
 ///
 /// // Embed the query outside the store, then search with the pre-embedded query.
-/// let query = model
-///     .embed_text("My boss says I zindle too much, what does that mean?")
-///     .await?;
+/// let query = openai::functions::embed(
+///     &embed_cfg,
+///     &rt,
+///     vec!["My boss says I zindle too much, what does that mean?".to_string()],
+/// )
+/// .await?
+/// .embeddings
+/// .into_iter()
+/// .next()
+/// .ok_or_else(|| anyhow::anyhow!("no embedding returned"))?;
 /// let req =
 ///     VectorSearchRequest::<MongoDbSearchFilter>::new(rig_core::OneOrMany::one(query), 1);
 ///

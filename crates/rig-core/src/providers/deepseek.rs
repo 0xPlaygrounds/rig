@@ -314,8 +314,6 @@ pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
 pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
-
-// Tests
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -765,6 +763,7 @@ pub mod functions {
         emits_complete_single_chunk_tool_calls: true,
         composes_native_output_with_tools: false,
         max_embedding_documents: None,
+        verify_path: Some("/user/balance"),
     };
 
     /// Plain-data DeepSeek provider configuration.
@@ -1001,6 +1000,32 @@ pub mod functions {
         let req = build_list_models_request(cfg)?;
         let (status, body) = rt.send_bytes(req).await?;
         super::parse_list_models_response(status, &body)
+    }
+
+    // Tests
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/user/balance`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
     }
 
     #[cfg(test)]

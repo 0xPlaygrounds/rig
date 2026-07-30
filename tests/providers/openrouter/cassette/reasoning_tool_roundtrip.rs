@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
 
 use crate::reasoning::{self, WeatherTool};
 

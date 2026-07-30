@@ -2,7 +2,6 @@
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use std::sync::Arc;
 
@@ -17,11 +16,9 @@ async fn extractor_smoke() {
         return;
     }
 
-    let client = support::client();
-
     let response = extract_with_options::<SmokePerson>(
         AgentConfig::new(),
-        client.provider_config(&support::model_name()),
+        support::provider(support::model_name()),
         Arc::new(Runtime::new()),
         EXTRACTOR_TEXT,
         ExtractOptions::classic_extractor(),

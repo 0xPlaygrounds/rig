@@ -7,7 +7,7 @@
 //! which now take a `ProviderConfig` — cannot run here. This file reproduces
 //! each scenario's core assertion by driving the sans-IO agent protocol
 //! directly against the loaded model: `prepare_request` builds each turn's
-//! request, `CompletionModel::completion`/`stream` executes it, and
+//! request, `rig_candle::functions::complete`/`open_stream` executes it, and
 //! `AgentRun` sequences turns and tool batches.
 //!
 //! Deliberate simplifications versus the classic-runner scenarios:
@@ -34,7 +34,7 @@ use rig_agent::agent::{
     prepare_request,
 };
 use rig_candle::{CandleModel, ModelArtifacts, ModelData};
-use rig_core::completion::{AssistantContent, CompletionModel, ToolDefinition, Usage};
+use rig_core::completion::{AssistantContent, ToolDefinition, Usage};
 use rig_core::message::{Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::streaming::StreamedAssistantContent;
 use rig_core::{OneOrMany, completion::CompletionRequest};
@@ -100,7 +100,7 @@ async fn buffered_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
-    let response = model.completion(prepared.request).await?;
+    let response = rig_candle::functions::complete(model, prepared.request).await?;
     Ok(ModelTurn::new(
         response.message_id.clone(),
         response.choice.clone(),
@@ -115,7 +115,7 @@ async fn streamed_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
-    let mut stream = model.stream(prepared.request).await?;
+    let mut stream = rig_candle::functions::open_stream(model, prepared.request).await?;
     let mut text = String::new();
     let mut contents: Vec<AssistantContent> = Vec::new();
     let mut final_info = None;
@@ -433,9 +433,11 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
 
     // Simple buffered completion: model quality baseline.
     let simple = tokio::time::timeout(SECS(300), async {
-        model
-            .completion(plain_request("Answer with only the capital of France.", 32))
-            .await
+        rig_candle::functions::complete(
+            &model,
+            plain_request("Answer with only the capital of France.", 32),
+        )
+        .await
     })
     .await??;
     let simple_text = choice_text(&simple.choice);
@@ -450,8 +452,8 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
     // Buffered/streaming text parity (was `buffered_streaming_text_parity`).
     tokio::time::timeout(SECS(600), async {
         let request = plain_request("Answer with only the capital of France.", 32);
-        let buffered = model.completion(request.clone()).await?;
-        let mut stream = model.stream(request).await?;
+        let buffered = rig_candle::functions::complete(&model, request.clone()).await?;
+        let mut stream = rig_candle::functions::open_stream(&model, request).await?;
         let mut streamed_text = String::new();
         let mut final_info = None;
         while let Some(item) = stream.next().await {

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
-use rig::prelude::*;
 use rig::providers;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use rig::{
     agent::{AgentConfig, ToolCatalog, prepare_request},
     candle::{CandleModel, GgufModelData},
-    completion::CompletionModel,
     message::Message,
 };
 use wasm_bindgen::prelude::*;
@@ -36,7 +35,8 @@ const MAX_HISTORY_JSON_BYTES: usize = 2048;
 // Candle has no `ProviderConfig` arm (model tensors are not expressible as
 // plain configuration), so the chat drives the sans-IO agent protocol
 // directly: `prepare_request` builds each turn's request and the loaded
-// model executes it.
+// model executes it through its inherent `complete` method (there is no
+// model trait any more).
 struct ChatState {
     model: CandleModel,
     config: AgentConfig,
@@ -135,7 +135,7 @@ async fn run_turn(state: &mut ChatState, message: String) -> Result<String, Brow
     .map_err(|error| BrowserModelError::Inference(error.to_string()))?;
     let response = state
         .model
-        .completion(prepared.request)
+        .complete(prepared.request)
         .await
         .map_err(|error| BrowserModelError::Inference(error.to_string()))?;
     let reply: String = response

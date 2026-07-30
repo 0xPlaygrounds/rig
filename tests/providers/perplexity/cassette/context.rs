@@ -9,13 +9,14 @@ use super::super::support::with_perplexity_cassette;
 
 #[tokio::test]
 async fn context_smoke() {
-    with_perplexity_cassette("context/context_smoke", |client| async move {
+    with_perplexity_cassette("context/context_smoke", |env| async move {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(perplexity::SONAR), |builder, doc| {
-                builder.context(doc)
-            })
+            .fold(
+                AgentBuilder::new(ProviderConfig::Perplexity(env.config(perplexity::SONAR))),
+                |builder, doc| builder.context(doc),
+            )
             .preamble(
                 "Use the provided context documents as the authoritative source. Answer concisely.",
             )

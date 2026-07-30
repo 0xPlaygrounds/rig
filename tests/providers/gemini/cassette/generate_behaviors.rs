@@ -8,9 +8,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,7 +36,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
             let request = CompletionRequest {
@@ -55,8 +54,8 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = client
+                .complete(model, request)
                 .await
                 .expect("a truncated response should still convert, not error");
 

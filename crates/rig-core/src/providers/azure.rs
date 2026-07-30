@@ -207,7 +207,6 @@ pub const GPT_35_TURBO: &str = "gpt-3.5-turbo";
 pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
-
 #[cfg(test)]
 mod azure_tests {
     use super::*;
@@ -533,6 +532,7 @@ pub mod functions {
         emits_complete_single_chunk_tool_calls: false,
         composes_native_output_with_tools: true,
         max_embedding_documents: Some(1024),
+        verify_path: None,
     };
 
     /// How an Azure credential is presented on the wire.
@@ -1098,6 +1098,25 @@ pub mod functions {
         let response = embed(cfg, rt, flat).await?;
         let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
         Ok((groups, response.usage))
+    }
+
+    /// Credential verification is not available for this provider.
+    ///
+    /// The deleted client declared `const VERIFY_PATH: &'static str = ""`, so the
+    /// classic `verify()` issued a bare `GET` of the base URL — a request that
+    /// checked no credential. [`DESCRIPTOR`] therefore carries no `verify_path`
+    /// and this reports the fact rather than repeating the empty check.
+    ///
+    /// # Errors
+    /// Always [`VerifyError::Unsupported`](crate::providers::verify::VerifyError::Unsupported).
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        let _ = (cfg, rt);
+        Err(crate::providers::verify::VerifyError::Unsupported {
+            provider: DESCRIPTOR.name,
+        })
     }
 
     #[cfg(test)]

@@ -1,3 +1,10 @@
+//! An agent talking to Gemini over gRPC.
+//!
+//! `rig_gemini_grpc::functions::Config` is plain data, so it drops straight
+//! into `ProviderConfig::GeminiGrpc`; the agent runtime builds and caches the
+//! tonic channel on first use. To skip the agent loop entirely, hand the same
+//! config to `functions::client_from_config` and call `functions::complete`.
+
 use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 
 #[tracing::instrument(ret)]

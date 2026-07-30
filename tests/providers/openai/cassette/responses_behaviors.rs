@@ -6,9 +6,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::ResponseStatus;
 use rig::tool::Tool;
@@ -24,7 +23,8 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
-            let model = client.completion_model(openai::GPT_4O).with_strict_tools();
+            let cfg = client.config(openai::GPT_4O).with_strict_tools();
+            let rt = client.http();
             let request = CompletionRequest {
                 tools: vec![rig::tool::portable_tool_definition(&Adder)],
                 ..CompletionRequest::with_history(
@@ -34,8 +34,7 @@ async fn strict_tools_opt_in_roundtrip() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -79,7 +78,8 @@ async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
             let request = CompletionRequest {
                 max_tokens: Some(16),
                 ..CompletionRequest::with_history(
@@ -89,8 +89,7 @@ async fn incomplete_response_surfaces_partial_output() {
                 )
             };
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("an incomplete response should still convert, not error");
 

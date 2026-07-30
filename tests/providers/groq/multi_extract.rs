@@ -4,9 +4,7 @@ use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::{ProviderConfig, Runtime};
-use rig::providers::groq;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -69,10 +67,9 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = groq::Client::from_env().expect("client should build");
-    let names_provider = client.provider_config(MULTI_EXTRACT_NAMES_MODEL);
-    let topics_provider = client.provider_config(MULTI_EXTRACT_TOPICS_MODEL);
-    let sentiment_provider = client.provider_config(MULTI_EXTRACT_SENTIMENT_MODEL);
+    let names_provider = super::live(MULTI_EXTRACT_NAMES_MODEL);
+    let topics_provider = super::live(MULTI_EXTRACT_TOPICS_MODEL);
+    let sentiment_provider = super::live(MULTI_EXTRACT_SENTIMENT_MODEL);
     let names_options = classic_options("Extract names from the given text.").with_retries(2);
     let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
     let sentiment_options =

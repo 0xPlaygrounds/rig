@@ -8,7 +8,8 @@ use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{CompletionModel, ToolDefinition, Usage};
+use rig::completion::{ToolDefinition, Usage};
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -16,7 +17,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub(crate) struct GeminiAgent {
-    pub(crate) model: gemini::completion::CompletionModel,
+    pub(crate) cfg: gemini::functions::Config,
+    pub(crate) rt: HttpRuntime,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -24,13 +26,14 @@ pub(crate) struct GeminiAgent {
 
 impl GeminiAgent {
     pub(crate) fn new(
-        model: gemini::completion::CompletionModel,
+        cfg: gemini::functions::Config,
         preamble: impl Into<String>,
         tool_names: &[&str],
         tool_choice: Option<ToolChoice>,
     ) -> Self {
         Self {
-            model,
+            cfg,
+            rt: HttpRuntime::new(),
             preamble: preamble.into(),
             tools: tool_names
                 .iter()
@@ -204,11 +207,10 @@ pub(crate) async fn call_model(
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
-    let response = agent
-        .model
-        .completion(agent.request(prompt, history))
-        .await
-        .expect("gemini completion should succeed");
+    let response =
+        gemini::functions::complete(&agent.cfg, &agent.rt, agent.request(prompt, history))
+            .await
+            .expect("gemini completion should succeed");
     ModelTurn::new(
         response.message_id.clone(),
         response.choice.clone(),

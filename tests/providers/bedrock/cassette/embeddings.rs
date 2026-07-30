@@ -1,7 +1,6 @@
 //! AWS Bedrock embeddings replay smoke test.
 
 use rig::bedrock;
-use rig::embeddings::EmbeddingModel;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
@@ -11,13 +10,15 @@ const EMBEDDING_INPUT: &str = "Rust cassette replay keeps Bedrock tests determin
 #[tokio::test]
 async fn embeddings_smoke() {
     with_bedrock_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client
-            .embedding_model_with_ndims(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
-
-        let embeddings = model
-            .embed_texts([EMBEDDING_INPUT.to_string()])
-            .await
-            .expect("embedding request should succeed");
+        let embeddings = rig::bedrock::functions::embed(
+            client.aws_client(),
+            bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,
+            Some(256),
+            vec![EMBEDDING_INPUT.to_string()],
+        )
+        .await
+        .expect("embedding request should succeed")
+        .embeddings;
 
         assert_eq!(embeddings.len(), 1);
         let embedding = &embeddings[0];
@@ -33,13 +34,15 @@ async fn embeddings_smoke() {
 #[tokio::test]
 async fn embeddings_batch_smoke() {
     with_bedrock_cassette("embeddings/embeddings_batch_smoke", |client| async move {
-        let model = client
-            .embedding_model_with_ndims(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
-
-        let embeddings = model
-            .embed_texts(EMBEDDING_INPUTS.into_iter().map(str::to_string))
-            .await
-            .expect("batch embedding request should succeed");
+        let embeddings = rig::bedrock::functions::embed(
+            client.aws_client(),
+            bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,
+            Some(256),
+            EMBEDDING_INPUTS.into_iter().map(str::to_string).collect(),
+        )
+        .await
+        .expect("batch embedding request should succeed")
+        .embeddings;
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
         assert!(

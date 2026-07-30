@@ -31,10 +31,9 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::completion::CompletionModel;
 use rig::executor::ToolExecutor;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
@@ -154,7 +153,11 @@ async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `SessionRunner`.
-    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
+    // The provider is plain data (`openai::functions::Config` names the model)
+    // and the transport is a separate `HttpRuntime`; raw model calls go through
+    // the provider's free `complete` function.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let http = HttpRuntime::new();
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let tools = ToolExecutor::from_tools([
@@ -188,7 +191,7 @@ async fn main() -> Result<()> {
                         prompt,
                     )
                 };
-                let response = model.completion(request).await?;
+                let response = openai::functions::complete(&cfg, &http, request).await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()
                     .map(|def| def.name.clone())

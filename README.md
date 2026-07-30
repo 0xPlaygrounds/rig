@@ -127,12 +127,12 @@ use rig::providers::openai;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let client = openai::Client::from_env()?;
+    // A provider is plain data: the config names the model and carries
+    // credentials/base URL. There is no client type and no trait to import.
+    let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
 
     // Create agent with a single context prompt
-    let comedian_agent = client
-        .agent(openai::GPT_5_2)
+    let comedian_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

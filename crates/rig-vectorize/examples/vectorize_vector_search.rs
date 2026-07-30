@@ -12,13 +12,10 @@
 //    cargo run --release --example vectorize_vector_search
 
 use rig_core::OneOrMany;
+use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::{
-    Embed,
-    client::{EmbeddingsClient, ProviderClient},
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::{self, Client},
-    vector_store::StoreRecord,
-    vector_store::request::VectorSearchRequest,
+    Embed, providers::openai, vector_store::StoreRecord, vector_store::request::VectorSearchRequest,
 };
 use rig_vectorize::VectorizeVectorStore;
 
@@ -31,8 +28,12 @@ struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
+    let rt = HttpRuntime::new();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
 
     // The store holds no embedding model: embedding happens outside the store,
     // and both records and queries arrive pre-embedded.
@@ -42,21 +43,26 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::var("CLOUDFLARE_API_TOKEN")?,
     );
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .document(Word {
-            id: "doc-1".to_string(),
-            definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
-        })?
-        .document(Word {
-            id: "doc-2".to_string(),
-            definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
-        })?
-        .document(Word {
-            id: "doc-3".to_string(),
-            definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
-        })?
-        .build()
-        .await?;
+    let documents = embed_documents(
+        vec![
+            Word {
+                id: "doc-1".to_string(),
+                definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
+            },
+            Word {
+                id: "doc-2".to_string(),
+                definition: "Definition of a *glarb-glarb*: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string(),
+            },
+            Word {
+                id: "doc-3".to_string(),
+                definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
+            },
+        ],
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
+    )
+    .await?;
 
     let records = documents
         .into_iter()
@@ -73,7 +79,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let query = "What is a linglingdong?";
     println!("\nSearching for: {}", query);
 
-    let query_embedding = model.embed_text(query).await?;
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let request = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
 
     let results = vector_store.top_n_as::<Word>(request).await?;

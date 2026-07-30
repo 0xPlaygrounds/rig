@@ -1,9 +1,15 @@
+//! Streams a locally loaded GGUF model with `rig-candle`.
+//!
+//! Candle has no `ProviderConfig` arm (model tensors are not plain
+//! configuration), so this drives the loaded-model handle directly: its
+//! inherent `stream` method replaces the removed `CompletionModel` trait.
+//! The equivalent path-driven entry point is `rig::candle::functions::open_stream`.
+
 use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
 use rig::candle::{CandleModel, ModelData};
-use rig::completion::CompletionModel;
 use rig::streaming::StreamedAssistantContent;
 
 #[tokio::main]

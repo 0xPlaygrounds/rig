@@ -1,14 +1,22 @@
+//! Passive-RAG chatbot over a PDF, embedded and served by a local Ollama.
+//!
+//! Both faces of the provider are plain data: an
+//! `ollama::functions::EmbeddingConfig` for the chunk/query embeddings and an
+//! `ollama::functions::Config` for the chat model, each paired with a shared
+//! `HttpRuntime`. `EmbeddingsBuilder` is gone — `embed_documents` batches the
+//! PDF chunks through the provider's free `embed` function.
+
 use anyhow::{Context, Result};
 use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
-use rig::client::Nothing;
+use rig::embeddings::default_concurrency;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader,
-    vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, loaders::PdfFileLoader, vector_store::VectorSearchRequest,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -25,14 +33,16 @@ struct Document {
 ///
 /// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
 /// closure over owned `HookEvent`s that returns a `HookDecision`; the
-/// embedding model, the store, and the sample count are captured behind an
-/// `Arc` so the returned future stays `'static + Send + Sync`.
+/// embedding config, the transport, the store, and the sample count are
+/// captured behind an `Arc` so the returned future stays
+/// `'static + Send + Sync`.
 fn pdf_rag_hook(
-    embedding_model: ollama::EmbeddingModel,
+    ecfg: ollama::functions::EmbeddingConfig,
+    rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_model, store, samples));
+    let state = std::sync::Arc::new((ecfg, rt, store, samples));
     HookEntry::new("pdf-rag", move |event| {
         let state = state.clone();
         Box::pin(async move {
@@ -42,7 +52,7 @@ fn pdf_rag_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_model, store, samples) = state.as_ref();
+            let (ecfg, rt, store, samples) = state.as_ref();
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
@@ -50,8 +60,17 @@ fn pdf_rag_hook(
                 return HookDecision::CompletionCall(CompletionCallAction::continue_run());
             };
 
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
+            // The store only sees pre-embedded requests, so embed the query
+            // through the provider's free `embed` function first.
+            let embedded = match ollama::functions::embed(ecfg, rt, vec![query]).await {
+                Ok(response) => match response.embeddings.into_iter().next() {
+                    Some(embedding) => embedding,
+                    None => {
+                        return HookDecision::CompletionCall(CompletionCallAction::stop(
+                            "no embedding returned for the query".to_string(),
+                        ));
+                    }
+                },
                 Err(error) => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
                         error.to_string(),
@@ -114,12 +133,9 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize Ollama client
-    // because Ollama is local and does not require an api key, we pass in `Nothing`
-    let client = ollama::Client::builder()
-        .api_key(Nothing)
-        .base_url("http://localhost:11434/v1")
-        .build()?;
+    // Ollama is local and unauthenticated, so its configs are built with
+    // `new` (no credentials to read) and share one HTTP runtime.
+    let rt = HttpRuntime::new();
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("examples/documents");
@@ -127,22 +143,31 @@ async fn main() -> Result<()> {
         load_pdf(documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
     println!("Successfully loaded and chunked PDF documents");
 
-    // Create embedding model
-    let model = client.embedding_model("bge-m3");
+    // Embedding configuration is plain data naming the embedding model.
+    let ecfg = ollama::functions::EmbeddingConfig::new("bge-m3");
 
-    // Create embeddings builder
-    let mut builder = EmbeddingsBuilder::new(model.clone());
-
-    // Add chunks from pdf documents
-    for (i, chunk) in pdf_chunks.into_iter().enumerate() {
-        builder = builder.document(Document {
+    let documents: Vec<Document> = pdf_chunks
+        .into_iter()
+        .enumerate()
+        .map(|(i, chunk)| Document {
             id: format!("pdf_document_{i}"),
             content: chunk,
-        })?;
-    }
+        })
+        .collect();
 
-    // Build embeddings
-    let embeddings = builder.build().await?;
+    // `EmbeddingsBuilder` is gone: `embed_documents` chunks to the provider's
+    // `max_embedding_documents` and re-associates each document with its
+    // embeddings.
+    let max_documents = ollama::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let embeddings = embed_documents(
+        documents,
+        max_documents,
+        default_concurrency(max_documents),
+        |texts| ollama::functions::embed(&ecfg, &rt, texts),
+    )
+    .await?;
     println!("Successfully generated embeddings");
 
     // Create vector store
@@ -150,10 +175,10 @@ async fn main() -> Result<()> {
     println!("Successfully created vector store");
 
     // Create RAG agent with the passive-RAG hook
-    let rag_agent = client
-        .agent("deepseek-r1")
+    let cfg = ollama::functions::Config::new("deepseek-r1");
+    let rag_agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
-        .add_hook(pdf_rag_hook(model, vector_store, 1))
+        .add_hook(pdf_rag_hook(ecfg, rt, vector_store, 1))
         .build();
 
     println!("Starting CLI chatbot...");

@@ -129,6 +129,29 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     },
 ];
 
+/// Recordings whose test is temporarily not compiled, keyed as
+/// `(provider, scenario)`.
+///
+/// `cassette_files_match_registered_scenarios` walks the test sources with
+/// `syn`, so a commented-out test is invisible to it and its recording would
+/// read as orphaned. Listing the scenario here keeps the recording protected
+/// (it is still secret-scanned) and makes the deferral explicit instead of
+/// deleting an expensively recorded interaction.
+///
+/// Entries must be removed — not grown — as the blocking work lands.
+const DEFERRED_CASSETTE_SCENARIOS: &[(&str, &str)] = &[
+    // R7: the Gemini Interactions API lost its only entry point when
+    // `gemini::InteractionsClient` was deleted with the classic client layer,
+    // so the interactions case in `cassette/document_ordering.rs` is commented
+    // out. Unlike a whole disabled module (whose source file `syn` still walks,
+    // keeping its scenarios registered), a commented-out test inside a compiled
+    // file is invisible to the scanner — hence this entry.
+    (
+        "gemini",
+        "document_ordering/interactions_keeps_documents_after_system_before_history",
+    ),
+];
+
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
     let root = Path::new(CASSETTE_ROOT);
@@ -156,10 +179,41 @@ fn cassette_files_match_registered_scenarios() {
         .difference(&actual)
         .cloned()
         .collect::<BTreeSet<_>>();
+    let deferred = DEFERRED_CASSETTE_SCENARIOS
+        .iter()
+        .map(|(provider, scenario)| crate::cassettes::cassette_path(provider, scenario))
+        .collect::<BTreeSet<_>>();
     let orphaned = actual
         .difference(&expected)
+        .filter(|path| !deferred.contains(*path))
         .cloned()
         .collect::<BTreeSet<_>>();
+
+    // A deferral that no longer corresponds to a real recording is stale
+    // bookkeeping; make it fail loudly rather than rot.
+    let stale_deferrals = deferred
+        .difference(&actual)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if !stale_deferrals.is_empty() {
+        failures.push(format!(
+            "DEFERRED_CASSETTE_SCENARIOS lists cassette file(s) that do not exist:\n{}",
+            format_path_list(&stale_deferrals)
+        ));
+    }
+
+    // A deferral for a scenario whose test is compiled again is also stale.
+    let revived_deferrals = deferred
+        .intersection(&expected)
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if !revived_deferrals.is_empty() {
+        failures.push(format!(
+            "DEFERRED_CASSETTE_SCENARIOS lists scenario(s) that are registered again \
+             — remove them from the list:\n{}",
+            format_path_list(&revived_deferrals)
+        ));
+    }
 
     if !missing.is_empty() {
         failures.push(format!(

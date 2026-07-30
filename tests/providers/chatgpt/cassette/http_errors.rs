@@ -1,8 +1,7 @@
 //! ChatGPT cassette coverage for non-success Responses API status handling.
 
 use axum::http;
-use rig::completion::{CompletionError, CompletionModel, CompletionRequest};
-use rig::prelude::*;
+use rig::completion::{CompletionError, CompletionRequest};
 use rig::providers::chatgpt;
 
 use super::super::support::with_chatgpt_cassette;
@@ -24,7 +23,7 @@ async fn nonstreaming_unauthorized_preserves_status_and_body() {
 }
 
 async fn assert_nonstreaming_http_error(
-    client: chatgpt::Client,
+    client: super::super::support::ChatGptCassette,
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {

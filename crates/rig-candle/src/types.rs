@@ -194,11 +194,6 @@ pub enum CandleError {
         /// Result/call identifier supplied in history.
         result_id: String,
     },
-    /// `CompletionModel::make` cannot load a byte-backed model.
-    #[error(
-        "`CompletionModel::make` is unsupported for rig-candle; use a byte-backed `CandleModel` constructor or builder"
-    )]
-    UnsupportedMake,
     /// A native blocking inference task could not be joined.
     #[cfg(not(target_family = "wasm"))]
     #[error("Candle blocking task failed: {0}")]

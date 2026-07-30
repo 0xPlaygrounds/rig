@@ -356,8 +356,8 @@ async fn main() -> Result<()> {
     };
     println!("Running simulated {operation} path");
 
-    let agent = openai::Client::from_env()?
-        .agent(openai::GPT_4O)
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble("Follow the user's requested system_probe operation exactly.")
         .tool(SystemProbe)
         .build();

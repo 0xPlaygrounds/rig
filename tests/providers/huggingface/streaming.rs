@@ -9,9 +9,9 @@ use rig::providers::huggingface::{self, SubProvider};
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn streaming_smoke() {
-    let client = huggingface::Client::from_env().expect("client should build");
-    let agent = client
-        .agent("meta-llama/Meta-Llama-3.1-8B-Instruct")
+    let cfg = huggingface::functions::Config::from_env("meta-llama/Meta-Llama-3.1-8B-Instruct")
+        .expect("config should build");
+    let agent = AgentBuilder::new(ProviderConfig::HuggingFace(cfg))
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -27,12 +27,10 @@ async fn streaming_smoke() {
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn together_subprovider_streaming() {
     let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY must be set");
-    let agent = huggingface::Client::builder()
-        .api_key(&api_key)
-        .subprovider(SubProvider::Together)
-        .build()
-        .expect("client should build")
-        .agent("deepseek-ai/DeepSeek-R1")
+    let cfg = huggingface::functions::Config::new("deepseek-ai/DeepSeek-R1")
+        .with_api_key(&api_key)
+        .with_sub_provider(SubProvider::Together);
+    let agent = AgentBuilder::new(ProviderConfig::HuggingFace(cfg))
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

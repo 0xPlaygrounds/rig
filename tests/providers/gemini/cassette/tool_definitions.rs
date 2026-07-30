@@ -6,7 +6,6 @@
 //! replay fails with a body mismatch.
 
 use rig::completion::Message;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -226,7 +225,7 @@ mod derive_macro {
 
     use super::super::super::agent_run_support::tool_result_texts;
     use super::super::super::support::with_gemini_cassette;
-    use rig::prelude::*;
+
     use rig::providers::gemini;
 
     #[rig_tool(

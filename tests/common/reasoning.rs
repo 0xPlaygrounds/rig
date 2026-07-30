@@ -11,10 +11,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::PromptError;
-use rig::completion::{self, CompletionModel};
+use rig::completion::{self};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
+use rig::provider::{self, ProviderConfig, Runtime};
 use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamFinal, StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
@@ -32,37 +33,43 @@ const ROUNDTRIP_TURN2_TEXT: &str = "\
 Now suppose both trains slow down by 10 km/h after traveling half \
 the original distance. When do they meet now?";
 
-pub(crate) struct ReasoningRoundtripAgent<M: CompletionModel> {
-    pub(crate) model: M,
+pub(crate) struct ReasoningRoundtripAgent {
+    pub(crate) provider: ProviderConfig,
+    pub(crate) rt: Runtime,
     pub(crate) preamble: String,
     pub(crate) additional_params: Option<serde_json::Value>,
 }
 
-impl<M> ReasoningRoundtripAgent<M>
-where
-    M: CompletionModel,
-{
-    pub(crate) fn new(model: M, additional_params: Option<serde_json::Value>) -> Self {
+impl ReasoningRoundtripAgent {
+    pub(crate) fn new(
+        provider: ProviderConfig,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
+        Self::with_runtime(provider, Runtime::new(), additional_params)
+    }
+
+    pub(crate) fn with_runtime(
+        provider: ProviderConfig,
+        rt: Runtime,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
         Self {
-            model,
+            provider,
+            rt,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
             additional_params,
         }
     }
 }
 
-pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
-{
+pub(crate) async fn run_reasoning_roundtrip_streaming(agent: ReasoningRoundtripAgent) {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
 
-pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
-    agent: ReasoningRoundtripAgent<M>,
+pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<F>(
+    agent: ReasoningRoundtripAgent,
     mut inspect_final: F,
 ) where
-    M: CompletionModel,
     F: FnMut(&StreamFinal),
 {
     let turn1_prompt = Message::User {
@@ -83,7 +90,9 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
+    let mut stream = provider::open_stream(&agent.provider, &agent.rt, request)
+        .await
+        .expect("Turn 1 stream");
 
     let mut assistant_content = Vec::new();
     let mut saw_reasoning_block = false;
@@ -144,7 +153,9 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
+    let mut stream2 = provider::open_stream(&agent.provider, &agent.rt, request2)
+        .await
+        .expect("Turn 2 stream");
     let mut turn2_text = String::new();
 
     while let Some(chunk) = stream2.next().await {
@@ -173,10 +184,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     );
 }
 
-pub(crate) async fn run_reasoning_roundtrip_nonstreaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
-{
+pub(crate) async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
@@ -195,9 +203,7 @@ where
         record_telemetry_content: false,
     };
 
-    let response = agent
-        .model
-        .completion(request)
+    let response = provider::complete(&agent.provider, &agent.rt, request)
         .await
         .expect("Turn 1 completion");
 
@@ -242,9 +248,7 @@ where
         record_telemetry_content: false,
     };
 
-    let response2 = agent
-        .model
-        .completion(request2)
+    let response2 = provider::complete(&agent.provider, &agent.rt, request2)
         .await
         .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
 

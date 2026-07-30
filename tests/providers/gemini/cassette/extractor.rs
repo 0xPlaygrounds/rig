@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::extract::{ExtractOptions, extract_with_options};
-use rig::prelude::*;
 use rig::provider::Runtime;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{

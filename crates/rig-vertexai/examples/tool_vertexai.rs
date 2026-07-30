@@ -1,20 +1,20 @@
 //! A calculator tool driven through the sans-IO agent protocol.
 //!
 //! Vertex AI authenticates through Google's OAuth credential chain, so its
-//! model cannot be expressed as a plain `ProviderConfig`. Out-of-tree
-//! providers like this one drive the public `AgentRun` + `prepare_request`
-//! protocol directly: prepare a request, call the model, feed the outcome
-//! back into the run state machine, and execute the tool calls it surfaces.
+//! live handle cannot be expressed as a plain `ProviderConfig` and rig-agent
+//! has no Vertex AI arm. Out-of-tree providers like this one drive the public
+//! `AgentRun` + `prepare_request` protocol directly: prepare a request, call
+//! `functions::complete` yourself, feed the outcome back into the run state
+//! machine, and execute the tool calls it surfaces.
 
 use anyhow::Result;
 use rig_agent::agent::AgentConfig;
 use rig_agent::agent::prepare::{ToolCatalog, prepare_request};
 use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurn};
 use rig_core::OneOrMany;
-use rig_core::client::completion::CompletionClient;
-use rig_core::completion::{CompletionModel as CompletionModelTrait, ToolDefinition};
+use rig_core::completion::ToolDefinition;
 use rig_core::message::{ToolResultContent, UserContent};
-use rig_vertexai::{Client, completion::GEMINI_2_5_FLASH_LITE};
+use rig_vertexai::{completion::GEMINI_2_5_FLASH_LITE, functions};
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
 use serde_json::json;
@@ -34,9 +34,9 @@ fn add(args: &OperationArgs) -> i32 {
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().with_target(false).init();
 
-    // Create Vertex AI client using implicit credentials
-    let client = Client::from_env()?;
-    let model = client.completion_model(GEMINI_2_5_FLASH_LITE);
+    // Plain-data config; the live handle resolves ADC credentials.
+    let provider = functions::Config::new(GEMINI_2_5_FLASH_LITE);
+    let client = functions::client_from_config(&provider)?;
 
     let mut config = AgentConfig::new();
     config.max_tokens = Some(1024);
@@ -63,7 +63,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     run.output_tool_name(),
                     None,
                 )?;
-                let response = model.completion(prepared.request).await?;
+                let response =
+                    functions::complete(&client, &provider.model, prepared.request).await?;
                 let turn = ModelTurn::new(
                     response.message_id.clone(),
                     response.choice.clone(),

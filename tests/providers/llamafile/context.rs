@@ -13,13 +13,13 @@ async fn context_smoke() {
         return;
     }
 
-    let client = support::client();
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(client.agent(support::model_name()), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(
+            AgentBuilder::new(support::provider(support::model_name())),
+            |builder, doc| builder.context(doc),
+        )
         .build();
 
     let response = agent

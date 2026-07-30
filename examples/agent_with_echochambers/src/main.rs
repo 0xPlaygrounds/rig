@@ -1,11 +1,7 @@
 use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
-use rig::{
-    integrations::cli_chatbot::ChatBotBuilder,
-    providers::openai::{self, Client},
-    tool::Tool,
-};
+use rig::{integrations::cli_chatbot::ChatBotBuilder, providers::openai, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -304,12 +300,11 @@ async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
     let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // The provider is plain data: a config that names the model.
+    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
 
     // Create agent with all tools
-    let echochambers_agent = openai_client
-        .agent(openai::GPT_4O)
+    let echochambers_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

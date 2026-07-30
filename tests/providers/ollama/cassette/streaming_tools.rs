@@ -14,30 +14,26 @@ const MODEL: &str = "qwen3:4b";
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
-    with_ollama_cassette(
-        "streaming_tools/streaming_tools_smoke",
-        |client| async move {
-            let agent = client
-                .agent(MODEL)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .additional_params(serde_json::json!({ "think": false }))
-                .build();
+    with_ollama_cassette("streaming_tools/streaming_tools_smoke", |env| async move {
+        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+            .preamble(STREAMING_TOOLS_PREAMBLE)
+            .tool(Adder)
+            .tool(Subtract)
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(STREAMING_TOOLS_PROMPT)
-                    .max_turns(3)
-                    .stream_run(),
-            );
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming tool prompt should succeed");
+        let mut stream = Box::pin(
+            agent
+                .runner(STREAMING_TOOLS_PROMPT)
+                .max_turns(3)
+                .stream_run(),
+        );
+        let response = collect_stream_final_response(&mut stream)
+            .await
+            .expect("streaming tool prompt should succeed");
 
-            // STREAMING_TOOLS_PROMPT is "Calculate 2 - 5." => -3.
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
+        // STREAMING_TOOLS_PROMPT is "Calculate 2 - 5." => -3.
+        assert_mentions_expected_number(&response, -3);
+    })
     .await;
 }
