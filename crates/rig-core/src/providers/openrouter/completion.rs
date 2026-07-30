@@ -1,4 +1,3 @@
-use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -8,6 +7,64 @@ use crate::{
     providers::openai,
 };
 use serde::{Deserialize, Serialize};
+
+/// Token usage reported by OpenRouter's chat-completions endpoint.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Usage {
+    pub prompt_tokens: usize,
+    #[serde(default)]
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
+    #[serde(default)]
+    pub cost: f64,
+    /// OpenAI-compatible prompt-token details, returned by OpenRouter when a
+    /// provider reports cache activity (Anthropic with cache_control, OpenAI
+    /// with server-side automatic caching).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+/// Prompt-token breakdown reported by OpenRouter for cached requests.
+// `usize` matches the parent `Usage` struct in this module; the streaming counterpart
+// uses `u32` to match its own parent.
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct PromptTokensDetails {
+    /// Tokens served from cache (cache hit).
+    #[serde(default)]
+    pub cached_tokens: usize,
+    /// Tokens written to cache on this call (cache miss that populated the cache).
+    #[serde(default)]
+    pub cache_write_tokens: usize,
+}
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {} Total tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        let (cached_input, cache_creation) = value
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
+            .unwrap_or((0, 0));
+        crate::completion::Usage {
+            input_tokens: value.prompt_tokens as u64,
+            output_tokens: value.completion_tokens as u64,
+            total_tokens: value.total_tokens as u64,
+            cached_input_tokens: cached_input,
+            cache_creation_input_tokens: cache_creation,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+}
 use std::collections::HashMap;
 
 // ================================================================
@@ -1468,46 +1525,6 @@ pub(crate) fn decorate_streaming_tool_call(
 
     tool_call.signature = Some(data);
     tool_call.additional_params = Some(detail.clone());
-}
-
-impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
-    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor =
-        super::functions::DESCRIPTOR;
-    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
-        super::functions::STREAM_DIALECT;
-
-    type Response = CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        super::functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, CompletionError> {
-        super::functions::build_body(model, request, options, stream)
-    }
-}
-
-/// OpenRouter completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
-
-impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
-    /// Enable explicit prompt caching for supported OpenRouter models.
-    ///
-    /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt
-    /// block so subsequent turns that share the same system prefix can be
-    /// billed at the cache-hit rate when the selected model/provider supports
-    /// explicit cache breakpoints.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
 }
 
 #[cfg(test)]

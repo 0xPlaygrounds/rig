@@ -1,7 +1,7 @@
 //! This module provides functionality for working with audio transcription models.
-//! It provides traits, structs, and enums for generating audio transcription requests,
-//! handling transcription responses, and defining transcription models.
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+//! It provides the structs and enums used to build audio transcription requests and
+//! to represent transcription responses and errors. Providers expose the actual call
+//! as a `functions::transcribe` free function over these types.
 use crate::{http_client, json_utils, provider_response};
 use std::io;
 use std::{fs, path::Path};
@@ -55,24 +55,6 @@ pub struct TranscriptionResponse<T> {
     pub response: T,
 }
 
-/// Trait defining a transcription model that can be used to generate transcription requests.
-/// This trait is meant to be implemented by the user to define a custom transcription model,
-/// either from a third-party provider (e.g: OpenAI) or a local model.
-pub trait TranscriptionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// The raw response type returned by the underlying model.
-    type Response: WasmCompatSend + WasmCompatSync;
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    /// Generates a completion response for the given transcription model
-    fn transcription(
-        &self,
-        request: TranscriptionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<TranscriptionResponse<Self::Response>, TranscriptionError>,
-    > + WasmCompatSend;
-}
 /// Struct representing a general transcription request that can be sent to a transcription model provider.
 pub struct TranscriptionRequest {
     /// The file data to be sent to the transcription model provider
@@ -92,25 +74,25 @@ pub struct TranscriptionRequest {
 impl TranscriptionRequest {
     /// Creates a request from the audio bytes, with the default filename `file`.
     ///
-    /// Refine with the `with_*` methods, then execute it with
-    /// [`TranscriptionModel::transcription`]:
+    /// Refine with the `with_*` methods, then execute it with the provider's
+    /// `functions::transcribe`:
     ///
     /// ```no_run
     /// use rig_core::{
-    ///     prelude::TranscriptionClient,
-    ///     providers::openai::{self, Client},
-    ///     transcription::{TranscriptionModel, TranscriptionRequest},
+    ///     http_runtime::HttpRuntime,
+    ///     providers::openai,
+    ///     transcription::TranscriptionRequest,
     /// };
     ///
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let openai = Client::new("your-openai-api-key")?;
-    /// let model = openai.transcription_model(openai::WHISPER_1);
+    /// let cfg = openai::functions::Config::from_env(openai::WHISPER_1)?;
+    /// let rt = HttpRuntime::new();
     ///
     /// let request = TranscriptionRequest::new(vec![0; 16])
     ///     .with_filename("audio.mp3")
     ///     .with_temperature(0.5);
     ///
-    /// let response = model.transcription(request).await?;
+    /// let response = openai::functions::transcribe(&cfg, &rt, request).await?;
     /// # Ok(())
     /// # }
     /// ```

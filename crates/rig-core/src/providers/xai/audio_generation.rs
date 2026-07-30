@@ -1,9 +1,7 @@
 use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+    AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
-use crate::http_client::{self, HttpClientExt};
 use crate::json_utils::merge_inplace;
-use crate::providers::xai::Client;
 use bytes::Bytes;
 use serde_json::json;
 
@@ -11,53 +9,6 @@ use serde_json::json;
 // xAI TTS API
 // ================================================================
 pub const TTS_1: &str = "tts-1";
-
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> AudioGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Bytes;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let body = build_audio_generation_body(&request)?;
-
-        let req = self
-            .client
-            .post("/v1/tts")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        let bytes: Bytes = response.into_body().await?;
-        parse_audio_generation_response(status, bytes.to_vec())
-    }
-}
 
 /// Build the serialized TTS request body. Pure.
 ///
@@ -104,27 +55,21 @@ pub(crate) fn parse_audio_generation_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio_generation::AudioGenerationModel as _;
-    use crate::client::audio_generation::AudioGenerationClient;
+    use crate::providers::xai::functions;
 
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":"boom","code":"503"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = crate::providers::xai::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.audio_generation_model(TTS_1);
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(TTS_1).with_api_key("test-key");
 
         let request = AudioGenerationRequest::new("hello", "eve");
 
-        let error = model
-            .audio_generation(request)
+        let error = functions::generate_audio(&cfg, &rt, request)
             .await
             .err()
             .expect("should fail with non-success status");

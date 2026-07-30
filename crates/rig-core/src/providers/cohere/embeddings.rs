@@ -1,11 +1,23 @@
-use super::{client::ApiResponse, client::Client};
-use crate::{
-    embeddings::{self, EmbeddingError},
-    http_client::HttpClientExt,
-    wasm_compat::*,
-};
+use crate::embeddings::{self, EmbeddingError};
 use serde::Deserialize;
 use serde_json::json;
+
+/// Cohere's error envelope, which can arrive with a 2xx status.
+#[derive(Debug, Deserialize)]
+pub struct ApiErrorResponse {
+    pub message: String,
+}
+
+/// Either a successful payload or Cohere's error envelope.
+///
+/// Moved here from the deleted `cohere::client` module; it is a wire type the
+/// [`super::functions`] embedding path parses through.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ApiResponse<T> {
+    Ok(T),
+    Err(ApiErrorResponse),
+}
 
 #[derive(Deserialize)]
 pub struct EmbeddingResponse {
@@ -55,14 +67,6 @@ impl std::fmt::Display for BilledUnits {
             self.input_tokens, self.output_tokens, self.search_units, self.classifications
         )
     }
-}
-
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    pub input_type: String,
-    ndims: usize,
 }
 
 /// Build the serialized `/v1/embed` request body. Pure; shared by the trait
@@ -143,107 +147,32 @@ pub(crate) fn parse_embedding_response(
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    const MAX_DOCUMENTS: usize = 96;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(super::model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self::new(client.clone(), model, "search_document", dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
-
-        let body = build_embedding_body(&self.model, &self.input_type, &documents)?;
-
-        let req = self
-            .client
-            .post("/v1/embed")?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(EmbeddingError::HttpError)?;
-
-        let status = response.status();
-        let raw_body = response.into_body().await?;
-        let body = String::from_utf8_lossy(&raw_body).into_owned();
-
-        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
-    }
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(
-        client: Client<T>,
-        model: impl Into<String>,
-        input_type: &str,
-        ndims: usize,
-    ) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            input_type: input_type.to_string(),
-            ndims,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, input_type: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            input_type: input_type.into(),
-            ndims,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn embed_config() -> crate::providers::cohere::functions::EmbeddingConfig {
+        crate::providers::cohere::functions::EmbeddingConfig::new(
+            crate::providers::cohere::EMBED_ENGLISH_V3,
+        )
+        .with_api_key("test-key")
+    }
+
     #[tokio::test]
     async fn embeddings_non_success_preserves_status_and_body() {
-        use crate::embeddings::EmbeddingModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::cohere::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = crate::providers::cohere::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(
-            crate::providers::cohere::EMBED_ENGLISH_V3,
-            "search_document",
-        );
+        let rt = HttpRuntime::recording(http_client);
 
-        let error = model
-            .embed_texts(["hello".to_string()])
+        let error = functions::embed(&embed_config(), &rt, vec!["hello".to_string()])
             .await
             .expect_err("should fail with non-success status");
 
-        assert!(matches!(error, EmbeddingError::HttpError(_)));
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -253,24 +182,15 @@ mod tests {
 
     #[tokio::test]
     async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
-        use crate::embeddings::EmbeddingModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::cohere::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // Deserializes to `ApiResponse::Err(ApiErrorResponse { message })` on a 200 OK.
         let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body);
-        let client = crate::providers::cohere::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(
-            crate::providers::cohere::EMBED_ENGLISH_V3,
-            "search_document",
-        );
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(body));
 
-        let error = model
-            .embed_texts(["hello".to_string()])
+        let error = functions::embed(&embed_config(), &rt, vec!["hello".to_string()])
             .await
             .expect_err("should fail with provider error envelope");
 

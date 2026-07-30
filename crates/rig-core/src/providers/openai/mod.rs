@@ -1,17 +1,36 @@
-//! OpenAI API client and Rig integration
+//! OpenAI provider: config + pure functions.
+//!
+//! The canonical OpenAI face is the Responses API
+//! ([`responses_api::functions`]); the Chat Completions face lives in
+//! [`functions`] and is also the shared dialect every OpenAI-compatible
+//! provider builds on.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::openai};
+//! use rig_core::providers::openai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::new("YOUR_API_KEY")?;
-//!
-//! let model = client.completion_model(openai::GPT_5_2);
+//! # async fn run(request: rig_core::completion::CompletionRequest)
+//! # -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_5_2)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = openai::responses_api::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
-pub mod client;
+//!
+//! The Chat Completions face is the same shape:
+//! ```no_run
+//! use rig_core::providers::openai;
+//!
+//! # async fn run(request: rig_core::completion::CompletionRequest)
+//! # -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = openai::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
+//! ```
+pub mod api;
 pub mod completion;
 pub mod embedding;
 pub mod functions;
@@ -30,10 +49,9 @@ pub use image_generation::*;
 
 pub mod transcription;
 
-pub use client::*;
+pub use api::*;
 pub use completion::*;
 pub use embedding::*;
-pub use model_listing::*;
 
 /// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
 /// Nested arrays, schema $defs, object properties and enums should be handled through this method

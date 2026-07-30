@@ -1,15 +1,12 @@
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
+use crate::completion::CompletionError;
 use crate::http_client::sse::Event;
-use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
+use crate::providers::cohere::completion::Usage;
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::Deserialize;
-use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
@@ -79,54 +76,10 @@ fn streamed_token_usage(usage: Option<&Usage>) -> crate::completion::Usage {
     usage
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = request.preamble.clone();
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            "cohere",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        super::completion::apply_stream_flag(&mut request);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Cohere streaming completion input: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v2/chat")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        Ok(stream_cohere_sse(
-            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false),
-            span,
-        ))
-    }
-}
-
 /// Drive a fully built Cohere streaming request over `client`, returning the
 /// normalized streaming response.
 ///
-/// Extracted from [`CompletionModel::stream`] so the data-oriented
+/// Extracted from the deleted trait-path `CompletionModel::stream` so the data-oriented
 /// [`super::functions`] face reuses the exact same SSE machinery; both paths
 /// route through this single function.
 pub(super) fn stream_cohere_sse(

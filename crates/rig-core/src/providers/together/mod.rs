@@ -1,22 +1,24 @@
-//! Together AI API client and Rig integration
+//! Together AI API integration
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::EmbeddingsClient, providers::together};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::http_runtime::HttpRuntime;
+//! use rig_core::providers::together;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = together::Client::new("YOUR_API_KEY")?;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = together::functions::Config::from_env(together::LLAMA_3_70B_INSTRUCT_TURBO)?;
+//! let rt = HttpRuntime::new();
 //!
-//! let together_embedding_model = client.embedding_model(together::BGE_BASE_EN_V1_5);
+//! let request = CompletionRequest::from_prompt("Who are you?");
+//! let response = together::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-pub mod client;
 pub mod completion;
 pub mod embedding;
 pub mod functions;
 
-pub use client::Client;
 pub use completion::*;
 pub use embedding::*;

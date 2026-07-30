@@ -2,22 +2,18 @@ use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 use super::completion::{
-    AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
-    Content, GenericCompletionModel, Usage,
+    AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl, Content, Usage,
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::Event;
-use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::telemetry::SpanCombinator;
 use std::collections::HashMap;
 
 /// Build the Anthropic streaming request body.
@@ -195,78 +191,12 @@ struct ThinkingState {
     signature: String,
 }
 
-impl<Ext, T> GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt + Clone + Default + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::DIALECT.provider,
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
-
-        let body = create_streaming_request_body(
-            request_model,
-            completion_request,
-            max_tokens,
-            self.prompt_caching,
-            self.automatic_caching,
-            self.automatic_caching_ttl.clone(),
-        )?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&body)?
-            );
-        }
-
-        let body: Vec<u8> = serde_json::to_vec(&body)?;
-
-        let req = self
-            .client
-            .post("/v1/messages")?
-            .body(body)
-            .map_err(http_client::Error::Protocol)?;
-
-        Ok(stream_anthropic_sse(
-            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false),
-            Ext::DIALECT.provider,
-            span,
-        ))
-    }
-}
-
-/// Drive a fully built Anthropic streaming request over `client`, returning
-/// the normalized streaming response.
+/// Drive a fully built Anthropic streaming request, returning the normalized
+/// streaming response.
 ///
-/// Extracted from [`GenericCompletionModel::stream`] so the data-oriented
-/// [`super::functions`] face reuses the exact same SSE machinery; both paths
-/// route through this single function.
+/// Transport-agnostic: it consumes an already-opened
+/// [`BoxedEventSource`](crate::http_client::sse::BoxedEventSource), so
+/// [`super::functions::open_stream`] drives the SSE machinery directly.
 pub(super) fn stream_anthropic_sse(
     event_source: crate::http_client::sse::BoxedEventSource,
     provider_name: &'static str,

@@ -30,13 +30,13 @@
 //! - The Codex backend only speaks SSE, so the request body always carries
 //!   `stream: true` — [`build_request_body`]'s `stream` flag does not change
 //!   the bytes (both paths share
-//!   [`build_codex_responses_request`](super::build_codex_responses_request)).
+//!   `build_codex_responses_request`).
 //! - [`build_request`] is not fully pure: it mints a fresh random
 //!   `session_id` header per request, exactly as the trait path does.
 //! - [`parse_response`] is the pure subset of response handling; the trait
 //!   path and [`complete`] additionally apply an async streamed-text fallback
 //!   for empty `response.completed` payloads (shared
-//!   [`parse_codex_sse_response`](super::parse_codex_sse_response)).
+//!   `parse_codex_sse_response`).
 
 use http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -89,6 +89,14 @@ pub struct Config {
     pub originator: String,
     /// Value of the `user-agent` header.
     pub user_agent: String,
+    /// Default tool definitions appended to every request's `tools` (classic
+    /// `ResponsesCompletionModel::with_tool` / `with_tools`).
+    #[serde(default)]
+    pub default_tools: Vec<responses_api::ResponsesToolDefinition>,
+    /// Request strict function tool schemas (classic
+    /// `ResponsesCompletionModel::with_strict_tools`).
+    #[serde(default)]
+    pub strict_tools: bool,
 }
 
 impl Config {
@@ -113,6 +121,8 @@ impl Config {
             ),
             originator: super::DEFAULT_ORIGINATOR.to_string(),
             user_agent: super::default_user_agent(),
+            default_tools: Vec::new(),
+            strict_tools: false,
         }
     }
 
@@ -131,6 +141,28 @@ impl Config {
     /// Override the API base URL.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
+        self
+    }
+
+    /// Append a default tool definition to every request.
+    pub fn with_tool(mut self, tool: impl Into<responses_api::ResponsesToolDefinition>) -> Self {
+        self.default_tools.push(tool.into());
+        self
+    }
+
+    /// Append default tool definitions to every request.
+    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<responses_api::ResponsesToolDefinition>,
+    {
+        self.default_tools.extend(tools.into_iter().map(Into::into));
+        self
+    }
+
+    /// Enable strict mode for function tool schemas.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
         self
     }
 
@@ -217,7 +249,7 @@ pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigF
     config_from_auth(model, &authenticator).await
 }
 
-/// Config for `model` using a caller-built [`Authenticator`].
+/// Config for `model` using a caller-built `Authenticator`.
 ///
 /// The escape hatch [`config_from_env`] does not cover: a custom `auth.json`
 /// location, a device-code prompt handler, or `allow_device_flow = false` for
@@ -253,8 +285,8 @@ pub fn build_request_body(
 ) -> Result<Vec<u8>, CompletionError> {
     let typed = super::build_codex_responses_request(
         cfg.model.clone(),
-        &[],
-        false,
+        &cfg.default_tools,
+        cfg.strict_tools,
         cfg.default_instructions.as_deref(),
         request.clone(),
     )?;
@@ -372,6 +404,8 @@ mod tests {
             default_instructions: Some(super::super::DEFAULT_INSTRUCTIONS.to_string()),
             originator: "rig".to_string(),
             user_agent: "rig-test".to_string(),
+            default_tools: Vec::new(),
+            strict_tools: false,
         }
     }
 
@@ -406,6 +440,61 @@ mod tests {
         let instructions = value["instructions"].as_str().expect("instructions");
         assert!(instructions.starts_with(super::super::DEFAULT_INSTRUCTIONS));
         assert!(instructions.ends_with("Respond tersely."));
+    }
+
+    #[test]
+    fn build_request_body_carries_default_tools() {
+        let cfg = sample_config().with_tool(responses_api::ResponsesToolDefinition::function(
+            "get_weather",
+            "Look up the weather",
+            serde_json::json!({"type": "object", "properties": {}}),
+        ));
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let tools = value["tools"].as_array().expect("tools");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["name"], "get_weather");
+        // Strict mode is off by default, so `strict` is skipped on the wire.
+        assert!(tools[0].get("strict").is_none());
+    }
+
+    #[test]
+    fn build_request_body_applies_strict_tools() {
+        let cfg = sample_config()
+            .with_tools([responses_api::ResponsesToolDefinition::function(
+                "get_weather",
+                "Look up the weather",
+                serde_json::json!({"type": "object", "properties": {}}),
+            )])
+            .with_strict_tools();
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let tools = value["tools"].as_array().expect("tools");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["strict"], true);
+    }
+
+    #[test]
+    fn config_tool_fields_round_trip_through_serde() {
+        let cfg = sample_config()
+            .with_tool(responses_api::ResponsesToolDefinition::function(
+                "get_weather",
+                "Look up the weather",
+                serde_json::json!({"type": "object", "properties": {}}),
+            ))
+            .with_strict_tools();
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        let back: Config = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, cfg);
+        // A config serialized before the fields existed still deserializes.
+        let mut value: serde_json::Value = serde_json::from_str(&json).expect("json");
+        if let Some(map) = value.as_object_mut() {
+            map.remove("default_tools");
+            map.remove("strict_tools");
+        }
+        let legacy: Config = serde_json::from_value(value).expect("deserialize legacy");
+        assert!(legacy.default_tools.is_empty());
+        assert!(!legacy.strict_tools);
     }
 
     #[test]

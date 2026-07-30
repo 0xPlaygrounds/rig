@@ -28,12 +28,10 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
-use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
@@ -44,147 +42,6 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
-
-use super::Client;
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    type Client = super::Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
-            &request_model,
-            CompletionOperation::GenerateContent,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let request = create_request_body(completion_request)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Gemini completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let path = completion_endpoint(&request_model);
-
-        let request = self
-            .client
-            .post(path.as_str())?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Vec<u8>>(request).await?;
-
-            if response.status().is_success() {
-                let response_body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-                let response: GenerateContentResponse = serde_json::from_slice(&response_body)
-                    .map_err(|err| {
-                        tracing::error!(
-                            error = %err,
-                            body = %response_text,
-                            "Failed to deserialize Gemini completion response"
-                        );
-                        CompletionError::JsonError(err)
-                    })?;
-
-                let span = tracing::Span::current();
-                span.record_response_metadata(&response);
-                span.record_token_usage(
-                    &response
-                        .usage_metadata
-                        .as_ref()
-                        .map(gemini_api_types::UsageMetadata::token_usage)
-                        .unwrap_or_default(),
-                );
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Gemini completion response: {}",
-                        serde_json::to_string_pretty(&response)?
-                    );
-                }
-
-                response.try_into()
-            } else {
-                let status = response.status();
-                let body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
-    }
-}
 
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
@@ -3593,24 +3450,18 @@ mod tests {
 
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::completion::CompletionClient;
-        use crate::completion::CompletionModel as _;
-        use crate::providers::gemini::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(super::GEMINI_3_FLASH_PREVIEW).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("should fail with non-success status");
 

@@ -1,18 +1,17 @@
 //! xAI Responses API as config + pure functions.
 //!
-//! The data-oriented face of the xAI provider: a serde [`Config`], a
+//! The data-oriented face of the xAI provider: a serde `Config`, a
 //! [`DESCRIPTOR`] capability sheet, and free functions decomposing a
 //! completion into pure parts — [`build_request_body`] / [`build_request`]
 //! (data → HTTP request, no IO) and [`parse_response`] (bytes → normalized
 //! [`completion::CompletionResponse`], no IO) — plus async [`complete`] and
 //! [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! The pure functions delegate to the same typed conversion the
-//! [`CompletionModel`](super::completion::CompletionModel) trait path uses
-//! (`XAICompletionRequest`'s `TryFrom` plus the shared stream-flag helper),
-//! so both paths produce byte-identical request bodies. [`open_stream`]
-//! drives the exact SSE machinery the trait path uses
-//! (`send_xai_streaming_request`).
+//! The pure functions delegate to the typed conversion in
+//! [`super::completion`] (`XAICompletionRequest`'s `TryFrom` plus the shared
+//! stream-flag helper), so every request body is produced in exactly one
+//! place. [`open_stream`] drives the SSE state machine in
+//! the crate-internal `xai::streaming` module (`send_xai_streaming_request`).
 
 use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};

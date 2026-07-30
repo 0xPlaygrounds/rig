@@ -1,11 +1,7 @@
-use crate::http_client::HttpClientExt;
-use crate::providers::openrouter::Client;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
-use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -81,25 +77,6 @@ impl TryFrom<TranscriptionResponse>
     }
 }
 
-// ================================================================
-// Model
-// ================================================================
-
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
 fn infer_format_from_filename(filename: &str) -> String {
     std::path::Path::new(filename)
         .extension()
@@ -116,37 +93,6 @@ fn infer_format_from_filename(filename: &str) -> String {
         })
         .unwrap_or("wav")
         .to_string()
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
-{
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let body = build_transcription_body(&self.model, request)?;
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let body_bytes = response.into_body().await?;
-        parse_transcription_response(status, &body_bytes)
-    }
 }
 
 /// Build the serialized transcription request body (base64 audio in a JSON
@@ -313,24 +259,17 @@ mod tests {
 
     #[tokio::test]
     async fn transcription_non_success_preserves_status_and_body() {
-        use crate::client::transcription::TranscriptionClient;
+        use crate::providers::openrouter::functions;
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{TranscriptionModel as _, TranscriptionRequest};
+        use crate::transcription::TranscriptionRequest;
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.transcription_model(WHISPER_1);
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(WHISPER_1).with_api_key("test-key");
 
-        let request = TranscriptionRequest::new(vec![0u8; 16]);
-
-        let error = model
-            .transcription(request)
+        let error = functions::transcribe(&cfg, &rt, TranscriptionRequest::new(vec![0u8; 16]))
             .await
             .err()
             .expect("should fail with non-success status");

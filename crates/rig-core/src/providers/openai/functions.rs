@@ -7,16 +7,16 @@
 //! (bytes → normalized [`completion::CompletionResponse`], no IO) — plus the
 //! async [`complete`] wrapper over [`HttpRuntime`](crate::http_runtime::HttpRuntime).
 //!
-//! During the transition the pure functions delegate to the same typed
-//! conversion the [`GenericCompletionModel`](super::completion::GenericCompletionModel)
-//! path uses, so both paths produce byte-identical request bodies; the
-//! generic path is retired later in the migration.
+//! The typed conversion these functions delegate to
+//! ([`super::completion::CompletionRequest`]`::try_from(`[`OpenAIRequestParams`](super::completion::OpenAIRequestParams)`)`)
+//! is shared with every OpenAI-compatible provider through the
+//! `compatible_*` stages at the bottom of this module.
 
 use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::client::ApiResponse;
+use super::api::ApiResponse;
 use super::completion::CompletionModelOptions;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::embeddings::{self, EmbeddingError};
@@ -74,10 +74,9 @@ impl Config {
     /// Config for `model` built from the process environment.
     ///
     /// Reads `OPENAI_API_KEY` (required) and `OPENAI_BASE_URL` (optional
-    /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
-    /// `openai::Client::from_env` read. The credential is validated eagerly but
-    /// stored as [`ApiKeyLocation::Env`], so the secret is read at request time
-    /// rather than held inside the config.
+    /// override of [`DEFAULT_BASE_URL`]). The credential is validated eagerly
+    /// but stored as [`ApiKeyLocation::Env`], so the secret is read at request
+    /// time rather than held inside the config.
     ///
     /// # Errors
     /// [`ConfigError`] when a required variable is missing or invalid.
@@ -249,9 +248,6 @@ pub fn parse_list_models_response(
 }
 
 /// List the models available to `cfg`'s credentials.
-///
-/// The classic `ModelListingClient` path parses through the same pure
-/// [`parse_list_models_response`].
 pub async fn list_models(cfg: &Config, rt: &HttpRuntime) -> Result<ModelList, ModelListingError> {
     let req = build_list_models_request(cfg)?;
     let (status, body) = rt.send_bytes(req).await?;
@@ -651,7 +647,7 @@ pub fn parse_embedding_response(
     body: &str,
     documents: Vec<String>,
 ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-    super::embedding::parse_embedding_response::<super::OpenAIResponsesExt>(status, body, documents)
+    super::embedding::parse_embedding_response(status, body, documents, DESCRIPTOR.name, true)
 }
 
 /// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s

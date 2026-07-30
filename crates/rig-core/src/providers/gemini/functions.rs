@@ -7,16 +7,13 @@
 //! async [`complete`] and [`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
 //!
-//! The pure functions delegate to the same typed conversion
-//! (`super::completion::create_request_body` /
-//! `GenerateContentResponse::try_into`) that the
-//! [`CompletionModel`](super::completion::CompletionModel) trait path uses,
-//! so both paths produce byte-identical request bodies.
+//! The pure functions delegate to the typed wire conversions in
+//! [`super::completion`] (`create_request_body` /
+//! `GenerateContentResponse::try_into`).
 //!
 //! Gemini's URL embeds the model and the operation
 //! (`:generateContent` / `:streamGenerateContent`) and the credential rides
-//! as a `key` query parameter (with `alt=sse` for streaming), mirroring
-//! [`GeminiExt`](super::client::GeminiExt)'s `build_uri`.
+//! as a `key` query parameter (with `alt=sse` for streaming).
 //!
 //! Future work: the same treatment for the Gemini Interactions API surface
 //! (`super::interactions_api`), which this module deliberately does not cover.
@@ -83,8 +80,8 @@ impl Config {
     /// Config for `model` built from the process environment.
     ///
     /// Reads `GEMINI_API_KEY` (required) — the same variable the deleted
-    /// `gemini::Client::from_env` read. There is no base-URL override: the
-    /// classic client always targeted [`DEFAULT_BASE_URL`]. The credential is
+    /// deleted `gemini::Client::from_env` read. There is no base-URL override:
+    /// the classic client always targeted [`DEFAULT_BASE_URL`]. The credential is
     /// validated eagerly but stored as [`ApiKeyLocation::Env`], so the secret is
     /// read at request time rather than held inside the config (Gemini sends it
     /// as a `key` query parameter).
@@ -128,7 +125,7 @@ pub fn build_request_body(
 /// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
 /// environment). `stream` selects `:streamGenerateContent?alt=sse` over
 /// `:generateContent`; the resolved key rides as `key=` in the query string,
-/// matching the classic client's URL shape.
+/// as Gemini requires.
 pub fn build_request(
     cfg: &Config,
     request: &CompletionRequest,
@@ -348,7 +345,7 @@ impl EmbeddingConfig {
 /// `texts`.
 ///
 /// Pure except for credential resolution; the resolved key rides as `key=`
-/// in the query string, matching the classic client's URL shape.
+/// in the query string.
 pub fn build_embedding_request(
     cfg: &EmbeddingConfig,
     texts: &[String],
@@ -428,7 +425,7 @@ pub async fn embed_batches(
 /// Build one `GET /v1beta/models` page request for [`list_models`].
 ///
 /// Pure except for credential resolution; the resolved key rides as `key=`
-/// in the query string, matching the classic client's URL shape.
+/// in the query string.
 pub fn build_list_models_request(
     cfg: &Config,
     page_token: Option<&str>,
@@ -456,8 +453,8 @@ pub fn build_list_models_request(
 /// List the models available to `cfg`'s credentials, following page-token
 /// pagination through all pages.
 ///
-/// The classic `ModelListingClient` path parses through the same pure
-/// page parser (`model_listing::parse_models_page`).
+/// Parses through the pure page parser
+/// (`model_listing::parse_models_page`).
 pub async fn list_models(
     cfg: &Config,
     rt: &HttpRuntime,

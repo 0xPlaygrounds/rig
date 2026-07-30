@@ -1,12 +1,9 @@
 //! Implements Mistral (basic) transcription API
-use bytes::Bytes;
 use serde::Deserialize;
 
+use crate::http_client::MultipartForm;
 use crate::http_client::multipart::Part;
-use crate::http_client::{HttpClientExt, MultipartForm};
-use crate::providers::mistral::Client;
 use crate::transcription::{self, TranscriptionError};
-use crate::wasm_compat::WasmCompatSend;
 
 // ================================================================
 // Mistral Transcription API
@@ -90,47 +87,6 @@ impl TryFrom<MistralTranscriptionResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
-{
-    type Response = MistralTranscriptionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let body = build_transcription_form(&self.model, request)?;
-
-        let req = self
-            .client
-            .post("/v1/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::RequestError(e.into()))?;
-
-        let response = self
-            .client
-            .send_multipart::<Bytes>(req)
-            .await
-            .map_err(TranscriptionError::HttpError)?;
-
-        let status = response.status();
-        let response_bytes = response.into_body().await?;
-        parse_transcription_response(status, &response_bytes)
-    }
-}
-
 /// Build the multipart form for a transcription `request`. Pure.
 ///
 /// Mistral's form carries no `prompt` field (faithful to the classic path).
@@ -180,15 +136,6 @@ pub(crate) fn parse_transcription_response(
             status,
             String::from_utf8_lossy(body),
         ))
-    }
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
     }
 }
 
@@ -286,24 +233,17 @@ mod test {
 
     #[tokio::test]
     async fn transcription_non_success_preserves_status_and_body() {
-        use crate::client::transcription::TranscriptionClient;
+        use crate::providers::mistral::functions;
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{
-            TranscriptionError, TranscriptionModel as _, TranscriptionRequest,
-        };
+        use crate::transcription::{TranscriptionError, TranscriptionRequest};
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.transcription_model(VOXTRAL_MINI);
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(VOXTRAL_MINI).with_api_key("test-key");
 
-        let error = match model
-            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
+        let error = match functions::transcribe(&cfg, &rt, TranscriptionRequest::new(vec![0u8; 16]))
             .await
         {
             Err(error) => error,

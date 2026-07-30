@@ -3,40 +3,44 @@
 //! # Example
 //! ```no_run
 //! use rig_core::providers::moonshot;
-//! use rig_core::client::CompletionClient;
 //!
-//! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = moonshot::functions::Config::from_env(moonshot::KIMI_K2_5)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = moonshot::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
+//! ```
 //!
-//! let kimi_model = client.completion_model(moonshot::KIMI_K2_5);
+//! # Anthropic-compatible example
+//! ```no_run
+//! use rig_core::providers::{anthropic, moonshot};
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // Resolves `MOONSHOT_ANTHROPIC_API_BASE`, then a normalized
+//! // `MOONSHOT_API_BASE`, then `moonshot::ANTHROPIC_API_BASE_URL`.
+//! let cfg = moonshot::functions::anthropic_config_from_env(moonshot::KIMI_K2_5)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = anthropic::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Custom base URL
-//! The default base URL is `https://api.moonshot.ai/v1`. For China access,
-//! use `https://api.moonshot.cn/v1`:
+//! The default base URL is `https://api.moonshot.ai/v1`. For China access, use
+//! [`CHINA_API_BASE_URL`]:
 //! ```no_run
 //! use rig_core::providers::moonshot;
 //!
-//! let client = moonshot::Client::builder()
-//!     .api_key("YOUR_API_KEY")
-//!     .base_url("https://api.moonshot.ai/v1")
-//!     .build()
-//!     .expect("Failed to build Moonshot client");
+//! let cfg = moonshot::functions::Config::new(moonshot::KIMI_K2_5)
+//!     .with_api_key("YOUR_API_KEY")
+//!     .with_base_url(moonshot::CHINA_API_BASE_URL);
 //! ```
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client;
-use crate::http_client::HttpClientExt;
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
-};
-use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::ProviderDescriptor;
-use crate::providers::openai;
 
 // ================================================================
-// Main Moonshot Client
+// Moonshot base URLs
 // ================================================================
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.moonshot.ai/v1";
@@ -45,219 +49,12 @@ pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 /// Anthropic-compatible base URL.
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotBuilder;
-#[derive(Debug, Default, Clone)]
-pub struct MoonshotAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotAnthropicExt;
-
-type MoonshotApiKey = BearerAuth;
-
-impl Provider for MoonshotExt {
-    type Builder = MoonshotBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for MoonshotAnthropicExt {
-    type Builder = MoonshotAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl DebugExt for MoonshotExt {}
-impl DebugExt for MoonshotAnthropicExt {}
-
-impl ProviderBuilder for MoonshotBuilder {
-    type Extension<H>
-        = MoonshotExt
-    where
-        H: HttpClientExt;
-    type ApiKey = MoonshotApiKey;
-
-    const BASE_URL: &'static str = GLOBAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotExt)
-    }
-}
-
-impl ProviderBuilder for MoonshotAnthropicBuilder {
-    type Extension<H>
-        = MoonshotAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-impl<H> Capabilities<H> for MoonshotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for MoonshotAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
-pub type AnthropicClient<H = reqwest::Client> = client::Client<MoonshotAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotAnthropicBuilder, AnthropicKey, H>;
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(&api_key);
-        if let Some(base_url) = crate::client::optional_env_var("MOONSHOT_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-        if let Some(base_url) =
-            anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?
-        {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-impl<H> ClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(GLOBAL_API_BASE_URL)
-    }
-
-    pub fn china(self) -> Self {
-        self.base_url(CHINA_API_BASE_URL)
-    }
-}
-
-impl<H> AnthropicClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
-}
-
-/// The Anthropic-Messages dialect for this provider's Anthropic-compatible
-/// endpoint.
-const ANTHROPIC_DIALECT: crate::providers::anthropic::completion::AnthropicDialect =
-    crate::providers::anthropic::completion::AnthropicDialect {
-        provider: "moonshot",
-        default_max_tokens: |_model| Some(4096),
-    };
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
-    const DIALECT: crate::providers::anthropic::completion::AnthropicDialect = ANTHROPIC_DIALECT;
-}
-
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-/// [`anthropic_base_override`] on the data-oriented error type.
+/// The Anthropic base-URL override, resolved from the process environment.
 ///
-/// Same precedence, same pure [`resolve_anthropic_base_override`] logic; only
-/// the env-var reader and error type differ so the `functions` module does not
-/// depend on `crate::client`.
+/// `primary_env` wins; otherwise `fallback_env` (an OpenAI-compatible base URL)
+/// is mapped onto the Anthropic entrypoint by
+/// [`normalize_anthropic_base_url`]. Pure logic lives in
+/// [`resolve_anthropic_base_override`].
 ///
 /// # Errors
 /// [`ConfigError`](crate::providers::descriptor::ConfigError) when a variable
@@ -310,31 +107,6 @@ pub const KIMI_K2: &str = "kimi-k2";
 /// Kimi K2.5 — Native multimodal agentic model with 256K context
 pub const KIMI_K2_5: &str = "kimi-k2.5";
 
-/// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MoonshotExt, H>;
-
-impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
-    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
-
-    type Response = openai::CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: crate::providers::openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{functions, normalize_anthropic_base_url, resolve_anthropic_base_override};
@@ -349,22 +121,6 @@ mod tests {
             functions::build_body(model, &request, CompletionModelOptions::default(), false)
                 .expect("body should build");
         serde_json::from_slice(&bytes).expect("body should be json")
-    }
-
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::moonshot::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new() failed");
-        let _anthropic_client_from_builder = crate::providers::moonshot::AnthropicClient::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("AnthropicClient::builder() failed");
     }
 
     #[test]
@@ -697,7 +453,7 @@ pub mod functions {
     /// Anthropic-Messages surface configuration for `model`, built from the
     /// process environment.
     ///
-    /// The replacement for the deleted [`AnthropicClient`](super::AnthropicClient):
+    /// The replacement for the deleted classic `AnthropicClient`:
     /// Moonshot's Anthropic endpoint is reached through
     /// [`anthropic::functions`](crate::providers::anthropic::functions) with a
     /// Moonshot base URL and credential. Reads `MOONSHOT_API_KEY` (required) and

@@ -1,13 +1,14 @@
-//! An SSE implementation that leverages [`crate::http_client::HttpClientExt`] to allow streaming with automatic retry handling for any implementor of HttpClientExt.
+//! The SSE transport edge.
 //!
-//! Primarily intended for internal usage. However if you also wish to implement generic HTTP streaming for your custom completion model,
-//! you may find this helpful.
+//! An event source over any `Backend`, with
+//! automatic retry handling. Providers never see it directly: they consume the
+//! boxed [`BoxedEventSource`], which is where backend genericity ends.
 use crate::{
     http_client::{
-        HttpClientExt, Result as StreamResult,
+        Backend, Result as StreamResult,
         retry::{DEFAULT_RETRY, ExponentialBackoff, RetryPolicy},
     },
-    wasm_compat::{WasmCompatSend, WasmCompatSendStream},
+    wasm_compat::WasmCompatSendStream,
 };
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
@@ -33,9 +34,8 @@ pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult
 /// provider stream parsers.
 ///
 /// Provider stream state machines consume this concrete type instead of being
-/// generic over [`HttpClientExt`]: the genericity ends at the boxing site (see
-/// [`boxed_event_source`] and
-/// [`HttpRuntime::sse_events`](crate::http_runtime::HttpRuntime::sse_events)).
+/// generic over the crate-internal `Backend`: genericity ends at the boxing site (see
+/// `boxed_event_source` and `HttpRuntime::sse_events`).
 pub type BoxedEventSource = Pin<Box<dyn WasmCompatEventStream>>;
 
 /// Helper supertrait so [`BoxedEventSource`] can be a trait object:
@@ -53,14 +53,14 @@ impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::
 impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> {}
 
 /// Box an event source over `client` into the transport-edge
-/// [`BoxedEventSource`], ending the `HttpClientExt` genericity.
-pub fn boxed_event_source<HttpClient>(
+/// [`BoxedEventSource`], ending the `Backend` genericity.
+pub(crate) fn boxed_event_source<HttpClient>(
     client: HttpClient,
     req: Request<Vec<u8>>,
     allow_missing_content_type: bool,
 ) -> BoxedEventSource
 where
-    HttpClient: HttpClientExt + Clone + 'static,
+    HttpClient: Backend + Clone + 'static,
 {
     let source = GenericEventSource::new(client, req);
     let source = if allow_missing_content_type {
@@ -113,11 +113,11 @@ pin_project! {
 }
 
 pin_project! {
-    /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
+    /// An SSE event source over any [`Backend`].
     #[project = GenericEventSourceProjection]
-    pub struct GenericEventSource<HttpClient, RequestBody, Retry = ExponentialBackoff> {
+    pub(crate) struct GenericEventSource<HttpClient, Retry = ExponentialBackoff> {
         client: HttpClient,
-        req: Request<RequestBody>,
+        req: Request<Vec<u8>>,
         retry_policy: Retry,
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
@@ -126,13 +126,12 @@ pin_project! {
     }
 }
 
-impl<HttpClient, RequestBody> GenericEventSource<HttpClient, RequestBody>
+impl<HttpClient> GenericEventSource<HttpClient>
 where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    HttpClient: Backend + Clone + 'static,
 {
     /// Create a new event source that will connect to the given request.
-    pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
+    pub fn new(client: HttpClient, req: Request<Vec<u8>>) -> Self {
         let response_future = Self::create_response_future(&client, &req, None);
         let state = SourceState::Connecting { response_future };
 
@@ -154,7 +153,7 @@ where
     /// Create a response future for connecting/reconnecting
     fn create_response_future(
         client: &HttpClient,
-        req: &Request<RequestBody>,
+        req: &Request<Vec<u8>>,
         last_event_id: Option<&str>,
     ) -> ResponseFuture {
         let mut req_clone = req.clone();
@@ -174,20 +173,9 @@ where
         let client_clone = client.clone();
         Box::pin(async move { client_clone.send_streaming(req_clone).await })
     }
-
-    /// Get the last event id
-    pub fn last_event_id(&self) -> Option<&str> {
-        self.last_event_id.as_deref()
-    }
-
-    /// Close the event source, transitioning to the Closed state.
-    /// After calling this, the stream will yield `None` on the next poll.
-    pub fn close(&mut self) {
-        self.state = SourceState::Closed;
-    }
 }
 
-/// Events created by the [`GenericEventSource`]
+/// Events created by the SSE event source.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Event {
     /// The event fired when the connection is opened
@@ -202,10 +190,9 @@ impl From<MessageEvent> for Event {
     }
 }
 
-impl<HttpClient, RequestBody> Stream for GenericEventSource<HttpClient, RequestBody>
+impl<HttpClient> Stream for GenericEventSource<HttpClient>
 where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    HttpClient: Backend + Clone + 'static,
 {
     type Item = Result<Event, super::Error>;
 
@@ -356,7 +343,7 @@ where
                         Poll::Ready(()) => {
                             // Transition: WaitingToRetry -> Reconnecting
                             let response_future =
-                                GenericEventSource::<HttpClient, RequestBody>::create_response_future(
+                                GenericEventSource::<HttpClient>::create_response_future(
                                     this.client,
                                     this.req,
                                     this.last_event_id.as_deref(),

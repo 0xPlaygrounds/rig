@@ -25,20 +25,20 @@
 //! # Simple example
 //! ```no_run
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{AssistantContent, CompletionModel},
+//!     completion::AssistantContent,
+//!     http_runtime::HttpRuntime,
 //!     providers::openai,
 //! };
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create an OpenAI client and completion model.
+//!     // Configure an OpenAI completion call.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env()?;
-//!     let model = openai_client.completion_model(openai::GPT_5_2);
+//!     let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+//!     let rt = HttpRuntime::new();
 //!
 //!     let request = rig_core::completion::CompletionRequest::from_prompt("Who are you?");
-//!     let response = model.completion(request).await?;
+//!     let response = openai::functions::complete(&cfg, &rt, request).await?;
 //!     for item in response.choice {
 //!         if let AssistantContent::Text(text) = item {
 //!             println!("{}", text.text);
@@ -54,10 +54,15 @@
 //! # Core concepts
 //! ## Completion and embedding models
 //! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
-//! each provider (e.g. OpenAI, Cohere) has a `Client` struct that can be used to initialize completion
-//! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
-//! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
-//! low-level interface for creating completion and embedding requests and executing them.
+//! each provider (e.g. OpenAI, Cohere) has a `functions` module holding a plain
+//! `Config` (model id, credentials, base URL, provider-specific knobs) plus free
+//! functions — `complete`, `stream`, `embed`, `transcribe`, and so on — that take
+//! `(&Config, &HttpRuntime, request)` and return the shared
+//! [CompletionResponse](crate::completion::CompletionResponse),
+//! [Embedding](crate::embeddings::Embedding), and sibling data types. The
+//! [HttpRuntime](crate::http_runtime::HttpRuntime) owns transport concerns and is
+//! shared across providers; static provider facts are described by
+//! [ProviderDescriptor](crate::providers::ProviderDescriptor).
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage
@@ -117,8 +122,10 @@
 //! - Xiaomi MiMo
 //! - Z.ai
 //!
-//! You can also implement your own model provider integration by defining types that
-//! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
+//! You can also add your own model provider integration by writing a `Config` plus
+//! free functions that build `http::Request`s, send them through
+//! [HttpRuntime](crate::http_runtime::HttpRuntime), and parse the responses into
+//! Rig's shared request/response data types.
 //!
 //! Vector stores are available as separate companion-crates:
 //!
@@ -150,7 +157,6 @@ extern crate self as rig;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
-pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod http_client;
@@ -164,7 +170,6 @@ pub mod image_generation;
 #[doc(hidden)]
 pub mod json_utils;
 pub mod loaders;
-pub mod markers;
 pub mod memory;
 pub mod model;
 pub mod one_or_many;

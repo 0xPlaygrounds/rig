@@ -24,29 +24,38 @@
 //! - Xiaomi MiMo
 //! - Z.ai
 //!
-//! Each provider module defines a `Client` type and model types for the
-//! capabilities it supports. Capability traits such as
-//! [`CompletionClient`](crate::client::CompletionClient) and
-//! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
-//! when the provider declares that capability.
+//! Each provider module exposes a `functions` submodule: the provider as plain
+//! data plus free functions. A serde `Config` (base URL, credential
+//! [location](descriptor::ApiKeyLocation), model, extra headers), a
+//! [`ProviderDescriptor`] capability sheet, pure `build_request`/`parse_response`
+//! functions, and async `complete`/`open_stream` (plus `embed`, `transcribe`,
+//! `generate_image`, `generate_audio`, `rerank`, `list_models` where the
+//! provider supports them) over the shared
+//! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+//!
+//! There is no client type and no capability trait: a provider supports a
+//! capability exactly when its `functions` module exposes the corresponding
+//! function, and the descriptor records the wire-level knobs
+//! (`supports_tools`, `max_embedding_documents`, …) that request building
+//! consults.
+//!
+//! Every `Config` has `new(model)` for explicit construction and
+//! `from_env(model)` for the provider's conventional environment variables.
 //!
 //! # Provider implementation checklist
 //!
 //! When adding or changing a provider, verify that the integration includes:
 //!
-//! - for OpenAI-chat-compatible APIs: completions driven by
-//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
-//!   via an
-//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
-//!   impl on the provider extension (never a hand-rolled completion model,
-//!   request struct, or message conversion — dialect differences go in the
-//!   trait's hooks);
-//! - public `Client` and `ClientBuilder` aliases with the correct generics,
-//!   including a `ClientBuilder` API-key generic matching `ProviderBuilder::ApiKey`;
-//! - the `Provider`, `ProviderBuilder`, `Capabilities`, and `ProviderClient`
-//!   implementations;
-//! - explicit API-key marker/auth types with redacted debug behavior for
-//!   credential-bearing values;
+//! - a `functions` module with a serde `Config` (`new` + `from_env`), a
+//!   `DESCRIPTOR`, pure `build_request`/`parse_response`, and async wrappers
+//!   over [`HttpRuntime`](crate::http_runtime::HttpRuntime);
+//! - for OpenAI-chat-compatible APIs: a `build_body` composed from
+//!   `openai::functions::compatible_typed_request` and
+//!   `compatible_body_value`, with the provider's own
+//!   dialect steps in between (never a hand-rolled request struct or message
+//!   conversion), and a `STREAM_DIALECT` built from the descriptor;
+//! - credentials expressed as [`ApiKeyLocation`](descriptor::ApiKeyLocation)
+//!   so they are resolved at request time and redacted in `Debug`;
 //! - model constants where they are useful and current;
 //! - request conversion from Rig request types, such as
 //!   [`CompletionRequest`](crate::completion::CompletionRequest), without
@@ -64,17 +73,16 @@
 //! # Example
 //! ```no_run
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{AssistantContent, CompletionModel},
+//!     completion::AssistantContent,
+//!     http_runtime::HttpRuntime,
 //!     providers::openai,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize the OpenAI client
-//! let openai = openai::Client::from_env()?;
+//! // The provider is plain data; the runtime owns the HTTP transport.
+//! let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+//! let rt = HttpRuntime::new();
 //!
-//! // Create a model and send a low-level completion request.
-//! let model = openai.completion_model(openai::GPT_5_2);
 //! let request = rig_core::completion::CompletionRequest::with_history(
 //!     Some(
 //!         "You are Gandalf the white and you will be conversing with other \
@@ -83,7 +91,7 @@
 //!     Vec::new(),
 //!     "Discuss the fate of Middle Earth.",
 //! );
-//! let response = model.completion(request).await?;
+//! let response = openai::functions::complete(&cfg, &rt, request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {
 //!         println!("{}", text.text);

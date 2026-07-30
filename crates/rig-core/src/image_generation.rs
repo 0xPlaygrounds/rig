@@ -1,5 +1,6 @@
 //! Everything related to core image generation abstractions in Rig.
-//! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
+//! Rig allows calling a number of different providers (that support image generation)
+//! through each provider's `functions::generate_image` free function over these types.
 use crate::{http_client, provider_response};
 use serde_json::Value;
 use thiserror::Error;
@@ -45,20 +46,6 @@ pub struct ImageGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait ImageGenerationModel: Clone + Send + Sync {
-    type Response: Send + Sync;
-
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> impl std::future::Future<
-        Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
-    > + Send;
-}
 /// An image generation request.
 #[non_exhaustive]
 pub struct ImageGenerationRequest {
@@ -71,8 +58,8 @@ pub struct ImageGenerationRequest {
 impl ImageGenerationRequest {
     /// Creates a request from the prompt, defaulting to a 256x256 image.
     ///
-    /// Refine with the `with_*` methods, then execute it with
-    /// [`ImageGenerationModel::image_generation`].
+    /// Refine with the `with_*` methods, then execute it with the provider's
+    /// `functions::generate_image`.
     pub fn new(prompt: impl Into<String>) -> Self {
         Self {
             prompt: prompt.into(),

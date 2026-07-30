@@ -1,9 +1,7 @@
 use super::api::ApiResponse;
-use super::client::Client;
-use crate::http_client::HttpClientExt;
+use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
@@ -44,55 +42,6 @@ impl TryFrom<ImageGenerationResponse>
             image: bytes,
             response: value,
         })
-    }
-}
-
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: grok-imagine-image)
-    pub model: String,
-}
-
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = ImageGenerationResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let body = build_image_generation_body(&self.model, &generation_request)?;
-
-        let request = self
-            .client
-            .post("/v1/images/generations")?
-            .body(body)
-            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-        let response = self.client.send(request).await?;
-
-        let status = response.status();
-        let text = http_client::text(response).await?;
-        parse_image_generation_response(status, &text)
     }
 }
 
@@ -143,8 +92,7 @@ pub(crate) fn parse_image_generation_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
+    use crate::providers::xai::functions;
 
     fn request() -> ImageGenerationRequest {
         ImageGenerationRequest {
@@ -177,17 +125,12 @@ mod tests {
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":"boom","code":"503"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = crate::providers::xai::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(GROK_IMAGINE_IMAGE);
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(GROK_IMAGINE_IMAGE).with_api_key("test-key");
 
-        let error = model
-            .image_generation(request())
+        let error = functions::generate_image(&cfg, &rt, request())
             .await
             .expect_err("should fail with non-success status");
 
@@ -205,16 +148,10 @@ mod tests {
 
         // Deserializes to `ApiResponse::Error(ApiError { error, code })` on a 200 OK.
         let body = r#"{"error":"boom","code":"503"}"#;
-        let http_client = RecordingHttpClient::new(body);
-        let client = crate::providers::xai::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(GROK_IMAGINE_IMAGE);
+        let rt = crate::http_runtime::HttpRuntime::recording(RecordingHttpClient::new(body));
+        let cfg = functions::Config::new(GROK_IMAGINE_IMAGE).with_api_key("test-key");
 
-        let error = model
-            .image_generation(request())
+        let error = functions::generate_image(&cfg, &rt, request())
             .await
             .expect_err("should fail with provider error envelope");
 

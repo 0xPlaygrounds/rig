@@ -1,86 +1,35 @@
-use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai::Client;
-use bytes::Bytes;
+//! OpenAI audio generation (text-to-speech) model identifiers.
+//!
+//! The request/response wire handling lives in
+//! [`super::functions`] (`build_audio_generation_body`,
+//! `parse_audio_generation_response`, `generate_audio`).
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
 
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Bytes;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let body = super::functions::build_audio_generation_body(&self.model, &request)?;
-
-        let req = self
-            .client
-            .post("/audio/speech")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        let bytes: Bytes = response.into_body().await?;
-        super::functions::parse_audio_generation_response(status, bytes.to_vec())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio_generation::AudioGenerationModel as _;
-    use crate::client::audio_generation::AudioGenerationClient;
+    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::openai::functions;
     use crate::test_utils::RecordingHttpClient;
 
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.audio_generation_model(TTS_1);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = functions::Config::new(TTS_1).with_api_key("test-key");
 
-        let request = AudioGenerationRequest::new("hello", "alloy");
-
-        let error = model
-            .audio_generation(request)
-            .await
-            .err()
-            .expect("should fail with non-success status");
+        let Err(error) =
+            functions::generate_audio(&cfg, &rt, AudioGenerationRequest::new("hello", "alloy"))
+                .await
+        else {
+            panic!("should fail with non-success status");
+        };
 
         assert!(matches!(error, AudioGenerationError::HttpError(_)));
         assert_eq!(
@@ -88,5 +37,18 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn audio_generation_success_returns_raw_audio_bytes() {
+        let rt = HttpRuntime::recording(RecordingHttpClient::new("RIFFfake-audio"));
+        let cfg = functions::Config::new(TTS_1_HD).with_api_key("test-key");
+
+        let response =
+            functions::generate_audio(&cfg, &rt, AudioGenerationRequest::new("hello", "alloy"))
+                .await
+                .expect("audio generation should succeed");
+
+        assert_eq!(response.audio, b"RIFFfake-audio".to_vec());
     }
 }

@@ -1,17 +1,13 @@
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
-    http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
-    telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator},
 };
 use std::collections::HashMap;
 
-use super::client::Client;
 use crate::completion::CompletionRequest;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, Level, enabled};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -110,21 +106,6 @@ impl From<&FinishReason> for completion::FinishReason {
             FinishReason::ToolCall => Self::ToolCalls,
             FinishReason::Error => Self::Other("ERROR".to_owned()),
         }
-    }
-}
-
-impl Usage {
-    /// Normalize the billed-unit token counts reported by Cohere.
-    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        if let Some(ref billed_units) = self.billed_units {
-            usage.input_tokens = billed_units.input_tokens.unwrap_or_default() as u64;
-            usage.output_tokens = billed_units.output_tokens.unwrap_or_default() as u64;
-            usage.total_tokens = usage.input_tokens + usage.output_tokens;
-        }
-
-        usage
     }
 }
 
@@ -547,12 +528,6 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct CohereCompletionRequest {
     pub(super) model: String,
@@ -634,105 +609,6 @@ pub(super) fn apply_stream_flag(request: &mut CohereCompletionRequest) {
     request.additional_params = Some(params);
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt,
-{
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let llm_span =
-            CompletionSpanBuilder::new("cohere", &request.model, CompletionOperation::Chat)
-                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-                .build();
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                "Cohere completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let req_body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v2/chat")?
-            .body(req_body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async {
-            let response = self
-                .client
-                .send::<_, bytes::Bytes>(req)
-                .await
-                .map_err(|e| http_client::Error::Instance(e.into()))?;
-
-            let status = response.status();
-            let body = response.into_body().into_future().await?.to_owned();
-
-            if status.is_success() {
-                let json_response: CompletionResponse = serde_json::from_slice(&body)?;
-                let span = tracing::Span::current();
-                let token_usage = json_response
-                    .usage
-                    .as_ref()
-                    .map(Usage::token_usage)
-                    .unwrap_or_default();
-                span.record_token_usage(&token_usage);
-                span.record_response_metadata(&json_response);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Cohere completion response: {}",
-                        serde_json::to_string_pretty(&json_response)?
-                    );
-                }
-
-                let completion: completion::CompletionResponse = json_response.try_into()?;
-                Ok(completion)
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
-        .instrument(llm_span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -861,27 +737,22 @@ mod tests {
 
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::cohere::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = crate::providers::cohere::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg =
+            functions::Config::new(crate::providers::cohere::COMMAND_R).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("should fail with non-success status");
 
-        assert!(matches!(error, CompletionError::HttpError(_)));
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)

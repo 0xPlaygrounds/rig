@@ -7,10 +7,7 @@ use std::{
 
 use crate::{
     OneOrMany,
-    completion::{
-        AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-        Usage,
-    },
+    completion::{AssistantContent, CompletionError, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
     streaming::{StreamingCompletionResponse, StreamingResult},
 };
@@ -162,7 +159,7 @@ struct MockCompletionModelState {
     requests: Mutex<Vec<CompletionRequest>>,
 }
 
-/// A cloneable scripted [`CompletionModel`] for tests.
+/// A cloneable scripted completion model for tests.
 ///
 /// Each completion or stream call consumes exactly one scripted turn. If no turn
 /// is available, the model returns [`CompletionError::ProviderError`] with a
@@ -256,14 +253,9 @@ impl MockCompletionModel {
     }
 }
 
-impl CompletionModel for MockCompletionModel {
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self::default()
-    }
-
-    async fn completion(
+impl MockCompletionModel {
+    /// Consume one scripted non-streaming turn.
+    pub async fn completion(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
@@ -277,7 +269,8 @@ impl CompletionModel for MockCompletionModel {
         turn.into_completion_response()
     }
 
-    async fn stream(
+    /// Consume one scripted streaming turn.
+    pub async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {

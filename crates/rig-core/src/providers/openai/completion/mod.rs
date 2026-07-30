@@ -2,22 +2,14 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::client::ApiResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
-use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
-use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::ProviderDescriptor;
-use crate::telemetry::{
-    CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
-};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::telemetry::ProviderResponseExt;
 use crate::{OneOrMany, completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
-use tracing::{Instrument, Level, enabled};
 
 use std::str::FromStr;
 
@@ -1411,119 +1403,6 @@ pub struct CompletionModelOptions {
     pub prompt_caching: bool,
 }
 
-/// The remaining compile-time plumbing for provider extensions that speak the
-/// OpenAI Chat Completions wire format through [`GenericCompletionModel`].
-///
-/// This is a **dispatch shim, not a behavior contract**: every provider's
-/// request assembly lives as straight-line code in its own `functions` module,
-/// and each impl here is a one-line forward to it. The shim exists only while
-/// the classic `Client<Ext, H>`-based model types survive; it is deleted with
-/// them.
-pub trait OpenAICompatibleProvider: crate::client::Provider {
-    /// The provider's capability sheet — the single source of the values that
-    /// used to be assoc consts on this trait.
-    const DESCRIPTOR: ProviderDescriptor;
-
-    /// The provider's streaming dialect, for the sans-IO chunk normalizer.
-    const STREAM_DIALECT: ChatCompletionsDialect;
-
-    /// The chat-completions payload this provider returns.
-    type Response: serde::de::DeserializeOwned
-        + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: Into<crate::completion::Usage> + Clone>
-        + TryInto<completion::CompletionResponse, Error = CompletionError>
-        + WasmCompatSend
-        + WasmCompatSync;
-
-    /// The request path for chat completions, resolved against the client base
-    /// URL by [`Provider::build_uri`](crate::client::Provider::build_uri).
-    fn completion_path(&self, model: &str) -> String;
-
-    /// The exact serialized request body — the provider's own straight-line
-    /// assembly in its `functions` module.
-    fn build_body(
-        &self,
-        model: &str,
-        request: &CoreCompletionRequest,
-        options: CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, CompletionError>;
-}
-
-impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
-    const DESCRIPTOR: ProviderDescriptor = super::functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = super::functions::STREAM_DIALECT;
-
-    type Response = CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        super::functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &CoreCompletionRequest,
-        options: CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, CompletionError> {
-        super::functions::build_body(model, request, options, stream)
-    }
-}
-
-/// A chat-completions model over any [`OpenAICompatibleProvider`] extension.
-/// This is the advertised path for OpenAI-compatible providers; see the
-/// provider checklist in [`crate::providers`].
-#[derive(Clone)]
-pub struct GenericCompletionModel<Ext = super::OpenAICompletionsExt, H = reqwest::Client> {
-    pub(crate) client: crate::client::Client<Ext, H>,
-    pub model: String,
-    pub(crate) strict_tools: bool,
-    pub(crate) tool_result_array_content: bool,
-    pub(crate) prompt_caching: bool,
-}
-
-/// The completion model struct for OpenAI's Chat Completions API.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type CompletionModel<H = reqwest::Client> =
-    GenericCompletionModel<super::OpenAICompletionsExt, H>;
-
-impl<Ext, H> GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
-    Ext: crate::client::Provider + Clone + 'static,
-{
-    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            strict_tools: false,
-            tool_result_array_content: false,
-            prompt_caching: false,
-        }
-    }
-
-    /// Enable strict mode for tool schemas.
-    ///
-    /// When enabled, tool schemas are automatically sanitized to meet OpenAI's strict mode requirements:
-    /// - `additionalProperties: false` is added to all objects
-    /// - All properties are marked as required
-    /// - `strict: true` is set on each function definition
-    ///
-    /// This allows OpenAI to guarantee that the model's tool calls will match the schema exactly.
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-
-    pub fn with_tool_result_array_content(mut self) -> Self {
-        self.tool_result_array_content = true;
-        self
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompletionRequest {
     pub model: String,
@@ -1839,144 +1718,6 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: crate::client::Provider
-        + OpenAICompatibleProvider
-        + crate::client::DebugExt
-        + Clone
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    // OpenAI Chat Completions *defers* `response_format` while tools are present
-    // and no tool result exists yet (see `should_apply_response_format`), then
-    // applies it once a tool result is in the history. So the native constraint
-    // does not suppress tool calls — they compose — which is what this flag
-    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
-    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
-    // See issue #1928.
-    // Not a getter for the same-named descriptor field: OpenAI Chat
-    // Completions composes iff it sends `response_format` at all, so the
-    // answer is `supports_response_format`.
-    #[allow(clippy::misnamed_getters)]
-    fn composes_native_output_with_tools(&self) -> bool {
-        // Providers that drop `output_schema`
-        // (`descriptor.supports_response_format == false`) cannot compose
-        // native structured output with tools; the agent then falls back to
-        // tool-mode enforcement as their pre-migration hand-rolled models did.
-        Ext::DESCRIPTOR.supports_response_format
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CoreCompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let options = CompletionModelOptions {
-            strict_tools: self.strict_tools,
-            tool_result_array_content: self.tool_result_array_content,
-            prompt_caching: self.prompt_caching,
-        };
-        let resolved_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::DESCRIPTOR.name,
-            &resolved_model,
-            CompletionOperation::Chat,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        // The provider's own straight-line body assembly (its `functions`
-        // module) is the single source of truth for the wire bytes.
-        let body =
-            self.client
-                .ext()
-                .build_body(&self.model, &completion_request, options, false)?;
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Chat Completions completion request: {}",
-                String::from_utf8_lossy(&body)
-            );
-        }
-
-        // Deliberately the configured model, not the per-request override:
-        // Azure's deployment URL is pinned to the model handle.
-        let path = self.client.ext().completion_path(&self.model);
-
-        let req = self
-            .client
-            .post(&path)?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send(req).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let text = http_client::text(response).await?;
-
-                match serde_json::from_str::<ApiResponse<Ext::Response>>(&text)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&response);
-                        let usage = response
-                            .get_usage()
-                            .map(Into::into)
-                            .unwrap_or_default();
-                        span.record_token_usage(&usage);
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(
-                                target: "rig::completions",
-                                "OpenAI Chat Completions completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        // The shared wire conversion fills a placeholder
-                        // provider; stamp the real one for this extension.
-                        let mut normalized: completion::CompletionResponse =
-                            response.try_into()?;
-                        normalized.provider = Ext::DESCRIPTOR.name.to_string();
-                        Ok(normalized)
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(status, text))
-                    }
-                }
-            } else {
-                let text = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, text))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CoreCompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericCompletionModel::stream(self, request).await
-    }
-}
-
 fn serialize_assistant_content_vec<S>(
     value: &Vec<AssistantContent>,
     serializer: S,
@@ -1994,6 +1735,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::openai::api::ApiResponse;
     use crate::telemetry::ProviderResponseExt;
     use std::collections::HashMap;
 
@@ -3139,24 +2881,19 @@ mod tests {
 
     #[tokio::test]
     async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
-        use crate::providers::openai::CompletionsClient;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::openai::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
-        let client = CompletionsClient::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o-mini");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::ACCEPTED,
+            body,
+        ));
+        let cfg = functions::Config::new("gpt-4o-mini").with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with provider error envelope");
 
@@ -3182,24 +2919,19 @@ mod tests {
 
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
-        use crate::providers::openai::CompletionsClient;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::openai::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-        let client = CompletionsClient::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o-mini");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            body,
+        ));
+        let cfg = functions::Config::new("gpt-4o-mini").with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with non-success status");
 
@@ -3214,5 +2946,346 @@ mod tests {
             .expect("raw body should be valid JSON")
             .expect("parsed JSON should be present");
         assert_eq!(json["error"]["type"], "rate_limit_error");
+    }
+
+    // ------------------------------------------------------------------
+    // Wire-message tests moved here from the deleted `openai::client`
+    // module; their subject is these chat-completions message types.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_deserialize_message() {
+        use serde_path_to_error::deserialize;
+
+        let assistant_message_json = r#"
+        {
+            "role": "assistant",
+            "content": "\n\nHello there, how may I assist you today?"
+        }
+        "#;
+
+        let assistant_message_json2 = r#"
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "\n\nHello there, how may I assist you today?"
+                }
+            ],
+            "tool_calls": null
+        }
+        "#;
+
+        let assistant_message_json3 = r#"
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_h89ipqYUjEpCPI6SxspMnoUU",
+                    "type": "function",
+                    "function": {
+                        "name": "subtract",
+                        "arguments": "{\"x\": 2, \"y\": 5}"
+                    }
+                }
+            ],
+            "content": null,
+            "refusal": null
+        }
+        "#;
+
+        let user_message_json = r#"
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "What's in this image?"
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+                    }
+                },
+                {
+                    "type": "audio",
+                    "input_audio": {
+                        "data": "...",
+                        "format": "mp3"
+                    }
+                }
+            ]
+        }
+        "#;
+
+        fn parse(json: &str) -> Message {
+            let jd = &mut serde_json::Deserializer::from_str(json);
+            deserialize(jd).unwrap_or_else(|err| {
+                panic!(
+                    "Deserialization error at {} ({}:{}): {}",
+                    err.path(),
+                    err.inner().line(),
+                    err.inner().column(),
+                    err
+                );
+            })
+        }
+
+        let assistant_message = parse(assistant_message_json);
+        let assistant_message2 = parse(assistant_message_json2);
+        let assistant_message3 = parse(assistant_message_json3);
+        let user_message = parse(user_message_json);
+
+        match assistant_message {
+            Message::Assistant { content, .. } => {
+                assert_eq!(
+                    content[0],
+                    AssistantContent::Text {
+                        text: "\n\nHello there, how may I assist you today?".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match assistant_message2 {
+            Message::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
+                assert_eq!(
+                    content[0],
+                    AssistantContent::Text {
+                        text: "\n\nHello there, how may I assist you today?".to_string()
+                    }
+                );
+
+                assert_eq!(tool_calls, vec![]);
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match assistant_message3 {
+            Message::Assistant {
+                content,
+                tool_calls,
+                refusal,
+                ..
+            } => {
+                assert!(content.is_empty());
+                assert!(refusal.is_none());
+                assert_eq!(
+                    tool_calls[0],
+                    ToolCall {
+                        id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
+                        r#type: ToolType::Function,
+                        function: Function {
+                            name: "subtract".to_string(),
+                            arguments: serde_json::json!({"x": 2, "y": 5}),
+                        },
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        match user_message {
+            Message::User { content, .. } => {
+                let (first, second) = {
+                    let mut iter = content.into_iter();
+                    (
+                        iter.next().expect("first content part"),
+                        iter.next().expect("second content part"),
+                    )
+                };
+                assert_eq!(
+                    first,
+                    UserContent::Text {
+                        text: "What's in this image?".to_string()
+                    }
+                );
+                assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: None } });
+            }
+            _ => panic!("Expected user message"),
+        }
+    }
+
+    #[test]
+    fn test_message_to_message_conversion() {
+        let user_message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::text("Hello")),
+        };
+
+        let assistant_message = message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
+        };
+
+        let converted_user_message: Vec<Message> =
+            user_message.clone().try_into().expect("user conversion");
+        let converted_assistant_message: Vec<Message> = assistant_message
+            .clone()
+            .try_into()
+            .expect("assistant conversion");
+
+        match converted_user_message[0].clone() {
+            Message::User { content, .. } => {
+                assert_eq!(
+                    content.first(),
+                    UserContent::Text {
+                        text: "Hello".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected user message"),
+        }
+
+        match converted_assistant_message[0].clone() {
+            Message::Assistant { content, .. } => {
+                assert_eq!(
+                    content[0].clone(),
+                    AssistantContent::Text {
+                        text: "Hi there!".to_string()
+                    }
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        let original_user_message: message::Message = converted_user_message[0]
+            .clone()
+            .try_into()
+            .expect("user round trip");
+        let original_assistant_message: message::Message = converted_assistant_message[0]
+            .clone()
+            .try_into()
+            .expect("assistant round trip");
+
+        assert_eq!(original_user_message, user_message);
+        assert_eq!(original_assistant_message, assistant_message);
+    }
+
+    #[test]
+    fn test_message_from_message_conversion() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Text {
+                text: "Hello".to_string(),
+            }),
+            name: None,
+        };
+
+        let assistant_message = Message::Assistant {
+            content: vec![AssistantContent::Text {
+                text: "Hi there!".to_string(),
+            }],
+            reasoning: None,
+            refusal: None,
+            audio: None,
+            name: None,
+            tool_calls: vec![],
+            reasoning_details: vec![],
+            images: vec![],
+        };
+
+        let converted_user_message: message::Message =
+            user_message.clone().try_into().expect("user conversion");
+        let converted_assistant_message: message::Message = assistant_message
+            .clone()
+            .try_into()
+            .expect("assistant conversion");
+
+        match converted_user_message.clone() {
+            message::Message::User { content } => {
+                assert_eq!(content.first(), message::UserContent::text("Hello"));
+            }
+            _ => panic!("Expected user message"),
+        }
+
+        match converted_assistant_message.clone() {
+            message::Message::Assistant { content, .. } => {
+                assert_eq!(
+                    content.first(),
+                    message::AssistantContent::text("Hi there!")
+                );
+            }
+            _ => panic!("Expected assistant message"),
+        }
+
+        let original_user_message: Vec<Message> =
+            converted_user_message.try_into().expect("user round trip");
+        let original_assistant_message: Vec<Message> = converted_assistant_message
+            .try_into()
+            .expect("assistant round trip");
+
+        assert_eq!(original_user_message[0], user_message);
+        assert_eq!(original_assistant_message[0], assistant_message);
+    }
+
+    #[test]
+    fn test_user_message_single_text_serializes_as_string() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Text {
+                text: "Hello world".to_string(),
+            }),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).expect("serialize");
+
+        assert_eq!(serialized["role"], "user");
+        assert_eq!(serialized["content"], "Hello world");
+    }
+
+    #[test]
+    fn test_user_message_multiple_parts_serializes_as_array() {
+        let user_message = Message::User {
+            content: OneOrMany::many(vec![
+                UserContent::Text {
+                    text: "What's in this image?".to_string(),
+                },
+                UserContent::Image {
+                    image_url: ImageUrl {
+                        url: "https://example.com/image.jpg".to_string(),
+                        detail: Some(ImageDetail::default()),
+                    },
+                },
+            ])
+            .expect("two content parts"),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).expect("serialize");
+
+        assert_eq!(serialized["role"], "user");
+        assert!(serialized["content"].is_array());
+        assert_eq!(
+            serialized["content"]
+                .as_array()
+                .expect("content array")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn test_user_message_single_image_serializes_as_array() {
+        let user_message = Message::User {
+            content: OneOrMany::one(UserContent::Image {
+                image_url: ImageUrl {
+                    url: "https://example.com/image.jpg".to_string(),
+                    detail: Some(ImageDetail::default()),
+                },
+            }),
+            name: None,
+        };
+
+        let serialized = serde_json::to_value(&user_message).expect("serialize");
+
+        assert_eq!(serialized["role"], "user");
+        // Single non-text content should still serialize as array
+        assert!(serialized["content"].is_array());
     }
 }

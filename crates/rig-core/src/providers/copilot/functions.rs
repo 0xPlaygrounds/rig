@@ -7,9 +7,8 @@
 //! async [`complete`] and [`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
 //!
-//! Like the classic [`CompletionModel`](super::CompletionModel), requests
-//! route by model: conversational models use `/chat/completions` while
-//! codex-class models use `/responses`, sharing the classic path's request
+//! Requests route by model: conversational models use `/chat/completions`
+//! while codex-class models use `/responses`, sharing the provider's request
 //! shaping and SSE machinery for both.
 //!
 //! # Credentials
@@ -87,6 +86,10 @@ pub struct Config {
     /// Send tool results as content arrays (classic
     /// `with_tool_result_array_content`).
     pub tool_result_array_content: bool,
+    /// Conversation intent sent in the `openai-intent` request header
+    /// (classic `with_intent` / `with_panel_intent` / `with_edits_intent`).
+    #[serde(default)]
+    pub intent: CopilotIntent,
     /// Extra headers attached to every request.
     pub extra_headers: Vec<(String, String)>,
 }
@@ -101,6 +104,7 @@ impl Config {
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
+            intent: CopilotIntent::Panel,
             extra_headers: Vec::new(),
         }
     }
@@ -114,6 +118,13 @@ impl Config {
     /// Override the API base URL.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
+        self
+    }
+
+    /// Set the conversation intent sent in the `openai-intent` header
+    /// (classic `CompletionModel::with_intent`).
+    pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
+        self.intent = intent;
         self
     }
 
@@ -143,30 +154,55 @@ impl Config {
 }
 
 /// API-key variables, in the classic client's precedence order.
-const API_KEY_VARS: &[&str] = &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
+pub(crate) const API_KEY_VARS: &[&str] = &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
 /// GitHub access-token variables, in the classic client's precedence order.
-const ACCESS_TOKEN_VARS: &[&str] = &["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"];
+pub(crate) const ACCESS_TOKEN_VARS: &[&str] = &["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"];
 /// Base-URL override variables, in the classic client's precedence order.
-const BASE_URL_VARS: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
+pub(crate) const BASE_URL_VARS: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 
-/// The first of `vars` that is set, as a variable name.
-fn env_first_present(vars: &[&'static str]) -> Result<Option<&'static str>, ConfigError> {
+/// The first of `vars` `get` reports as set, as a variable name.
+///
+/// The precedence rule itself, factored out of the environment so it is
+/// testable without mutating the process environment.
+pub(crate) fn first_present_in<F>(
+    vars: &[&'static str],
+    get: F,
+) -> Result<Option<&'static str>, ConfigError>
+where
+    F: Fn(&'static str) -> Result<Option<String>, ConfigError>,
+{
     for var in vars {
-        if optional_env_var(var)?.is_some() {
+        if get(var)?.is_some() {
             return Ok(Some(var));
         }
     }
     Ok(None)
 }
 
-/// The value of the first of `vars` that is set.
-fn env_first_value(vars: &[&'static str]) -> Result<Option<String>, ConfigError> {
+/// The value of the first of `vars` `get` reports as set.
+pub(crate) fn first_value_in<F>(
+    vars: &[&'static str],
+    get: F,
+) -> Result<Option<String>, ConfigError>
+where
+    F: Fn(&'static str) -> Result<Option<String>, ConfigError>,
+{
     for var in vars {
-        if let Some(value) = optional_env_var(var)? {
+        if let Some(value) = get(var)? {
             return Ok(Some(value));
         }
     }
     Ok(None)
+}
+
+/// The first of `vars` that is set in the process environment.
+fn env_first_present(vars: &[&'static str]) -> Result<Option<&'static str>, ConfigError> {
+    first_present_in(vars, optional_env_var)
+}
+
+/// The value of the first of `vars` that is set in the process environment.
+fn env_first_value(vars: &[&'static str]) -> Result<Option<String>, ConfigError> {
+    first_value_in(vars, optional_env_var)
 }
 
 /// Failure while resolving a Copilot configuration from the environment.
@@ -229,7 +265,7 @@ pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigF
     apply_auth_context(cfg, &authenticator, base_url_override).await
 }
 
-/// Config for `model` using a caller-built [`Authenticator`].
+/// Config for `model` using a caller-built `Authenticator`.
 ///
 /// The escape hatch [`config_from_env`] does not cover: custom token-file
 /// locations, a device-code prompt handler, or `allow_device_flow = false` for
@@ -341,7 +377,7 @@ pub fn build_request(
         &key,
         request_initiator(request),
         request_has_vision(request),
-        CopilotIntent::default(),
+        cfg.intent,
     );
     let mut builder = apply_headers(
         http::Request::post(url).header(CONTENT_TYPE, "application/json"),
@@ -627,8 +663,7 @@ pub fn build_list_models_request(
 
 /// List the models available to `cfg`'s credentials.
 ///
-/// The classic `ModelListingClient` path parses through the same pure
-/// parser (`super::parse_list_models_response`).
+/// Parses through the pure `super::parse_list_models_response`.
 pub async fn list_models(
     cfg: &Config,
     rt: &HttpRuntime,
@@ -707,6 +742,50 @@ mod tests {
             Some("user")
         );
         assert!(req.headers().get("x-request-id").is_some());
+    }
+
+    #[test]
+    fn build_request_defaults_to_the_panel_intent() {
+        let cfg = Config::new("gpt-4o").with_api_key("secret");
+        let req = build_request(&cfg, &sample_request(), false).expect("build");
+        assert_eq!(
+            req.headers()
+                .get("openai-intent")
+                .and_then(|v| v.to_str().ok()),
+            Some("conversation-panel")
+        );
+    }
+
+    /// Restores the deleted classic
+    /// `completion_model_edits_intent_sets_request_header` assertion on the
+    /// functions path.
+    #[test]
+    fn edits_intent_sets_request_header() {
+        let cfg = Config::new("gpt-4o")
+            .with_api_key("secret")
+            .with_intent(CopilotIntent::Edits);
+        let req = build_request(&cfg, &sample_request(), false).expect("build");
+        assert_eq!(
+            req.headers()
+                .get("openai-intent")
+                .and_then(|v| v.to_str().ok()),
+            Some("conversation-edits")
+        );
+    }
+
+    #[test]
+    fn config_intent_round_trips_through_serde() {
+        let cfg = Config::new("gpt-4o").with_intent(CopilotIntent::Edits);
+        let json = serde_json::to_string(&cfg).expect("serialize");
+        let back: Config = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, cfg);
+        // A config serialized before `intent` existed still deserializes.
+        let mut value: serde_json::Value = serde_json::from_str(&json).expect("json");
+        if let Some(map) = value.as_object_mut() {
+            map.remove("intent");
+        }
+        let legacy: Config = serde_json::from_value(value).expect("deserialize legacy");
+        assert_eq!(legacy.intent, CopilotIntent::Panel);
     }
 
     #[test]

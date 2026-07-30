@@ -220,22 +220,23 @@ pub(crate) fn allowed_tool_names_for_choice(
 /// Rig's agent: an LLM provider selection combined with a preamble (system
 /// prompt), static context documents, advertised tools, and hooks.
 ///
-/// Build one with [`AgentBuilder`](super::AgentBuilder) (the ergonomic path,
-/// including `client.agent(model)`) or construct it directly from plain data
-/// with [`Agent::new`]. Every execution method drives the session layer:
+/// Build one with [`AgentBuilder`](super::AgentBuilder) (the ergonomic path)
+/// or construct it directly from plain data with [`Agent::new`]. Either way the
+/// provider is a `functions::Config` wrapped in the
+/// [`ProviderConfig`](crate::provider::ProviderConfig) arm that names it — there
+/// is no client object. Every execution method drives the session layer:
 /// [`AgentSession`] for the blocking methods and [`AgentStream`] for the
 /// streaming ones.
 ///
 /// # Example
 /// ```no_run
 /// use rig_agent::prelude::*;
-/// use rig_core::{client::ProviderClient, providers::openai};
+/// use rig_core::providers::openai;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = openai::Client::from_env()?;
-///
-/// let comedian_agent = openai
-///     .agent(openai::GPT_5_2)
+/// let comedian_agent = AgentBuilder::new(ProviderConfig::OpenAi(
+///         openai::functions::Config::from_env(openai::GPT_5_2)?,
+///     ))
 ///     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 ///     .temperature(0.9)
 ///     .build();

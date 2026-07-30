@@ -1,21 +1,18 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{self, CompletionError};
-use crate::http_client::HttpClientExt;
 use crate::http_client::sse::Event;
 use crate::message::ReasoningContent;
 use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, debug, enabled};
+use tracing::debug;
 use tracing_futures::Instrument as _;
 
-use super::{CompletionResponse, GenericResponsesCompletionModel, Output};
+use super::{CompletionResponse, Output};
 
 type StreamingRawChoice = RawStreamingChoice;
 
@@ -865,52 +862,6 @@ pub enum SummaryPartChunkPart {
     SummaryText { text: String },
 }
 
-impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
-    Ext: crate::client::Provider + super::ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request = self.create_completion_request(completion_request)?;
-        request.stream = Some(true);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/responses")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "openai",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-        let client = self.client.clone();
-        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
-
-        Ok(stream_from_event_source(event_source, span))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -925,7 +876,6 @@ mod tests {
     };
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
     use crate::test_utils::MockStreamingClient;
-    use crate::{client::CompletionClient, providers::openai};
     use futures::StreamExt;
     use serde_json::{self, json};
 
@@ -950,19 +900,31 @@ mod tests {
         }
     }
 
+    /// Drive the Responses SSE state machine over scripted events.
+    ///
+    /// The sans-IO half of `functions::open_stream`: the same
+    /// `stream_from_event_source`, with the transport edge fed canned bytes.
+    fn drive_responses_sse(
+        events: &[serde_json::Value],
+    ) -> crate::streaming::StreamingCompletionResponse {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(events),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+        super::stream_from_event_source(
+            crate::http_client::sse::boxed_event_source(client, req, false),
+            tracing::Span::none(),
+        )
+    }
+
     async fn first_error_from_event(
         event: serde_json::Value,
     ) -> crate::completion::CompletionError {
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_bytes_from_json_events(&[event]),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = drive_responses_sse(&[event]);
 
         stream
             .next()
@@ -972,16 +934,7 @@ mod tests {
     }
 
     async fn final_response_from_event(event: serde_json::Value) -> crate::streaming::StreamFinal {
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_bytes_from_json_events(&[event]),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = drive_responses_sse(&[event]);
 
         while let Some(item) = stream.next().await {
             match item.expect("completed stream should not error") {
@@ -1405,16 +1358,7 @@ mod tests {
             "response": response,
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = drive_responses_sse(&[tool_call_done, failed]);
 
         let err = stream
             .next()
@@ -1437,9 +1381,6 @@ mod tests {
 
     #[tokio::test]
     async fn streaming_error_event_preserves_full_payload_in_live_loop() {
-        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
-        use crate::test_utils::MockStreamingClient;
-
         let payload = json!({
             "type": "error",
             "error": {
@@ -1449,16 +1390,7 @@ mod tests {
             }
         });
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: sse_bytes_from_json_events(&[payload]),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = drive_responses_sse(&[payload]);
 
         let err = stream
             .next()
@@ -1679,24 +1611,29 @@ mod tests {
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
 
-        let client = openai::Client::builder()
-            .http_client(MockStreamingClient {
-                sse_bytes: bytes::Bytes::from(format!(
-                    "data: {}\n\ndata: [DONE]\n\n",
-                    serde_json::to_string(&json!({
-                        "type": "response.completed",
-                        "sequence_number": 1,
-                        "response": response,
-                    }))
-                    .expect("response event should serialize")
-                )),
-            })
-            .api_key("test-key")
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        // Deliberately hand-rolled SSE bytes (not `drive_responses_sse`) so the
+        // trailing `[DONE]` sentinel is present: this test is about that
+        // sentinel not producing parse-failure debug noise.
+        let client = MockStreamingClient {
+            sse_bytes: bytes::Bytes::from(format!(
+                "data: {}\n\ndata: [DONE]\n\n",
+                serde_json::to_string(&json!({
+                    "type": "response.completed",
+                    "sequence_number": 1,
+                    "response": response,
+                }))
+                .expect("response event should serialize")
+            )),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+        let mut stream = super::stream_from_event_source(
+            crate::http_client::sse::boxed_event_source(client, req, false),
+            tracing::Span::none(),
+        );
 
         let mut final_usage = None;
         while let Some(item) = stream.next().await {

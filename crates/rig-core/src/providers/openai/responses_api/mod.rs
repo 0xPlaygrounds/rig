@@ -1,35 +1,35 @@
 //! The OpenAI Responses API.
 //!
-//! By default when creating a completion client, this is the API that gets used.
+//! This module holds the Responses wire types and their conversions to and
+//! from Rig's normalized completion types. The provider entry points are the
+//! free functions in [`functions`]:
+//! ```no_run
+//! use rig_core::providers::openai::responses_api::functions;
 //!
-//! If you'd like to switch back to the regular Completions API, you can do so by using the `.completions_api()` function - see below for an example:
-//! ```rust
-//! use rig_core::client::{CompletionClient, ProviderClient};
-//!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai_client = rig_core::providers::openai::Client::from_env()?;
-//! let model = openai_client.completion_model("gpt-4o").completions_api();
-//! # let _ = model;
+//! # async fn example(request: rig_core::completion::CompletionRequest)
+//! # -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = functions::Config::from_env("gpt-4o")?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = functions::complete(&cfg, &rt, request).await?;
+//! # let _ = response;
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! The Chat Completions flavored face of the same provider is
+//! [`super::functions`].
 use super::InputAudio;
 use crate::completion::CompletionError;
-use crate::http_client;
-use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
     MimeType, Text,
 };
 use crate::one_or_many::string_or_one_or_many;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
-use tracing::{Instrument, Level, enabled};
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -718,7 +718,7 @@ pub struct ResponsesToolDefinition {
     #[serde(default, skip_serializing_if = "is_json_null")]
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
-    /// or [`GenericResponsesCompletionModel::with_strict_tools`].
+    /// or [`functions::Config::with_strict_tools`].
     #[serde(
         default,
         skip_serializing_if = "is_false",
@@ -1135,21 +1135,6 @@ pub enum SystemInstructionsPlacement {
     InputSystemMessages,
 }
 
-/// Provider extensions that drive the OpenAI Responses request conversion.
-///
-/// Implemented by the `Ext` type of a [`crate::client::Client`] used with
-/// [`GenericResponsesCompletionModel`], so a client-level configuration can
-/// control request shaping for every model created from that client.
-pub trait ResponsesProviderExt {
-    /// Where Rig system instructions are placed in requests built from this
-    /// provider. See [`SystemInstructionsPlacement`].
-    ///
-    /// Deliberately has no default body: each provider must state its
-    /// placement explicitly, so a backend that can't handle the default
-    /// (top-level `instructions`) is never inherited by accident.
-    fn system_instructions_placement(&self) -> SystemInstructionsPlacement;
-}
-
 /// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
     type Error = CompletionError;
@@ -1336,131 +1321,6 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             temperature: req.temperature,
             additional_parameters,
         })
-    }
-}
-
-/// The completion model struct for OpenAI's response API.
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct GenericResponsesCompletionModel<Ext = super::OpenAIResponsesExt, H = reqwest::Client> {
-    /// The OpenAI client
-    pub(crate) client: crate::client::Client<Ext, H>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-    /// Model-level default tools that are always added to outgoing requests.
-    pub tools: Vec<ResponsesToolDefinition>,
-    /// Whether function tools should use strict mode. Disabled by default to match
-    /// the Chat Completions API; enable with [`Self::with_strict_tools`].
-    pub strict_tools: bool,
-    system_instructions_placement: SystemInstructionsPlacement,
-}
-
-/// The completion model struct for OpenAI's Responses API.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type ResponsesCompletionModel<H = reqwest::Client> =
-    GenericResponsesCompletionModel<super::OpenAIResponsesExt, H>;
-
-impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + 'static,
-{
-    /// Creates a new [`ResponsesCompletionModel`].
-    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
-        let system_instructions_placement = client.ext().system_instructions_placement();
-        Self {
-            client,
-            model: model.into(),
-            tools: Vec::new(),
-            strict_tools: false,
-            system_instructions_placement,
-        }
-    }
-
-    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
-        Self::new(client, model)
-    }
-
-    /// Enable strict mode for function tool schemas.
-    ///
-    /// When enabled, function tool schemas are sanitized to meet OpenAI's strict
-    /// mode requirements and `strict: true` is set on each function definition.
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-
-    /// Sets where Rig system instructions are placed in requests from this
-    /// model, overriding the client-level default. See
-    /// [`SystemInstructionsPlacement`] for when each placement applies.
-    pub fn with_system_instructions_placement(
-        mut self,
-        placement: SystemInstructionsPlacement,
-    ) -> Self {
-        self.system_instructions_placement = placement;
-        self
-    }
-
-    /// Sends Rig system instructions as `system` messages in `input` instead of
-    /// as top-level Responses API `instructions`.
-    ///
-    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
-    /// default. Use this compatibility fallback for OpenAI-compatible providers
-    /// that reject or ignore top-level `instructions`.
-    pub fn with_system_instructions_as_messages(self) -> Self {
-        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
-    }
-
-    /// Adds a default tool to all requests from this model.
-    pub fn with_tool(mut self, tool: impl Into<ResponsesToolDefinition>) -> Self {
-        self.tools.push(tool.into());
-        self
-    }
-
-    /// Adds default tools to all requests from this model.
-    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
-    where
-        I: IntoIterator<Item = Tool>,
-        Tool: Into<ResponsesToolDefinition>,
-    {
-        self.tools.extend(tools.into_iter().map(Into::into));
-        self
-    }
-
-    /// Attempt to create a completion request from [`crate::completion::CompletionRequest`].
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<CompletionRequest, CompletionError> {
-        let mut req = CompletionRequest::try_from(ResponsesRequestParams {
-            model: self.model.clone(),
-            request: completion_request,
-            system_instructions_placement: self.system_instructions_placement,
-        })?;
-        req.tools.extend(self.tools.clone());
-
-        if self.strict_tools {
-            req.tools = req
-                .tools
-                .into_iter()
-                .map(ResponsesToolDefinition::normalize)
-                .collect();
-        }
-
-        Ok(req)
-    }
-}
-
-impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
-{
-    /// Use the Completions API instead of Responses.
-    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
-        super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 }
 
@@ -2221,103 +2081,6 @@ pub struct OutputMessage {
 #[serde(rename_all = "snake_case")]
 pub enum OutputRole {
     Assistant,
-}
-
-impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: crate::client::Provider
-        + ResponsesProviderExt
-        + crate::client::DebugExt
-        + Clone
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    // The OpenAI Responses API constrains only the final assistant message via
-    // `text.format`; tools are still called across turns, so native structured
-    // output composes with tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.create_completion_request(completion_request)?;
-        let span = CompletionSpanBuilder::new("openai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-        let body = serde_json::to_vec(&request)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses completion request: {request}",
-                request = serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let req = self
-            .client
-            .post("/responses")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send(req).await?;
-
-            if response.status().is_success() {
-                let t = http_client::text(response).await?;
-                let response = serde_json::from_str::<CompletionResponse>(&t)?;
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.id);
-                span.record("gen_ai.response.model", &response.model);
-                if let Some(ref usage) = response.usage {
-                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    let cached_tokens = usage
-                        .input_tokens_details
-                        .as_ref()
-                        .map(|d| d.cached_tokens)
-                        .unwrap_or(0);
-                    span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
-                }
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "OpenAI Responses completion response: {response}",
-                        response = serde_json::to_string_pretty(&response)?
-                    );
-                }
-                response.try_into()
-            } else {
-                let status = response.status();
-                let text = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, text))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericResponsesCompletionModel::stream(self, request).await
-    }
 }
 
 impl TryFrom<CompletionResponse> for completion::CompletionResponse {
@@ -3350,14 +3113,12 @@ mod tests {
     }
 
     #[test]
-    fn responses_model_can_fallback_to_system_messages_in_input() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
-        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
-            .with_system_instructions_as_messages();
+    fn config_can_fallback_to_system_messages_in_input() {
+        let cfg = functions::Config::new("gpt-4o-mini").with_system_instructions_as_messages();
 
-        let req = model
-            .create_completion_request(request_with_preamble("You are concise."))
-            .expect("request should convert");
+        let req =
+            functions::build_typed_request(&cfg, &request_with_preamble("You are concise."), false)
+                .expect("request should convert");
         let serialized = serde_json::to_value(&req).expect("request should serialize");
         let input = serialized["input"]
             .as_array()
@@ -3371,33 +3132,8 @@ mod tests {
     }
 
     #[test]
-    fn responses_client_can_fallback_to_system_messages_in_input() {
-        use crate::prelude::CompletionClient;
-
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("client")
-            .with_system_instructions_as_messages();
-        let model = client.completion_model("gpt-4o-mini");
-
-        let req = model
-            .create_completion_request(request_with_preamble("You are concise."))
-            .expect("request should convert");
-        let serialized = serde_json::to_value(&req).expect("request should serialize");
-        let input = serialized["input"]
-            .as_array()
-            .expect("input should be array");
-
-        assert!(serialized.get("instructions").is_none());
-        assert_eq!(input.len(), 2);
-        assert_eq!(input[0]["role"], "system");
-        assert!(input[0].to_string().contains("You are concise."));
-        assert_eq!(input[1]["role"], "user");
-    }
-
-    #[test]
-    fn responses_model_can_lift_all_system_messages_via_placement() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
-        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+    fn config_can_lift_all_system_messages_via_placement() {
+        let cfg = functions::Config::new("gpt-4o-mini")
             .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
         let request = crate::completion::CompletionRequest::with_history(
@@ -3409,9 +3145,8 @@ mod tests {
             "again",
         );
 
-        let req = model
-            .create_completion_request(request)
-            .expect("request should convert");
+        let req =
+            functions::build_typed_request(&cfg, &request, false).expect("request should convert");
         let serialized = serde_json::to_value(&req).expect("request should serialize");
         let input = serialized["input"]
             .as_array()
@@ -3425,29 +3160,6 @@ mod tests {
             input.iter().all(|item| item["role"] != "system"),
             "AllInstructions should leave no system items in input: {input:?}"
         );
-    }
-
-    #[test]
-    fn responses_client_placement_survives_completions_api_round_trip() {
-        use crate::prelude::CompletionClient;
-
-        let client = crate::providers::openai::Client::new("dummy-key")
-            .expect("client")
-            .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
-            .completions_api()
-            .responses_api();
-        let model = client.completion_model("gpt-4o-mini");
-
-        let req = model
-            .create_completion_request(request_with_preamble("You are concise."))
-            .expect("request should convert");
-        let serialized = serde_json::to_value(&req).expect("request should serialize");
-
-        assert!(
-            serialized.get("instructions").is_none(),
-            "placement configured before completions_api() should survive responses_api()"
-        );
-        assert_eq!(serialized["input"][0]["role"], "system");
     }
 
     #[test]
@@ -3493,9 +3205,8 @@ mod tests {
     }
 
     #[test]
-    fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
-        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+    fn config_strict_tools_opt_in_sanitizes_all_function_tools() {
+        let cfg = functions::Config::new("gpt-4o-mini")
             .with_strict_tools()
             .with_tool(completion::ToolDefinition {
                 name: "lookup".to_string(),
@@ -3516,9 +3227,8 @@ mod tests {
             }]
         }));
 
-        let req = model
-            .create_completion_request(request)
-            .expect("request should convert");
+        let req =
+            functions::build_typed_request(&cfg, &request, false).expect("request should convert");
 
         assert_eq!(req.tools.len(), 3);
         for tool in &req.tools {
@@ -3528,10 +3238,8 @@ mod tests {
     }
 
     #[test]
-    fn responses_model_default_preserves_all_function_tools_as_constructed() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
-        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
-            .with_tool(weather_tool_definition());
+    fn config_default_preserves_all_function_tools_as_constructed() {
+        let cfg = functions::Config::new("gpt-4o-mini").with_tool(weather_tool_definition());
 
         let mut request = weather_tool_request();
         request.additional_params = Some(json!({
@@ -3543,9 +3251,8 @@ mod tests {
             }]
         }));
 
-        let req = model
-            .create_completion_request(request)
-            .expect("request should convert");
+        let req =
+            functions::build_typed_request(&cfg, &request, false).expect("request should convert");
 
         assert_eq!(req.tools.len(), 3);
         for tool in &req.tools {
@@ -3555,9 +3262,8 @@ mod tests {
     }
 
     #[test]
-    fn responses_explicit_strict_tool_stays_strict_on_default_model() {
-        let client = crate::providers::openai::Client::new("dummy-key").expect("client");
-        let model = ResponsesCompletionModel::new(client, "gpt-4o-mini").with_tool(
+    fn responses_explicit_strict_tool_stays_strict_on_default_config() {
+        let cfg = functions::Config::new("gpt-4o-mini").with_tool(
             ResponsesToolDefinition::strict_function(
                 "lookup",
                 "Look something up",
@@ -3565,8 +3271,7 @@ mod tests {
             ),
         );
 
-        let req = model
-            .create_completion_request(weather_tool_request())
+        let req = functions::build_typed_request(&cfg, &weather_tool_request(), false)
             .expect("request should convert");
 
         assert!(!req.tools[0].strict);
@@ -4610,24 +4315,18 @@ mod tests {
 
     #[tokio::test]
     async fn responses_completion_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
-        use crate::providers::openai::Client;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o-mini");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
+        let cfg = functions::Config::new("gpt-4o-mini").with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with non-success status");
 

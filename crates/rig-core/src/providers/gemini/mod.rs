@@ -2,17 +2,19 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::EmbeddingsClient, providers::gemini};
+//! use rig_core::providers::gemini;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = gemini::Client::new("YOUR_API_KEY")?;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = gemini::functions::EmbeddingConfig::from_env(gemini::EMBEDDING_001)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
 //!
-//! let gemini_embedding_model = client.embedding_model(gemini::EMBEDDING_001);
+//! let response = gemini::functions::embed(&cfg, &rt, vec!["Hello world!".to_string()]).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-pub mod client;
+use serde::Deserialize;
+
 pub mod completion;
 pub mod embedding;
 pub mod functions;
@@ -24,12 +26,39 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
-pub use client::{Client, InteractionsClient};
-pub use completion::CompletionModel;
-pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};
+pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
-pub use image_generation::{GEMINI_2_5_FLASH_IMAGE, ImageGenerationModel};
-pub use model_listing::*;
+pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
+
+// ================================================================
+// Shared Gemini response envelope
+// ================================================================
+// Moved here from the deleted `gemini::client` module: these are wire types,
+// not client plumbing, and `embedding`/`image_generation` parse through them.
+
+/// Error response payload returned by Gemini.
+#[derive(Debug, Deserialize)]
+pub struct ApiErrorResponse {
+    /// Structured error details.
+    pub error: ApiError,
+}
+
+/// Error details returned in a Gemini API error response.
+#[derive(Debug, Deserialize)]
+pub struct ApiError {
+    /// Human-readable description of the error.
+    pub message: String,
+}
+
+/// Wrapper for successful or error Gemini API responses.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ApiResponse<T> {
+    // Untagged variants are tried in order, and some Gemini success response
+    // types contain only defaulted or optional fields that accept error objects.
+    Err(ApiErrorResponse),
+    Ok(T),
+}
 
 pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
@@ -76,5 +105,49 @@ pub mod gemini_api_types {
         /// Code execution ran for too long, and was cancelled. There may or may not be a partial output present.
         #[serde(rename = "OUTCOME_DEADLINE_EXCEEDED")]
         DeadlineExceeded,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_response_detects_nested_error_before_permissive_success() {
+        #[derive(Debug, Deserialize)]
+        struct PermissiveResponse {
+            #[serde(default)]
+            candidates: Vec<serde_json::Value>,
+        }
+
+        let response: ApiResponse<PermissiveResponse> = serde_json::from_str(
+            r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#,
+        )
+        .expect("nested Gemini error should deserialize");
+
+        match response {
+            ApiResponse::Err(err) => assert_eq!(err.error.message, "boom"),
+            ApiResponse::Ok(response) => panic!(
+                "expected nested error, got success with {} candidates",
+                response.candidates.len()
+            ),
+        }
+    }
+
+    #[test]
+    fn api_response_allows_top_level_message_in_success() {
+        #[derive(Debug, Deserialize)]
+        struct MessageResponse {
+            message: String,
+        }
+
+        let response: ApiResponse<MessageResponse> =
+            serde_json::from_str(r#"{"message":"success"}"#)
+                .expect("success response should deserialize");
+
+        match response {
+            ApiResponse::Ok(response) => assert_eq!(response.message, "success"),
+            ApiResponse::Err(err) => panic!("expected success, got error: {err:?}"),
+        }
     }
 }

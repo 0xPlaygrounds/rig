@@ -8,9 +8,9 @@
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
 //! mechanics reuse the shared OpenAI-compatible stages in
 //! `openai::functions`, but OpenRouter has its own typed request
-//! ([`OpenrouterCompletionRequest`](super::completion::OpenrouterCompletionRequest))
+//! (`OpenrouterCompletionRequest`)
 //! and its own body finalization (provider routing preferences and prompt
-//! caching), both applied by [`build_body`].
+//! caching), both applied by `build_body`.
 
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +31,7 @@ pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 /// OpenRouter's Chat Completions streaming dialect.
 ///
 /// OpenRouter never receives `stream_options.include_usage` (its usage rides
-/// the final chunk under its own [`Usage`](super::client::Usage) shape), and
+/// the final chunk under its own [`Usage`](super::completion::Usage) shape), and
 /// its `reasoning_details` deltas decorate accumulated tool calls.
 pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
     ChatCompletionsDialect::from_descriptor(&DESCRIPTOR)
@@ -282,9 +282,223 @@ pub async fn list_models(
     parse_list_models_response(status, &body)
 }
 
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data OpenRouter embeddings configuration.
+///
+/// A sibling of [`Config`]: embeddings target their own model identifier.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// API base URL (defaults to [`DEFAULT_BASE_URL`], including `/api/v1`).
+    pub base_url: String,
+    /// Credential location.
+    pub api_key: ApiKeyLocation,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested embedding dimensions, sent verbatim as `dimensions`.
+    pub dimensions: Option<usize>,
+    /// Extra headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` reading `OPENROUTER_API_KEY` from the environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            api_key: ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
+            model: model.into(),
+            dimensions: None,
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Embedding config for `model` built from the process environment.
+    ///
+    /// Same variable as [`Config::from_env`]: `OPENROUTER_API_KEY` (required).
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let cfg = Self::new(model);
+        required_env_var("OPENROUTER_API_KEY")?;
+        Ok(cfg)
+    }
+
+    /// Config for `model` with an explicit API key.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the API base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Request `dimensions`-sized embeddings.
+    pub fn with_dimensions(mut self, dimensions: usize) -> Self {
+        self.dimensions = Some(dimensions);
+        self
+    }
+}
+
+/// Build the complete HTTP `/embeddings` request for one chunk of `texts`.
+///
+/// Pure except for credential resolution. The path is resolved against
+/// [`DEFAULT_BASE_URL`], which already carries OpenRouter's `/api/v1` prefix.
+pub fn build_embedding_request(
+    cfg: &EmbeddingConfig,
+    texts: &[String],
+) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+    use crate::embeddings::EmbeddingError;
+    use http::header::{AUTHORIZATION, CONTENT_TYPE};
+
+    let body = crate::providers::openai::embedding::build_embedding_body(
+        &cfg.model,
+        texts,
+        cfg.dimensions
+            .map(crate::providers::openai::embedding::EmbeddingDimensions::Dimensions),
+        None,
+        None,
+    )?;
+    let url = format!("{}/embeddings", cfg.base_url.trim_end_matches('/'));
+    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+    if let Some(key) = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+    {
+        builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+    }
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(body)
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+}
+
+/// Parse an `/embeddings` response into the normalized
+/// [`crate::embeddings::EmbeddingResponse`]. Pure.
+///
+/// OpenRouter's embeddings payloads may omit `usage`, so a missing usage
+/// object is tolerated and reported as zero.
+pub fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::providers::openai::embedding::parse_embedding_response(
+        status,
+        body,
+        documents,
+        DESCRIPTOR.name,
+        false,
+    )
+}
+
+/// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+/// `max_embedding_documents`; embeddings are returned in input order.
+pub async fn embed(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::embeddings::batching::embed_chunked(
+        rt,
+        texts,
+        DESCRIPTOR.max_embedding_documents,
+        |chunk| build_embedding_request(cfg, chunk),
+        parse_embedding_response,
+    )
+    .await
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed usage.
+pub async fn embed_batches(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+        crate::completion::Usage,
+    ),
+    crate::embeddings::EmbeddingError,
+> {
+    let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+    let response = embed(cfg, rt, flat).await?;
+    let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod embeddings {
+        use super::super::{EmbeddingConfig, embed};
+        use crate::embeddings::EmbeddingError;
+        use crate::http_runtime::HttpRuntime;
+        use crate::test_utils::RecordingHttpClient;
+
+        const MODEL: &str = "openai/text-embedding-3-small";
+
+        const RESPONSE_BODY: &str = r#"{
+            "id": "gen-1",
+            "object": "list",
+            "model": "openai/text-embedding-3-small",
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.5, 0.6] }]
+        }"#;
+
+        /// Retargets the classic
+        /// `openrouter_embeddings_preserve_supported_parameters_and_zero_absent_usage`:
+        /// `dimensions` rides the OpenAI-compatible field, the URL keeps
+        /// OpenRouter's `/api/v1` prefix, and a payload without `usage` reports
+        /// zero rather than failing.
+        #[tokio::test]
+        async fn openrouter_embeddings_send_dimensions_and_zero_absent_usage() {
+            let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+            let rt = HttpRuntime::recording(http_client.clone());
+            let cfg = EmbeddingConfig::new(MODEL)
+                .with_api_key("dummy-key")
+                .with_dimensions(2);
+
+            let response = embed(&cfg, &rt, vec!["hello".to_string()])
+                .await
+                .expect("embedding request should succeed");
+
+            assert_eq!(response.embeddings.len(), 1);
+            assert_eq!(response.usage.total_tokens, 0);
+            let requests = http_client.requests();
+            let request = requests.first().expect("one recorded request");
+            assert_eq!(request.uri, "https://openrouter.ai/api/v1/embeddings");
+            let body: serde_json::Value =
+                serde_json::from_slice(&request.body).expect("request body should be JSON");
+            assert_eq!(body["dimensions"], serde_json::json!(2));
+        }
+
+        /// Retargets the classic `openrouter_rejects_response_length_mismatch`:
+        /// a response with fewer vectors than inputs is a parse error.
+        #[tokio::test]
+        async fn openrouter_rejects_response_length_mismatch() {
+            let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+            let rt = HttpRuntime::recording(http_client);
+            let cfg = EmbeddingConfig::new(MODEL).with_api_key("dummy-key");
+
+            let error = embed(&cfg, &rt, vec!["one".to_string(), "two".to_string()])
+                .await
+                .expect_err("response length mismatch should fail");
+
+            assert!(matches!(error, EmbeddingError::ResponseError(_)));
+        }
+    }
 
     #[test]
     fn build_list_models_request_sets_url_and_bearer_auth() {

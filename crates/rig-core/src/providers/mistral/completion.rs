@@ -1,6 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::client::{MistralExt, Usage};
 use crate::providers::openai;
 use crate::{
     OneOrMany,
@@ -30,13 +29,72 @@ pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
 /// The `open-mistral-mamba` model
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
-/// Mistral completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MistralExt, H>;
-
 // =================================================================
 // Rig Implementation Types
 // =================================================================
+
+/// In-depth details on prompt tokens.
+///
+/// Mirrors Mistral's `PromptTokensDetails` schema. The Mistral API also exposes
+/// the same shape under the singular field name `prompt_token_details`; the
+/// `Usage` field accepts either form via `serde(alias = ...)`.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct PromptTokensDetails {
+    /// Number of tokens served from the prompt cache.
+    #[serde(default)]
+    pub cached_tokens: u64,
+}
+
+/// Token usage returned by Mistral's chat completions and embeddings endpoints.
+///
+/// See <https://docs.mistral.ai/api/> (`UsageInfo` schema). The three counts are
+/// always present; the remaining fields are populated by Mistral on a best-effort
+/// basis (e.g. cached-token information appears once a prompt is large enough to
+/// be cached).
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Usage {
+    pub completion_tokens: usize,
+    pub prompt_tokens: usize,
+    pub total_tokens: usize,
+    /// Duration in seconds of audio tokens in the prompt (audio-input models only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_audio_seconds: Option<u64>,
+    /// Total cached prompt tokens reported at the top level. Some Mistral
+    /// responses populate this in addition to (or instead of)
+    /// `prompt_tokens_details.cached_tokens`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_cached_tokens: Option<u64>,
+    /// In-depth breakdown of prompt token usage (currently only cached tokens).
+    #[serde(
+        default,
+        alias = "prompt_token_details",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+impl Usage {
+    /// Returns the number of cached prompt tokens, preferring the structured
+    /// `prompt_tokens_details.cached_tokens` field and falling back to the
+    /// top-level `num_cached_tokens`. Returns 0 when neither is present.
+    pub fn cached_tokens(&self) -> u64 {
+        self.prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .or(self.num_cached_tokens)
+            .unwrap_or(0)
+    }
+}
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {} Total tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
 
 fn mistral_content_value_to_text(value: serde_json::Value) -> String {
     match value {

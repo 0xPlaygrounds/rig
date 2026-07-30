@@ -1,22 +1,16 @@
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
-use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, map_finish_reason,
-    resolve_request_model, streaming_endpoint,
-};
+use super::completion::{function_call_finish_reason_error, map_finish_reason};
+use crate::completion::CompletionError;
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
 use crate::http_client::sse::Event;
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::SpanCombinator;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -78,60 +72,8 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        let request = create_request_body(completion_request)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Gemini streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post_sse(streaming_endpoint(&request_model))?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let stream = generate_content_stream(crate::http_client::sse::boxed_event_source(
-            self.client.clone(),
-            req,
-            false,
-        ))
-        .instrument(span);
-
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
-}
-
 /// Consume a `streamGenerateContent` SSE exchange as a raw streaming-choice
-/// stream. Shared by the [`CompletionModel`] trait path and the
-/// data-oriented [`super::functions::open_stream`] path.
+/// stream. Driven by the data-oriented [`super::functions::open_stream`] path.
 pub(crate) fn generate_content_stream(
     event_source: crate::http_client::sse::BoxedEventSource,
 ) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>> {

@@ -1,133 +1,27 @@
-//! DeepSeek API client and Rig integration
+//! DeepSeek API integration.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::deepseek};
+//! use rig_core::providers::deepseek;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = deepseek::Client::new("DEEPSEEK_API_KEY")?;
-//!
-//! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_V4_FLASH);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = deepseek::functions::Config::from_env(deepseek::DEEPSEEK_V4_FLASH)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = deepseek::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::providers::descriptor::ChatCompletionsDialect;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
-
-// ================================================================
-// Main DeepSeek Client
-// ================================================================
-const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExtBuilder;
-
-type DeepSeekApiKey = BearerAuth;
-
-impl Provider for DeepSeekExt {
-    type Builder = DeepSeekExtBuilder;
-    const VERIFY_PATH: &'static str = "/user/balance";
-}
-
-impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
-    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
-
-    type Response = CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &completion::CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
-impl<H> Capabilities<H> for DeepSeekExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<DeepSeekModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for DeepSeekExt {}
-
-impl ProviderBuilder for DeepSeekExtBuilder {
-    type Extension<H>
-        = DeepSeekExt
-    where
-        H: HttpClientExt;
-    type ApiKey = DeepSeekApiKey;
-
-    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(DeepSeekExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
-
-/// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<DeepSeekExt, H>;
-
-impl ProviderClient for Client {
-    type Input = DeepSeekApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    // If you prefer the environment variable approach:
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
-        let mut client_builder = Self::builder();
-        client_builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-        let client_builder = client_builder.api_key(&api_key);
-        client_builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
 
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -378,54 +272,12 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
-#[derive(Clone)]
-pub struct DeepSeekModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for DeepSeekModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "DeepSeek",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        let status = response.status();
-        let body = response.into_body().await?;
-        parse_list_models_response(status, &body)
-    }
-}
-
 /// Path of the model-listing endpoint, relative to the API base URL.
 pub(crate) const LIST_MODELS_PATH: &str = "/models";
 
 /// Parse a `GET /models` response into a [`ModelList`]. Pure.
 ///
-/// Shared by the classic [`DeepSeekModelLister`] and
-/// [`functions::list_models`].
+/// Used by [`functions::list_models`].
 pub(crate) fn parse_list_models_response(
     status: http::StatusCode,
     body: &[u8],
@@ -467,10 +319,10 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::ModelListingClient;
     use crate::completion::{
         CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDefinition,
     };
+    use crate::http_runtime::HttpRuntime;
     use crate::message::ToolChoice as RigToolChoice;
     use crate::providers::openai::completion::CompletionModelOptions;
     use crate::test_utils::RecordingHttpClient;
@@ -789,16 +641,6 @@ mod tests {
     }
 
     #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::deepseek::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-    }
-
-    #[test]
     fn test_deserialize_list_models_response() {
         let data = r#"{
             "object": "list",
@@ -834,14 +676,10 @@ mod tests {
         }"#;
 
         let http_client = RecordingHttpClient::new(response_body);
-        let client = Client::builder()
-            .api_key("dummy-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("deepseek-v4-flash").with_api_key("dummy-key");
 
-        let models = client
-            .list_models()
+        let models = functions::list_models(&cfg, &rt)
             .await
             .expect("list_models should succeed");
 
@@ -860,14 +698,10 @@ mod tests {
             http::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"invalid api key"}}"#,
         );
-        let client = Client::builder()
-            .api_key("dummy-key")
-            .http_client(http_client)
-            .build()
-            .expect("client should build");
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new("deepseek-v4-flash").with_api_key("dummy-key");
 
-        let error = client
-            .list_models()
+        let error = functions::list_models(&cfg, &rt)
             .await
             .expect_err("list_models should fail");
 
@@ -896,9 +730,8 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`DeepSeekExt`](super::DeepSeekExt) so DeepSeek's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`; this module instantiates them with DeepSeek's
+    //! [`DESCRIPTOR`] so DeepSeek's paths, hooks, and provider name apply.
 
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -1160,8 +993,7 @@ pub mod functions {
 
     /// List the models available to `cfg`'s credentials.
     ///
-    /// The classic `ModelListingClient` path parses through the same pure
-    /// parser (`super::parse_list_models_response`).
+    /// Parsing goes through the pure `super::parse_list_models_response`.
     pub async fn list_models(
         cfg: &Config,
         rt: &HttpRuntime,

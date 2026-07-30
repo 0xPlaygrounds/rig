@@ -1,106 +1,20 @@
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+//! Voyage AI (embeddings + rerank) integration.
+//!
+//! # Example
+//! ```no_run
+//! use rig_core::providers::voyageai;
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = voyageai::functions::EmbeddingConfig::from_env(voyageai::VOYAGE_3_5)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = voyageai::functions::embed(&cfg, &rt, vec!["hello".to_string()]).await?;
+//! # Ok(())
+//! # }
+//! ```
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
-use crate::http_client::{self, HttpClientExt};
-use crate::rerank;
-use crate::rerank::RerankError;
-use bytes::Bytes;
 use serde::Deserialize;
 use serde_json::json;
-
-// ================================================================
-// Main Voyage AI Client
-// ================================================================
-const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageBuilder;
-
-type VoyageApiKey = BearerAuth;
-
-impl Provider for VoyageExt {
-    type Builder = VoyageBuilder;
-
-    /// There is currently no way to verify a Voyage api key without consuming tokens
-    const VERIFY_PATH: &'static str = "";
-}
-
-impl<H> Capabilities<H> for VoyageExt {
-    type Completion = Nothing;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Rerank = Capable<RerankModel<H>>;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
-
-impl DebugExt for VoyageExt {}
-
-impl ProviderBuilder for VoyageBuilder {
-    type Extension<H>
-        = VoyageExt
-    where
-        H: HttpClientExt;
-    type ApiKey = VoyageApiKey;
-
-    const BASE_URL: &'static str = VOYAGEAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(VoyageExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<VoyageExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("VOYAGE_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-}
 
 // ================================================================
 // Voyage AI Embedding API
@@ -162,67 +76,8 @@ pub struct EmbeddingData {
     pub index: usize,
 }
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        let response = self.embed_texts_with_usage(documents).await?;
-        Ok(response.embeddings)
-    }
-
-    async fn embed_texts_with_usage(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        let body = build_embedding_body(&self.model, &documents)?;
-
-        let req = self
-            .client
-            .post("/embeddings")?
-            .body(body)
-            .map_err(|x| EmbeddingError::HttpError(x.into()))?;
-
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-        let body = String::from_utf8_lossy(&response_body).into_owned();
-
-        parse_embedding_response(status, &body, documents)
-    }
-}
-
-/// Build the serialized `/embeddings` request body. Pure; shared by the
-/// trait path and [`functions::embed`].
+/// Build the serialized `/embeddings` request body. Pure; used by
+/// [`functions::embed`].
 pub(crate) fn build_embedding_body(
     model: &str,
     texts: &[String],
@@ -235,7 +90,7 @@ pub(crate) fn build_embedding_body(
 
 /// Parse an `/embeddings` response into the normalized
 /// [`embeddings::EmbeddingResponse`], zipping vectors back onto
-/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+/// `documents`. Pure; used by [`functions::embed`].
 pub(crate) fn parse_embedding_response(
     status: http::StatusCode,
     body: &str,
@@ -603,9 +458,8 @@ pub mod functions {
     /// Rerank `documents` against `query` with Voyage AI's `/rerank`
     /// endpoint.
     ///
-    /// Rerank has no request struct in the classic trait either; the query
-    /// and documents ride as arguments, and the remaining knobs live on
-    /// [`RerankConfig`].
+    /// The query and documents ride as arguments; the remaining knobs live
+    /// on [`RerankConfig`].
     pub async fn rerank(
         cfg: &RerankConfig,
         rt: &HttpRuntime,
@@ -671,81 +525,6 @@ pub struct RerankApiData {
     pub document: Option<String>,
 }
 
-#[derive(Clone)]
-pub struct RerankModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    pub top_k: Option<usize>,
-    pub return_documents: bool,
-    pub truncation: Option<bool>,
-}
-
-impl<T> RerankModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            top_k: None,
-            return_documents: false,
-            truncation: None,
-        }
-    }
-
-    pub fn top_k(mut self, top_k: usize) -> Self {
-        self.top_k = Some(top_k);
-        self
-    }
-
-    pub fn return_documents(mut self, return_documents: bool) -> Self {
-        self.return_documents = return_documents;
-        self
-    }
-
-    pub fn truncation(mut self, truncation: bool) -> Self {
-        self.truncation = Some(truncation);
-        self
-    }
-}
-
-impl<T> rerank::RerankModel for RerankModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1000;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> Result<rerank::RerankResponse, RerankError> {
-        let body = functions::build_rerank_body(
-            &self.model,
-            self.top_k,
-            self.return_documents,
-            self.truncation,
-            query,
-            &documents,
-        )?;
-
-        let req = self
-            .client
-            .post("/rerank")?
-            .body(body)
-            .map_err(|x| RerankError::HttpError(x.into()))?;
-
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-        functions::parse_rerank_response(status, &response_body)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -779,36 +558,27 @@ mod tests {
         assert!(value.get("truncation").is_none());
     }
 
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::voyageai::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::voyageai::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-    }
-
     #[tokio::test]
     async fn rerank_non_success_preserves_status_and_body() {
-        use crate::client::RerankingClient;
-        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::http_runtime::HttpRuntime;
+        use crate::rerank::RerankError;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.rerank_model(super::RERANK_2_5);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = super::functions::RerankConfig::new(super::RERANK_2_5).with_api_key("test-key");
 
-        let error = model
-            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
-            .await
-            .expect_err("rerank should fail with non-success status");
+        let error = super::functions::rerank(
+            &cfg,
+            &rt,
+            "query",
+            vec!["doc one".to_string(), "doc two".to_string()],
+        )
+        .await
+        .expect_err("rerank should fail with non-success status");
 
         assert!(matches!(error, RerankError::HttpError(_)));
         assert_eq!(
@@ -820,23 +590,22 @@ mod tests {
 
     #[tokio::test]
     async fn rerank_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::RerankingClient;
-        use crate::rerank::{RerankError, RerankModel as _};
+        use crate::http_runtime::HttpRuntime;
+        use crate::rerank::RerankError;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.rerank_model(super::RERANK_2_5);
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(body)); // 200 OK
+        let cfg = super::functions::RerankConfig::new(super::RERANK_2_5).with_api_key("test-key");
 
-        let error = model
-            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
-            .await
-            .expect_err("rerank should fail with provider error envelope");
+        let error = super::functions::rerank(
+            &cfg,
+            &rt,
+            "query",
+            vec!["doc one".to_string(), "doc two".to_string()],
+        )
+        .await
+        .expect_err("rerank should fail with provider error envelope");
 
         match &error {
             RerankError::ProviderResponse(stored) => {

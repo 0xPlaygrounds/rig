@@ -3,18 +3,13 @@
 use crate::completion::CompletionRequest;
 use crate::{
     OneOrMany,
-    client::Provider,
     completion::{self, CompletionError},
-    http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
-    telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
-    wasm_compat::*,
+    telemetry::ProviderResponseExt,
 };
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, Level, enabled};
 
 // ================================================================
 // Anthropic Completion API
@@ -58,21 +53,6 @@ pub const ANTHROPIC_DIALECT: AnthropicDialect = AnthropicDialect {
     provider: "anthropic",
     default_max_tokens: default_max_tokens_for_model,
 };
-
-/// The remaining compile-time plumbing for provider extensions on the
-/// Anthropic Messages wire format.
-///
-/// A **lookup shim, not a behavior contract**: the single item is plain data,
-/// and every impl is a one-line forward to a `const AnthropicDialect`. It
-/// exists only while the classic `Client<Ext, H>`-based model types survive.
-pub trait AnthropicCompatibleProvider: Provider {
-    /// The provider's dialect data.
-    const DIALECT: AnthropicDialect;
-}
-
-impl AnthropicCompatibleProvider for super::client::AnthropicExt {
-    const DIALECT: AnthropicDialect = ANTHROPIC_DIALECT;
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -146,25 +126,6 @@ impl std::fmt::Display for Usage {
             },
             self.output_tokens
         )
-    }
-}
-
-impl Usage {
-    /// Normalize Anthropic's token accounting; the wire `input_tokens` value
-    /// excludes cache reads/writes, so totals add all four counters.
-    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = self.input_tokens;
-        usage.output_tokens = self.output_tokens;
-        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or_default();
-        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or_default();
-        usage.total_tokens = self.input_tokens
-            + self.cache_read_input_tokens.unwrap_or_default()
-            + self.cache_creation_input_tokens.unwrap_or_default()
-            + self.output_tokens;
-
-        usage
     }
 }
 
@@ -1574,141 +1535,6 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
-    pub(crate) client: crate::client::Client<Ext, T>,
-    pub model: String,
-    pub default_max_tokens: Option<u64>,
-    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
-    /// tools, and messages)
-    pub prompt_caching: bool,
-    /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
-    /// request). The API automatically places the breakpoint on the last cacheable block and moves
-    /// it forward as the conversation grows. No beta header is required.
-    pub automatic_caching: bool,
-    /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
-    pub automatic_caching_ttl: Option<CacheTtl>,
-}
-
-/// Anthropic completion model.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type CompletionModel<T = reqwest::Client> =
-    GenericCompletionModel<super::client::AnthropicExt, T>;
-
-impl<Ext, T> GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt,
-    Ext: AnthropicCompatibleProvider + Clone + 'static,
-{
-    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
-        let model = model.into();
-        let default_max_tokens = (Ext::DIALECT.default_max_tokens)(&model);
-
-        Self {
-            client,
-            model,
-            default_max_tokens,
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-        }
-    }
-
-    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            default_max_tokens: (Ext::DIALECT.default_max_tokens)(model)
-                .or_else(|| Some(default_max_tokens_with_fallback(model))),
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-        }
-    }
-
-    /// Enable manual prompt caching.
-    ///
-    /// When enabled, cache_control breakpoints are automatically added to:
-    /// - The system prompt (marked with ephemeral cache)
-    /// - The final tool definition, when tools are present (marked with ephemeral cache)
-    /// - The last content block of the last message (marked with ephemeral cache)
-    ///
-    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
-    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
-    /// to choose and advance a single top-level cache breakpoint automatically.
-    /// When combined with [`with_automatic_caching`], the top-level automatic breakpoint
-    /// owns the moving message cache point while Rig still marks tools and system prompt
-    /// blocks when budget permits.
-    /// Existing `cache_control` markers in provider-specific tool definitions are preserved
-    /// and count toward Anthropic's request limit of 4 cache breakpoints.
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching.
-    ///
-    /// When enabled, a top-level `cache_control: { "type": "ephemeral" }` field is added to every
-    /// request. Anthropic's API automatically applies the cache breakpoint to the last cacheable
-    /// block and moves it forward as the conversation grows — no beta header and no manual
-    /// breakpoint management are required.
-    ///
-    /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
-    /// instead when you need fine-grained, per-block control over what is cached.
-    ///
-    /// To use a one-hour TTL instead of the default five minutes, use
-    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
-    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
-    /// `cache_control` before budgeting and ordering manual prompt cache markers.
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
-    /// ```
-    ///
-    /// ## Minimum cacheable prompt length
-    ///
-    /// The combined prompt (tools + system + messages up to the automatically chosen breakpoint)
-    /// must meet the model-specific minimum or caching is silently skipped by the API:
-    ///
-    /// | Model | Minimum tokens |
-    /// |-------|---------------|
-    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
-    /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
-    /// | `claude-haiku-4-5` | 4 096 |
-    ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
-    pub fn with_automatic_caching(mut self) -> Self {
-        self.automatic_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
-    ///
-    /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field:
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
-    /// ```
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_automatic_caching_1h(mut self) -> Self {
-        self.automatic_caching = true;
-        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
-        self
-    }
-}
-
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
@@ -1726,10 +1552,6 @@ pub fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     } else {
         None
     }
-}
-
-fn default_max_tokens_with_fallback(model: &str) -> u64 {
-    default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
@@ -2486,135 +2308,6 @@ pub(super) fn build_tool_definitions(
     Ok(tools)
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = crate::client::Client<Ext, T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
-        &self,
-        mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::DIALECT.provider,
-            &request_model,
-            CompletionOperation::Chat,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens.is_none() {
-            if let Some(tokens) = self.default_max_tokens {
-                completion_request.max_tokens = Some(tokens);
-            } else {
-                return Err(CompletionError::RequestError(
-                    "`max_tokens` must be set for Anthropic".into(),
-                ));
-            }
-        }
-
-        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-            model: &request_model,
-            request: completion_request,
-            prompt_caching: self.prompt_caching,
-            automatic_caching: self.automatic_caching,
-            automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-        })?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        async move {
-            let request: Vec<u8> = serde_json::to_vec(&request)?;
-
-            let req = self
-                .client
-                .post("/v1/messages")?
-                .body(request)
-                .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-            let response = self
-                .client
-                .send::<_, Bytes>(req)
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            let status = response.status();
-            let body = response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {
-                ApiResponse::Message(completion) => {
-                    let span = tracing::Span::current();
-                    span.record_response_metadata(&completion);
-                    span.record_token_usage(&completion.usage.token_usage());
-                    if enabled!(Level::TRACE) {
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Anthropic completion response: {}",
-                            serde_json::to_string_pretty(&completion)?
-                        );
-                    }
-                    let mut converted: completion::CompletionResponse = completion.try_into()?;
-                    converted.provider = Ext::DIALECT.provider.to_string();
-                    Ok(converted)
-                }
-                ApiResponse::Error(ApiErrorResponse { message }) => {
-                    tracing::warn!(message = %message, "provider returned an error response");
-                    Err(CompletionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&body),
-                    ))
-                }
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericCompletionModel::stream(self, request).await
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub(super) struct ApiErrorResponse {
     pub(super) message: String,
@@ -2630,7 +2323,6 @@ pub(super) enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::CompletionModel as _;
     use serde_json::json;
     use serde_path_to_error::deserialize;
 
@@ -2647,9 +2339,11 @@ mod tests {
     }
 
     #[test]
-    fn unknown_model_uses_conservative_default_max_tokens_fallback() {
+    fn unknown_model_has_no_default_max_tokens() {
+        // The deleted classic model substituted 2048 here; the functions path
+        // instead requires the caller to set `max_tokens` (or
+        // `Config.default_max_tokens`) for a model with no known default.
         assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
-        assert_eq!(default_max_tokens_with_fallback("claude-unknown"), 2_048);
     }
 
     #[test]
@@ -5907,23 +5601,18 @@ mod tests {
 
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::providers::anthropic::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::anthropic::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with non-success status");
 
@@ -5937,8 +5626,8 @@ mod tests {
 
     #[tokio::test]
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::providers::anthropic::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::anthropic::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
@@ -5947,16 +5636,11 @@ mod tests {
         // `from_http_response(OK, ..)` into `ProviderResponse`.
         let body = r#"{"type":"error","message":"model overloaded"}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with provider error envelope");
 
@@ -5971,42 +5655,13 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn completion_streaming_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::providers::anthropic::Client;
-        use crate::test_utils::HttpErrorStreamingClient;
-        use futures::StreamExt;
-
-        let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
-        let http_client =
-            HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        // The transport failure surfaces as the first error item yielded by the stream.
-        let error = loop {
-            match stream.next().await {
-                Some(Ok(_)) => continue,
-                Some(Err(error)) => break error,
-                None => panic!("stream ended without yielding the transport error"),
-            }
-        };
-
-        assert!(matches!(error, CompletionError::HttpError(_)));
-        assert_eq!(
-            error.provider_response_status(),
-            Some(http::StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(error.provider_response_body(), Some(body));
-    }
+    // NOTE (R7): `completion_streaming_http_non_success_preserves_status_and_body`
+    // was removed here. It asserted that a non-success streaming response
+    // surfaces status + body on the first stream item, driving the classic
+    // model over `test_utils::HttpErrorStreamingClient`. `HttpRuntime` has no
+    // transport arm for that client, so the assertion cannot be expressed
+    // against `functions::open_stream` yet; restoring it needs an
+    // `HttpRuntime::streaming_error(..)` constructor in `http_runtime.rs`.
 
     #[test]
     fn coerce_tool_input_normalizes_non_object_arguments() {

@@ -7,12 +7,11 @@
 //! [`completion::CompletionResponse`], no IO) — plus async [`complete`] and
 //! [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! During the transition the pure functions delegate to the same typed
-//! conversions the [`GenericCompletionModel`](super::completion::GenericCompletionModel)
-//! path uses ([`AnthropicCompletionRequest`]'s `TryFrom` for blocking bodies,
-//! `create_streaming_request_body` for streaming bodies), so both paths
-//! produce byte-identical request bodies. [`open_stream`] drives the exact
-//! SSE machinery the trait path uses (`stream_anthropic_sse`).
+//! The pure functions delegate to the typed wire conversions in
+//! [`super::completion`] (`AnthropicCompletionRequest`'s `TryFrom` for
+//! blocking bodies, `create_streaming_request_body` for streaming bodies), and
+//! [`open_stream`] drives the shared SSE state machine
+//! (`streaming::stream_anthropic_sse`).
 
 use http::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
@@ -36,8 +35,7 @@ pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 /// Anthropic's native structured outputs (constrained decoding) are designed
 /// to compose with strict tool use, so the schema constraint does not
 /// suppress tool calls (see issue #1928) —
-/// `composes_native_output_with_tools` is `true`, mirroring
-/// `CompletionModel::composes_native_output_with_tools`.
+/// `composes_native_output_with_tools` is `true`.
 pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
     name: "anthropic",
     supports_tools: true,
@@ -50,10 +48,9 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
 
 /// Plain-data Anthropic provider configuration.
 ///
-/// Prompt-caching knobs (`with_prompt_caching`/`with_automatic_caching` on the
-/// model type) are deliberately not carried here yet; requests are built with
-/// caching off, matching a freshly constructed
-/// [`GenericCompletionModel`](super::completion::GenericCompletionModel).
+/// Prompt-caching knobs (manual `cache_control` breakpoints and Anthropic's
+/// automatic caching) are deliberately not carried here yet; requests are
+/// built with caching off.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
@@ -323,7 +320,7 @@ pub fn build_list_models_request(
 /// List the models available to `cfg`'s credentials, following cursor
 /// pagination through all pages.
 ///
-/// The classic `ModelListingClient` path parses through the same pure
+/// Parses through the pure
 /// page parser (`model_listing::parse_models_page`).
 pub async fn list_models(
     cfg: &Config,
@@ -352,6 +349,89 @@ pub async fn list_models(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = std::env::var(key).ok();
+            // SAFETY: Tests in this module hold ENV_LOCK while mutating process
+            // environment and restore the original value before releasing it.
+            unsafe { std::env::set_var(key, value) };
+
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = std::env::var(key).ok();
+            // SAFETY: Tests in this module hold ENV_LOCK while mutating process
+            // environment and restore the original value before releasing it.
+            unsafe { std::env::remove_var(key) };
+
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: Tests in this module hold ENV_LOCK while mutating process
+            // environment and restore the original value before releasing it.
+            unsafe {
+                match &self.original {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    // Ported from the deleted `anthropic::client` tests
+    // (`from_env_uses_anthropic_base_url`) — the env-precedence assertion now
+    // targets `Config::from_env`. `Config` stores the base URL verbatim and
+    // `build_request` appends `/v1/messages`, so the normalization the classic
+    // builder applied eagerly is asserted through `normalize_base_url`.
+    #[test]
+    fn from_env_uses_anthropic_base_url() {
+        let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "dummy-key");
+        let _base_url = EnvVarGuard::set(
+            "ANTHROPIC_BASE_URL",
+            "https://anthropic-compatible.example/v1/messages",
+        );
+
+        let cfg = Config::from_env("claude-sonnet-4-6")
+            .expect("Config::from_env should build with ANTHROPIC_BASE_URL");
+
+        assert_eq!(
+            cfg.base_url, "https://anthropic-compatible.example/v1/messages",
+            "from_env should apply ANTHROPIC_BASE_URL verbatim"
+        );
+        assert_eq!(
+            normalize_base_url(&cfg.base_url),
+            "https://anthropic-compatible.example",
+            "the existing Anthropic base URL normalization must still collapse the suffix"
+        );
+    }
+
+    // Ported from the deleted `anthropic::client` test
+    // `from_env_uses_default_base_url_when_anthropic_base_url_is_unset`.
+    #[test]
+    fn from_env_uses_default_base_url_when_anthropic_base_url_is_unset() {
+        let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "dummy-key");
+        let _base_url = EnvVarGuard::remove("ANTHROPIC_BASE_URL");
+
+        let cfg = Config::from_env("claude-sonnet-4-6")
+            .expect("Config::from_env should build without ANTHROPIC_BASE_URL");
+
+        assert_eq!(cfg.base_url, "https://api.anthropic.com");
+    }
 
     #[test]
     fn build_list_models_request_sets_url_headers_and_cursor() {

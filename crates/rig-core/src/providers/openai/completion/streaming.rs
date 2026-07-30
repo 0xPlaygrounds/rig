@@ -1,18 +1,10 @@
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use serde::Deserialize;
-use tracing::{Level, enabled};
 
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, ChatCompletionsDialect, ChunkNormalizer, CompatibleChoice, CompatibleFinishReason,
+    self, ChatCompletionsDialect, CompatibleChoice, CompatibleFinishReason,
     CompatibleToolCallChunk, NormalizedCompatibleChunk,
 };
-use crate::providers::openai::completion::{
-    CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider,
-};
-use crate::streaming;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -171,98 +163,37 @@ pub(crate) fn normalize_chat_completions_chunk(
     ))
 }
 
-impl<Ext, H> GenericCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
-    Ext: crate::client::Provider
-        + OpenAICompatibleProvider
-        + Clone
-        + crate::wasm_compat::WasmCompatSend
-        + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let options = CompletionModelOptions {
-            strict_tools: self.strict_tools,
-            tool_result_array_content: self.tool_result_array_content,
-            prompt_caching: self.prompt_caching,
-        };
-        let resolved_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        // The provider's own straight-line body assembly (its `functions`
-        // module) is the single source of truth for the wire bytes.
-        let req_body =
-            self.client
-                .ext()
-                .build_body(&self.model, &completion_request, options, true)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Chat Completions streaming completion request: {}",
-                String::from_utf8_lossy(&req_body)
-            );
-        }
-
-        // Deliberately the configured model, not the per-request override:
-        // Azure's deployment URL is pinned to the model handle.
-        let path = self.client.ext().completion_path(&self.model);
-        let req = self
-            .client
-            .post(&path)?
-            .body(req_body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            Ext::DESCRIPTOR.name,
-            &resolved_model,
-            CompletionOperation::Chat,
-        )
-        .system_instructions(preamble.as_deref(), record_telemetry_content)
-        .build();
-
-        let event_source =
-            crate::http_client::sse::boxed_event_source(self.client.clone(), req, false);
-
-        Ok(tracing::Instrument::instrument(
-            async move {
-                openai_chat_completions_compatible::drive_compatible_stream(
-                    event_source,
-                    ChunkNormalizer::ChatCompletions(Ext::STREAM_DIALECT),
-                )
-            },
-            span,
-        )
-        .await)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::internal::openai_chat_completions_compatible::ChunkNormalizer;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::{
+        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
+    };
+    use crate::streaming;
+    use crate::test_utils::MockStreamingClient;
 
-    /// Drive the OpenAI chat-completions dialect over a test HTTP client.
-    fn send_compatible_streaming_request<T>(
-        client: T,
-        req: http::Request<Vec<u8>>,
-    ) -> streaming::StreamingCompletionResponse
-    where
-        T: HttpClientExt + Clone + 'static,
-    {
+    /// Drive the OpenAI chat-completions dialect over scripted SSE bytes.
+    ///
+    /// The sans-IO half of `functions::open_stream`: same
+    /// `drive_compatible_stream` + `STREAM_DIALECT`, with the transport edge
+    /// (`boxed_event_source`) fed a canned event source instead of a live one.
+    fn drive_openai_sse(
+        sse_bytes: impl Into<bytes::Bytes>,
+    ) -> streaming::StreamingCompletionResponse {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes.into(),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
         openai_chat_completions_compatible::drive_compatible_stream(
             crate::http_client::sse::boxed_event_source(client, req, false),
             ChunkNormalizer::ChatCompletions(crate::providers::openai::functions::STREAM_DIALECT),
         )
     }
-    use crate::providers::internal::openai_chat_completions_compatible::test_support::{
-        assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
-    };
 
     #[test]
     fn test_streaming_function_deserialization() {
@@ -504,25 +435,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}",
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+            "[DONE]",
+        ]));
 
         let mut final_usage = None;
         while let Some(chunk) = stream.next().await {
@@ -539,27 +459,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think \",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"more\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"hel\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"lo\",\"tool_calls\":[]},\"finish_reason\":\"stop\"}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think \",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"more\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"hel\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"content\":\"lo\",\"tool_calls\":[]},\"finish_reason\":\"stop\"}],\"usage\":null}",
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}",
+            "[DONE]",
+        ]));
 
         let mut reasoning_chunks = Vec::new();
         let mut text_chunks = Vec::new();
@@ -592,25 +501,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_cached_input_tokens_populated() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Usage chunk includes prompt_tokens_details with cached_tokens.
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}",
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10,\"total_tokens\":110,\"prompt_tokens_details\":{\"cached_tokens\":80}}}",
+            "[DONE]",
+        ]));
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -635,33 +533,22 @@ mod tests {
     /// the fix, rig merges both calls into one corrupted entry.
     #[tokio::test]
     async fn test_duplicate_index_different_id_tool_calls() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Simulate a gateway that sends two tool calls both at index 0.
         // First tool call: id="call_aaa", name="command", args={"cmd":"ls"}
         // Second tool call: id="call_bbb", name="git", args={"action":"log"}
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_aaa\",\"function\":{\"name\":\"command\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"cmd\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"ls\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_bbb\",\"function\":{\"name\":\"git\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"action\\\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\":\\\"log\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}",
+            "[DONE]",
+        ]));
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -697,26 +584,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_call_id_chunk_without_function_is_preserved() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_abc123\"}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":\"lookup\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"id\\\":1}\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_abc123\"}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":\"lookup\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":null,\"arguments\":\"{\\\"id\\\":1}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+            "[DONE]",
+        ]));
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -748,29 +624,18 @@ mod tests {
     /// yielding incomplete fragments as "completed" tool calls.
     #[tokio::test]
     async fn test_unique_id_per_chunk_single_tool_call() {
-        use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;
 
         // Each chunk carries a different id but they all represent delta
         // fragments of the SAME tool call at index 0.
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-aaa\",\"function\":{\"name\":\"web_search\",\"arguments\":\"null\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-bbb\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"query\\\": \\\"META\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-ccc\",\"function\":{\"name\":\"\",\"arguments\":\" Platforms news\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
-                "{\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":8,\"total_tokens\":23}}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let mut stream = send_compatible_streaming_request(client, req);
+        let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-aaa\",\"function\":{\"name\":\"web_search\",\"arguments\":\"null\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-bbb\",\"function\":{\"name\":\"\",\"arguments\":\"{\\\"query\\\": \\\"META\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"chatcmpl-tool-ccc\",\"function\":{\"name\":\"\",\"arguments\":\" Platforms news\\\"}\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":15,\"completion_tokens\":8,\"total_tokens\":23}}",
+            "[DONE]",
+        ]));
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -803,44 +668,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_zero_arg_tool_call_normalized_on_finish_reason() {
-        use crate::test_utils::MockStreamingClient;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
-                "[DONE]",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let stream = send_compatible_streaming_request(client, req);
+        let stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}",
+            "[DONE]",
+        ]));
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
 
     #[tokio::test]
     async fn test_zero_arg_tool_call_is_preserved_at_eof() {
-        use crate::test_utils::MockStreamingClient;
-
-        let client = MockStreamingClient {
-            sse_bytes: sse_bytes_from_data_lines([
-                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
-            ]),
-        };
-
-        let req = http::Request::builder()
-            .method("POST")
-            .uri("http://localhost/v1/chat/completions")
-            .body(Vec::new())
-            .unwrap();
-
-        let stream = send_compatible_streaming_request(client, req);
+        let stream = drive_openai_sse(sse_bytes_from_data_lines([
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
+        ]));
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }

@@ -3,61 +3,11 @@
 //! This module reuses OpenAI's Responses API streaming types since xAI's API
 //! is designed to be compatible with OpenAI's format.
 
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
-
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
+use crate::completion::CompletionError;
 use crate::providers::openai::responses_api::streaming::{
     ResponsesStreamOptions, stream_from_event_source_with_options,
 };
-use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request =
-            XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
-
-        super::completion::apply_stream_flag(&mut request);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "xAI streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/v1/responses")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let span =
-            CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
-                .system_instructions(preamble.as_deref(), record_telemetry_content)
-                .build();
-
-        send_xai_streaming_request(crate::http_client::sse::boxed_event_source(
-            self.client.clone(),
-            req,
-            false,
-        ))
-        .instrument(span)
-        .await
-    }
-}
 
 /// Send a streaming request
 pub(crate) async fn send_xai_streaming_request(

@@ -12,10 +12,10 @@
 //! combine.
 //!
 //! Decisions are independent of the agent's
-//! [`CompletionModel`](crate::completion::CompletionModel): managed response
+//! [`ProviderConfig`](crate::provider::ProviderConfig): managed response
 //! events carry canonical Rig messages, content, usage, and message IDs. Use
-//! the direct completion or streaming APIs when an integration needs the
-//! provider's typed raw response.
+//! the provider's own `functions` module directly when an integration needs
+//! the provider's typed raw response.
 //!
 //! Hooks run in registration order. Completion-call [`RequestPatch`] values
 //! accumulate and merge; tool-call argument rewrites and tool-result

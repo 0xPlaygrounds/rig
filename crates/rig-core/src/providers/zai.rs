@@ -6,30 +6,33 @@
 //!
 //! # OpenAI-compatible example
 //! ```no_run
-//! use rig_core::client::CompletionClient;
 //! use rig_core::providers::zai;
 //!
-//! let client = zai::Client::new("YOUR_API_KEY").expect("Failed to build client");
-//! let glm_4_6 = client.completion_model(zai::GLM_4_6);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // `ZAI_API_BASE` overrides the base URL; pass `zai::CODING_API_BASE_URL`
+//! // to `with_base_url` for the coding platform.
+//! let cfg = zai::functions::Config::from_env(zai::GLM_4_6)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = zai::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Anthropic-compatible example
 //! ```no_run
-//! use rig_core::client::CompletionClient;
-//! use rig_core::providers::zai;
+//! use rig_core::providers::{anthropic, zai};
 //!
-//! let client = zai::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
-//! let glm_4_6 = client.completion_model(zai::GLM_4_6);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // Resolves `ZAI_ANTHROPIC_API_BASE`, then a normalized `ZAI_API_BASE`,
+//! // then `zai::ANTHROPIC_API_BASE_URL`.
+//! let cfg = zai::functions::anthropic_config_from_env(zai::GLM_4_6)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = anthropic::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
-
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
-};
 
 /// General-purpose OpenAI-compatible base URL.
 pub const GENERAL_API_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
@@ -53,207 +56,12 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct ZAiAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiAnthropicExt;
-
-type ZAiApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<ZAiExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiBuilder, ZAiApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<ZAiAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for ZAiExt {
-    type Builder = ZAiBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for ZAiAnthropicExt {
-    type Builder = ZAiAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl<H> Capabilities<H> for ZAiExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<ZAiExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for ZAiAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for ZAiExt {}
-impl DebugExt for ZAiAnthropicExt {}
-
-impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
-    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
-        functions::STREAM_DIALECT;
-
-    type Response = super::openai::CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: crate::providers::openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
-impl ProviderBuilder for ZAiBuilder {
-    type Extension<H>
-        = ZAiExt
-    where
-        H: HttpClientExt;
-    type ApiKey = ZAiApiKey;
-
-    const BASE_URL: &'static str = GENERAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiExt)
-    }
-}
-
-impl ProviderBuilder for ZAiAnthropicBuilder {
-    type Extension<H>
-        = ZAiAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-/// The Anthropic-Messages dialect for this provider's Anthropic-compatible
-/// endpoint.
-const ANTHROPIC_DIALECT: crate::providers::anthropic::completion::AnthropicDialect =
-    crate::providers::anthropic::completion::AnthropicDialect {
-        provider: "z.ai",
-        default_max_tokens: |_model| Some(4096),
-    };
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
-    const DIALECT: crate::providers::anthropic::completion::AnthropicDialect = ANTHROPIC_DIALECT;
-}
-
-impl ProviderClient for Client {
-    type Input = ZAiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = crate::client::optional_env_var("ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = anthropic_base_override("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-/// [`anthropic_base_override`] on the data-oriented error type.
+/// The Anthropic base-URL override, resolved from the process environment.
 ///
-/// Same precedence, same pure [`resolve_anthropic_base_override`] logic; only
-/// the env-var reader and error type differ so the `functions` module does not
-/// depend on `crate::client`.
+/// `primary_env` wins; otherwise `fallback_env` (an OpenAI-compatible base URL)
+/// is mapped onto the Anthropic entrypoint by
+/// [`normalize_anthropic_base_url`]. Pure logic lives in
+/// [`resolve_anthropic_base_override`].
 ///
 /// # Errors
 /// [`ConfigError`](crate::providers::descriptor::ConfigError) when a variable
@@ -301,66 +109,12 @@ fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
     }
 }
 
-impl<H> ClientBuilder<H> {
-    pub fn general(self) -> Self {
-        self.base_url(GENERAL_API_BASE_URL)
-    }
-
-    pub fn coding(self) -> Self {
-        self.base_url(CODING_API_BASE_URL)
-    }
-}
-
-impl<H> AnthropicClientBuilder<H> {
-    pub fn general(self) -> Self {
-        self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         ANTHROPIC_API_BASE_URL, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
         normalize_anthropic_base_url, resolve_anthropic_base_override,
     };
-
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::zai::Client::new("dummy-key").expect("Client::new()");
-        let _client_from_builder = crate::providers::zai::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder()");
-        let _anthropic_client = crate::providers::zai::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new()");
-        let _anthropic_client_from_builder = crate::providers::zai::AnthropicClient::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("AnthropicClient::builder()");
-    }
 
     #[test]
     fn normalize_openai_style_bases_to_anthropic_base() {
@@ -507,7 +261,7 @@ pub mod functions {
     /// Anthropic-Messages surface configuration for `model`, built from the
     /// process environment.
     ///
-    /// The replacement for the deleted [`AnthropicClient`](super::AnthropicClient):
+    /// The replacement for the deleted classic `AnthropicClient`:
     /// Z.ai's Anthropic endpoint is reached through
     /// [`anthropic::functions`](crate::providers::anthropic::functions) with a
     /// Z.ai base URL and credential. Reads `ZAI_API_KEY` (required) and

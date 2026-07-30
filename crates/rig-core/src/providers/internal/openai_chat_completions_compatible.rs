@@ -731,7 +731,7 @@ mod tests {
     };
     use crate::completion::CompletionError;
     use crate::http_client;
-    use crate::http_client::HttpClientExt;
+    use crate::http_client::Backend;
     use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
@@ -745,7 +745,7 @@ mod tests {
         normalizer: TestNormalizer,
     ) -> crate::streaming::StreamingCompletionResponse
     where
-        T: HttpClientExt + Clone + 'static,
+        T: Backend + Clone + 'static,
     {
         drive_compatible_stream(
             crate::http_client::sse::boxed_event_source(client, req, false),
@@ -759,7 +759,7 @@ mod tests {
         req: http::Request<Vec<u8>>,
     ) -> crate::streaming::StreamingCompletionResponse
     where
-        T: HttpClientExt + Clone + 'static,
+        T: Backend + Clone + 'static,
     {
         drive_compatible_stream(
             crate::http_client::sse::boxed_event_source(client, req, false),

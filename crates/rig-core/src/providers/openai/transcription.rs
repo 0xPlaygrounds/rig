@@ -1,7 +1,3 @@
-use bytes::Bytes;
-
-use crate::http_client::HttpClientExt;
-use crate::providers::openai::Client;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use serde::Deserialize;
@@ -30,81 +26,27 @@ impl TryFrom<TranscriptionResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
-{
-    type Response = TranscriptionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let body = super::functions::build_transcription_form(&self.model, request)?;
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-        super::functions::parse_transcription_response(status, &response_body)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::transcription::TranscriptionClient;
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::openai::functions;
     use crate::test_utils::RecordingHttpClient;
-    use crate::transcription::{TranscriptionModel as _, TranscriptionRequest};
+    use crate::transcription::TranscriptionRequest;
 
     #[tokio::test]
     async fn transcription_http_non_success_preserves_status_and_body() {
         let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.transcription_model(WHISPER_1);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
+        let cfg = functions::Config::new(WHISPER_1).with_api_key("test-key");
 
-        let error = match model
-            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
-            .await
-        {
-            Err(error) => error,
-            Ok(_) => panic!("transcription should fail with non-success status"),
+        let Err(error) =
+            functions::transcribe(&cfg, &rt, TranscriptionRequest::new(vec![0u8; 16])).await
+        else {
+            panic!("transcription should fail with non-success status");
         };
 
         assert!(matches!(error, TranscriptionError::HttpError(_)));
@@ -113,5 +55,17 @@ mod tests {
             Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_success_parses_text() {
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(r#"{"text":"hello world"}"#));
+        let cfg = functions::Config::new(WHISPER_1).with_api_key("test-key");
+
+        let response = functions::transcribe(&cfg, &rt, TranscriptionRequest::new(vec![0u8; 4]))
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "hello world");
     }
 }

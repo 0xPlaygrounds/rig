@@ -20,13 +20,14 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::{client::ProviderClient, providers::openai};
+//! use rig_core::providers::openai;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = openai::Client::from_env()?;
-//!
-//! // Configure the agent
-//! let agent = openai.agent(openai::GPT_5_2)
+//! // Configure the agent. A provider is plain data: a `functions::Config`
+//! // wrapped in the `ProviderConfig` arm that names it.
+//! let agent = AgentBuilder::new(ProviderConfig::OpenAi(
+//!         openai::functions::Config::from_env(openai::GPT_5_2)?,
+//!     ))
 //!     .preamble("System prompt")
 //!     .context("Context document 1")
 //!     .context("Context document 2")
@@ -66,7 +67,6 @@
 //!     provider::{EmbedderConfig, Runtime, embed},
 //! };
 //! use rig_core::{
-//!     client::ProviderClient,
 //!     providers::openai,
 //!     vector_store::{StoreRecord, VectorSearchRequest, in_memory_store::InMemoryVectorStore},
 //! };
@@ -158,8 +158,9 @@
 //!     )
 //!     .await?;
 //!
-//! let openai = openai::Client::from_env()?;
-//! let agent = openai.agent(openai::GPT_5_2)
+//! let agent = AgentBuilder::new(ProviderConfig::OpenAi(
+//!         openai::functions::Config::from_env(openai::GPT_5_2)?,
+//!     ))
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.

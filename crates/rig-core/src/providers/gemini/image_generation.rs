@@ -1,36 +1,18 @@
 //! Gemini image generation support.
 
-use super::client::{ApiResponse, Client};
+use super::ApiResponse;
 use super::completion::gemini_api_types::{
     Content, GenerateContentRequest, GenerateContentResponse, GenerationConfig, ImageConfig, Part,
     PartKind, ResponseModality, Role,
 };
-use crate::http_client::HttpClientExt;
+use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;
 
 /// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
 pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
-
-/// Gemini image generation model.
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model, for example [`GEMINI_2_5_FLASH_IMAGE`].
-    pub model: String,
-}
-
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
 
 impl TryFrom<GenerateContentResponse>
     for image_generation::ImageGenerationResponse<GenerateContentResponse>
@@ -44,39 +26,6 @@ impl TryFrom<GenerateContentResponse>
             image,
             response: value,
         })
-    }
-}
-
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = GenerateContentResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let body = serde_json::to_vec(&create_request_body(generation_request)?)?;
-
-        let request = self
-            .client
-            .post(generate_content_path(&self.model))?
-            .body(body)
-            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-        let response = self.client.send(request).await?;
-
-        let status = response.status();
-        let text = http_client::text(response).await?;
-        parse_image_generation_response(status, &text)
     }
 }
 
@@ -105,7 +54,8 @@ pub(crate) fn parse_image_generation_response(
     }
 }
 
-pub(crate) fn generate_content_path(model: &str) -> String {
+/// The `generateContent` path for `model`, relative to the API base URL. Pure.
+pub fn generate_content_path(model: &str) -> String {
     format!("/v1beta/models/{model}:generateContent")
 }
 
@@ -389,22 +339,17 @@ mod tests {
 
     #[tokio::test]
     async fn image_generation_non_success_preserves_status_and_body() {
-        use crate::client::image_generation::ImageGenerationClient;
-        use crate::image_generation::ImageGenerationModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(GEMINI_2_5_FLASH_IMAGE).with_api_key("test-key");
 
-        let error = model
-            .image_generation(image_generation_request("draw a cat"))
+        let error = functions::generate_image(&cfg, &rt, image_generation_request("draw a cat"))
             .await
             .expect_err("should fail with non-success status");
 
@@ -418,8 +363,8 @@ mod tests {
 
     #[tokio::test]
     async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::image_generation::ImageGenerationClient;
-        use crate::image_generation::ImageGenerationModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // 200 OK carrying Gemini's standard nested error envelope. The error
@@ -427,15 +372,10 @@ mod tests {
         // `GenerateContentResponse` can be omitted.
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(GEMINI_2_5_FLASH_IMAGE).with_api_key("test-key");
 
-        let error = model
-            .image_generation(image_generation_request("draw a cat"))
+        let error = functions::generate_image(&cfg, &rt, image_generation_request("draw a cat"))
             .await
             .expect_err("should fail with provider error envelope");
 

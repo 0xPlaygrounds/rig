@@ -1,9 +1,7 @@
 //! Everything related to audio generation (ie, Text To Speech).
-//! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-use crate::{
-    http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+//! Rig abstracts over a number of different providers via each provider's
+//! `functions::generate_audio` free function over these request/response types.
+use crate::{http_client, provider_response};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -51,20 +49,6 @@ pub struct AudioGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
-
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> impl std::future::Future<
-        Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
-}
 #[non_exhaustive]
 pub struct AudioGenerationRequest {
     pub text: String,
@@ -76,8 +60,8 @@ pub struct AudioGenerationRequest {
 impl AudioGenerationRequest {
     /// Creates a request from the text and voice, defaulting to a speed of `1.0`.
     ///
-    /// Refine with the `with_*` methods, then execute it with
-    /// [`AudioGenerationModel::audio_generation`].
+    /// Refine with the `with_*` methods, then execute it with the provider's
+    /// `functions::generate_audio`.
     pub fn new(text: impl Into<String>, voice: impl Into<String>) -> Self {
         Self {
             text: text.into(),

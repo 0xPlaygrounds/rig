@@ -70,8 +70,7 @@ macro_rules! define_provider_config {
         /// A provider config is connection data, and connection data
         /// includes secrets: `api_key` may be
         /// [`ApiKeyLocation::Inline`](rig_core::providers::descriptor::ApiKeyLocation),
-        /// and `extra_headers` copied from a classic client (via
-        /// `ToProviderConfig`) can include an `authorization` /
+        /// and `extra_headers` can include an `authorization` /
         /// `x-api-key` / `api-key` header. `Debug` redacts the inline
         /// `api_key`, but `extra_headers` print verbatim and serde stays
         /// faithful by design (resuming a serialized config requires the

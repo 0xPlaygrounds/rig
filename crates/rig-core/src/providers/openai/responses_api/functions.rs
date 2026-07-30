@@ -8,12 +8,14 @@
 //! [`completion::CompletionResponse`], no IO) — plus the async [`complete`]
 //! and [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! The pure functions delegate to the same typed conversion
-//! ([`super::CompletionRequest`]`::try_from(`[`ResponsesRequestParams`]`)` /
-//! [`super::CompletionResponse`]`::try_into`) and SSE machinery
-//! ([`super::streaming`]) the
-//! [`GenericResponsesCompletionModel`](super::GenericResponsesCompletionModel)
-//! trait path uses, so both faces produce byte-identical request bodies.
+//! Request assembly goes through the typed conversion
+//! ([`super::CompletionRequest`]`::try_from(`[`ResponsesRequestParams`]`)`),
+//! response parsing through [`super::CompletionResponse`]`::try_into`, and
+//! streaming through the sans-IO SSE machinery in [`super::streaming`].
+//!
+//! WebSocket mode is the third entry point:
+//! [`websocket::connect`](super::websocket::connect) takes the same
+//! [`Config`].
 //!
 //! The chat-completions flavored OpenAI face lives in
 //! [`super::super::functions`] (`openai::functions`).
@@ -59,10 +61,20 @@ pub struct Config {
     pub model: String,
     /// Extra headers attached to every request.
     pub extra_headers: Vec<(String, String)>,
-    /// Where Rig system instructions are placed in built requests (the
-    /// client-level [`super::ResponsesProviderExt`] knob as plain data).
+    /// Where Rig system instructions are placed in built requests.
     #[serde(default)]
     pub system_instructions_placement: SystemInstructionsPlacement,
+    /// Whether function tool schemas are sanitized into OpenAI's strict-mode
+    /// subset and marked `strict: true`. Disabled by default, matching Chat
+    /// Completions.
+    #[serde(default)]
+    pub strict_tools: bool,
+    /// Tools always appended to outgoing requests, on top of the ones carried
+    /// by the [`CompletionRequest`]. This is how the Responses-only hosted
+    /// tools (`web_search`, `file_search`, `computer_use`) are requested —
+    /// they have no representation in Rig's normalized tool list.
+    #[serde(default)]
+    pub tools: Vec<super::ResponsesToolDefinition>,
 }
 
 impl Config {
@@ -74,16 +86,17 @@ impl Config {
             model: model.into(),
             extra_headers: Vec::new(),
             system_instructions_placement: SystemInstructionsPlacement::default(),
+            strict_tools: false,
+            tools: Vec::new(),
         }
     }
 
     /// Config for `model` built from the process environment.
     ///
     /// Reads `OPENAI_API_KEY` (required) and `OPENAI_BASE_URL` (optional
-    /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
-    /// `openai::Client::from_env` read. The credential is validated eagerly but
-    /// stored as [`ApiKeyLocation::Env`], so the secret is read at request time
-    /// rather than held inside the config.
+    /// override of [`DEFAULT_BASE_URL`]). The credential is validated eagerly
+    /// but stored as [`ApiKeyLocation::Env`], so the secret is read at request
+    /// time rather than held inside the config.
     ///
     /// # Errors
     /// [`ConfigError`] when a required variable is missing or invalid.
@@ -117,6 +130,38 @@ impl Config {
         self.system_instructions_placement = placement;
         self
     }
+
+    /// Send Rig system instructions as `system` messages in `input` instead of
+    /// through the top-level `instructions` field. For OpenAI-compatible
+    /// backends that reject `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+    }
+
+    /// Sanitize function tool schemas into OpenAI's strict-mode subset and mark
+    /// them `strict: true`.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
+    }
+
+    /// Append a tool to every request built from this config. Use for hosted
+    /// Responses tools such as
+    /// [`ResponsesToolDefinition::web_search`](super::ResponsesToolDefinition::web_search).
+    pub fn with_tool(mut self, tool: impl Into<super::ResponsesToolDefinition>) -> Self {
+        self.tools.push(tool.into());
+        self
+    }
+
+    /// Append several tools to every request built from this config.
+    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<super::ResponsesToolDefinition>,
+    {
+        self.tools.extend(tools.into_iter().map(Into::into));
+        self
+    }
 }
 
 /// Build the serialized Responses API request body for `request`.
@@ -128,15 +173,37 @@ pub fn build_request_body(
     request: &CompletionRequest,
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
+    Ok(serde_json::to_vec(&build_typed_request(
+        cfg, request, stream,
+    )?)?)
+}
+
+/// Build the typed Responses request for `request`. Pure.
+///
+/// Split out of [`build_request_body`] because WebSocket mode sends the same
+/// typed request as an event payload rather than as an HTTP body.
+pub(crate) fn build_typed_request(
+    cfg: &Config,
+    request: &CompletionRequest,
+    stream: bool,
+) -> Result<super::CompletionRequest, CompletionError> {
     let mut typed = super::CompletionRequest::try_from(ResponsesRequestParams {
         model: cfg.model.clone(),
         request: request.clone(),
         system_instructions_placement: cfg.system_instructions_placement,
     })?;
+    typed.tools.extend(cfg.tools.iter().cloned());
+    if cfg.strict_tools {
+        typed.tools = typed
+            .tools
+            .into_iter()
+            .map(super::ResponsesToolDefinition::normalize)
+            .collect();
+    }
     if stream {
         typed.stream = Some(true);
     }
-    Ok(serde_json::to_vec(&typed)?)
+    Ok(typed)
 }
 
 /// Build the complete HTTP request (URL, headers, body) for `request`.

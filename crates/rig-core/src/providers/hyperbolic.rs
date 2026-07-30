@@ -1,113 +1,17 @@
-//! Hyperbolic Inference API client and Rig integration
+//! Hyperbolic Inference API integration.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::hyperbolic};
+//! use rig_core::providers::hyperbolic;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = hyperbolic::Client::new("YOUR_API_KEY")?;
-//!
-//! let llama_3_1_8b = client.completion_model(hyperbolic::LLAMA_3_1_8B);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = hyperbolic::functions::Config::from_env(hyperbolic::LLAMA_3_1_8B)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = hyperbolic::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
-
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{BearerAuth, ProviderClient};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::ProviderDescriptor;
-
-// ================================================================
-// Main Hyperbolic Client
-// ================================================================
-const HYPERBOLIC_API_BASE_URL: &str = "https://api.hyperbolic.xyz";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct HyperbolicExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct HyperbolicBuilder;
-
-type HyperbolicApiKey = BearerAuth;
-
-impl Provider for HyperbolicExt {
-    type Builder = HyperbolicBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl<H> Capabilities<H> for HyperbolicExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for HyperbolicExt {}
-
-impl crate::providers::openai::completion::OpenAICompatibleProvider for HyperbolicExt {
-    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
-
-    type Response = crate::providers::openai::CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: crate::providers::openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
-impl ProviderBuilder for HyperbolicBuilder {
-    type Extension<H>
-        = HyperbolicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = HyperbolicApiKey;
-
-    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(HyperbolicExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
-
-impl ProviderClient for Client {
-    type Input = HyperbolicApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
 
 #[cfg(any(feature = "image", feature = "audio"))]
 use serde::Deserialize;
@@ -155,10 +59,6 @@ pub const DEEPSEEK_R1_ZERO: &str = "deepseek-ai/DeepSeek-R1-Zero";
 /// Deepseek R1 model.
 pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
-/// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    crate::providers::openai::completion::GenericCompletionModel<HyperbolicExt, H>;
-
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = crate::providers::openai::CompletionResponse;
 
@@ -172,10 +72,8 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::Client;
-    use crate::http_client::HttpClientExt;
     use crate::image_generation;
-    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
+    use crate::image_generation::ImageGenerationError;
 
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
@@ -188,28 +86,6 @@ mod image_generation {
     pub const SDXL_TURBO: &str = "SDXL-turbo";
     pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
-
-    #[derive(Clone)]
-    pub struct ImageGenerationModel<T> {
-        client: Client<T>,
-        pub model: String,
-    }
-
-    impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-
-        pub fn with_model(client: Client<T>, model: &str) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-    }
 
     #[derive(Clone, Deserialize)]
     pub struct Image {
@@ -241,46 +117,6 @@ mod image_generation {
             })
         }
     }
-
-    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
-        type Response = ImageGenerationResponse;
-
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self::new(client.clone(), model)
-        }
-
-        async fn image_generation(
-            &self,
-            generation_request: ImageGenerationRequest,
-        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-        {
-            let body = crate::providers::hyperbolic::functions::build_image_generation_body(
-                &self.model,
-                &generation_request,
-            )?;
-
-            let request = self
-                .client
-                .post("/v1/image/generation")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, bytes::Bytes>(request).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-            crate::providers::hyperbolic::functions::parse_image_generation_response(
-                status,
-                &response_body,
-            )
-        }
-    }
 }
 
 // ======================================
@@ -292,20 +128,11 @@ pub use audio_generation::*;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod audio_generation {
-    use super::Client;
     use crate::audio_generation;
-    use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
-    use crate::http_client::{self, HttpClientExt};
+    use crate::audio_generation::AudioGenerationError;
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
-    use bytes::Bytes;
     use serde::Deserialize;
-
-    #[derive(Clone)]
-    pub struct AudioGenerationModel<T> {
-        client: Client<T>,
-        pub language: String,
-    }
 
     #[derive(Clone, Deserialize)]
     pub struct AudioGenerationResponse {
@@ -326,46 +153,6 @@ mod audio_generation {
                 audio: data,
                 response: value,
             })
-        }
-    }
-
-    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
-        type Response = AudioGenerationResponse;
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, language: impl Into<String>) -> Self {
-            Self {
-                client: client.clone(),
-                language: language.into(),
-            }
-        }
-
-        async fn audio_generation(
-            &self,
-            request: AudioGenerationRequest,
-        ) -> Result<audio_generation::AudioGenerationResponse<Self::Response>, AudioGenerationError>
-        {
-            let body = crate::providers::hyperbolic::functions::build_audio_generation_body(
-                &self.language,
-                &request,
-            )?;
-
-            let req = self
-                .client
-                .post("/v1/audio/generation")?
-                .body(body)
-                .map_err(http_client::Error::from)?;
-
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-            crate::providers::hyperbolic::functions::parse_audio_generation_response(
-                status,
-                &response_body,
-            )
         }
     }
 }
@@ -401,34 +188,21 @@ mod tests {
         assert!(body.get("response_format").is_none());
     }
 
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::hyperbolic::Client::new("dummy-key").expect("Client::new() failed");
-        let builder: crate::providers::hyperbolic::ClientBuilder =
-            crate::providers::hyperbolic::Client::builder().api_key("dummy-key");
-        let _client_from_builder = builder.build().expect("Client::builder() failed");
-    }
-
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::{CompletionError, CompletionModel};
+        use crate::completion::CompletionError;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = super::functions::Config::new(super::LLAMA_3_1_8B).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = super::functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with non-success status");
 
@@ -442,22 +216,16 @@ mod tests {
 
     #[tokio::test]
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::{CompletionError, CompletionModel};
+        use crate::completion::CompletionError;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(super::LLAMA_3_1_8B);
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(body)); // 200 OK
+        let cfg = super::functions::Config::new(super::LLAMA_3_1_8B).with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = super::functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with provider error envelope");
 
@@ -473,21 +241,16 @@ mod tests {
     #[cfg(feature = "image")]
     #[tokio::test]
     async fn image_generation_non_success_preserves_status_and_body() {
-        use crate::client::image_generation::ImageGenerationClient;
-        use crate::image_generation::{
-            ImageGenerationError, ImageGenerationModel as _, ImageGenerationRequest,
-        };
+        use crate::http_runtime::HttpRuntime;
+        use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(super::SDXL1_0_BASE);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = super::functions::Config::new(super::SDXL1_0_BASE).with_api_key("test-key");
 
         let request = ImageGenerationRequest {
             prompt: "draw a cat".to_string(),
@@ -496,8 +259,7 @@ mod tests {
             additional_params: None,
         };
 
-        let error = model
-            .image_generation(request)
+        let error = super::functions::generate_image(&cfg, &rt, request)
             .await
             .err()
             .expect("image generation should fail with non-success status");
@@ -513,20 +275,13 @@ mod tests {
     #[cfg(feature = "image")]
     #[tokio::test]
     async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::image_generation::ImageGenerationClient;
-        use crate::image_generation::{
-            ImageGenerationError, ImageGenerationModel as _, ImageGenerationRequest,
-        };
+        use crate::http_runtime::HttpRuntime;
+        use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(super::SDXL1_0_BASE);
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(body)); // 200 OK
+        let cfg = super::functions::Config::new(super::SDXL1_0_BASE).with_api_key("test-key");
 
         let request = ImageGenerationRequest {
             prompt: "draw a cat".to_string(),
@@ -535,8 +290,7 @@ mod tests {
             additional_params: None,
         };
 
-        let error = model
-            .image_generation(request)
+        let error = super::functions::generate_image(&cfg, &rt, request)
             .await
             .err()
             .expect("image generation should fail with provider error envelope");
@@ -553,21 +307,16 @@ mod tests {
     #[cfg(feature = "audio")]
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {
-        use crate::audio_generation::{
-            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
-        };
-        use crate::client::audio_generation::AudioGenerationClient;
+        use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.audio_generation_model("EN");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = super::functions::Config::new("EN").with_api_key("test-key");
 
         let request = AudioGenerationRequest {
             text: "hello".to_string(),
@@ -576,8 +325,7 @@ mod tests {
             additional_params: None,
         };
 
-        let error = model
-            .audio_generation(request)
+        let error = super::functions::generate_audio(&cfg, &rt, request)
             .await
             .err()
             .expect("audio generation should fail with non-success status");
@@ -593,20 +341,13 @@ mod tests {
     #[cfg(feature = "audio")]
     #[tokio::test]
     async fn audio_generation_2xx_error_envelope_preserves_status_and_body() {
-        use crate::audio_generation::{
-            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
-        };
-        use crate::client::audio_generation::AudioGenerationClient;
+        use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.audio_generation_model("EN");
+        let rt = HttpRuntime::recording(RecordingHttpClient::new(body)); // 200 OK
+        let cfg = super::functions::Config::new("EN").with_api_key("test-key");
 
         let request = AudioGenerationRequest {
             text: "hello".to_string(),
@@ -615,8 +356,7 @@ mod tests {
             additional_params: None,
         };
 
-        let error = model
-            .audio_generation(request)
+        let error = super::functions::generate_audio(&cfg, &rt, request)
             .await
             .err()
             .expect("audio generation should fail with provider error envelope");
@@ -898,7 +638,7 @@ pub mod functions {
     /// Build the serialized audio-generation request body. Pure.
     ///
     /// Hyperbolic's TTS routes on a language rather than a model id;
-    /// `language` mirrors the classic model handle's constructor argument.
+    /// `language` is taken from `cfg.model`.
     #[cfg(feature = "audio")]
     pub fn build_audio_generation_body(
         language: &str,
@@ -944,8 +684,7 @@ pub mod functions {
 
     /// Generate speech with Hyperbolic's `/v1/audio/generation` endpoint.
     ///
-    /// `cfg.model` carries the language, mirroring the classic
-    /// `AudioGenerationModel` handle.
+    /// `cfg.model` carries the language rather than a model id.
     #[cfg(feature = "audio")]
     pub async fn generate_audio(
         cfg: &Config,

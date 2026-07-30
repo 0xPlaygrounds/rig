@@ -7,9 +7,8 @@
 //! [`complete`]/[`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
 //! mechanics are shared with the other OpenAI-compatible providers via
-//! `openai::functions`; this module instantiates them with
-//! [`MistralExt`](super::client::MistralExt) so Mistral's paths, hooks, and
-//! provider name apply.
+//! `openai::functions`; this module supplies Mistral's own paths, wire
+//! dialect, and provider name.
 
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +21,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     ChatCompletionsDialect, ChatCompletionsUsageDialect,
 };
 use crate::providers::openai::completion::CompletionModelOptions;
+use crate::providers::openai::embedding::EmbeddingDimensions;
 use crate::providers::openai::functions as openai_functions;
 
 /// Default Mistral API base URL.
@@ -306,9 +306,304 @@ pub async fn list_models(
     parse_list_models_response(status, &body)
 }
 
+// ================================================================
+// Embeddings
+// ================================================================
+
+/// Plain-data Mistral embeddings configuration.
+///
+/// A sibling of [`Config`]: embeddings target their own model identifier.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct EmbeddingConfig {
+    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
+    pub base_url: String,
+    /// Credential location.
+    pub api_key: ApiKeyLocation,
+    /// Embedding model identifier requests are built for.
+    pub model: String,
+    /// Requested embedding dimensions.
+    ///
+    /// Mistral only accepts a dimension override on the Codestral Embed
+    /// models, where it is sent as `output_dimension`; see
+    /// [`embedding_dimensions`].
+    pub dimensions: Option<usize>,
+    /// Extra headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl EmbeddingConfig {
+    /// Config for `model` reading `MISTRAL_API_KEY` from the environment.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.to_string(),
+            api_key: ApiKeyLocation::Env("MISTRAL_API_KEY".to_string()),
+            model: model.into(),
+            dimensions: None,
+            extra_headers: Vec::new(),
+        }
+    }
+
+    /// Embedding config for `model` built from the process environment.
+    ///
+    /// Same variable as [`Config::from_env`]: `MISTRAL_API_KEY` (required).
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+        let cfg = Self::new(model);
+        required_env_var("MISTRAL_API_KEY")?;
+        Ok(cfg)
+    }
+
+    /// Config for `model` with an explicit API key.
+    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = ApiKeyLocation::Inline(key.into());
+        self
+    }
+
+    /// Override the API base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Request `dimensions`-sized embeddings (Codestral Embed only).
+    pub fn with_dimensions(mut self, dimensions: usize) -> Self {
+        self.dimensions = Some(dimensions);
+        self
+    }
+}
+
+/// Validate and place Mistral's dimension override. Pure.
+///
+/// Only the Codestral Embed models accept a dimension override, and they cap
+/// it at 3072; the value rides Mistral's own `output_dimension` field rather
+/// than the OpenAI-compatible `dimensions`.
+///
+/// # Errors
+/// `EmbeddingError::UnsupportedParameter` for a fixed-size model, and
+/// `EmbeddingError::InvalidParameterValue` above the 3072 cap.
+pub fn embedding_dimensions(
+    model: &str,
+    dimensions: Option<usize>,
+) -> Result<Option<EmbeddingDimensions>, crate::embeddings::EmbeddingError> {
+    use crate::embeddings::EmbeddingError;
+
+    let Some(dimensions) = dimensions else {
+        return Ok(None);
+    };
+
+    if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
+        return Err(EmbeddingError::UnsupportedParameter {
+            provider: DESCRIPTOR.name,
+            parameter: "dimensions",
+        });
+    }
+
+    if dimensions > 3_072 {
+        return Err(EmbeddingError::InvalidParameterValue {
+            provider: DESCRIPTOR.name,
+            parameter: "dimensions",
+            requirement: "to be at most 3072 for Codestral Embed",
+        });
+    }
+
+    Ok(Some(EmbeddingDimensions::OutputDimension(dimensions)))
+}
+
+/// Build the complete HTTP `/v1/embeddings` request for one chunk of `texts`.
+///
+/// Pure except for credential resolution. Mistral rejects the OpenAI-compatible
+/// `user` field, so it is never sent.
+pub fn build_embedding_request(
+    cfg: &EmbeddingConfig,
+    texts: &[String],
+) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+    use crate::embeddings::EmbeddingError;
+    use http::header::{AUTHORIZATION, CONTENT_TYPE};
+
+    let body = crate::providers::openai::embedding::build_embedding_body(
+        &cfg.model,
+        texts,
+        embedding_dimensions(&cfg.model, cfg.dimensions)?,
+        None,
+        None,
+    )?;
+    let url = format!("{}/v1/embeddings", cfg.base_url.trim_end_matches('/'));
+    let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+    if let Some(key) = cfg
+        .api_key
+        .resolve()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+    {
+        builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+    }
+    for (name, value) in &cfg.extra_headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    builder
+        .body(body)
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+}
+
+/// Parse a `/v1/embeddings` response into the normalized
+/// [`crate::embeddings::EmbeddingResponse`]. Pure.
+pub fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::providers::openai::embedding::parse_embedding_response(
+        status,
+        body,
+        documents,
+        DESCRIPTOR.name,
+        true,
+    )
+}
+
+/// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+/// `max_embedding_documents`; embeddings are returned in input order.
+pub async fn embed(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<String>,
+) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+    crate::embeddings::batching::embed_chunked(
+        rt,
+        texts,
+        DESCRIPTOR.max_embedding_documents,
+        |chunk| build_embedding_request(cfg, chunk),
+        parse_embedding_response,
+    )
+    .await
+}
+
+/// Embed caller-defined batches, returning one order-aligned
+/// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed usage.
+pub async fn embed_batches(
+    cfg: &EmbeddingConfig,
+    rt: &HttpRuntime,
+    texts: Vec<Vec<String>>,
+) -> Result<
+    (
+        Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+        crate::completion::Usage,
+    ),
+    crate::embeddings::EmbeddingError,
+> {
+    let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+    let response = embed(cfg, rt, flat).await?;
+    let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+    Ok((groups, response.usage))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod embeddings {
+        use super::super::{EmbeddingConfig, embed};
+        use crate::embeddings::EmbeddingError;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::mistral::{CODESTRAL_EMBED, MISTRAL_EMBED};
+        use crate::test_utils::RecordingHttpClient;
+
+        const RESPONSE_BODY: &str = r#"{
+            "id": "emb-1",
+            "object": "list",
+            "model": "mistral-embed",
+            "usage": { "prompt_tokens": 5, "total_tokens": 5 },
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3] }]
+        }"#;
+
+        /// Retargets the classic
+        /// `codestral_embeddings_map_dimensions_and_mistral_usage`: Codestral's
+        /// dimension override rides `output_dimension` (never `dimensions`),
+        /// the request goes to `/v1/embeddings`, `user` is never sent, and
+        /// Mistral's usage object is surfaced.
+        #[tokio::test]
+        async fn codestral_embeddings_map_dimensions_and_mistral_usage() {
+            let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+            let rt = HttpRuntime::recording(http_client.clone());
+            let cfg = EmbeddingConfig::new(CODESTRAL_EMBED)
+                .with_api_key("dummy-key")
+                .with_dimensions(512);
+
+            let response = embed(&cfg, &rt, vec!["hello".to_string()])
+                .await
+                .expect("embedding request should succeed");
+
+            assert_eq!(
+                response.embeddings.first().map(|e| e.vec.clone()),
+                Some(vec![0.1, 0.2, 0.3])
+            );
+            assert_eq!(response.usage.input_tokens, 5);
+            assert_eq!(response.usage.total_tokens, 5);
+
+            let requests = http_client.requests();
+            assert_eq!(requests.len(), 1);
+            let request = requests.first().expect("one recorded request");
+            assert!(request.uri.ends_with("/v1/embeddings"));
+            let body: serde_json::Value =
+                serde_json::from_slice(&request.body).expect("request body should be JSON");
+            assert_eq!(body["output_dimension"], serde_json::json!(512));
+            assert!(body.get("dimensions").is_none());
+            assert!(body.get("user").is_none());
+            assert!(body.get("encoding_format").is_none());
+        }
+
+        /// Retargets the classic `mistral_embed_rejects_dimensions_before_sending`:
+        /// a fixed-size model rejects a dimension override without an HTTP call.
+        #[tokio::test]
+        async fn mistral_embed_rejects_dimensions_before_sending() {
+            let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+            let rt = HttpRuntime::recording(http_client.clone());
+            let cfg = EmbeddingConfig::new(MISTRAL_EMBED)
+                .with_api_key("dummy-key")
+                .with_dimensions(512);
+
+            let error = embed(&cfg, &rt, vec!["hello".to_string()])
+                .await
+                .expect_err("fixed-size model should reject dimensions");
+
+            assert!(matches!(
+                error,
+                EmbeddingError::UnsupportedParameter {
+                    provider: "mistral",
+                    parameter: "dimensions"
+                }
+            ));
+            assert!(http_client.requests().is_empty());
+        }
+
+        /// Retargets the classic
+        /// `codestral_embed_rejects_dimensions_above_maximum_before_sending`:
+        /// the 3072 cap is enforced before any HTTP call.
+        #[tokio::test]
+        async fn codestral_embed_rejects_dimensions_above_maximum_before_sending() {
+            let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+            let rt = HttpRuntime::recording(http_client.clone());
+            let cfg = EmbeddingConfig::new(CODESTRAL_EMBED)
+                .with_api_key("dummy-key")
+                .with_dimensions(3_073);
+
+            let error = embed(&cfg, &rt, vec!["hello".to_string()])
+                .await
+                .expect_err("out-of-range dimensions should fail");
+
+            assert!(matches!(
+                error,
+                EmbeddingError::InvalidParameterValue {
+                    provider: "mistral",
+                    parameter: "dimensions",
+                    ..
+                }
+            ));
+            assert!(http_client.requests().is_empty());
+        }
+    }
 
     #[test]
     fn build_list_models_request_sets_url_and_bearer_auth() {

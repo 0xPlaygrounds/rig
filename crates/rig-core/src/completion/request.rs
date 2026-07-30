@@ -1,20 +1,21 @@
-//! Completion request, response, and provider trait definitions.
+//! Completion request and response definitions.
 //!
-//! Provider integrations implement [`CompletionModel`] and translate
-//! [`CompletionRequest`] into their native HTTP request format.
+//! Provider `functions` modules translate [`CompletionRequest`] into their
+//! native HTTP request format and parse the reply back into
+//! [`CompletionResponse`].
 //!
 //! # Low-level request example
 //!
 //! ```no_run
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{AssistantContent, CompletionModel, CompletionRequest},
+//!     completion::{AssistantContent, CompletionRequest},
+//!     http_runtime::HttpRuntime,
 //!     providers::openai,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::from_env()?;
-//! let model = client.completion_model(openai::GPT_5_2);
+//! let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+//! let rt = HttpRuntime::new();
 //!
 //! let request = CompletionRequest {
 //!     temperature: Some(0.5),
@@ -25,7 +26,7 @@
 //!     )
 //! };
 //!
-//! let response = model.completion(request).await?;
+//! let response = openai::functions::complete(&cfg, &rt, request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {
 //!         println!("{}", text.text);
@@ -39,8 +40,6 @@ use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
 use crate::message::{Message, UserContent};
 use crate::provider_response;
-use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client};
 
 use serde::{Deserialize, Serialize};
@@ -369,46 +368,6 @@ impl AddAssign for Usage {
         self.cache_creation_input_tokens += other.cache_creation_input_tokens;
         self.tool_use_prompt_tokens += other.tool_use_prompt_tokens;
         self.reasoning_tokens += other.reasoning_tokens;
-    }
-}
-
-/// Trait defining a completion model that can be used to generate completion responses.
-/// This trait is meant to be implemented by the user to define a custom completion model,
-/// either from a third party provider (e.g.: OpenAI) or a local model.
-pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// Provider client type used to construct this model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    /// Generates a completion response for the given completion request.
-    ///
-    /// The response is the concrete, normalized [`CompletionResponse`];
-    /// provider-typed payloads live on the provider's own side of the
-    /// boundary (its parse functions), not in this trait.
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend;
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
-    + WasmCompatSend;
-
-    /// Whether this provider's native structured output (`output_schema` ->
-    /// `format`/`response_format`) composes with tool calls in the same
-    /// multi-turn request without suppressing them.
-    ///
-    /// Defaults to `false` (the safe assumption: the native constraint may make
-    /// the model emit schema JSON instead of calling its tools — see issue
-    /// #1928). Providers that enforce structured output *and* tool use together
-    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets runtimes keep
-    /// guaranteed native structured output active when tools are present.
-    fn composes_native_output_with_tools(&self) -> bool {
-        false
     }
 }
 

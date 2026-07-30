@@ -7,11 +7,10 @@
 //! [`completion::CompletionResponse`], no IO) — plus async [`complete`] and
 //! [`open_stream`] wrappers over [`HttpRuntime`].
 //!
-//! The pure functions delegate to the same typed conversion the
-//! [`CompletionModel`](super::CompletionModel) trait path uses
-//! (`CohereCompletionRequest`'s `TryFrom` plus the shared stream-flag
-//! helper), so both paths produce byte-identical request bodies.
-//! [`open_stream`] drives the exact SSE machinery the trait path uses.
+//! The pure functions delegate to the typed `CohereCompletionRequest`
+//! conversion plus the shared stream-flag helper in
+//! [`super::completion`]; [`open_stream`] drives the SSE machinery in
+//! [`super::streaming`].
 
 use http::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};

@@ -6,266 +6,29 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{
-//!     client::CompletionClient,
-//!     completion::CompletionModel,
-//!     providers::llamafile,
-//! };
+//! use rig_core::providers::llamafile;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a new Llamafile client (defaults to http://localhost:8080)
-//! let client = llamafile::Client::from_url("http://localhost:8080")?;
+//! // Defaults to `http://localhost:8080/v1`; override with
+//! // `Config::with_base_url`, or read `LLAMAFILE_API_BASE_URL` via
+//! // `Config::from_env`.
+//! let cfg = llamafile::functions::Config::new(llamafile::LLAMA_CPP);
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
 //!
 //! // Send a completion request with a preamble.
-//! let model = client.completion_model(llamafile::LLAMA_CPP);
 //! let request = rig_core::completion::CompletionRequest::with_history(
 //!     Some("You are a helpful assistant."),
 //!     Vec::new(),
 //!     "Hello!",
 //! );
-//! let response = model.completion(request).await?;
+//! let response = llamafile::functions::complete(&cfg, &rt, request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }
 //! ```
 
-use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    Transport,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::openai;
-
-// ================================================================
-// Main Llamafile Client
-// ================================================================
-const LLAMAFILE_API_BASE_URL: &str = "http://localhost:8080";
-
 /// The default model identifier reported by llamafile.
 pub const LLAMA_CPP: &str = "LLaMA_CPP";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LlamafileExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LlamafileBuilder;
-
-impl Provider for LlamafileExt {
-    type Builder = LlamafileBuilder;
-    const VERIFY_PATH: &'static str = "/models";
-
-    // Llamafile clients are constructed from a bare host URL
-    // (e.g. `http://localhost:8080`) while the shared OpenAI-compatible
-    // endpoints are relative to `/v1`.
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
-        let base_url = base_url.trim_end_matches('/');
-        format!("{base_url}/v1/{}", path.trim_start_matches('/'))
-    }
-}
-
-impl openai::completion::OpenAICompatibleProvider for LlamafileExt {
-    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
-
-    type Response = openai::CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
-impl openai::embedding::OpenAIEmbeddingsCompatible for LlamafileExt {
-    const PROVIDER_NAME: &'static str = "llamafile";
-}
-
-impl<H> Capabilities<H> for LlamafileExt {
-    type Completion = Capable<openai::completion::GenericCompletionModel<LlamafileExt, H>>;
-    type Embeddings = Capable<openai::embedding::GenericEmbeddingModel<LlamafileExt, H>>;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for LlamafileExt {}
-
-impl ProviderBuilder for LlamafileBuilder {
-    type Extension<H>
-        = LlamafileExt
-    where
-        H: HttpClientExt;
-    type ApiKey = Nothing;
-
-    const BASE_URL: &'static str = LLAMAFILE_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(LlamafileExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<LlamafileExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<LlamafileBuilder, Nothing, H>;
-
-/// Llamafile completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<LlamafileExt, H>;
-
-/// Llamafile embedding model, driven by the shared OpenAI embeddings path.
-pub type EmbeddingModel<H = reqwest::Client> =
-    openai::embedding::GenericEmbeddingModel<LlamafileExt, H>;
-
-impl Client {
-    /// Create a client pointing at the given llamafile base URL
-    /// (e.g. `http://localhost:8080`).
-    pub fn from_url(base_url: &str) -> crate::client::ProviderClientResult<Self> {
-        Self::builder()
-            .api_key(Nothing)
-            .base_url(base_url)
-            .build()
-            .map_err(Into::into)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = Nothing;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_base = crate::client::required_env_var("LLAMAFILE_API_BASE_URL")?;
-        Self::from_url(&api_base)
-    }
-
-    fn from_val(_: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(Nothing).build().map_err(Into::into)
-    }
-}
-
-// ================================================================
-// Tests
-// ================================================================
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::client::{EmbeddingsClient, Nothing};
-    use crate::embeddings::EmbeddingModel as _;
-    use crate::providers::openai::embedding::EncodingFormat;
-    use crate::test_utils::RecordingHttpClient;
-
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::llamafile::Client::new(Nothing).expect("Client::new() failed");
-        let _client_from_builder = crate::providers::llamafile::Client::builder()
-            .api_key(Nothing)
-            .build()
-            .expect("Client::builder() failed");
-    }
-
-    #[test]
-    fn test_client_from_url() {
-        let _client = crate::providers::llamafile::Client::from_url("http://localhost:8080");
-    }
-
-    #[test]
-    fn test_build_uri_routes_through_v1() {
-        let ext = LlamafileExt;
-        assert_eq!(
-            ext.build_uri(
-                "http://localhost:8080",
-                "/chat/completions",
-                Transport::Http
-            ),
-            "http://localhost:8080/v1/chat/completions"
-        );
-        assert_eq!(
-            ext.build_uri("http://localhost:8080/", "/embeddings", Transport::Http),
-            "http://localhost:8080/v1/embeddings"
-        );
-        assert_eq!(
-            ext.build_uri(
-                "http://localhost:8080",
-                LlamafileExt::VERIFY_PATH,
-                Transport::Http
-            ),
-            "http://localhost:8080/v1/models"
-        );
-    }
-
-    #[tokio::test]
-    async fn embedding_model_preserves_v1_path_and_usage() {
-        let response = r#"{
-            "object": "list",
-            "model": "LLaMA_CPP",
-            "usage": { "prompt_tokens": 2, "total_tokens": 2 },
-            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
-        }"#;
-        let http_client = RecordingHttpClient::new(response);
-        let client = Client::builder()
-            .api_key(Nothing)
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let model = client.embedding_model(LLAMA_CPP);
-
-        let response = model
-            .embed_texts_with_usage(["hello".to_string()])
-            .await
-            .expect("embedding request should succeed");
-
-        assert_eq!(response.usage.total_tokens, 2);
-        assert_eq!(
-            http_client.requests()[0].uri,
-            "http://localhost:8080/v1/embeddings"
-        );
-    }
-
-    #[tokio::test]
-    async fn embedding_model_rejects_base64_before_sending() {
-        let http_client = RecordingHttpClient::new("{}");
-        let client = Client::builder()
-            .api_key(Nothing)
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let model = client
-            .embedding_model(LLAMA_CPP)
-            .encoding_format(EncodingFormat::Base64);
-
-        let error = model
-            .embed_texts(["hello".to_string()])
-            .await
-            .expect_err("numeric response parser should reject base64");
-
-        assert!(matches!(
-            error,
-            crate::embeddings::EmbeddingError::UnsupportedResponseEncoding {
-                provider: "llamafile",
-                encoding_format: "base64"
-            }
-        ));
-        assert!(http_client.requests().is_empty());
-    }
-}
 
 pub mod functions {
     //! Llamafile chat completions as config + pure functions.
@@ -277,9 +40,8 @@ pub mod functions {
     //! [`complete`]/[`open_stream`] wrappers over
     //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
-    //! `openai::functions`; this module instantiates them with
-    //! [`LlamafileExt`](super::LlamafileExt) so Llamafile's paths, hooks, and
-    //! provider name apply.
+    //! `openai::functions`'s stage helpers; this module owns Llamafile's own
+    //! paths, dialect data, and provider name.
 
     use serde::{Deserialize, Serialize};
 
@@ -350,10 +112,10 @@ pub mod functions {
         ///
         /// The env value is a **bare host URL without the `/v1` suffix** (e.g.
         /// `http://localhost:8080`), exactly as the classic client expected: the
-        /// classic path appended `/v1` itself in `build_uri` on
-        /// [`LlamafileExt`](super::LlamafileExt). The functions path
-        /// builds URLs from `base_url` verbatim, so that same `/v1` is appended
-        /// here to keep the wire URL identical to the classic client's.
+        /// classic path appended `/v1` itself in its own `build_uri`. The
+        /// functions path builds URLs from `base_url` verbatim, so that same
+        /// `/v1` is appended here to keep the wire URL identical to the classic
+        /// client's.
         ///
         /// # Errors
         /// [`ConfigError`] when a required variable is missing or invalid.
@@ -471,10 +233,181 @@ pub mod functions {
         parse_response(status, &body)
     }
 
+    // ================================================================
+    // Embeddings
+    // ================================================================
+
+    /// Plain-data Llamafile embeddings configuration.
+    ///
+    /// Llamafile serves OpenAI's `/embeddings` shape, so the request body and
+    /// response parsing are OpenAI's; only the provider name (used in errors)
+    /// and the unauthenticated default credential differ.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct EmbeddingConfig {
+        /// API base URL (defaults to [`DEFAULT_BASE_URL`], including `/v1`).
+        pub base_url: String,
+        /// Credential location (none by default — llamafile serves an
+        /// unauthenticated local endpoint).
+        pub api_key: ApiKeyLocation,
+        /// Embedding model identifier requests are built for.
+        pub model: String,
+        /// Requested embedding dimensions, sent verbatim as `dimensions`.
+        pub dimensions: Option<usize>,
+        /// Extra headers attached to every request.
+        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl EmbeddingConfig {
+        /// Embedding config for `model` against the default local endpoint.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                base_url: DEFAULT_BASE_URL.to_string(),
+                api_key: ApiKeyLocation::None,
+                model: model.into(),
+                dimensions: None,
+                extra_headers: Vec::new(),
+            }
+        }
+
+        /// Embedding config for `model` built from the process environment.
+        ///
+        /// Reads `LLAMAFILE_API_BASE_URL` (**required**), applying the same
+        /// `/v1` suffix rule as [`Config::from_env`].
+        ///
+        /// # Errors
+        /// [`ConfigError`] when the variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            let base_url = required_env_var("LLAMAFILE_API_BASE_URL")?;
+            cfg.base_url = format!("{}/v1", base_url.trim_end_matches('/'));
+            Ok(cfg)
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+
+        /// Request `dimensions`-sized embeddings.
+        pub fn with_dimensions(mut self, dimensions: usize) -> Self {
+            self.dimensions = Some(dimensions);
+            self
+        }
+    }
+
+    /// Build the complete HTTP embeddings request for one chunk of `texts`.
+    pub fn build_embedding_request(
+        cfg: &EmbeddingConfig,
+        texts: &[String],
+    ) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+        use crate::embeddings::EmbeddingError;
+        use http::header::{AUTHORIZATION, CONTENT_TYPE};
+
+        let body = crate::providers::openai::embedding::build_embedding_body(
+            &cfg.model,
+            texts,
+            cfg.dimensions
+                .map(crate::providers::openai::embedding::EmbeddingDimensions::Dimensions),
+            None,
+            None,
+        )?;
+        let url = format!("{}/embeddings", cfg.base_url.trim_end_matches('/'));
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+    }
+
+    /// Parse an embeddings response body. Pure.
+    pub fn parse_embedding_response(
+        status: http::StatusCode,
+        body: &str,
+        documents: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        crate::providers::openai::embedding::parse_embedding_response(
+            status,
+            body,
+            documents,
+            DESCRIPTOR.name,
+            true,
+        )
+    }
+
+    /// Embed `texts`, chunked to [`DESCRIPTOR`]'s document limit.
+    pub async fn embed(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        crate::embeddings::batching::embed_chunked(
+            rt,
+            texts,
+            DESCRIPTOR.max_embedding_documents,
+            |chunk| build_embedding_request(cfg, chunk),
+            parse_embedding_response,
+        )
+        .await
+    }
+
+    /// Embed pre-grouped `texts`, preserving the grouping in the result.
+    pub async fn embed_batches(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<Vec<String>>,
+    ) -> Result<
+        (
+            Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+            crate::completion::Usage,
+        ),
+        crate::embeddings::EmbeddingError,
+    > {
+        let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+        let response = embed(cfg, rt, flat).await?;
+        let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
         use crate::OneOrMany;
+
+        /// Ported from the deleted classic `embedding_model_preserves_v1_path_and_usage`:
+        /// llamafile embeddings must hit `/v1/embeddings` and surface usage.
+        #[tokio::test]
+        async fn embed_preserves_v1_path_and_usage() {
+            let response = r#"{
+                "object": "list",
+                "model": "LLaMA_CPP",
+                "usage": { "prompt_tokens": 2, "total_tokens": 2 },
+                "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
+            }"#;
+            let http_client = crate::test_utils::RecordingHttpClient::new(response);
+            let rt = HttpRuntime::recording(http_client.clone());
+            let cfg = EmbeddingConfig::new(super::super::LLAMA_CPP);
+
+            let response = embed(&cfg, &rt, vec!["hello".to_string()])
+                .await
+                .expect("embedding request should succeed");
+
+            assert_eq!(response.usage.total_tokens, 2);
+            assert_eq!(
+                http_client.requests()[0].uri,
+                "http://localhost:8080/v1/embeddings"
+            );
+        }
 
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
@@ -499,6 +432,18 @@ pub mod functions {
             assert_eq!(req.uri(), "http://localhost:8080/v1/chat/completions");
             let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
             assert_eq!(value["model"], "test-model");
+        }
+
+        // Retargets the deleted classic `LlamafileExt::build_uri` test: the
+        // `/v1` prefix llamafile serves under must land in the wire URL, and a
+        // trailing slash on the configured base URL must not double up.
+        #[test]
+        fn build_request_routes_through_v1() {
+            assert_eq!(DEFAULT_BASE_URL, "http://localhost:8080/v1");
+
+            let cfg = Config::new("test-model").with_base_url("http://localhost:8080/v1/");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "http://localhost:8080/v1/chat/completions");
         }
 
         #[test]

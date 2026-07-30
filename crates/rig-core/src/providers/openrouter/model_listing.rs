@@ -1,10 +1,4 @@
-use crate::{
-    client::ModelLister,
-    http_client::{self, HttpClientExt},
-    model::{Model, ModelList, ModelListingError},
-    providers::openrouter::Client,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::model::{Model, ModelList, ModelListingError};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -36,40 +30,12 @@ impl From<ModelEntry> for Model {
     }
 }
 
-#[derive(Clone)]
-pub struct OpenRouterModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for OpenRouterModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let req = self
-            .client
-            .get(LIST_MODELS_PATH)?
-            .body(http_client::NoBody)?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-        let status = response.status();
-        let body = response.into_body().await?;
-        parse_list_models_response(status, &body)
-    }
-}
-
 /// Path of the model-listing endpoint, relative to the API base URL.
 pub(crate) const LIST_MODELS_PATH: &str = "/models";
 
 /// Parse a `GET /models` response into a [`ModelList`]. Pure.
 ///
-/// Shared by the classic [`OpenRouterModelLister`] and
-/// [`functions::list_models`](super::functions::list_models).
+/// Used by [`functions::list_models`](super::functions::list_models).
 pub(crate) fn parse_list_models_response(
     status: http::StatusCode,
     body: &[u8],

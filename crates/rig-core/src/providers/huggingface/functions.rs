@@ -7,15 +7,17 @@
 //! [`complete`]/[`open_stream`] wrappers over
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
 //! mechanics reuse the shared OpenAI-compatible stages in
-//! `openai::functions`; the Hugging Face dialect steps ([`completion_path`],
-//! [`build_body`]) live here and are what the classic
-//! [`HuggingFaceExt`](super::client::HuggingFaceExt) trait impl forwards to.
-//! The [`Config`] path targets the default sub-provider
-//! ([`SubProvider::default`]), matching the classic default client.
+//! `openai::functions`; the Hugging Face dialect steps (`completion_path`,
+//! `build_body`) live here.
+//!
+//! Routing is carried by [`Config::sub_provider`]: it selects the
+//! chat-completions path, the model identifier written into the request body
+//! (Fireworks qualifies ids), and the transcription / image-generation
+//! endpoints (which only the default `hf-inference` sub-provider supports).
 
 use serde::{Deserialize, Serialize};
 
-use super::client::SubProvider;
+use super::SubProvider;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::ChatCompletionsDialect;
@@ -53,6 +55,10 @@ pub struct Config {
     pub api_key: ApiKeyLocation,
     /// Model identifier requests are built for.
     pub model: String,
+    /// Inference-router sub-provider requests are routed through (classic
+    /// `ClientBuilder::subprovider`).
+    #[serde(default)]
+    pub sub_provider: SubProvider,
     /// Extra headers attached to every request.
     pub extra_headers: Vec<(String, String)>,
 }
@@ -64,6 +70,7 @@ impl Config {
             base_url: DEFAULT_BASE_URL.to_string(),
             api_key: ApiKeyLocation::Env("HUGGINGFACE_API_KEY".to_string()),
             model: model.into(),
+            sub_provider: SubProvider::default(),
             extra_headers: Vec::new(),
         }
     }
@@ -76,9 +83,10 @@ impl Config {
     /// credential is validated eagerly but stored as [`ApiKeyLocation::Env`], so
     /// the secret is read at request time rather than held inside the config.
     ///
-    /// The sub-provider is not part of this config: `completion_path` takes a
-    /// [`SubProvider`] argument at request-build time, so it stays a per-call
-    /// parameter rather than an environment-derived field.
+    /// The sub-provider is not environment-derived: it defaults to
+    /// [`SubProvider::default`] and is selected with
+    /// [`Config::with_sub_provider`], exactly as the classic client's
+    /// `ClientBuilder::subprovider` did.
     ///
     /// # Errors
     /// [`ConfigError`] when a required variable is missing or invalid.
@@ -97,6 +105,12 @@ impl Config {
     /// Override the API base URL.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();
+        self
+    }
+
+    /// Route requests through `sub_provider`.
+    pub fn with_sub_provider(mut self, sub_provider: SubProvider) -> Self {
+        self.sub_provider = sub_provider;
         self
     }
 }
@@ -136,7 +150,7 @@ pub fn build_request_body(
     stream: bool,
 ) -> Result<Vec<u8>, CompletionError> {
     build_body(
-        &SubProvider::default(),
+        &cfg.sub_provider,
         &cfg.model,
         request,
         CompletionModelOptions::default(),
@@ -155,7 +169,7 @@ pub fn build_request(
 ) -> Result<http::Request<Vec<u8>>, CompletionError> {
     openai_functions::compatible_http_request(
         &cfg.base_url,
-        &completion_path(&SubProvider::default(), &cfg.model),
+        &completion_path(&cfg.sub_provider, &cfg.model),
         &cfg.api_key,
         &cfg.extra_headers,
         build_request_body(cfg, request, stream)?,
@@ -175,19 +189,25 @@ pub fn parse_response(
     )
 }
 
-/// The HF Inference modality URL: `{base}/hf-inference/models/{model}`.
+/// A minor-modality URL: `{base}/{sub_provider}{endpoint}`.
 ///
-/// The classic client routes minor modalities through the `hf-inference`
-/// sub-provider only; the other sub-providers do not support them.
-fn hf_inference_url(cfg: &Config) -> String {
+/// `endpoint` comes from [`SubProvider::transcription_endpoint`] /
+/// [`SubProvider::image_generation_endpoint`], which only the default
+/// `hf-inference` sub-provider implements — the others reject the modality,
+/// exactly as the classic transcription/image-generation models did.
+fn modality_url(cfg: &Config, endpoint: &str) -> String {
     format!(
-        "{}/hf-inference/models/{}",
+        "{}/{}{}",
         cfg.base_url.trim_end_matches('/'),
-        cfg.model.trim_start_matches('/')
+        cfg.sub_provider,
+        endpoint
     )
 }
 
-/// Transcribe `request` with the HF Inference sub-provider.
+/// Transcribe `request` through the configured sub-provider.
+///
+/// Only `hf-inference` supports transcription; the other sub-providers
+/// return [`TranscriptionError::ProviderError`](crate::transcription::TranscriptionError::ProviderError).
 pub async fn transcribe(
     cfg: &Config,
     rt: &HttpRuntime,
@@ -199,8 +219,9 @@ pub async fn transcribe(
     use crate::transcription::TranscriptionError;
 
     let body = super::transcription::build_transcription_body(&request.data)?;
+    let endpoint = cfg.sub_provider.transcription_endpoint(&cfg.model)?;
     let req = openai_functions::bearer_post(
-        hf_inference_url(cfg),
+        modality_url(cfg, &endpoint),
         &cfg.api_key,
         &cfg.extra_headers,
         true,
@@ -211,7 +232,10 @@ pub async fn transcribe(
     super::transcription::parse_transcription_response(status, &body)
 }
 
-/// Generate an image with the HF Inference sub-provider.
+/// Generate an image through the configured sub-provider.
+///
+/// Only `hf-inference` supports image generation; the other sub-providers
+/// return [`ImageGenerationError::ProviderError`](crate::image_generation::ImageGenerationError::ProviderError).
 #[cfg(feature = "image")]
 pub async fn generate_image(
     cfg: &Config,
@@ -226,8 +250,9 @@ pub async fn generate_image(
     use crate::image_generation::ImageGenerationError;
 
     let body = super::image_generation::build_image_generation_body(&request)?;
+    let endpoint = cfg.sub_provider.image_generation_endpoint(&cfg.model)?;
     let req = openai_functions::bearer_post(
-        hf_inference_url(cfg),
+        modality_url(cfg, &endpoint),
         &cfg.api_key,
         &cfg.extra_headers,
         true,
@@ -294,6 +319,67 @@ mod tests {
         );
         let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
         assert_eq!(value["model"], "test-model");
+    }
+
+    #[test]
+    fn sub_provider_reaches_the_request_body_model() {
+        let cfg = Config::new("deepseek-v3")
+            .with_api_key("secret")
+            .with_sub_provider(SubProvider::Fireworks);
+        let req = build_request(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+        assert_eq!(value["model"], "accounts/fireworks/models/deepseek-v3");
+        // The router addresses every sub-provider through the same
+        // chat-completions path; only the body model identifier changes.
+        assert_eq!(
+            req.uri(),
+            "https://router.huggingface.co/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn sub_provider_routes_the_modality_url() {
+        let cfg = Config::new("openai/whisper-large-v3").with_api_key("secret");
+        let endpoint = cfg
+            .sub_provider
+            .transcription_endpoint(&cfg.model)
+            .expect("hf-inference supports transcription");
+        assert_eq!(
+            modality_url(&cfg, &endpoint),
+            "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3"
+        );
+
+        // Non-default sub-providers reject the minor modalities, exactly as
+        // the classic transcription/image-generation models did.
+        let together = cfg.clone().with_sub_provider(SubProvider::Together);
+        assert!(
+            together
+                .sub_provider
+                .transcription_endpoint(&together.model)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn config_sub_provider_round_trips_through_serde() {
+        for sub_provider in [
+            SubProvider::Together,
+            SubProvider::Fireworks,
+            SubProvider::Custom("my-route".to_string()),
+        ] {
+            let cfg = Config::new("m").with_sub_provider(sub_provider);
+            let json = serde_json::to_string(&cfg).expect("serialize");
+            let back: Config = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(back, cfg);
+        }
+        // A config serialized before the field existed still deserializes.
+        let json = serde_json::to_string(&Config::new("m")).expect("serialize");
+        let mut value: serde_json::Value = serde_json::from_str(&json).expect("json");
+        if let Some(map) = value.as_object_mut() {
+            map.remove("sub_provider");
+        }
+        let legacy: Config = serde_json::from_value(value).expect("deserialize legacy");
+        assert_eq!(legacy.sub_provider, SubProvider::HFInference);
     }
 
     #[test]

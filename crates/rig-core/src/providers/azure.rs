@@ -1,337 +1,39 @@
-//! Azure OpenAI API client and Rig integration
+//! Azure OpenAI API integration.
+//!
+//! Azure does not fit the plain `base_url + path` shape: the deployment is
+//! routed through the URL and the API is versioned by a query parameter, so
+//! [`functions::Config`] carries `endpoint` + `api_version` rather than a base
+//! URL, and it covers completions, transcription, image generation, audio
+//! generation, and embeddings.
 //!
 //! # Example
 //! ```no_run
 //! use rig_core::providers::azure;
-//! use rig_core::client::CompletionClient;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = azure::Client::builder()
-//!     .api_key("test")
-//!     .azure_endpoint("test".to_string()) // add your endpoint here!
-//!     .build()?;
-//!
-//! let gpt4o = client.completion_model(azure::GPT_4O);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = azure::functions::Config::new(
+//!     "https://my-resource.openai.azure.com", // add your endpoint here!
+//!     azure::GPT_4O,
+//! )
+//! .with_api_key("test");
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = azure::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! ## Authentication
-//! The authentication type used for the `azure` module is [`AzureOpenAIAuth`].
-//!
-//! By default, using a type that implements `Into<String>` as the input for the client builder will turn the type into a bearer auth token.
-//! If you want to use an API key, you need to use the type specifically.
+//! Credential presentation is data on the config:
+//! [`functions::AuthScheme::ApiKeyHeader`] (the default) sends the resolved
+//! credential in Azure's `api-key` header, while
+//! [`functions::AuthScheme::Bearer`] sends it as `Authorization: Bearer` — the
+//! Entra ID path. [`functions::Config::from_env`] picks the scheme for you:
+//! `AZURE_API_KEY` maps to `ApiKeyHeader` and `AZURE_TOKEN` to `Bearer`.
 
-use std::fmt::Debug;
-
-use super::openai::TranscriptionResponse;
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::completion::CompletionError;
-use crate::http_client::{self, HttpClientExt, bearer_auth_header};
-use crate::transcription::TranscriptionError;
-use crate::{
-    embeddings::{self, EmbeddingError},
-    providers::openai,
-    transcription::{self},
-};
-use bytes::Bytes;
+use crate::embeddings::{self, EmbeddingError};
 use serde::Deserialize;
 use serde_json::json;
-// ================================================================
-// Main Azure OpenAI Client
-// ================================================================
-
-const DEFAULT_API_VERSION: &str = "2024-10-21";
-
-#[derive(Debug, Clone)]
-pub struct AzureExt {
-    endpoint: String,
-    api_version: String,
-}
-
-impl AzureExt {
-    /// Resource endpoint this client targets, e.g. `https://my-resource.openai.azure.com`.
-    pub fn endpoint(&self) -> &str {
-        &self.endpoint
-    }
-
-    /// API version query parameter this client sends.
-    pub fn api_version(&self) -> &str {
-        &self.api_version
-    }
-}
-
-impl DebugExt for AzureExt {
-    fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn std::fmt::Debug)> {
-        [
-            ("endpoint", (&self.endpoint as &dyn Debug)),
-            ("api_version", (&self.api_version as &dyn Debug)),
-        ]
-        .into_iter()
-    }
-}
-
-// TODO: @FayCarsons - this should be a type-safe builder,
-// but that would require extending the `ProviderBuilder`
-// to have some notion of complete vs incomplete states in a
-// given extension builder
-#[derive(Debug, Clone)]
-pub struct AzureExtBuilder {
-    endpoint: Option<String>,
-    api_version: String,
-}
-
-impl Default for AzureExtBuilder {
-    fn default() -> Self {
-        Self {
-            endpoint: None,
-            api_version: DEFAULT_API_VERSION.into(),
-        }
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<AzureExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H>;
-
-impl Provider for AzureExt {
-    type Builder = AzureExtBuilder;
-
-    /// Verifying Azure auth without consuming tokens is not supported
-    const VERIFY_PATH: &'static str = "";
-}
-
-impl<H> Capabilities<H> for AzureExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
-
-impl ProviderBuilder for AzureExtBuilder {
-    type Extension<H>
-        = AzureExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AzureOpenAIAuth;
-
-    const BASE_URL: &'static str = "";
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        let AzureExtBuilder {
-            endpoint,
-            api_version,
-            ..
-        } = builder.ext().clone();
-
-        match endpoint {
-            Some(endpoint) => Ok(AzureExt {
-                endpoint,
-                api_version,
-            }),
-            None => Err(http_client::Error::Instance(
-                "Azure client must be provided an endpoint prior to building".into(),
-            )),
-        }
-    }
-
-    fn finish<H>(
-        &self,
-        mut builder: client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, Self::ApiKey, H>> {
-        use AzureOpenAIAuth::*;
-
-        let auth = builder.get_api_key().clone();
-
-        match auth {
-            Token(token) => bearer_auth_header(builder.headers_mut(), token.as_str())?,
-            ApiKey(key) => {
-                let k = http::HeaderName::from_static("api-key");
-                let v = http::HeaderValue::from_str(key.as_str())?;
-
-                builder.headers_mut().insert(k, v);
-            }
-        }
-
-        Ok(builder)
-    }
-}
-
-impl<H> ClientBuilder<H> {
-    /// API version to use (e.g., "2024-10-21" for GA, "2024-10-01-preview" for preview)
-    pub fn api_version(mut self, api_version: &str) -> Self {
-        self.ext_mut().api_version = api_version.into();
-
-        self
-    }
-}
-
-impl<H> client::ClientBuilder<AzureExtBuilder, AzureOpenAIAuth, H> {
-    /// Azure OpenAI endpoint URL, for example: https://{your-resource-name}.openai.azure.com
-    pub fn azure_endpoint(self, endpoint: String) -> ClientBuilder<H> {
-        self.over_ext(|AzureExtBuilder { api_version, .. }| AzureExtBuilder {
-            endpoint: Some(endpoint),
-            api_version,
-        })
-    }
-}
-
-/// The authentication type for Azure OpenAI. Can either be an API key or a token.
-/// String types will automatically be coerced to a bearer auth token by default.
-#[derive(Clone)]
-pub enum AzureOpenAIAuth {
-    ApiKey(String),
-    Token(String),
-}
-
-impl ApiKey for AzureOpenAIAuth {}
-
-impl std::fmt::Debug for AzureOpenAIAuth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ApiKey(_) => write!(f, "API key <REDACTED>"),
-            Self::Token(_) => write!(f, "Token <REDACTED>"),
-        }
-    }
-}
-
-impl<S> From<S> for AzureOpenAIAuth
-where
-    S: Into<String>,
-{
-    fn from(token: S) -> Self {
-        AzureOpenAIAuth::Token(token.into())
-    }
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt,
-{
-    fn endpoint(&self) -> &str {
-        &self.ext().endpoint
-    }
-
-    fn api_version(&self) -> &str {
-        &self.ext().api_version
-    }
-
-    fn post_embedding(&self, deployment_id: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/embeddings?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(&url)
-    }
-
-    #[cfg(feature = "audio")]
-    fn post_audio_generation(
-        &self,
-        deployment_id: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/audio/speech?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(url)
-    }
-
-    fn post_transcription(&self, deployment_id: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/audio/translations?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(&url)
-    }
-
-    #[cfg(feature = "image")]
-    fn post_image_generation(
-        &self,
-        deployment_id: &str,
-    ) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/images/generations?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(&url)
-    }
-}
-
-pub struct AzureOpenAIClientParams {
-    api_key: String,
-    version: String,
-    header: String,
-}
-
-impl ProviderClient for Client {
-    type Input = AzureOpenAIClientParams;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Azure OpenAI client from the `AZURE_API_KEY` or `AZURE_TOKEN`, `AZURE_API_VERSION`, and `AZURE_ENDPOINT` environment variables.
-    fn from_env() -> Result<Self, Self::Error> {
-        let auth = if let Some(api_key) = crate::client::optional_env_var("AZURE_API_KEY")? {
-            AzureOpenAIAuth::ApiKey(api_key)
-        } else if let Some(token) = crate::client::optional_env_var("AZURE_TOKEN")? {
-            AzureOpenAIAuth::Token(token)
-        } else {
-            return Err(crate::client::ProviderClientError::InvalidConfiguration(
-                "either `AZURE_API_KEY` or `AZURE_TOKEN` must be set",
-            ));
-        };
-
-        let api_version = crate::client::required_env_var("AZURE_API_VERSION")?;
-        let azure_endpoint = crate::client::required_env_var("AZURE_ENDPOINT")?;
-
-        Self::builder()
-            .api_key(auth)
-            .azure_endpoint(azure_endpoint)
-            .api_version(&api_version)
-            .build()
-            .map_err(Into::into)
-    }
-
-    fn from_val(
-        AzureOpenAIClientParams {
-            api_key,
-            version,
-            header,
-        }: Self::Input,
-    ) -> Result<Self, Self::Error> {
-        let auth = AzureOpenAIAuth::ApiKey(api_key.to_string());
-
-        Self::builder()
-            .api_key(auth)
-            .azure_endpoint(header)
-            .api_version(&version)
-            .build()
-            .map_err(Into::into)
-    }
-}
 
 #[derive(Debug, Deserialize)]
 struct ApiErrorResponse {
@@ -356,7 +58,13 @@ pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
 /// `text-embedding-ada-002` embedding model
 pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+/// Known embedding dimensionality for a built-in Azure OpenAI embedding
+/// deployment.
+///
+/// Callers that need the vector width (index creation, store schemas) read it
+/// from here and, when the model accepts it, pass it to
+/// [`functions::EmbeddingConfig::with_dimensions`].
+pub fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         TEXT_EMBEDDING_3_LARGE => Some(3_072),
         TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
@@ -407,16 +115,8 @@ impl std::fmt::Display for Usage {
     }
 }
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
-}
-
 /// Build the serialized Azure embeddings request body (`input` +
-/// optional `dimensions`). Pure; shared by the trait path and
-/// [`functions::embed`].
+/// optional `dimensions`). Pure; used by [`functions::embed`].
 pub(crate) fn build_embedding_body(
     texts: &[String],
     dimensions: Option<usize>,
@@ -435,7 +135,7 @@ pub(crate) fn build_embedding_body(
 
 /// Parse an Azure embeddings response into the normalized
 /// [`embeddings::EmbeddingResponse`], zipping vectors back onto
-/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+/// `documents`. Pure; used by [`functions::embed`].
 pub(crate) fn parse_embedding_response(
     status: http::StatusCode,
     body: &str,
@@ -477,76 +177,6 @@ pub(crate) fn parse_embedding_response(
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Default + Clone + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
-
-        let dimensions =
-            (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
-        let body = build_embedding_body(&documents, dimensions)?;
-
-        let req = self
-            .client
-            .post_embedding(self.model.as_str())?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        let body = if status.is_success() {
-            let response_body: Vec<u8> = response.into_body().await?;
-            String::from_utf8_lossy(&response_body).into_owned()
-        } else {
-            http_client::text(response).await?
-        };
-        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
-    }
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = ndims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self {
-            client,
-            model,
-            ndims,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
-        let ndims = ndims.unwrap_or_default();
-
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-}
-
 // ================================================================
 // Azure OpenAI Completion API
 // ================================================================
@@ -578,270 +208,43 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
-/// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
-/// path. The deployment-scoped URL (including `api-version`) is produced by
-/// [`completion_path`](crate::providers::openai::completion::OpenAICompatibleProvider::completion_path)
-/// on [`AzureExt`], pinned to the deployment this model handle was created
-/// with (a per-request `model` override changes only the request body, as
-/// before the migration).
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<AzureExt, H>;
-
-impl openai::completion::OpenAICompatibleProvider for AzureExt {
-    const DESCRIPTOR: crate::providers::descriptor::ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: crate::providers::descriptor::ChatCompletionsDialect =
-        functions::STREAM_DIALECT;
-
-    type Response = openai::CompletionResponse;
-
-    // Azure routes the deployment (model) through the URL path and versions
-    // the API via a query parameter; the client base URL is blank so this
-    // absolute URL passes through `build_uri` untouched.
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(&self.endpoint, &self.api_version, model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, CompletionError> {
-        functions::build_body(model, request, options, stream)
-    }
-}
-
-// ================================================================
-// Azure OpenAI Transcription API
-// ================================================================
-
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let body = functions::build_transcription_form(request)?;
-
-        let req = self
-            .client
-            .post_transcription(&self.model)?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-        crate::providers::openai::functions::parse_transcription_response(status, &response_body)
-    }
-}
-
-// ================================================================
-// Azure OpenAI Image Generation API
-// ================================================================
-#[cfg(feature = "image")]
-pub use image_generation::*;
-#[cfg(feature = "image")]
-#[cfg_attr(docsrs, doc(cfg(feature = "image")))]
-mod image_generation {
-    use crate::http_client::HttpClientExt;
-    use crate::image_generation;
-    use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
-    use crate::providers::azure::Client;
-    use crate::providers::openai::ImageGenerationResponse;
-    use bytes::Bytes;
-
-    #[derive(Clone)]
-    pub struct ImageGenerationModel<T = reqwest::Client> {
-        client: Client<T>,
-        pub model: String,
-    }
-
-    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
-        type Response = ImageGenerationResponse;
-
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self {
-                client: client.clone(),
-                model: model.into(),
-            }
-        }
-
-        async fn image_generation(
-            &self,
-            generation_request: ImageGenerationRequest,
-        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-        {
-            let body = crate::providers::azure::functions::build_image_generation_body(
-                &self.model,
-                &generation_request,
-            )?;
-
-            let req = self
-                .client
-                .post_image_generation(&self.model)?
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-            crate::providers::openai::functions::parse_image_generation_response(
-                status,
-                &response_body,
-            )
-        }
-    }
-}
-// ================================================================
-// Azure OpenAI Audio Generation API
-// ================================================================
-
-#[cfg(feature = "audio")]
-pub use audio_generation::*;
-
-#[cfg(feature = "audio")]
-#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
-mod audio_generation {
-    use super::Client;
-    use crate::audio_generation::{
-        self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
-    };
-    use crate::http_client::HttpClientExt;
-    use bytes::Bytes;
-
-    #[derive(Clone)]
-    pub struct AudioGenerationModel<T = reqwest::Client> {
-        client: Client<T>,
-        model: String,
-    }
-
-    impl<T> AudioGenerationModel<T> {
-        pub fn new(client: Client<T>, deployment_name: impl Into<String>) -> Self {
-            Self {
-                client,
-                model: deployment_name.into(),
-            }
-        }
-    }
-
-    impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
-        type Response = Bytes;
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self::new(client.clone(), model)
-        }
-
-        async fn audio_generation(
-            &self,
-            request: AudioGenerationRequest,
-        ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-            let body = crate::providers::openai::functions::build_audio_generation_body(
-                &self.model,
-                &request,
-            )?;
-
-            let req = self
-                .client
-                .post_audio_generation("/audio/speech")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| AudioGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?;
-            crate::providers::openai::functions::parse_audio_generation_response(
-                status,
-                response_body.to_vec(),
-            )
-        }
-    }
-}
-
 #[cfg(test)]
 mod azure_tests {
     use super::*;
-    use crate::completion::{CompletionError, CompletionRequest};
-
     use crate::OneOrMany;
-    use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
-    use crate::completion::CompletionModel;
-    use crate::embeddings::EmbeddingModel;
+    use crate::completion::{CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
 
-    #[cfg(any(feature = "image", feature = "audio"))]
-    fn test_client(
-        http_client: crate::test_utils::RecordingHttpClient,
-    ) -> Client<crate::test_utils::RecordingHttpClient> {
-        Client::builder()
-            .api_key("test-key")
-            .azure_endpoint("https://example.openai.azure.com".to_string())
-            .http_client(http_client)
-            .build()
-            .expect("build client")
+    const TEST_ENDPOINT: &str = "https://example.openai.azure.com";
+
+    fn test_config(model: &str) -> functions::Config {
+        functions::Config::new(TEST_ENDPOINT, model).with_api_key("test-key")
     }
 
     #[cfg(feature = "image")]
     #[tokio::test]
     async fn image_generation_non_success_response_preserves_status_and_body() {
-        use crate::image_generation::{
-            ImageGenerationError, ImageGenerationModel as ImageGenerationModelTrait,
-            ImageGenerationRequest,
-        };
+        use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"invalid image request"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let model = ImageGenerationModel::make(&test_client(http_client), "dall-e-3");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
 
-        let error = model
-            .image_generation(ImageGenerationRequest {
+        let error = functions::generate_image(
+            &test_config("dall-e-3"),
+            &rt,
+            ImageGenerationRequest {
                 prompt: "draw a cat".to_string(),
                 width: 256,
                 height: 256,
                 additional_params: None,
-            })
-            .await
-            .expect_err("image generation should fail with non-success status");
+            },
+        )
+        .await
+        .expect_err("image generation should fail with non-success status");
 
         assert!(matches!(error, ImageGenerationError::HttpError(_)));
         assert_eq!(
@@ -854,24 +257,26 @@ mod azure_tests {
     #[cfg(feature = "audio")]
     #[tokio::test]
     async fn audio_generation_non_success_response_preserves_status_and_body() {
-        use crate::audio_generation::{
-            AudioGenerationError, AudioGenerationModel as _, AudioGenerationRequest,
-        };
+        use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"invalid voice"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::UNPROCESSABLE_ENTITY, body);
-        let model = AudioGenerationModel::new(test_client(http_client), "tts-1");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::UNPROCESSABLE_ENTITY,
+            body,
+        ));
 
-        let error = match model
-            .audio_generation(AudioGenerationRequest {
+        let error = match functions::generate_audio(
+            &test_config("tts-1"),
+            &rt,
+            AudioGenerationRequest {
                 text: "hello".to_string(),
                 voice: "alloy".to_string(),
                 speed: 1.0,
                 additional_params: None,
-            })
-            .await
+            },
+        )
+        .await
         {
             Err(error) => error,
             Ok(_) => panic!("audio generation should fail with non-success status"),
@@ -888,24 +293,20 @@ mod azure_tests {
     #[tokio::test]
     async fn transcription_http_non_success_preserves_status_and_body() {
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{
-            TranscriptionError, TranscriptionModel as _, TranscriptionRequest,
-        };
+        use crate::transcription::{TranscriptionError, TranscriptionRequest};
 
         let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .azure_endpoint("https://example.openai.azure.com".to_string())
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = TranscriptionModel::new(client, "whisper");
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
 
-        let error = match model
-            .transcription(TranscriptionRequest::new(vec![0u8; 16]))
-            .await
+        let error = match functions::transcribe(
+            &test_config("whisper"),
+            &rt,
+            TranscriptionRequest::new(vec![0u8; 16]),
+        )
+        .await
         {
             Err(error) => error,
             Ok(_) => panic!("transcription should fail with non-success status"),
@@ -921,21 +322,17 @@ mod azure_tests {
 
     #[tokio::test]
     async fn embedding_http_non_success_preserves_status_and_body() {
-        use crate::embeddings::EmbeddingModel as _;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"bad embedding","type":"invalid_request_error"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .azure_endpoint("https://example.openai.azure.com".to_string())
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
+        let cfg = functions::EmbeddingConfig::new(TEST_ENDPOINT, TEXT_EMBEDDING_3_SMALL)
+            .with_api_key("test-key");
 
-        let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
+        let error = match functions::embed(&cfg, &rt, vec!["Hello, world!".to_string()]).await {
             Err(error) => error,
             Ok(_) => panic!("embedding should fail with non-success status"),
         };
@@ -948,27 +345,13 @@ mod azure_tests {
         assert_eq!(error.provider_response_body(), Some(body));
     }
 
-    #[tokio::test]
-    async fn completion_pins_deployment_url_under_model_override() {
-        use crate::completion::CompletionModel as _;
-        use crate::test_utils::RecordingHttpClient;
+    #[test]
+    fn completion_pins_deployment_url_under_model_override() {
+        let cfg = test_config(GPT_4O_MINI);
 
-        // The error response keeps the test independent of response parsing;
-        // only the captured request matters here.
-        let http_client = RecordingHttpClient::with_error_response(
-            http::StatusCode::BAD_REQUEST,
-            r#"{"error":{"message":"x"}}"#,
-        );
-        let client = Client::builder()
-            .api_key("test-key")
-            .azure_endpoint("https://example.openai.azure.com".to_string())
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = super::CompletionModel::new(client, GPT_4O_MINI);
-
-        let _ = model
-            .completion(CompletionRequest {
+        let req = functions::build_request(
+            &cfg,
+            &CompletionRequest {
                 model: Some("other-deployment".to_string()),
                 preamble: None,
                 chat_history: OneOrMany::one("Hello!".into()),
@@ -980,43 +363,37 @@ mod azure_tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            })
-            .await;
+            },
+            false,
+        )
+        .expect("request should build");
 
-        let requests = http_client.requests();
-        let request = requests.first().expect("request should be captured");
         // The deployment URL stays pinned to the configured model; the
         // override only changes the body.
+        let uri = req.uri().to_string();
         assert!(
-            request
-                .uri
-                .contains("/openai/deployments/gpt-4o-mini/chat/completions"),
-            "unexpected uri: {}",
-            request.uri
+            uri.contains("/openai/deployments/gpt-4o-mini/chat/completions"),
+            "unexpected uri: {uri}"
         );
         let body: serde_json::Value =
-            serde_json::from_slice(&request.body).expect("captured body should be JSON");
+            serde_json::from_slice(req.body()).expect("body should be JSON");
         assert_eq!(body["model"], "other-deployment");
     }
 
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
-        use crate::completion::CompletionModel as _;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"bad completion","type":"invalid_request_error"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .azure_endpoint("https://example.openai.azure.com".to_string())
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = super::CompletionModel::new(client, GPT_4O_MINI);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::BAD_REQUEST,
+            body,
+        ));
 
-        let error = match model
-            .completion(CompletionRequest {
+        let error = match functions::complete(
+            &test_config(GPT_4O_MINI),
+            &rt,
+            CompletionRequest {
                 model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
                 chat_history: OneOrMany::one("Hello!".into()),
@@ -1028,8 +405,9 @@ mod azure_tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            })
-            .await
+            },
+        )
+        .await
         {
             Err(error) => error,
             Ok(_) => panic!("completion should fail with non-success status"),
@@ -1048,9 +426,9 @@ mod azure_tests {
     async fn test_azure_embedding() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::from_env()?;
-        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
-        let embeddings = model.embed_texts(vec!["Hello, world!".to_string()]).await?;
+        let cfg = functions::EmbeddingConfig::from_env(TEXT_EMBEDDING_3_SMALL)?;
+        let rt = HttpRuntime::new();
+        let embeddings = functions::embed(&cfg, &rt, vec!["Hello, world!".to_string()]).await?;
 
         tracing::info!("Azure embedding: {:?}", embeddings);
         Ok(())
@@ -1062,9 +440,14 @@ mod azure_tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let ndims = 256;
-        let client = Client::from_env()?;
-        let model = client.embedding_model_with_ndims(TEXT_EMBEDDING_3_SMALL, ndims);
-        let embedding = model.embed_text("Hello, world!").await?;
+        let cfg =
+            functions::EmbeddingConfig::from_env(TEXT_EMBEDDING_3_SMALL)?.with_dimensions(ndims);
+        let rt = HttpRuntime::new();
+        let response = functions::embed(&cfg, &rt, vec!["Hello, world!".to_string()]).await?;
+        let embedding = response
+            .embeddings
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("no embedding returned"))?;
 
         anyhow::ensure!(
             embedding.vec.len() == ndims,
@@ -1081,10 +464,12 @@ mod azure_tests {
     async fn test_azure_completion() -> anyhow::Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
 
-        let client = Client::from_env()?;
-        let model = client.completion_model(GPT_4O_MINI);
-        let completion = model
-            .completion(CompletionRequest {
+        let cfg = functions::Config::from_env(GPT_4O_MINI)?;
+        let rt = HttpRuntime::new();
+        let completion = functions::complete(
+            &cfg,
+            &rt,
+            CompletionRequest {
                 model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
                 chat_history: OneOrMany::one("Hello!".into()),
@@ -1096,20 +481,12 @@ mod azure_tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            })
-            .await?;
+            },
+        )
+        .await?;
 
         tracing::info!("Azure completion: {:?}", completion);
         Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_client_initialization() {
-        let _client = crate::providers::azure::Client::builder()
-            .api_key("test")
-            .azure_endpoint("test".to_string()) // add your endpoint here!
-            .build()
-            .expect("Client::builder() failed");
     }
 }
 
@@ -1121,14 +498,13 @@ pub mod functions {
     //! simple `base_url + path` shape: the deployment (model) is routed
     //! through the URL and the API is versioned via a query parameter, so
     //! [`Config`] carries `endpoint` + `api_version` instead of a
-    //! `base_url`, and [`build_request`] uses the same absolute URL
-    //! [`AzureExt::completion_path`](super::AzureExt) produces.
+    //! `base_url`, and [`build_request`] assembles that absolute URL via
+    //! `completion_path`.
     //!
-    //! Authentication carries both of the classic client's arms as data:
-    //! [`AuthScheme::ApiKeyHeader`] (the default) sends the resolved
-    //! credential in the `api-key` header, and [`AuthScheme::Bearer`] sends
-    //! it as `Authorization: Bearer` — the Entra ID / `AZURE_TOKEN` path the
-    //! classic `AzureOpenAIAuth::Token` arm used.
+    //! Authentication is data too: [`AuthScheme::ApiKeyHeader`] (the default)
+    //! sends the resolved credential in the `api-key` header, and
+    //! [`AuthScheme::Bearer`] sends it as `Authorization: Bearer` — the Entra
+    //! ID / `AZURE_TOKEN` path.
 
     use serde::{Deserialize, Serialize};
 
@@ -1161,8 +537,7 @@ pub mod functions {
 
     /// How an Azure credential is presented on the wire.
     ///
-    /// The plain-data replacement for the classic `AzureOpenAIAuth` enum:
-    /// resource keys go in `api-key`, Entra ID tokens go in
+    /// Resource keys go in `api-key`, Entra ID tokens go in
     /// `Authorization: Bearer`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
     pub enum AuthScheme {
@@ -1170,14 +545,13 @@ pub mod functions {
         #[default]
         ApiKeyHeader,
         /// Send the credential as `Authorization: Bearer` (Entra ID tokens —
-        /// the classic `AzureOpenAIAuth::Token` arm, `AZURE_TOKEN`).
+        /// `AZURE_TOKEN`).
         Bearer,
     }
 
     /// Resolve which Azure credential variable to read and how to present it.
     ///
-    /// `AZURE_API_KEY` wins over `AZURE_TOKEN`, exactly as the classic
-    /// `azure::Client::from_env` did.
+    /// `AZURE_API_KEY` wins over `AZURE_TOKEN`.
     ///
     /// # Errors
     /// [`ConfigError::InvalidConfiguration`] when neither variable is set.
@@ -1249,7 +623,7 @@ pub mod functions {
         /// but stored as [`ApiKeyLocation::Env`], so the secret is read at
         /// request time rather than held inside the config.
         ///
-        /// Credential presentation matches the classic client exactly:
+        /// Credential presentation follows the variable:
         /// `AZURE_API_KEY` is sent in the `api-key` header
         /// ([`AuthScheme::ApiKeyHeader`]), while `AZURE_TOKEN` is sent as
         /// `Authorization: Bearer` ([`AuthScheme::Bearer`], Entra ID).
@@ -1430,9 +804,8 @@ pub mod functions {
 
     /// Build the multipart form for a transcription `request`. Pure.
     ///
-    /// Faithful to the classic Azure path: the deployment rides in the URL,
-    /// so the form has no `model` field, and the classic path never sent
-    /// `language` either.
+    /// The deployment rides in the URL, so the form carries no `model`
+    /// field, and Azure's translations route takes no `language`.
     pub fn build_transcription_form(
         request: crate::transcription::TranscriptionRequest,
     ) -> Result<crate::http_client::MultipartForm, crate::transcription::TranscriptionError> {
@@ -1462,8 +835,7 @@ pub mod functions {
     }
 
     /// Transcribe `request` with the deployment's `audio/translations`
-    /// endpoint (the same route the classic client uses). Responses share
-    /// OpenAI's transcription envelope.
+    /// endpoint. Responses share OpenAI's transcription envelope.
     pub async fn transcribe(
         cfg: &Config,
         rt: &HttpRuntime,
@@ -1485,8 +857,7 @@ pub mod functions {
 
     /// Build the serialized image-generation request body. Pure.
     ///
-    /// Azure always requests `b64_json` (no `gpt-image` carve-out, matching
-    /// the classic path).
+    /// Azure always requests `b64_json` (no `gpt-image` carve-out).
     #[cfg(feature = "image")]
     pub fn build_image_generation_body(
         model: &str,
@@ -1649,7 +1020,7 @@ pub mod functions {
 
     /// Build the complete HTTP embeddings request for one chunk of `texts`.
     ///
-    /// Pure except for credential resolution. The URL is the classic
+    /// Pure except for credential resolution. The URL is the
     /// deployment-scoped shape:
     /// `{endpoint}/openai/deployments/{model}/embeddings?api-version={v}`.
     pub fn build_embedding_request(

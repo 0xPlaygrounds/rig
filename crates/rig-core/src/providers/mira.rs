@@ -1,114 +1,68 @@
 //! Mira API client and Rig integration
 //!
 //! # Example
-//! ```
+//! ```no_run
 //! use rig_core::providers::mira;
 //!
-//! let client = mira::Client::new("YOUR_API_KEY");
-//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = mira::functions::Config::from_env("deepseek-r1")?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = mira::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::descriptor::ChatCompletionsDialect;
-use crate::providers::descriptor::ProviderDescriptor;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     message::{self, AssistantContent, Message, UserContent},
 };
 use serde::{Deserialize, Serialize};
-use std::string::FromUtf8Error;
-use thiserror::Error;
 use tracing::{self};
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiraExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiraBuilder;
+/// Path of Mira's model-listing endpoint.
+pub(crate) const LIST_MODELS_PATH: &str = "/v1/models";
 
-type MiraApiKey = BearerAuth;
-
-impl Provider for MiraExt {
-    type Builder = MiraBuilder;
-
-    const VERIFY_PATH: &'static str = "/user-credits";
+/// Mira's `GET /v1/models` payload.
+#[derive(Debug, Deserialize)]
+pub struct ListModelsResponse {
+    /// One entry per available model.
+    pub data: Vec<ListModelEntry>,
 }
 
-impl<H> Capabilities<H> for MiraExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
+/// One row of [`ListModelsResponse`].
+#[derive(Debug, Deserialize)]
+pub struct ListModelEntry {
+    /// Model identifier.
+    pub id: String,
 }
 
-impl DebugExt for MiraExt {}
-
-impl crate::providers::openai::completion::OpenAICompatibleProvider for MiraExt {
-    const DESCRIPTOR: ProviderDescriptor = functions::DESCRIPTOR;
-    const STREAM_DIALECT: ChatCompletionsDialect = functions::STREAM_DIALECT;
-
-    type Response = CompletionResponse;
-
-    fn completion_path(&self, model: &str) -> String {
-        functions::completion_path(model)
-    }
-
-    fn build_body(
-        &self,
-        model: &str,
-        request: &crate::completion::CompletionRequest,
-        options: crate::providers::openai::completion::CompletionModelOptions,
-        stream: bool,
-    ) -> Result<Vec<u8>, crate::completion::CompletionError> {
-        functions::build_body(model, request, options, stream)
+impl From<ListModelEntry> for crate::model::Model {
+    fn from(entry: ListModelEntry) -> Self {
+        Self::from_id(entry.id)
     }
 }
 
-impl ProviderBuilder for MiraBuilder {
-    type Extension<H>
-        = MiraExt
-    where
-        H: HttpClientExt;
-    type ApiKey = MiraApiKey;
+/// Parse a model-listing response body. Pure.
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+    use crate::model::{Model, ModelList, ModelListingError};
 
-    const BASE_URL: &'static str = MIRA_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MiraExt)
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "Mira",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
     }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
-
-#[derive(Debug, Error)]
-pub enum MiraError {
-    #[error("Invalid API key")]
-    InvalidApiKey,
-    #[error("API error: {0}")]
-    ApiError(u16),
-    #[error("Request error: {0}")]
-    RequestError(#[from] http_client::Error),
-    #[error("UTF-8 error: {0}")]
-    Utf8Error(#[from] FromUtf8Error),
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("Mira", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -116,8 +70,6 @@ pub struct RawMessage {
     pub role: String,
     pub content: String,
 }
-
-const MIRA_API_BASE_URL: &str = "https://api.mira.network";
 
 impl TryFrom<RawMessage> for message::Message {
     type Error = CompletionError;
@@ -165,68 +117,6 @@ pub struct ChatChoice {
     #[serde(default)]
     pub index: Option<usize>,
 }
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ModelsResponse {
-    data: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ModelInfo {
-    id: String,
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt + 'static,
-{
-    /// List available models
-    pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
-        let req = self.get("/v1/models").and_then(|req| {
-            req.body(http_client::NoBody)
-                .map_err(http_client::Error::Protocol)
-        })?;
-
-        let response = self.send(req).await?;
-
-        let status = response.status();
-
-        if !status.is_success() {
-            // Log the error text but don't store it in an unused variable
-            let error_text = http_client::text(response).await.unwrap_or_default();
-            tracing::error!("Error response: {}", error_text);
-            return Err(MiraError::ApiError(status.as_u16()));
-        }
-
-        let response_text = http_client::text(response).await?;
-
-        let models: ModelsResponse = serde_json::from_str(&response_text).map_err(|e| {
-            tracing::error!("Failed to parse response: {}", e);
-            MiraError::JsonError(e)
-        })?;
-
-        Ok(models.data.into_iter().map(|model| model.id).collect())
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Mira client from the `MIRA_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MIRA_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-/// Mira completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type OutputMessage = ChatChoice;
@@ -423,45 +313,29 @@ mod tests {
             }),
         };
 
-        let completion_response: completion::CompletionResponse = mira_response.try_into().unwrap();
+        let completion_response: completion::CompletionResponse =
+            mira_response.try_into().expect("conversion should succeed");
 
         assert_eq!(
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
     }
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::mira::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::mira::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-    }
-
     // Proves a non-success HTTP response from `/v1/chat/completions` preserves
     // the provider's status + body through the `provider_response_*` helpers
     // (issue #1931).
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"message":"boom"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("deepseek-r1");
+        let rt = crate::http_runtime::HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new("deepseek-r1").with_api_key("test-key");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("should fail with non-success status");
 
@@ -687,6 +561,33 @@ pub mod functions {
         let req = build_request(cfg, &request, false)?;
         let (status, body) = rt.send(req).await?;
         parse_response(status, &body)
+    }
+
+    /// Build the model-listing request for `cfg`.
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        openai_functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the models available to `cfg`'s credentials.
+    ///
+    /// The replacement for the deleted client's `list_models`, which returned
+    /// bare `Vec<String>`; this returns the normalized
+    /// [`ModelList`](crate::model::ModelList) every other provider's
+    /// `list_models` returns.
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
     }
 
     #[cfg(test)]

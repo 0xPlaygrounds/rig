@@ -1,10 +1,4 @@
-use crate::{
-    client::{self, ModelLister, Provider},
-    http_client::{self, HttpClientExt},
-    model::{Model, ModelList, ModelListingError},
-    providers::gemini::{Client, InteractionsClient},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::model::{Model, ModelListingError};
 use serde::Deserialize;
 use std::{convert::TryFrom, fmt};
 
@@ -109,67 +103,6 @@ pub(crate) fn parse_models_page(
     Ok((models, page.next_page_token))
 }
 
-async fn list_all_models<Ext, H>(
-    client: &client::Client<Ext, H>,
-) -> Result<ModelList, ModelListingError>
-where
-    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    let mut all_models = Vec::new();
-    let mut next_page_token: Option<String> = None;
-
-    loop {
-        let path = list_models_path(next_page_token.as_deref());
-        let req = client.get(&path)?.body(http_client::NoBody)?;
-        let response = client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Gemini",
-                &path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let (models, next_page_token_for_page) = parse_models_page(&body, &path)?;
-        all_models.extend(models);
-
-        if next_page_token_for_page.is_none() {
-            break;
-        }
-
-        next_page_token = next_page_token_for_page;
-    }
-
-    Ok(ModelList::new(all_models))
-}
-
-/// [`ModelLister`] implementation for Gemini GenerateContent clients.
-#[derive(Clone)]
-pub struct GeminiModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for GeminiModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        list_all_models(&self.client).await
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,26 +205,5 @@ mod tests {
             }
             _ => panic!("expected parse error"),
         }
-    }
-}
-
-/// [`ModelLister`] implementation for Gemini Interactions API clients.
-#[derive(Clone)]
-pub struct GeminiInteractionsModelLister<H = reqwest::Client> {
-    client: InteractionsClient<H>,
-}
-
-impl<H> ModelLister<H> for GeminiInteractionsModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = InteractionsClient<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        list_all_models(&self.client).await
     }
 }

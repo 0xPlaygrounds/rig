@@ -1,35 +1,29 @@
 //! GitHub Copilot provider.
 //!
 //! Supports Chat Completions, Responses, and Embeddings against
-//! `https://api.githubcopilot.com`.
-//!
-//! `Client::completion_model(...)` automatically routes Codex-class models
-//! through `/responses` and conversational models through
-//! `/chat/completions`.
+//! `https://api.githubcopilot.com`. Codex-class models route through
+//! `/responses` and conversational models through `/chat/completions`;
+//! [`functions::build_request`] picks the route from the configured model.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::client::{CompletionClient, ProviderClient};
 //! use rig_core::providers::copilot;
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = copilot::Client::from_env()?;
-//! let model = client.completion_model(copilot::GPT_4O);
-//! # let _ = model;
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = copilot::functions::config_from_env(copilot::GPT_4O).await?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = copilot::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-mod auth;
+pub mod auth;
 pub mod functions;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
 use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoice, CompatibleFinishReason, CompatibleToolCallChunk,
@@ -37,27 +31,23 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::{self, RawStreamingChoice, StreamingCompletionResponse};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use async_stream::stream;
 use futures::StreamExt;
-use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::path::{Path, PathBuf};
-use tracing_futures::Instrument as _;
+use std::path::PathBuf;
 
-const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
+/// Default GitHub Copilot API base URL (see [`functions::DEFAULT_BASE_URL`]).
+pub const GITHUB_COPILOT_API_BASE_URL: &str = "https://api.githubcopilot.com";
 pub(crate) const EDITOR_PLUGIN_VERSION: &str = "copilot-chat/0.35.0";
 pub(crate) const USER_AGENT: &str = "GitHubCopilotChat/0.35.0";
 pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
 /// Copilot conversation intent sent in the `openai-intent` request header.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CopilotIntent {
     /// Generic chat panel conversation semantics.
     #[default]
@@ -122,273 +112,7 @@ pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
 pub use openai::EncodingFormat;
 
-#[derive(Clone)]
-pub enum CopilotAuth {
-    ApiKey(String),
-    GitHubAccessToken(String),
-    OAuth,
-}
-
-impl ApiKey for CopilotAuth {}
-
-impl<S> From<S> for CopilotAuth
-where
-    S: Into<String>,
-{
-    fn from(value: S) -> Self {
-        Self::ApiKey(value.into())
-    }
-}
-
-impl Debug for CopilotAuth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
-            Self::GitHubAccessToken(_) => f.write_str("GitHubAccessToken(<redacted>)"),
-            Self::OAuth => f.write_str("OAuth"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CopilotBuilder {
-    access_token_file: Option<PathBuf>,
-    api_key_file: Option<PathBuf>,
-    device_code_handler: auth::DeviceCodeHandler,
-    allow_device_flow: bool,
-}
-
-#[derive(Clone)]
-pub struct CopilotExt {
-    auth: auth::Authenticator,
-}
-
-impl CopilotExt {
-    /// The credential resolver this client authenticates requests with.
-    pub fn authenticator(&self) -> &auth::Authenticator {
-        &self.auth
-    }
-}
-
-impl Debug for CopilotExt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CopilotExt")
-            .field("auth", &self.auth)
-            .finish()
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<CopilotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<CopilotBuilder, CopilotAuth, H>;
-
-impl Default for CopilotBuilder {
-    fn default() -> Self {
-        let token_dir = default_token_dir();
-        Self {
-            access_token_file: token_dir.as_ref().map(|dir| dir.join("access-token")),
-            api_key_file: token_dir.map(|dir| dir.join("api-key.json")),
-            device_code_handler: auth::DeviceCodeHandler::default(),
-            allow_device_flow: true,
-        }
-    }
-}
-
-impl Provider for CopilotExt {
-    type Builder = CopilotBuilder;
-
-    const VERIFY_PATH: &'static str = "";
-}
-
-impl<H> Capabilities<H> for CopilotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Nothing;
-    type ModelListing = Capable<CopilotModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for CopilotExt {}
-
-impl ProviderBuilder for CopilotBuilder {
-    type Extension<H>
-        = CopilotExt
-    where
-        H: HttpClientExt;
-    type ApiKey = CopilotAuth;
-
-    const BASE_URL: &'static str = GITHUB_COPILOT_API_BASE_URL;
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        let auth = match builder.get_api_key() {
-            CopilotAuth::ApiKey(api_key) => auth::AuthSource::ApiKey(api_key.clone()),
-            CopilotAuth::GitHubAccessToken(access_token) => {
-                auth::AuthSource::GitHubAccessToken(access_token.clone())
-            }
-            CopilotAuth::OAuth => auth::AuthSource::OAuth,
-        };
-
-        let ext = builder.ext();
-        Ok(CopilotExt {
-            auth: auth::Authenticator::new(
-                auth,
-                ext.access_token_file.clone(),
-                ext.api_key_file.clone(),
-                ext.device_code_handler.clone(),
-                ext.allow_device_flow,
-            ),
-        })
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = CopilotAuth;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let mut builder = Self::builder();
-        fn get(name: &str) -> Option<String> {
-            std::env::var(name).ok()
-        }
-
-        if let Some(base_url) = env_base_url(&get) {
-            builder = builder.base_url(base_url);
-        }
-
-        if let Some(api_key) = env_api_key(&get) {
-            builder.api_key(api_key).build().map_err(Into::into)
-        } else if let Some(access_token) = env_github_access_token(&get) {
-            builder
-                .github_access_token(access_token)
-                .build()
-                .map_err(Into::into)
-        } else {
-            builder.oauth().build().map_err(Into::into)
-        }
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-impl<H> client::ClientBuilder<CopilotBuilder, crate::markers::Missing, H> {
-    pub fn github_access_token(
-        self,
-        access_token: impl Into<String>,
-    ) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
-        self.api_key(CopilotAuth::GitHubAccessToken(access_token.into()))
-    }
-
-    pub fn oauth(self) -> client::ClientBuilder<CopilotBuilder, CopilotAuth, H> {
-        self.api_key(CopilotAuth::OAuth)
-    }
-}
-
-impl<H> ClientBuilder<H> {
-    pub fn on_device_code<F>(self, handler: F) -> Self
-    where
-        F: Fn(auth::DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        self.over_ext(|mut ext| {
-            ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
-            ext
-        })
-    }
-
-    /// Control whether OAuth may fall back to an interactive device-code login
-    /// when the cached token is missing or cannot refresh.
-    ///
-    /// Default is `true` for CLI-style interactive use. Services should set it
-    /// to `false` so unattended background work returns a clear auth error
-    /// instead of printing a device code and waiting.
-    pub fn allow_device_flow(self, allow: bool) -> Self {
-        self.over_ext(|mut ext| {
-            ext.allow_device_flow = allow;
-            ext
-        })
-    }
-
-    pub fn token_dir(self, path: impl AsRef<Path>) -> Self {
-        let path = path.as_ref();
-        self.over_ext(|mut ext| {
-            ext.access_token_file = Some(path.join("access-token"));
-            ext.api_key_file = Some(path.join("api-key.json"));
-            ext
-        })
-    }
-
-    pub fn access_token_file(self, path: impl AsRef<Path>) -> Self {
-        let path = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
-            ext.access_token_file = Some(path);
-            ext
-        })
-    }
-
-    pub fn api_key_file(self, path: impl AsRef<Path>) -> Self {
-        let path = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
-            ext.api_key_file = Some(path);
-            ext
-        })
-    }
-}
-
-fn env_value<F>(get: &F, name: &str) -> Option<String>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    get(name).filter(|value| !value.trim().is_empty())
-}
-
-fn first_env_value<F>(get: &F, keys: &[&str]) -> Option<String>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    keys.iter().find_map(|key| env_value(get, key))
-}
-
-fn env_api_key<F>(get: &F) -> Option<String>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    first_env_value(get, &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"])
-}
-
-fn env_github_access_token<F>(get: &F) -> Option<String>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    first_env_value(get, &["COPILOT_GITHUB_ACCESS_TOKEN", "GITHUB_TOKEN"])
-}
-
-fn env_base_url<F>(get: &F) -> Option<String>
-where
-    F: Fn(&str) -> Option<String>,
-{
-    first_env_value(get, &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"])
-}
-
-impl<H> Client<H>
-where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
-    }
-}
-
-fn default_headers(
+pub(crate) fn default_headers(
     api_key: &str,
     initiator: &'static str,
     has_vision: bool,
@@ -420,7 +144,7 @@ fn default_headers(
     headers
 }
 
-fn apply_headers(
+pub(crate) fn apply_headers(
     builder: http_client::Builder,
     headers: &[(&'static str, String)],
 ) -> http_client::Builder {
@@ -429,29 +153,13 @@ fn apply_headers(
         .fold(builder, |builder, (key, value)| builder.header(*key, value))
 }
 
-fn runtime_base_url<'a, H>(client: &'a Client<H>, auth: &'a auth::AuthContext) -> Cow<'a, str> {
-    if client.base_url() != GITHUB_COPILOT_API_BASE_URL {
-        return Cow::Borrowed(client.base_url());
-    }
-
-    if let Some(api_base) = auth.api_base.as_deref() {
-        return Cow::Borrowed(api_base);
-    }
-
-    if let Some(base_url) = base_url_from_token(&auth.api_key) {
-        return Cow::Owned(base_url);
-    }
-
-    Cow::Borrowed(client.base_url())
-}
-
 /// Derive the Copilot REST base URL from a chat token's `proxy-ep=` segment.
 ///
 /// The endpoint is parsed from a credential string, not from explicit caller
 /// configuration. For that reason, token-derived routing is limited to GitHub
 /// Copilot service hosts and HTTPS. Callers that need a custom non-GitHub host
-/// can still opt in explicitly with [`ClientBuilder::base_url`].
-fn base_url_from_token(token: &str) -> Option<String> {
+/// can still opt in explicitly with [`functions::Config::with_base_url`].
+pub(crate) fn base_url_from_token(token: &str) -> Option<String> {
     let proxy_ep = token
         .split(';')
         .find_map(|part| part.trim().strip_prefix("proxy-ep="))?
@@ -497,43 +205,7 @@ fn is_allowed_token_derived_copilot_host(host: &str) -> bool {
     host == "githubcopilot.com" || host.ends_with(".githubcopilot.com")
 }
 
-fn post_with_auth_base<H>(
-    client: &Client<H>,
-    auth: &auth::AuthContext,
-    path: &str,
-    transport: Transport,
-) -> http_client::Result<http_client::Builder> {
-    let uri = client
-        .ext()
-        .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
-    let mut req = Request::post(uri);
-
-    if let Some(headers) = req.headers_mut() {
-        headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
-    }
-
-    client.ext().with_custom(req)
-}
-
-fn get_with_auth_base<H>(
-    client: &Client<H>,
-    auth: &auth::AuthContext,
-    path: &str,
-    transport: Transport,
-) -> http_client::Result<http_client::Builder> {
-    let uri = client
-        .ext()
-        .build_uri(runtime_base_url(client, auth).as_ref(), path, transport);
-    let mut req = Request::get(uri);
-
-    if let Some(headers) = req.headers_mut() {
-        headers.extend(client.headers().iter().map(|(k, v)| (k.clone(), v.clone())));
-    }
-
-    client.ext().with_custom(req)
-}
-
-fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
+pub(crate) fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
     for message in request.chat_history.iter() {
         match message {
             crate::completion::Message::Assistant { .. } => return "agent",
@@ -552,7 +224,7 @@ fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
     "user"
 }
 
-fn request_has_vision(request: &completion::CompletionRequest) -> bool {
+pub(crate) fn request_has_vision(request: &completion::CompletionRequest) -> bool {
     request.chat_history.iter().any(|message| match message {
         crate::completion::Message::User { content } => content
             .iter()
@@ -562,16 +234,15 @@ fn request_has_vision(request: &completion::CompletionRequest) -> bool {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CompletionRoute {
+pub(crate) enum CompletionRoute {
     ChatCompletions,
     Responses,
 }
 
 /// Build the typed Copilot `/responses` request for `model`.
 ///
-/// The single source of truth for the Responses route's request shape: the
-/// trait path and the data-oriented [`functions`] face both route through
-/// this function. Copilot's Responses endpoint expects strict function tool
+/// The single source of truth for the Responses route's request shape;
+/// [`functions::build_request_body`] routes through it. Copilot's Responses endpoint expects strict function tool
 /// schemas for reliable tool calls, so every tool is normalized to strict —
 /// Chat Completions strict mode stays opt-in.
 pub(crate) fn build_copilot_responses_request(
@@ -592,7 +263,7 @@ pub(crate) fn build_copilot_responses_request(
     Ok(request)
 }
 
-fn route_for_model(model: &str) -> CompletionRoute {
+pub(crate) fn route_for_model(model: &str) -> CompletionRoute {
     if model.to_ascii_lowercase().contains("codex") {
         CompletionRoute::Responses
     } else {
@@ -740,314 +411,16 @@ impl ChatApiErrorResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum ChatApiResponse<T> {
+pub(crate) enum ChatApiResponse<T> {
     Ok(T),
     Err(ChatApiErrorResponse),
-}
-
-#[derive(Clone)]
-pub struct CompletionModel<H = reqwest::Client> {
-    client: Client<H>,
-    pub model: String,
-    pub strict_tools: bool,
-    pub tool_result_array_content: bool,
-    pub intent: CopilotIntent,
-}
-
-impl<H> CompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            strict_tools: false,
-            tool_result_array_content: false,
-            intent: CopilotIntent::default(),
-        }
-    }
-
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-
-    pub fn with_tool_result_array_content(mut self) -> Self {
-        self.tool_result_array_content = true;
-        self
-    }
-
-    /// Set the Copilot `openai-intent` header for completion and streaming requests.
-    pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
-        self.intent = intent;
-        self
-    }
-
-    /// Use the generic chat panel `openai-intent` header for completion and streaming requests.
-    pub fn with_panel_intent(self) -> Self {
-        self.with_intent(CopilotIntent::Panel)
-    }
-
-    /// Use the edit-oriented `openai-intent` header for completion and streaming requests.
-    pub fn with_edits_intent(self) -> Self {
-        self.with_intent(CopilotIntent::Edits)
-    }
-
-    fn route(&self) -> CompletionRoute {
-        route_for_model(&self.model)
-    }
-
-    async fn auth_context(&self) -> Result<auth::AuthContext, CompletionError> {
-        self.client
-            .ext()
-            .auth
-            .auth_context()
-            .await
-            .map_err(|err| CompletionError::ProviderError(err.to_string()))
-    }
-
-    fn chat_request(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<openai::completion::CompletionRequest, CompletionError> {
-        openai::completion::CompletionRequest::try_from(openai::completion::OpenAIRequestParams {
-            model: self.model.clone(),
-            request: completion_request,
-            strict_tools: self.strict_tools,
-            tool_result_array_content: self.tool_result_array_content,
-            supports_response_format: true,
-            supports_tools: true,
-        })
-    }
-
-    fn responses_request(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<ResponsesRequest, CompletionError> {
-        build_copilot_responses_request(self.model.clone(), completion_request)
-    }
-
-    async fn completion_chat(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.chat_request(completion_request)?;
-        let body = serde_json::to_vec(&request)?;
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Http)?,
-            &headers,
-        )
-        .body(body)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        async move {
-            let response = self.client.send(req).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let body = http_client::text(response).await?;
-                match serde_json::from_str::<ChatApiResponse<ChatCompletionResponse>>(&body)? {
-                    ChatApiResponse::Ok(response) => {
-                        let core = completion::CompletionResponse::try_from(response.clone())?;
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.as_str());
-                        span.record("gen_ai.response.model", response.model.as_str());
-                        if let Some(usage) = &response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
-                            );
-                            span.record(
-                                "gen_ai.usage.cache_read.input_tokens",
-                                usage
-                                    .prompt_tokens_details
-                                    .as_ref()
-                                    .map(|details| details.cached_tokens)
-                                    .unwrap_or(0),
-                            );
-                        }
-
-                        Ok(core)
-                    }
-                    ChatApiResponse::Err(err) => {
-                        tracing::warn!(
-                            message = %err.error_message(),
-                            "provider returned an error response"
-                        );
-                        Err(CompletionError::from_http_response(status, body))
-                    }
-                }
-            } else {
-                let body = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, body))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn completion_responses(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.responses_request(completion_request)?;
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/responses", Transport::Http)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        async move {
-            let response = self.client.send(req).await?;
-            let status = response.status();
-            if status.is_success() {
-                let body = http_client::text(response).await?;
-                let response = serde_json::from_str::<responses_api::CompletionResponse>(&body)?;
-                let mut core = completion::CompletionResponse::try_from(response.clone())?;
-                core.provider = "copilot".to_string();
-
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", response.id.as_str());
-                span.record("gen_ai.response.model", response.model.as_str());
-                if let Some(usage) = &response.usage {
-                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage
-                            .input_tokens_details
-                            .as_ref()
-                            .map(|details| details.cached_tokens)
-                            .unwrap_or(0),
-                    );
-                }
-
-                Ok(core)
-            } else {
-                let body = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, body))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream_chat(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.chat_request(completion_request)?;
-        let auth = self.auth_context().await?;
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let mut request_json = serde_json::to_value(&request)?;
-        let request_object = request_json.as_object_mut().ok_or_else(|| {
-            CompletionError::ResponseError("copilot request body must be a JSON object".into())
-        })?;
-        request_object.insert("stream".to_owned(), json!(true));
-        request_object.insert(
-            "stream_options".to_owned(),
-            json!({ "include_usage": true }),
-        );
-
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Sse)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request_json)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "copilot",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        // `drive_compatible_stream` is sync and captures `Span::current()`, so
-        // enter the span around the call instead of instrumenting a future.
-        Ok(span.in_scope(|| {
-            send_copilot_chat_streaming_request(crate::http_client::sse::boxed_event_source(
-                self.client.clone(),
-                req,
-                false,
-            ))
-        }))
-    }
-
-    async fn stream_responses(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request = self.responses_request(completion_request)?;
-        request.stream = Some(true);
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/responses", Transport::Sse)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "copilot",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        let client = self.client.clone();
-        let event_source = crate::http_client::sse::boxed_event_source(client, req, false);
-        Ok(stream_copilot_responses_from_event_source(
-            event_source,
-            span,
-        ))
-    }
 }
 
 /// Drive a Copilot `/responses` SSE connection into the normalized streaming
 /// response.
 ///
-/// The single source of truth for Copilot Responses streaming: the trait path
-/// ([`CompletionModel::stream`]) and the data-oriented [`functions`] face both
-/// route through this function.
+/// The single source of truth for Copilot Responses streaming;
+/// [`functions::open_stream`] routes through this function.
 pub(crate) fn stream_copilot_responses_from_event_source(
     event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
@@ -1268,47 +641,6 @@ pub(crate) fn stream_copilot_responses_from_event_source(
     StreamingCompletionResponse::stream(Box::pin(stream))
 }
 
-impl<H> completion::CompletionModel for CompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        match self.route() {
-            CompletionRoute::ChatCompletions => self.completion_chat(completion_request).await,
-            CompletionRoute::Responses => self.completion_responses(completion_request).await,
-        }
-    }
-
-    async fn stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        match self.route() {
-            CompletionRoute::ChatCompletions => self.stream_chat(completion_request).await,
-            CompletionRoute::Responses => self.stream_responses(completion_request).await,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct EmbeddingModel<H = reqwest::Client> {
-    client: Client<H>,
-    pub model: String,
-    pub encoding_format: Option<openai::EncodingFormat>,
-    pub user: Option<String>,
-    ndims: usize,
-}
-
 #[derive(Deserialize)]
 struct CopilotEmbeddingResponse {
     data: Vec<CopilotEmbeddingData>,
@@ -1319,8 +651,8 @@ struct CopilotEmbeddingData {
     embedding: Vec<serde_json::Number>,
 }
 
-/// Build the serialized `/embeddings` request body. Pure; shared by the
-/// trait path and [`functions::embed`].
+/// Build the serialized `/embeddings` request body. Pure; used by
+/// [`functions::embed`].
 pub(crate) fn build_embedding_body(
     model: &str,
     texts: &[String],
@@ -1351,7 +683,7 @@ pub(crate) fn build_embedding_body(
 
 /// Parse an `/embeddings` response into the normalized
 /// [`embeddings::EmbeddingResponse`], zipping vectors back onto
-/// `documents`. Pure; shared by the trait path and [`functions::embed`].
+/// `documents`. Pure; used by [`functions::embed`].
 /// Copilot reports no embedding usage.
 pub(crate) fn parse_embedding_response(
     status: http::StatusCode,
@@ -1418,87 +750,6 @@ pub(crate) fn parse_embedding_response(
     })
 }
 
-impl<H> EmbeddingModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + 'static,
-{
-    pub fn new(client: Client<H>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: None,
-            user: None,
-            ndims,
-        }
-    }
-}
-
-impl<H> embeddings::EmbeddingModel for EmbeddingModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + WasmCompatSend + WasmCompatSync + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024;
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = ndims.unwrap_or(match model.as_str() {
-            TEXT_EMBEDDING_3_LARGE => 3072,
-            TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => 1536,
-            _ => 0,
-        });
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
-        let auth = self
-            .client
-            .ext()
-            .auth
-            .auth_context()
-            .await
-            .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
-
-        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
-        let dimensions =
-            (self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
-        let body = build_embedding_body(
-            &self.model,
-            &documents,
-            dimensions,
-            self.encoding_format.as_ref(),
-            self.user.as_deref(),
-        )?;
-
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/embeddings", Transport::Http)?,
-            &headers,
-        )
-        .body(body)
-        .map_err(|err| EmbeddingError::HttpError(err.into()))?;
-
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let body = if status.is_success() {
-            let body: Vec<u8> = response.into_body().await?;
-            String::from_utf8_lossy(&body).into_owned()
-        } else {
-            http_client::text(response).await?
-        };
-        parse_embedding_response(status, &body, documents).map(|response| response.embeddings)
-    }
-}
-
 const MODEL_LISTING_PATH: &str = "/models";
 const MODEL_LISTING_PROVIDER: &str = "Copilot";
 
@@ -1536,47 +787,9 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).
-#[derive(Clone)]
-pub struct CopilotModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for CopilotModelLister<H>
-where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let auth = self.client.ext().auth.auth_context().await.map_err(|err| {
-            ModelListingError::AuthError {
-                message: err.to_string(),
-            }
-        })?;
-
-        let headers = default_headers(&auth.api_key, "user", false, CopilotIntent::Panel);
-        let req = apply_headers(
-            get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,
-            &headers,
-        )
-        .body(http_client::NoBody)?;
-
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-        let status = response.status();
-        let body = response.into_body().await?;
-        parse_list_models_response(status, &body)
-    }
-}
-
 /// Parse a `GET /models` response into a [`ModelList`]. Pure.
 ///
-/// Shared by the classic [`CopilotModelLister`] and
-/// [`functions::list_models`].
+/// Used by [`functions::list_models`].
 pub(crate) fn parse_list_models_response(
     status: http::StatusCode,
     body: &[u8],
@@ -1699,7 +912,7 @@ pub(crate) fn normalize_copilot_chat_chunk(
     ))
 }
 
-fn send_copilot_chat_streaming_request(
+pub(crate) fn send_copilot_chat_streaming_request(
     event_source: crate::http_client::sse::BoxedEventSource,
 ) -> StreamingCompletionResponse {
     openai_chat_completions_compatible::drive_compatible_stream(
@@ -1708,7 +921,7 @@ fn send_copilot_chat_streaming_request(
     )
 }
 
-fn default_token_dir() -> Option<PathBuf> {
+pub(crate) fn default_token_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("github_copilot"))
 }
 
@@ -1729,27 +942,49 @@ fn config_dir() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, CopilotIntent,
-        TEXT_EMBEDDING_3_SMALL, base_url_from_token, default_headers, env_api_key, env_base_url,
-        env_github_access_token, route_for_model,
+        ChatApiErrorResponse, ChatCompletionResponse, CompletionRoute, CopilotIntent,
+        TEXT_EMBEDDING_3_SMALL, base_url_from_token, default_headers, functions, route_for_model,
+        send_copilot_chat_streaming_request, stream_copilot_responses_from_event_source,
     };
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
     use crate::http_client;
+    use crate::http_runtime::HttpRuntime;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
     use futures::StreamExt;
-    use std::collections::HashMap;
 
-    fn env_map(entries: &[(&str, &str)]) -> HashMap<String, String> {
-        entries
-            .iter()
-            .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
-            .collect()
+    /// Drive the surviving Responses SSE state machine over `http_client`,
+    /// the way `functions::open_stream` does (building the event source
+    /// directly keeps the test focused on the state machine).
+    fn responses_stream<H>(http_client: H, model: &str) -> StreamingCompletionResponse
+    where
+        H: crate::http_client::Backend + Clone + 'static,
+    {
+        let cfg = functions::Config::new(model).with_api_key("copilot-token");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
+        let req = functions::build_request(&cfg, &request, true).expect("build request");
+        stream_copilot_responses_from_event_source(
+            crate::http_client::sse::boxed_event_source(http_client, req, false),
+            tracing::Span::none(),
+        )
+    }
+
+    /// Same, for the chat-completions SSE state machine.
+    fn chat_stream<H>(http_client: H, model: &str) -> StreamingCompletionResponse
+    where
+        H: crate::http_client::Backend + Clone + 'static,
+    {
+        let cfg = functions::Config::new(model).with_api_key("copilot-token");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
+        let req = functions::build_request(&cfg, &request, true).expect("build request");
+        send_copilot_chat_streaming_request(crate::http_client::sse::boxed_event_source(
+            http_client,
+            req,
+            false,
+        ))
     }
 
     fn minimal_chat_response() -> &'static str {
@@ -1941,28 +1176,6 @@ mod tests {
     }
 
     #[test]
-    fn copilot_completion_model_intent_builders_update_intent() {
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .build()
-            .expect("build client");
-
-        let default_model = client.completion_model("gpt-4o");
-        assert_eq!(default_model.intent.as_header(), "conversation-panel");
-
-        let edits_model = client
-            .completion_model("gpt-4o")
-            .with_intent(CopilotIntent::Edits);
-        assert_eq!(edits_model.intent.as_header(), "conversation-edits");
-
-        let panel_model = client
-            .completion_model("gpt-4o")
-            .with_edits_intent()
-            .with_panel_intent();
-        assert_eq!(panel_model.intent.as_header(), "conversation-panel");
-    }
-
-    #[test]
     fn base_url_from_token_derives_api_endpoint() {
         assert_eq!(
             base_url_from_token("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
@@ -2000,142 +1213,110 @@ mod tests {
     #[tokio::test]
     async fn api_key_with_proxy_endpoint_overrides_base_url() {
         let http_client = RecordingHttpClient::new(minimal_chat_response());
-        let client = Client::builder()
-            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o");
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("gpt-4o")
+            .with_api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let _response = model.completion(request).await.expect("chat completion");
+        let _response = functions::complete(&cfg, &rt, request)
+            .await
+            .expect("chat completion");
 
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
+        let uri = requests.first().expect("one recorded request").uri.clone();
         assert!(
-            requests[0]
-                .uri
-                .starts_with("https://api.individual.githubcopilot.com"),
-            "expected proxy-derived base URL, got {}",
-            requests[0].uri
+            uri.starts_with("https://api.individual.githubcopilot.com"),
+            "expected proxy-derived base URL, got {uri}"
         );
     }
 
     #[tokio::test]
     async fn explicit_base_url_wins_over_token_proxy_endpoint() {
         let http_client = RecordingHttpClient::new(minimal_chat_response());
-        let client = Client::builder()
-            .api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
-            .base_url("https://custom.example.com")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o");
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("gpt-4o")
+            .with_api_key("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+            .with_base_url("https://custom.example.com");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let _response = model.completion(request).await.expect("chat completion");
+        let _response = functions::complete(&cfg, &rt, request)
+            .await
+            .expect("chat completion");
 
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
+        let uri = requests.first().expect("one recorded request").uri.clone();
         assert!(
-            requests[0].uri.starts_with("https://custom.example.com"),
-            "expected explicit base URL, got {}",
-            requests[0].uri
+            uri.starts_with("https://custom.example.com"),
+            "expected explicit base URL, got {uri}"
         );
     }
 
     #[tokio::test]
-    async fn completion_model_edits_intent_sets_request_header() {
+    async fn completion_routes_chat_requests_to_chat_completions() {
         let http_client = RecordingHttpClient::new(minimal_chat_response());
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o").with_edits_intent();
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("gpt-4o").with_api_key("copilot-token");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let _response = model.completion(request).await.expect("chat completion");
+        let _response = functions::complete(&cfg, &rt, request)
+            .await
+            .expect("chat completion");
 
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
-        assert_eq!(
-            requests[0]
-                .headers
-                .get("openai-intent")
-                .and_then(|value| value.to_str().ok()),
-            Some("conversation-edits")
-        );
+        let recorded = requests.first().expect("one recorded request");
+        assert!(recorded.uri.ends_with("/chat/completions"));
+        assert!(String::from_utf8_lossy(&recorded.body).contains("\"model\":\"gpt-4o\""));
     }
 
     #[tokio::test]
-    async fn completion_model_routes_chat_requests_to_chat_completions() {
-        let http_client = RecordingHttpClient::new(minimal_chat_response());
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-
-        let _response = model.completion(request).await.expect("chat completion");
-
-        let requests = http_client.requests();
-        assert_eq!(requests.len(), 1);
-        assert!(requests[0].uri.ends_with("/chat/completions"));
-        assert!(String::from_utf8_lossy(&requests[0].body).contains("\"model\":\"gpt-4o\""));
-    }
-
-    #[tokio::test]
-    async fn completion_model_routes_codex_requests_to_responses() {
+    async fn completion_routes_codex_requests_to_responses() {
         let http_client = RecordingHttpClient::new(minimal_responses_response());
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-5.3-codex");
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("gpt-5.3-codex").with_api_key("copilot-token");
         let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let _response = model
-            .completion(request)
+        let _response = functions::complete(&cfg, &rt, request)
             .await
             .expect("responses completion");
 
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
-        assert!(requests[0].uri.ends_with("/responses"));
-        assert!(String::from_utf8_lossy(&requests[0].body).contains("\"model\":\"gpt-5.3-codex\""));
+        let recorded = requests.first().expect("one recorded request");
+        assert!(recorded.uri.ends_with("/responses"));
+        assert!(String::from_utf8_lossy(&recorded.body).contains("\"model\":\"gpt-5.3-codex\""));
     }
 
     #[tokio::test]
     async fn embeddings_accept_minimal_copilot_response_shape() {
-        use crate::client::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel as _;
-
         let http_client = RecordingHttpClient::new(minimal_embeddings_response());
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(TEXT_EMBEDDING_3_SMALL);
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::EmbeddingConfig::new(TEXT_EMBEDDING_3_SMALL)
+            .with_api_key("copilot-token")
+            .with_dimensions(1536);
 
-        let embeddings = model
-            .embed_texts(["one".to_string(), "two".to_string()])
+        let response = functions::embed(&cfg, &rt, vec!["one".to_string(), "two".to_string()])
             .await
             .expect("embeddings should deserialize");
 
-        assert_eq!(embeddings.len(), 2);
-        assert_eq!(embeddings[0].vec, vec![0.1, 0.2, 0.3]);
-        assert_eq!(embeddings[1].vec, vec![0.4, 0.5, 0.6]);
+        assert_eq!(response.embeddings.len(), 2);
+        assert_eq!(
+            response.embeddings.first().expect("first").vec,
+            vec![0.1, 0.2, 0.3]
+        );
+        assert_eq!(
+            response.embeddings.get(1).expect("second").vec,
+            vec![0.4, 0.5, 0.6]
+        );
 
         let requests = http_client.requests();
         assert_eq!(requests.len(), 1);
-        assert!(requests[0].uri.ends_with("/embeddings"));
+        let recorded = requests.first().expect("one recorded request");
+        assert!(recorded.uri.ends_with("/embeddings"));
         assert!(
-            String::from_utf8_lossy(&requests[0].body)
+            String::from_utf8_lossy(&recorded.body)
                 .contains("\"model\":\"text-embedding-3-small\"")
         );
     }
@@ -2178,14 +1359,7 @@ mod tests {
         let http_client = MockStreamingClient {
             sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
         };
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-5.3-codex");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = responses_stream(http_client, "gpt-5.3-codex");
 
         let err = match stream.next().await.expect("stream should yield an item") {
             Ok(_) => panic!("stream should surface a provider error"),
@@ -2254,14 +1428,7 @@ mod tests {
         let http_client = MockStreamingClient {
             sse_bytes: sse_bytes_from_json_events(&[completed]),
         };
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-5.3-codex");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = responses_stream(http_client, "gpt-5.3-codex");
 
         while let Some(item) = stream.next().await {
             if let StreamedAssistantContent::Final(response) =
@@ -2289,14 +1456,7 @@ mod tests {
         ];
 
         let http_client = SequencedStreamingHttpClient::new(chunks);
-        let client = Client::builder()
-            .api_key("copilot-token")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("gpt-4o");
-        let request = crate::completion::CompletionRequest::from_prompt("hello");
-        let mut stream = model.stream(request).await.expect("stream should start");
+        let mut stream = chat_stream(http_client, "gpt-4o");
 
         let mut saw_error = false;
         while let Some(item) = stream.next().await {
@@ -2326,68 +1486,96 @@ mod tests {
         );
     }
 
-    #[test]
-    fn env_api_key_prefers_github_prefixed_vars() {
-        let env = env_map(&[
-            ("COPILOT_API_KEY", "copilot-key"),
-            ("GITHUB_COPILOT_API_KEY", "github-key"),
-            ("GITHUB_TOKEN", "bootstrap-token"),
-        ]);
-        let get = |name: &str| env.get(name).cloned();
+    /// The four deleted `env_*` precedence tests, ported onto the
+    /// `functions` module's variable lists and precedence helper.
+    mod env_precedence {
+        use super::functions::{
+            ACCESS_TOKEN_VARS, API_KEY_VARS, BASE_URL_VARS, first_present_in, first_value_in,
+        };
+        use std::collections::HashMap;
 
-        assert_eq!(env_api_key(&get).as_deref(), Some("github-key"));
-    }
+        fn getter(
+            entries: &'static [(&'static str, &'static str)],
+        ) -> impl Fn(&'static str) -> Result<Option<String>, crate::providers::descriptor::ConfigError>
+        {
+            let env: HashMap<String, String> = entries
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect();
+            move |name: &str| Ok(env.get(name).cloned())
+        }
 
-    #[test]
-    fn env_github_access_token_prefers_explicit_bootstrap_var() {
-        let env = env_map(&[
-            ("COPILOT_GITHUB_ACCESS_TOKEN", "explicit-bootstrap"),
-            ("GITHUB_TOKEN", "fallback-bootstrap"),
-        ]);
-        let get = |name: &str| env.get(name).cloned();
+        #[test]
+        fn env_api_key_prefers_github_prefixed_vars() {
+            let get = getter(&[
+                ("COPILOT_API_KEY", "copilot-key"),
+                ("GITHUB_COPILOT_API_KEY", "github-key"),
+                ("GITHUB_TOKEN", "bootstrap-token"),
+            ]);
+            assert_eq!(
+                first_value_in(API_KEY_VARS, &get)
+                    .expect("lookup")
+                    .as_deref(),
+                Some("github-key")
+            );
+        }
 
-        assert_eq!(
-            env_github_access_token(&get).as_deref(),
-            Some("explicit-bootstrap")
-        );
-    }
+        #[test]
+        fn env_github_access_token_prefers_explicit_bootstrap_var() {
+            let get = getter(&[
+                ("COPILOT_GITHUB_ACCESS_TOKEN", "explicit-bootstrap"),
+                ("GITHUB_TOKEN", "fallback-bootstrap"),
+            ]);
+            assert_eq!(
+                first_value_in(ACCESS_TOKEN_VARS, &get)
+                    .expect("lookup")
+                    .as_deref(),
+                Some("explicit-bootstrap")
+            );
+        }
 
-    #[test]
-    fn env_base_url_prefers_github_prefixed_vars() {
-        let env = env_map(&[
-            ("COPILOT_BASE_URL", "https://copilot.example"),
-            ("GITHUB_COPILOT_API_BASE", "https://github.example"),
-        ]);
-        let get = |name: &str| env.get(name).cloned();
+        #[test]
+        fn env_base_url_prefers_github_prefixed_vars() {
+            let get = getter(&[
+                ("COPILOT_BASE_URL", "https://copilot.example"),
+                ("GITHUB_COPILOT_API_BASE", "https://github.example"),
+            ]);
+            assert_eq!(
+                first_value_in(BASE_URL_VARS, &get)
+                    .expect("lookup")
+                    .as_deref(),
+                Some("https://github.example")
+            );
+        }
 
-        assert_eq!(
-            env_base_url(&get).as_deref(),
-            Some("https://github.example")
-        );
-    }
+        #[test]
+        fn env_without_api_key_falls_back_to_oauth() {
+            // No API-key and no access-token variable => `config_from_env`
+            // falls through to the OAuth arm.
+            let get = getter(&[("COPILOT_BASE_URL", "https://copilot.example")]);
+            assert_eq!(first_present_in(API_KEY_VARS, &get).expect("lookup"), None);
+            assert_eq!(
+                first_present_in(ACCESS_TOKEN_VARS, &get).expect("lookup"),
+                None
+            );
+            assert_eq!(
+                first_value_in(BASE_URL_VARS, &get)
+                    .expect("lookup")
+                    .as_deref(),
+                Some("https://copilot.example")
+            );
+        }
 
-    #[test]
-    fn env_without_api_key_falls_back_to_oauth() {
-        let env = env_map(&[("COPILOT_BASE_URL", "https://copilot.example")]);
-        let get = |name: &str| env.get(name).cloned();
-
-        assert!(env_api_key(&get).is_none());
-        assert!(env_github_access_token(&get).is_none());
-        assert_eq!(
-            env_base_url(&get).as_deref(),
-            Some("https://copilot.example")
-        );
-    }
-
-    #[test]
-    fn env_github_token_is_not_treated_as_copilot_api_key() {
-        let env = env_map(&[("GITHUB_TOKEN", "bootstrap-token")]);
-        let get = |name: &str| env.get(name).cloned();
-
-        assert!(env_api_key(&get).is_none());
-        assert_eq!(
-            env_github_access_token(&get).as_deref(),
-            Some("bootstrap-token")
-        );
+        #[test]
+        fn env_github_token_is_not_treated_as_copilot_api_key() {
+            let get = getter(&[("GITHUB_TOKEN", "bootstrap-token")]);
+            assert_eq!(first_present_in(API_KEY_VARS, &get).expect("lookup"), None);
+            assert_eq!(
+                first_value_in(ACCESS_TOKEN_VARS, &get)
+                    .expect("lookup")
+                    .as_deref(),
+                Some("bootstrap-token")
+            );
+        }
     }
 }
