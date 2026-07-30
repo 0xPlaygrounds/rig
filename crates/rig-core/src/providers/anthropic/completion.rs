@@ -1895,7 +1895,7 @@ fn validate_cache_control_ttl_order(
 fn top_level_cache_control_ttl(cache_control: Option<&CacheControl>) -> Option<CacheTtl> {
     cache_control
         .map(|cache_control| match cache_control {
-            CacheControl::Ephemeral { ttl } => ttl.clone(),
+            CacheControl::Ephemeral { ttl } => *ttl,
         })
         .unwrap_or_default()
 }
@@ -2072,7 +2072,7 @@ pub(super) fn resolve_top_level_cache_control(
 ) -> Result<Option<CacheControl>, CompletionError> {
     let raw_cache_control = extract_top_level_cache_control(additional_params)?;
     let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
-        ttl: automatic_caching_ttl.clone(),
+        ttl: automatic_caching_ttl,
     });
 
     match (typed_cache_control, raw_cache_control) {

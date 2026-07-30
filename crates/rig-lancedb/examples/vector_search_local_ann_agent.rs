@@ -16,6 +16,10 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embeddings come from a free function over plain configuration plus a
     // shared HTTP runtime — there is no client or model object.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
     let rt = HttpRuntime::new();
     let max_documents = openai::functions::DESCRIPTOR
         .max_embedding_documents
@@ -52,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, fixture::EMBEDDING_DIMS)?],
+            vec![as_record_batch(embeddings, embedding_dims)?],
         )
         .execute()
         .await?

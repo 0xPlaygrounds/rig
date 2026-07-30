@@ -52,10 +52,6 @@ impl SqliteVectorStoreTable for Document {
     }
 }
 
-/// Vector width of `text-embedding-ada-002`. Configuration carries no model
-/// metadata, so the dimensionality the store is built with is stated here.
-const EMBEDDING_DIMS: usize = 1536;
-
 type SqliteExtensionFn =
     unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
@@ -81,6 +77,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Embedding configuration is plain data plus a shared HTTP runtime.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
     let rt = HttpRuntime::new();
     let max_documents = openai::functions::DESCRIPTOR
         .max_embedding_documents
@@ -112,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize SQLite vector store. Queries arrive pre-embedded, so the
     // store only needs the embedding dimensionality.
     let vector_store: SqliteVectorStore<Document> =
-        SqliteVectorStore::with_distance_metric(conn, EMBEDDING_DIMS, SqliteDistanceMetric::Cosine)
+        SqliteVectorStore::with_distance_metric(conn, embedding_dims, SqliteDistanceMetric::Cosine)
             .await?;
 
     // Add precomputed embeddings to the vector store. The row's own `id`

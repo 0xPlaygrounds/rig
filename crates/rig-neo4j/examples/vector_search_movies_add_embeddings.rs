@@ -25,11 +25,6 @@ struct Movie {
     to_encode: Option<String>,
 }
 
-/// Vector width of `text-embedding-ada-002`. Embedding configuration is plain
-/// data and carries no model metadata, so the index dimensionality is stated
-/// here explicitly.
-const EMBEDDING_DIMS: usize = 1536;
-
 const NODE_LABEL: &str = "Movie";
 const INDEX_NAME: &str = "moviePlots";
 
@@ -40,6 +35,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let embed_cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
         .with_api_key(&openai_api_key);
     let rt = HttpRuntime::new();
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
 
     let neo4j_uri = env::var("NEO4J_URI")?;
     let neo4j_username = env::var("NEO4J_USERNAME")?;
@@ -104,7 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, EMBEDDING_DIMS)
+        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, embedding_dims)
         .await?;
 
     let index = neo4j_client.get_index(INDEX_NAME).await?;

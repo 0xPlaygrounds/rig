@@ -74,8 +74,9 @@ async fn vector_search_test() {
         .with_api_key("TEST")
         .with_base_url(openai_mock.base_url())
         // The store's `documents.embedding` column is `vector(1536)`, so ask
-        // OpenAI for exactly that width (the config no longer infers a default
-        // dimensionality from the model name).
+        // OpenAI for exactly that width. `dimensions` is the request field and
+        // stays opt-in (ada-002 rejects it outright); to *read* a model's
+        // native width without pinning the request, use `EmbeddingConfig::ndims`.
         .with_dimensions(1536);
     let rt = HttpRuntime::new();
 

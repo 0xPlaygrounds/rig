@@ -591,6 +591,21 @@ impl EmbeddingConfig {
         self
     }
 
+    /// The width of the vectors this config produces, when it is known.
+    ///
+    /// Resolves an explicit [`dimensions`](Self::dimensions) request override
+    /// first, then the model's native width from
+    /// [`model_dimensions_from_identifier`](super::embedding::model_dimensions_from_identifier).
+    /// Returns [`None`] for an unrecognised model with no override, since the
+    /// width is then only knowable from a response.
+    ///
+    /// Callers sizing a vector-store index should prefer this over hardcoding a
+    /// literal — the config knows its own model.
+    pub fn ndims(&self) -> Option<usize> {
+        self.dimensions
+            .or_else(|| super::embedding::model_dimensions_from_identifier(&self.model))
+    }
+
     /// Config for `model` built from the process environment.
     ///
     /// Same variables as [`Config::from_env`]: `OPENAI_API_KEY` (required) and
