@@ -10,7 +10,7 @@
 
 use rig_core::OneOrMany;
 use rig_core::embeddings::Embedding;
-use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
+use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, VectorSearchRequest};
 use rig_core::vector_store::{SearchHit, StoreRecord, VectorStoreError};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
@@ -945,10 +945,20 @@ struct SqliteQualifiedDocumentKey {
     plain_column: Option<String>,
 }
 
-impl SearchFilter for SqliteSearchFilter {
-    type Value = serde_json::Value;
+impl SqliteSearchFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Comparison {
                 key: key.as_ref().to_string(),
@@ -958,7 +968,7 @@ impl SearchFilter for SqliteSearchFilter {
         }
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Comparison {
                 key: key.as_ref().to_string(),
@@ -968,7 +978,7 @@ impl SearchFilter for SqliteSearchFilter {
         }
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Comparison {
                 key: key.as_ref().to_string(),
@@ -978,13 +988,13 @@ impl SearchFilter for SqliteSearchFilter {
         }
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::And(Box::new(self.expr), Box::new(rhs.expr)),
         }
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self {
             expr: SqliteSearchFilterExpr::Or(Box::new(self.expr), Box::new(rhs.expr)),
         }

@@ -17,7 +17,7 @@ use rig_core::{
     embeddings::embedding::Embedding,
     vector_store::{
         SearchHit, StoreRecord, VectorStoreError,
-        request::{Filter, SearchFilter, VectorSearchRequest},
+        request::{Filter as CoreFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -467,29 +467,28 @@ impl SearchParams {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MongoDbSearchFilter(Document);
 
-impl SearchFilter for MongoDbSearchFilter {
-    type Value = Bson;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+impl MongoDbSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: Bson) -> Self {
         let key = key.as_ref().to_owned();
         Self(doc! { key: value })
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: Bson) -> Self {
         let key = key.as_ref().to_owned();
         Self(doc! { key: { "$gt": value } })
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: Bson) -> Self {
         let key = key.as_ref().to_owned();
         Self(doc! { key: { "$lt": value } })
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(doc! { "$and": [ self.0, rhs.0 ]})
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(doc! { "$or": [ self.0, rhs.0 ]})
     }
 }
@@ -499,11 +498,11 @@ impl MongoDbSearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: Bson) -> Self {
         Self(doc! { key: { "$gte": value } })
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: Bson) -> Self {
         Self(doc! { key: { "$lte": value } })
     }
 
@@ -531,27 +530,27 @@ impl MongoDbSearchFilter {
     }
 }
 
-impl From<Filter<serde_json::Value>> for MongoDbSearchFilter {
-    fn from(value: Filter<serde_json::Value>) -> Self {
+impl From<CoreFilter<serde_json::Value>> for MongoDbSearchFilter {
+    fn from(value: CoreFilter<serde_json::Value>) -> Self {
         fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
             to_bson(v).unwrap_or(Bson::Null)
         }
 
         match value {
-            Filter::Eq(k, val) => {
+            CoreFilter::Eq(k, val) => {
                 let bson_val = serde_json_value_to_bson(&val);
                 MongoDbSearchFilter::eq(k, bson_val)
             }
-            Filter::Gt(k, val) => {
+            CoreFilter::Gt(k, val) => {
                 let bson_val = serde_json_value_to_bson(&val);
                 MongoDbSearchFilter::gt(k, bson_val)
             }
-            Filter::Lt(k, val) => {
+            CoreFilter::Lt(k, val) => {
                 let bson_val = serde_json_value_to_bson(&val);
                 MongoDbSearchFilter::lt(k, bson_val)
             }
-            Filter::And(l, r) => Self::from(*l).and(Self::from(*r)),
-            Filter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
+            CoreFilter::And(l, r) => Self::from(*l).and(Self::from(*r)),
+            CoreFilter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
         }
     }
 }

@@ -16,8 +16,8 @@
 use neo4rs::ConfigBuilder;
 use rig_core::OneOrMany;
 use rig_core::providers::openai;
-use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
-use rig_neo4j::Neo4jClient;
+use rig_core::vector_store::request::VectorSearchRequest;
+use rig_neo4j::{Neo4jClient, Neo4jSearchFilter};
 
 use std::env;
 
@@ -80,7 +80,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ),
         5,
     )
-    .with_filter(SearchFilter::gt("node.year", 1990.into()));
+    .with_filter(Neo4jSearchFilter::gt("node.year", serde_json::json!(1990)));
 
     // Query the index
     let results = index

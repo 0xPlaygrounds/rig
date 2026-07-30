@@ -2,7 +2,7 @@ use qdrant_client::qdrant::{
     Condition, FieldCondition, Filter, IsEmptyCondition, IsNullCondition, Match, Range,
     condition::ConditionOneOf, r#match::MatchValue,
 };
-use rig_core::vector_store::request::{FilterError, SearchFilter};
+use rig_core::vector_store::request::{Filter as CoreFilter, FilterError};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -13,10 +13,20 @@ use serde_json::json;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QdrantFilter(serde_json::Value);
 
-impl SearchFilter for QdrantFilter {
-    type Value = serde_json::Value;
+impl QdrantFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         let key = key.as_ref().to_owned();
 
         Self(json!({
@@ -27,7 +37,7 @@ impl SearchFilter for QdrantFilter {
         }))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         let key = key.as_ref().to_owned();
 
         Self(json!({
@@ -38,7 +48,7 @@ impl SearchFilter for QdrantFilter {
         }))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         let key = key.as_ref().to_owned();
 
         Self(json!({
@@ -49,11 +59,11 @@ impl SearchFilter for QdrantFilter {
         }))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(json!({ "must": [ self.0, rhs.0 ]}))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(json!({ "should": [ self.0, rhs.0 ]}))
     }
 }

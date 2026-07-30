@@ -6,7 +6,7 @@
     clippy::unreachable
 )]
 
-use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::vector_store::request::VectorSearchRequest;
 use serde_json::json;
 
 use rig::http_runtime::HttpRuntime;

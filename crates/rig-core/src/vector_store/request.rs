@@ -1,8 +1,8 @@
 //! Types for constructing vector search queries.
 //!
 //! - [`VectorSearchRequest`]: Query parameters (pre-embedded query, result count, threshold, filters).
-//! - [`SearchFilter`]: Trait for backend-agnostic filter expressions.
-//! - [`Filter`]: Canonical, serializable filter representation.
+//! - [`Filter`]: The canonical, serializable filter expression. Each backend
+//!   translates it with its own `from_filter` constructor.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ use crate::{OneOrMany, embeddings::Embedding};
 /// with the `with_*` methods:
 ///
 /// ```
-/// use rig_core::{OneOrMany, embeddings::Embedding, vector_store::request::{Filter, SearchFilter, VectorSearchRequest}};
+/// use rig_core::{OneOrMany, embeddings::Embedding, vector_store::request::{Filter, VectorSearchRequest}};
 ///
 /// # fn example(embedding: Embedding) {
 /// let request = VectorSearchRequest::new(OneOrMany::one(embedding), 10)
@@ -165,25 +165,13 @@ pub enum FilterError {
     Serialization(String),
 }
 
-/// Trait for constructing filter expressions in vector search queries.
-///
-/// Uses [tagless final](https://nrinaudo.github.io/articles/tagless_final.html) encoding
-/// for backend-agnostic filters. Use `SearchFilter::eq(...)` etc. directly and let
-/// type inference resolve the concrete filter type.
-pub trait SearchFilter {
-    type Value;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn and(self, rhs: Self) -> Self;
-    fn or(self, rhs: Self) -> Self;
-}
-
 /// Canonical, serializable filter representation.
 ///
-/// Use for serialization, runtime inspection, or translating between backends via
-/// [`Filter::interpret`]. Prefer [`SearchFilter`] trait methods for writing queries.
+/// This is the portable filter language every backend understands: build one with
+/// [`Filter::eq`] and friends, and the backend translates it with its own
+/// `from_filter` constructor. Backends additionally expose native filter types with
+/// richer operators, which [`VectorSearchRequest`] still accepts via its `F`
+/// parameter.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Filter<V>
@@ -197,54 +185,34 @@ where
     Or(Box<Self>, Box<Self>),
 }
 
-impl<V> SearchFilter for Filter<V>
+impl<V> Filter<V>
 where
     V: std::fmt::Debug + Clone + Serialize + for<'de> Deserialize<'de>,
 {
-    type Value = V;
-
     /// Select values where the entry at `key` is equal to `value`
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: V) -> Self {
         Self::Eq(key.as_ref().to_owned(), value)
     }
 
     /// Select values where the entry at `key` is greater than `value`
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: V) -> Self {
         Self::Gt(key.as_ref().to_owned(), value)
     }
 
     /// Select values where the entry at `key` is less than `value`
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: V) -> Self {
         Self::Lt(key.as_ref().to_owned(), value)
     }
 
     /// Select values where the entry satisfies `self` *and* `rhs`
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self::And(self.into(), rhs.into())
     }
 
     /// Select values where the entry satisfies `self` *or* `rhs`
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self::Or(self.into(), rhs.into())
-    }
-}
-
-impl<V> Filter<V>
-where
-    V: std::fmt::Debug + Clone,
-{
-    /// Converts this filter into a backend-specific filter type.
-    pub fn interpret<F>(self) -> F
-    where
-        F: SearchFilter<Value = V>,
-    {
-        match self {
-            Self::Eq(key, val) => F::eq(key, val),
-            Self::Gt(key, val) => F::gt(key, val),
-            Self::Lt(key, val) => F::lt(key, val),
-            Self::And(lhs, rhs) => F::and(lhs.interpret(), rhs.interpret()),
-            Self::Or(lhs, rhs) => F::or(lhs.interpret(), rhs.interpret()),
-        }
     }
 }
 
@@ -306,7 +274,7 @@ impl Filter<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Filter, SearchFilter};
+    use super::Filter;
     use serde_json::json;
 
     type F = Filter<serde_json::Value>;

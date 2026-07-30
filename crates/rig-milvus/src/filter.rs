@@ -1,4 +1,4 @@
-use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
+use rig_core::vector_store::request::{Filter as CoreFilter, FilterError};
 use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {
@@ -114,26 +114,36 @@ where
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Filter(String);
 
-impl SearchFilter for Filter {
-    type Value = MilvusValue;
+impl Filter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Result<Self, FilterError> {
+        Ok(match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, MilvusValue::try_from(value)?),
+            CoreFilter::Gt(key, value) => Self::gt(key, MilvusValue::try_from(value)?),
+            CoreFilter::Lt(key, value) => Self::lt(key, MilvusValue::try_from(value)?),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs)?.and(Self::from_filter(*rhs)?),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs)?.or(Self::from_filter(*rhs)?),
+        })
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: MilvusValue) -> Self {
         Self(format!("{} == {}", key.as_ref(), value.escaped()))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: MilvusValue) -> Self {
         Self(format!("{} > {}", key.as_ref(), value.escaped()))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: MilvusValue) -> Self {
         Self(format!("{} < {}", key.as_ref(), value.escaped()))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(format!("({}) AND ({})", self.0, rhs.0))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(format!("({}) OR ({})", self.0, rhs.0))
     }
 }
@@ -144,16 +154,16 @@ impl Filter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: MilvusValue) -> Self {
         Self(format!("{key} >= {}", value.escaped()))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: MilvusValue) -> Self {
         Self(format!("{key} <= {}", value.escaped()))
     }
 
     /// IN operator
-    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn in_values(key: String, values: Vec<MilvusValue>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -163,7 +173,7 @@ impl Filter {
     }
 
     /// NOT IN operator
-    pub fn not_in(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn not_in(key: String, values: Vec<MilvusValue>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -178,12 +188,12 @@ impl Filter {
     }
 
     /// Array contains
-    pub fn array_contains(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn array_contains(key: String, value: MilvusValue) -> Self {
         Self(format!("array_contains({}, {})", key, value.escaped()))
     }
 
     /// Array contains all
-    pub fn array_contains_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_all(key: String, values: Vec<MilvusValue>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())
@@ -193,7 +203,7 @@ impl Filter {
     }
 
     /// Array contains any
-    pub fn array_contains_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_contains_any(key: String, values: Vec<MilvusValue>) -> Self {
         let values_str = values
             .into_iter()
             .map(|v| v.escaped())

@@ -14,7 +14,7 @@ use qdrant_client::{
 use rig_core::OneOrMany;
 use rig_core::embeddings::{default_concurrency, embed_documents};
 use rig_core::http_runtime::HttpRuntime;
-use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{Embed, providers::openai, vector_store::StoreRecord};
 use rig_qdrant::{QdrantFilter, QdrantVectorStore};
 

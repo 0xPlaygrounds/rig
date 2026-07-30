@@ -102,7 +102,7 @@ use std::str::FromStr;
 
 use futures::TryStreamExt;
 use neo4rs::*;
-use rig_core::vector_store::{VectorStoreError, request::SearchFilter};
+use rig_core::vector_store::{VectorStoreError, request::Filter as CoreFilter};
 use serde::{Deserialize, Serialize};
 use vector_index::{IndexConfig, Neo4jVectorIndex, VectorSimilarityFunction};
 
@@ -117,26 +117,36 @@ fn neo4j_to_rig_error(e: neo4rs::Error) -> VectorStoreError {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Neo4jSearchFilter(String);
 
-impl SearchFilter for Neo4jSearchFilter {
-    type Value = serde_json::Value;
+impl Neo4jSearchFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(format!("n.{} = {}", key.as_ref(), serialize_cypher(value)))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(format!("n.{} > {}", key.as_ref(), serialize_cypher(value)))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(format!("n.{} < {}", key.as_ref(), serialize_cypher(value)))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(format!("({}) AND ({})", self.0, rhs.0))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(format!("({}) OR ({})", self.0, rhs.0))
     }
 }
@@ -151,15 +161,15 @@ impl Neo4jSearchFilter {
         Self(format!("NOT ({})", self.0))
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: serde_json::Value) -> Self {
         Self(format!("n.{key} >= {}", serialize_cypher(value)))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: serde_json::Value) -> Self {
         Self(format!("n.{key} <= {}", serialize_cypher(value)))
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: String, values: Vec<serde_json::Value>) -> Self {
         Self(format!(
             "n.{key} IN {}",
             serialize_cypher(serde_json::Value::Array(values))

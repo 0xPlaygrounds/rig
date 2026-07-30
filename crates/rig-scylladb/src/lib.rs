@@ -15,7 +15,7 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         SearchHit, StoreRecord, VectorStoreError,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        request::{Filter as CoreFilter, FilterError, VectorSearchRequest},
     },
 };
 use scylla::{
@@ -105,38 +105,37 @@ impl std::hash::Hash for ScyllaSearchFilter {
     }
 }
 
-impl SearchFilter for ScyllaSearchFilter {
-    type Value = CqlValue;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+impl ScyllaSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} = ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} > ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} < ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) AND ({})", self.condition, rhs.condition),
             params: self.params.into_iter().chain(rhs.params).collect(),
         }
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) OR ({})", self.condition, rhs.condition),
             params: self.params.into_iter().chain(rhs.params).collect(),
@@ -157,28 +156,28 @@ impl ScyllaSearchFilter {
         }
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} >= ?"),
             params: vec![value],
         }
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} <= ?"),
             params: vec![value],
         }
     }
 
-    pub fn ne(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn ne(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} != ?"),
             params: vec![value],
         }
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: String, values: Vec<CqlValue>) -> Self {
         let placeholders = vec!["?"; values.len()].join(", ");
 
         Self {
@@ -188,16 +187,16 @@ impl ScyllaSearchFilter {
     }
 }
 
-impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
+impl TryFrom<CoreFilter<serde_json::Value>> for ScyllaSearchFilter {
     type Error = FilterError;
 
-    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
         match value {
-            Filter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
-            Filter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
-            Filter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
-            Filter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
-            Filter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
+            CoreFilter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
+            CoreFilter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
+            CoreFilter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
+            CoreFilter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
+            CoreFilter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
         }
     }
 }

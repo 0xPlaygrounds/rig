@@ -9,13 +9,10 @@ use rig_core::OneOrMany;
 use std::env;
 
 use rig_core::http_runtime::HttpRuntime;
-use rig_core::{
-    providers::openai,
-    vector_store::request::{SearchFilter, VectorSearchRequest},
-};
+use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
 
 use neo4rs::*;
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
+use rig_neo4j::{Neo4jClient, Neo4jSearchFilter, ToBoltType, vector_index::IndexConfig};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -125,7 +122,7 @@ async fn main() -> Result<(), anyhow::Error> {
         ),
         5,
     )
-    .with_filter(SearchFilter::gt("node.year", 1990.into()));
+    .with_filter(Neo4jSearchFilter::gt("node.year", serde_json::json!(1990)));
 
     // Query the index
     let results = index

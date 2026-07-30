@@ -18,7 +18,7 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         SearchHit, StoreRecord, VectorStoreError,
-        request::{SearchFilter, VectorSearchRequest},
+        request::{Filter as CoreFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -68,38 +68,48 @@ pub struct PgSearchFilter {
     values: Vec<serde_json::Value>,
 }
 
-impl SearchFilter for PgSearchFilter {
-    type Value = serde_json::Value;
+impl PgSearchFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             condition: format!("{} = $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             condition: format!("{} > $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self {
             condition: format!("{} < $", key.as_ref()),
             values: vec![value],
         }
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) AND ({})", self.condition, rhs.condition),
             values: self.values.into_iter().chain(rhs.values).collect(),
         }
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) OR ({})", self.condition, rhs.condition),
             values: self.values.into_iter().chain(rhs.values).collect(),
@@ -120,14 +130,14 @@ impl PgSearchFilter {
         }
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: serde_json::Value) -> Self {
         Self {
             condition: format!("{key} >= ?"),
             values: vec![value],
         }
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: serde_json::Value) -> Self {
         Self {
             condition: format!("{key} <= ?"),
             values: vec![value],
@@ -161,7 +171,7 @@ impl PgSearchFilter {
         }
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: String, values: Vec<serde_json::Value>) -> Self {
         let placeholders = values.iter().map(|_| "?").collect::<Vec<&str>>().join(",");
 
         Self {

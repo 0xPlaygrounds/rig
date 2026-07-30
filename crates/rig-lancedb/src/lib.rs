@@ -38,7 +38,7 @@ use lancedb::{
 };
 use rig_core::vector_store::{
     SearchHit, StoreRecord, VectorStoreError,
-    request::{FilterError, SearchFilter, VectorSearchRequest},
+    request::{Filter as CoreFilter, FilterError, VectorSearchRequest},
 };
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -175,26 +175,36 @@ fn zip_result(
     l.and_then(|l| r.map(|r| (l, r)))
 }
 
-impl SearchFilter for LanceDBFilter {
-    type Value = serde_json::Value;
+impl LanceDBFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(escape_value(value).map(|s| format!("{} = {s}", key.as_ref())))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(escape_value(value).map(|s| format!("{} > {s}", key.as_ref())))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: serde_json::Value) -> Self {
         Self(escape_value(value).map(|s| format!("{} < {s}", key.as_ref())))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) AND ({r})")))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(zip_result(self.0, rhs.0).map(|(l, r)| format!("({l}) OR ({r})")))
     }
 }
@@ -231,7 +241,7 @@ impl LanceDBFilter {
     }
 
     /// IN operator
-    pub fn in_values(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn in_values(key: String, values: Vec<serde_json::Value>) -> Self {
         Self(
             values
                 .into_iter()
@@ -275,7 +285,7 @@ impl LanceDBFilter {
     }
 
     /// Array has any (for LIST columns with scalar index)
-    pub fn array_has_any(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_has_any(key: String, values: Vec<serde_json::Value>) -> Self {
         Self(
             values
                 .into_iter()
@@ -287,7 +297,7 @@ impl LanceDBFilter {
     }
 
     /// Array has all (for LIST columns with scalar index)
-    pub fn array_has_all(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn array_has_all(key: String, values: Vec<serde_json::Value>) -> Self {
         Self(
             values
                 .into_iter()

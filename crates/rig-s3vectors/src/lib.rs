@@ -22,7 +22,7 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         SearchHit, StoreRecord, VectorStoreError,
-        request::{SearchFilter, VectorSearchRequest},
+        request::{Filter as CoreFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -37,32 +37,69 @@ pub struct CreateRecord {
 
 // NOTE: Cannot be used with `Filter<serde_json::Value>` requests due to
 // aws_smithy_types::Document not impl'ing Serialize or Deserialize
+/// Converts a canonical JSON filter operand into a Smithy [`Document`].
+///
+/// Total: every `serde_json::Value` shape has a `Document` counterpart.
+fn json_to_document(value: serde_json::Value) -> aws_smithy_types::Document {
+    use aws_smithy_types::{Document, Number};
+    match value {
+        serde_json::Value::Null => Document::Null,
+        serde_json::Value::Bool(b) => Document::Bool(b),
+        serde_json::Value::Number(n) => Document::Number(if let Some(u) = n.as_u64() {
+            Number::PosInt(u)
+        } else if let Some(i) = n.as_i64() {
+            Number::NegInt(i)
+        } else {
+            Number::Float(n.as_f64().unwrap_or_default())
+        }),
+        serde_json::Value::String(s) => Document::String(s),
+        serde_json::Value::Array(xs) => {
+            Document::Array(xs.into_iter().map(json_to_document).collect())
+        }
+        serde_json::Value::Object(map) => Document::Object(
+            map.into_iter()
+                .map(|(k, v)| (k, json_to_document(v)))
+                .collect(),
+        ),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 
-impl SearchFilter for S3SearchFilter {
-    type Value = aws_smithy_types::Document;
+impl S3SearchFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, json_to_document(value)),
+            CoreFilter::Gt(key, value) => Self::gt(key, json_to_document(value)),
+            CoreFilter::Lt(key, value) => Self::lt(key, json_to_document(value)),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: aws_smithy_types::Document) -> Self {
         let key = key.as_ref().to_owned();
         Self(document!({ key: { "$eq": value } }))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: aws_smithy_types::Document) -> Self {
         let key = key.as_ref().to_owned();
         Self(document!({ key: { "$gt": value } }))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: aws_smithy_types::Document) -> Self {
         let key = key.as_ref().to_owned();
         Self(document!({ key: { "$lt": value } }))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(document!({ "$and": [ self.0, rhs.0 ]}))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(document!({ "$or": [ self.0, rhs.0 ]}))
     }
 }
@@ -76,11 +113,11 @@ impl S3SearchFilter {
         self.0
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: aws_smithy_types::Document) -> Self {
         Self(document!({ key: { "$gte": value } }))
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: aws_smithy_types::Document) -> Self {
         Self(document!({ key: { "$lte": value } }))
     }
 

@@ -679,7 +679,7 @@ mod tests {
 
     #[tokio::test]
     async fn top_n_honors_filter_and_threshold() {
-        use crate::vector_store::request::{Filter, SearchFilter};
+        use crate::vector_store::request::Filter;
         use serde::Serialize;
 
         // Document payloads carry metadata alongside content, like real backends.

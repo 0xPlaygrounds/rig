@@ -8,10 +8,7 @@ use neo4rs::{Graph, Query};
 use rig_core::{
     OneOrMany,
     embeddings::Embedding,
-    vector_store::{
-        SearchHit, StoreRecord, VectorStoreError,
-        request::{SearchFilter, VectorSearchRequest},
-    },
+    vector_store::{SearchHit, StoreRecord, VectorStoreError, request::VectorSearchRequest},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned, de::Error};
 

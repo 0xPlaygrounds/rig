@@ -26,7 +26,7 @@
 use rig::OneOrMany;
 use rig::embeddings::Embedding;
 use rig::vector_store::StoreRecord;
-use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::vector_store::request::VectorSearchRequest;
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;

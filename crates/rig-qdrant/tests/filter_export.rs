@@ -1,6 +1,6 @@
 use rig_core::OneOrMany;
 use rig_core::embeddings::Embedding;
-use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::vector_store::request::VectorSearchRequest;
 use rig_qdrant::QdrantFilter;
 
 #[test]

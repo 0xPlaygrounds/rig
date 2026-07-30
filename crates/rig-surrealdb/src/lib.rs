@@ -17,7 +17,7 @@ use rig_core::{
     embeddings::Embedding,
     vector_store::{
         SearchHit, StoreRecord, VectorStoreError,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        request::{Filter as CoreFilter, FilterError, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -110,16 +110,16 @@ impl SurrealSearchFilter {
     }
 }
 
-impl TryFrom<Filter<serde_json::Value>> for SurrealSearchFilter {
+impl TryFrom<CoreFilter<serde_json::Value>> for SurrealSearchFilter {
     type Error = FilterError;
 
-    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
         match value {
-            Filter::Eq(key, value) => Ok(Self::eq(key, Value::from_t(value))),
-            Filter::Gt(key, value) => Ok(Self::gt(key, Value::from_t(value))),
-            Filter::Lt(key, value) => Ok(Self::lt(key, Value::from_t(value))),
-            Filter::And(lhs, rhs) => Ok(Self::try_from(*lhs)?.and(Self::try_from(*rhs)?)),
-            Filter::Or(lhs, rhs) => Ok(Self::try_from(*lhs)?.or(Self::try_from(*rhs)?)),
+            CoreFilter::Eq(key, value) => Ok(Self::eq(key, Value::from_t(value))),
+            CoreFilter::Gt(key, value) => Ok(Self::gt(key, Value::from_t(value))),
+            CoreFilter::Lt(key, value) => Ok(Self::lt(key, Value::from_t(value))),
+            CoreFilter::And(lhs, rhs) => Ok(Self::try_from(*lhs)?.and(Self::try_from(*rhs)?)),
+            CoreFilter::Or(lhs, rhs) => Ok(Self::try_from(*lhs)?.or(Self::try_from(*rhs)?)),
         }
     }
 }
@@ -130,26 +130,25 @@ impl std::fmt::Display for SurrealSearchFilter {
     }
 }
 
-impl SearchFilter for SurrealSearchFilter {
-    type Value = Value;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+impl SurrealSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: Value) -> Self {
         Self(format!("{} = {}", key.as_ref(), value.to_sql()))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: Value) -> Self {
         Self(format!("{} > {}", key.as_ref(), value.to_sql()))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: Value) -> Self {
         Self(format!("{} < {}", key.as_ref(), value.to_sql()))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self(format!("({self}) AND ({rhs})"))
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self(format!("({self}) OR ({rhs})"))
     }
 }
@@ -161,52 +160,52 @@ impl SurrealSearchFilter {
     }
 
     /// Test if the value at `key` contains `val`
-    pub fn contains(key: String, val: <Self as SearchFilter>::Value) -> Self {
+    pub fn contains(key: String, val: Value) -> Self {
         Self(format!("{key} CONTAINS {}", val.to_sql()))
     }
 
     /// Test if the value at `key` does *not* contain `val`
-    pub fn does_not_contain(key: String, val: <Self as SearchFilter>::Value) -> Self {
+    pub fn does_not_contain(key: String, val: Value) -> Self {
         Self(format!("{key} CONTAINSNOT {}", val.to_sql()))
     }
 
     /// Test if the value at `key` contains every element of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn all(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn all(key: String, vals: Value) -> Self {
         Self(format!("{key} CONTAINSALL {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` contains any elements of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn any(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn any(key: String, vals: Value) -> Self {
         Self(format!("{key} CONTAINSANY {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is a member of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn member(key: String, vals: Value) -> Self {
         Self(format!("{key} IN {}", vals.to_sql()))
     }
 
     /// Test if the value at `key` is *not* a member of `vals`
     /// `vals` should be a SurrealDB collection
-    pub fn not_member(key: String, vals: <Self as SearchFilter>::Value) -> Self {
+    pub fn not_member(key: String, vals: Value) -> Self {
         Self(format!("{key} NOTIN {}", vals.to_sql()))
     }
 
     // Geospatial filters
     /// Test if the value at `key` is inside `geometry`
-    pub fn inside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn inside(key: String, geometry: Value) -> Self {
         Self(format!("{key} INSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` is outside `geometry`
-    pub fn outside(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn outside(key: String, geometry: Value) -> Self {
         Self(format!("{key} OUTSIDE {}", geometry.to_sql()))
     }
 
     /// Test if the value at `key` intersects `geometry`
-    pub fn intersects(key: String, geometry: <Self as SearchFilter>::Value) -> Self {
+    pub fn intersects(key: String, geometry: Value) -> Self {
         Self(format!("{key} INTERSECTS {}", geometry.to_sql()))
     }
 
@@ -426,7 +425,7 @@ mod tests {
     use rig_core::{
         OneOrMany,
         embeddings::Embedding,
-        vector_store::{StoreRecord, request::Filter, request::VectorSearchRequest},
+        vector_store::{StoreRecord, request::Filter as CoreFilter, request::VectorSearchRequest},
     };
     use serde_json::json;
     use surrealdb::Surreal;
@@ -434,7 +433,7 @@ mod tests {
     #[allow(clippy::panic)]
     #[test]
     fn filter_from_json_preserves_nested_values() {
-        let filter = match SurrealSearchFilter::try_from(Filter::Eq(
+        let filter = match SurrealSearchFilter::try_from(CoreFilter::Eq(
             "metadata".to_string(),
             json!({
                 "name": "rig",
