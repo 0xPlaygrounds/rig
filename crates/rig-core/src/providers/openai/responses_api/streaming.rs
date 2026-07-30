@@ -1170,6 +1170,38 @@ mod tests {
     }
 
     #[test]
+    fn compaction_output_item_surfaces_as_raw_unknown_choice() {
+        let item = json!({
+            "type": "compaction",
+            "id": "cmp_1",
+            "encrypted_content": "encrypted-state",
+            "created_by": "server"
+        });
+        let body = format!(
+            "data: {}\n",
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": item,
+            })
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode");
+
+        let compaction = choices.iter().find_map(|choice| match choice {
+            RawStreamingChoice::Unknown(value)
+                if value.get("type").and_then(serde_json::Value::as_str) == Some("compaction") =>
+            {
+                Some(value)
+            }
+            _ => None,
+        });
+        assert_eq!(compaction, Some(&item));
+    }
+
+    #[test]
     fn reasoning_done_item_without_encrypted_emits_summary_only() {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
@@ -1588,10 +1620,11 @@ mod tests {
             "response": response,
         });
 
-        let usage = final_response_from_event(event).await.usage;
-        assert_eq!(usage.input_tokens, 10);
-        assert_eq!(usage.output_tokens, 5);
-        assert_eq!(usage.total_tokens, 15);
+        let response = final_response_from_event(event).await;
+        assert_eq!(response.response_id.as_deref(), Some("resp_123"));
+        assert_eq!(response.usage.input_tokens, 10);
+        assert_eq!(response.usage.output_tokens, 5);
+        assert_eq!(response.usage.total_tokens, 15);
     }
 
     #[tokio::test]
