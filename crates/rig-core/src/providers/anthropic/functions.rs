@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{
     ANTHROPIC_VERSION_LATEST, AnthropicCompletionRequest, AnthropicRequestParams, ApiResponse,
-    default_max_tokens_for_model,
+    CacheTtl, default_max_tokens_for_model,
 };
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_runtime::HttpRuntime;
@@ -52,10 +52,6 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
 pub const DEFAULT_MAX_TOKENS_FALLBACK: u64 = 2_048;
 
 /// Plain-data Anthropic provider configuration.
-///
-/// Prompt-caching knobs (manual `cache_control` breakpoints and Anthropic's
-/// automatic caching) are deliberately not carried here yet; requests are
-/// built with caching off.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
@@ -76,6 +72,21 @@ pub struct Config {
     /// Anthropic's API requires it. Mirrors the per-model defaults the
     /// model type resolves at construction.
     pub default_max_tokens: Option<u64>,
+    /// Mark tool, system and message blocks with `cache_control` breakpoints,
+    /// budgeted and ordered against Anthropic's four-breakpoint request limit.
+    ///
+    /// Fine-grained, per-block control. Prefer [`Self::automatic_caching`] for
+    /// multi-turn conversations; the two compose, in which case the top-level
+    /// automatic breakpoint owns the moving message cache point while rig still
+    /// marks tools and the system prompt when the budget permits.
+    pub prompt_caching: bool,
+    /// Add a top-level `cache_control` field, enabling Anthropic's automatic
+    /// caching: the API places the breakpoint on the last cacheable block and
+    /// advances it as the conversation grows. No beta header required.
+    pub automatic_caching: bool,
+    /// TTL for the top-level `cache_control`. `None` omits the field, which the
+    /// API reads as its five-minute default.
+    pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
 impl Config {
@@ -95,7 +106,31 @@ impl Config {
             anthropic_version: ANTHROPIC_VERSION_LATEST.to_string(),
             anthropic_betas: Vec::new(),
             default_max_tokens,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
         }
+    }
+
+    /// Enable manual `cache_control` breakpoints on tools, system and message
+    /// blocks. See [`Config::prompt_caching`].
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
+    }
+
+    /// Enable Anthropic's automatic prompt caching with the API's default TTL.
+    /// See [`Config::automatic_caching`].
+    pub fn with_automatic_caching(mut self) -> Self {
+        self.automatic_caching = true;
+        self
+    }
+
+    /// Enable Anthropic's automatic prompt caching with a one-hour TTL.
+    pub fn with_automatic_caching_1h(mut self) -> Self {
+        self.automatic_caching = true;
+        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
+        self
     }
 
     /// Config for `model` built from the process environment.
@@ -181,7 +216,12 @@ pub fn build_request_body(
     let mut request = request.clone();
     if stream {
         let body = super::streaming::create_streaming_request_body(
-            model, request, max_tokens, false, false, None,
+            model,
+            request,
+            max_tokens,
+            cfg.prompt_caching,
+            cfg.automatic_caching,
+            cfg.automatic_caching_ttl,
         )?;
         Ok(serde_json::to_vec(&body)?)
     } else {
@@ -189,9 +229,9 @@ pub fn build_request_body(
         let typed = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             model: &model,
             request,
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
+            prompt_caching: cfg.prompt_caching,
+            automatic_caching: cfg.automatic_caching,
+            automatic_caching_ttl: cfg.automatic_caching_ttl,
         })?;
         Ok(serde_json::to_vec(&typed)?)
     }
@@ -557,6 +597,52 @@ mod tests {
         let body = build_request_body(&cfg, &request, false).expect("build");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(value["max_tokens"], 64_000);
+    }
+
+    #[test]
+    fn caching_is_off_by_default() {
+        let cfg = Config::new("claude-sonnet-4-6").with_api_key("k");
+        assert!(!cfg.prompt_caching);
+        assert!(!cfg.automatic_caching);
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert!(value.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn automatic_caching_reaches_the_request_body() {
+        let cfg = Config::new("claude-sonnet-4-6")
+            .with_api_key("k")
+            .with_automatic_caching();
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+        assert!(value["cache_control"].get("ttl").is_none());
+    }
+
+    #[test]
+    fn automatic_caching_1h_sets_the_ttl() {
+        let cfg = Config::new("claude-sonnet-4-6")
+            .with_api_key("k")
+            .with_automatic_caching_1h();
+        let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["cache_control"]["ttl"], "1h");
+    }
+
+    #[test]
+    fn prompt_caching_marks_the_streaming_body() {
+        let cfg = Config::new("claude-sonnet-4-6")
+            .with_api_key("k")
+            .with_prompt_caching();
+        let body = build_request_body(&cfg, &sample_request(), true).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        // The single user message is the last cacheable block, so it carries
+        // the breakpoint the budgeter placed.
+        assert_eq!(
+            value["messages"][0]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
     }
 
     #[test]

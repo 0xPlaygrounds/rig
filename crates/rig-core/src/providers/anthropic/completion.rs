@@ -146,7 +146,7 @@ pub struct ToolDefinition {
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
 /// - `"1h"` — 1 hour
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
