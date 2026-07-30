@@ -1,27 +1,32 @@
 # rig-agent
 
-`rig-agent` contains Rig's classic agent runtime: builders, the serializable
-sans-I/O run state, blocking and streaming drivers, typed hooks, contextual
-tools, extraction, and runtime integrations.
+`rig-agent` contains Rig's agent runtime: builders, the serializable sans-I/O
+run state, blocking and streaming session drivers, record-based hooks, tool
+execution, extraction, and runtime integrations.
 
 Most applications should use the root `rig` facade, where this runtime remains
 enabled by default. Low-level provider and backend contracts live in
 `rig-core`.
 
-Direct users import construction and prompting explicitly:
+An agent is built from a `ProviderConfig` — plain serde configuration, not a
+model object:
 
 ```rust,ignore
 use rig_agent::prelude::*;
-use rig_core::{client::ProviderClient, providers::openai};
+use rig_agent::{AgentBuilder, ProviderConfig};
+use rig_core::providers::openai;
 
-let client = openai::Client::from_env()?;
-let agent = client.agent(openai::GPT_5_2).build();
+let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    .preamble("Explain things briefly.")
+    .build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
-Portable tools implement `rig_core::tool::PortableTool` and work in both runtimes.
-Classic tools that need mutable per-call state implement
-`rig_agent::tool::Tool` and receive `&mut ToolContext`.
+Tools implement `rig_core::tool::PortableTool`, the single portable record
+contract. There is no separate contextual tool trait and no `ToolContext`:
+a tool that needs per-call state owns it in the implementing struct, and
+collections are assembled with `rig::executor::ToolExecutor`.
 
 ## Target support
 

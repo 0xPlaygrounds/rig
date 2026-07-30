@@ -850,12 +850,23 @@ Store constructors no longer take an `EmbeddingModel` parameter. See
 `AgentBuilder::dynamic_context`, `ExtractorBuilder::dynamic_context`, and
 `AgentBuilder::retrieved_tools` — restored in 0.41 — are gone for good along
 with the shared store traits they depended on. Passive RAG is now an explicit
-hook recipe: implement `AgentHook::on_completion_call`, embed the prompt,
-query your concrete store's `top_n`, and inject the hits with
-`RequestPatch::extra_context`. A complete, copy-pasteable hook lives in the
-`rig::agent` module docs (the "Passive RAG agent example") and in
-`examples/rag`. Dynamic tool retrieval is per-turn
-`RequestPatch::active_tools`.
+hook recipe: register a `HookEntry` that matches `HookEvent::BeforeModelCall`,
+embed the prompt, query your concrete store's `top_n`, and inject the hits as
+per-turn context:
+
+```rust,ignore
+HookEntry::new("rag", move |event| {
+    // …embed the prompt, then `store.top_n(request).await` for `hits`…
+    let decision = HookDecision::CompletionCall(CompletionCallAction::patch(
+        RequestPatch::new().extra_context(hits),
+    ));
+    Box::pin(async move { decision })
+})
+```
+
+A complete, copy-pasteable hook lives in the `rig::agent` module docs (the
+"Passive RAG agent example") and in `examples/rag`. Dynamic tool retrieval is
+per-turn `RequestPatch::active_tools`.
 
 ---
 

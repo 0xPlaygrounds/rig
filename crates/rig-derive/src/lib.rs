@@ -122,27 +122,39 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 /// }
 /// ```
 ///
-/// # Execution context
+/// # Per-call state
+///
+/// `ToolContext` was removed: a `#[rig_tool]` function takes only
+/// model-supplied parameters, and every generated tool is a portable record.
+/// Close over the state instead — for a runtime-authored tool, capture it in a
+/// `PortableDynamicTool` callback:
 ///
 /// ```text
-/// use rig::tool::ToolContext;
-/// use rig_derive::rig_tool;
+/// use rig::tool::PortableDynamicTool;
 ///
-/// #[rig_tool]
-/// fn current_user(
-///     // The marker is required for imported names and type aliases. A fully
-///     // qualified `&mut rig::tool::ToolContext` — including under a renamed
-///     // dependency — is recognized directly.
-///     #[rig(context)] context: &mut ToolContext,
-///     greeting: String,
-/// ) -> Result<String, rig::tool::ToolExecutionError> {
-///     let user = context
-///         .get::<String>()
-///         .map(String::as_str)
-///         .unwrap_or("guest");
-///     Ok(format!("{greeting}, {user}!"))
-/// }
+/// let user = current_user_name();
+/// let tool = PortableDynamicTool::new(
+///     "greet",
+///     "Greet the current user.",
+///     serde_json::json!({
+///         "type": "object",
+///         "properties": { "greeting": { "type": "string" } },
+///         "required": ["greeting"],
+///     }),
+///     move |args| {
+///         let user = user.clone();
+///         Box::pin(async move {
+///             let greeting = args["greeting"].as_str().unwrap_or("Hello");
+///             Ok(format!("{greeting}, {user}!").into())
+///         })
+///     },
+/// );
 /// ```
+///
+/// For a tool authored as a type, put the state in the struct's fields and
+/// implement `rig::tool::PortableTool` directly. Annotating a parameter with
+/// `#[rig(context)]`, or giving it a `&mut ToolContext` type, is a compile
+/// error that points at this migration.
 #[proc_macro_attribute]
 pub fn rig_tool(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as tool::args::MacroArgs);
