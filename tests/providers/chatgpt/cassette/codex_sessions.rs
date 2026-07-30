@@ -12,11 +12,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
 use rig::completion::{CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::chatgpt;
+use rig::stream::AgentStreamItem;
 use rig::tool::Tool;
 
 use super::super::support::with_chatgpt_cassette;
@@ -177,10 +177,13 @@ async fn sequential_tool_calls_streaming() {
                 .tool(Subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
-                .max_turns(6)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(SEQUENTIAL_TOOLS_PROMPT)
+                    .history(Vec::<Message>::new())
+                    .max_turns(6)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -284,10 +287,12 @@ async fn parallel_tool_calls_single_turn_streaming() {
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(TWO_TOOL_STREAM_PROMPT)
+                    .max_turns(5)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -416,15 +421,17 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 }))
                 .build();
 
-            let stream = agent
-                .stream_chat(
-                    "I need the current weather in Tokyo and in Paris. Use the get_weather \
+            let stream = Box::pin(
+                agent
+                    .runner(
+                        "I need the current weather in Tokyo and in Paris. Use the get_weather \
                      tool once per city, then compare the two cities in one short paragraph \
                      that mentions both city names.",
-                    Vec::<Message>::new(),
-                )
-                .max_turns(5)
-                .await;
+                    )
+                    .history(Vec::<Message>::new())
+                    .max_turns(5)
+                    .stream_run(),
+            );
 
             let stats = reasoning::collect_stream_stats(stream, "chatgpt").await;
 
@@ -483,18 +490,20 @@ async fn usage_accumulates_across_streaming_multi_turn() {
                 .tool(AlphaSignal)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(ORDERED_TOOL_STREAM_PROMPT)
+                    .max_turns(5)
+                    .stream_run(),
+            );
 
             let mut saw_tool_result = false;
             let mut final_usage = None;
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    MultiTurnStreamItem::StreamUserItem(_) => saw_tool_result = true,
-                    MultiTurnStreamItem::FinalResponse(response) => {
+                    AgentStreamItem::User(_) => saw_tool_result = true,
+                    AgentStreamItem::Final(response) => {
                         final_usage = Some(response.usage());
                     }
                     _ => {}

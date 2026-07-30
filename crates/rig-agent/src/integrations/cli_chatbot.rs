@@ -3,13 +3,14 @@
 //! The private `CliChat` trait and the `Missing`/`Provided` builder typestate
 //! are gone: [`ChatBot`] is one concrete struct built by one concrete
 //! [`ChatBotBuilder`], and it always streams through
-//! [`Agent::stream_prompt`].
+//! the session-layer streaming driver.
 
 use rig_core::message::Message;
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem, Text},
+    agent::{Agent, Text},
     completion::{CompletionError, PromptError, Usage},
+    stream::AgentStreamItem,
     streaming::StreamedAssistantContent,
 };
 use futures::StreamExt;
@@ -77,12 +78,13 @@ impl ChatBot {
         prompt: &str,
         history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let mut response_stream = self
+        let response_stream = self
             .agent
-            .stream_prompt(prompt)
+            .runner(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
-            .await;
+            .stream_run();
+        futures::pin_mut!(response_stream);
 
         let mut acc = String::new();
         let mut messages = None;
@@ -94,21 +96,18 @@ impl ChatBot {
             };
 
             match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text, .. },
-                ))) => {
+                Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
+                    text,
+                    ..
+                }))) => {
                     print!("{}", text);
                     acc.push_str(&text);
                 }
-                Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
+                Ok(AgentStreamItem::Final(final_response)) => {
                     self.usage = final_response.usage();
                     messages = final_response.messages().map(|history| history.to_vec());
                 }
-                Err(e) => {
-                    break Err(PromptError::CompletionError(
-                        CompletionError::ResponseError(e.to_string()),
-                    ));
-                }
+                Err(error) => break Err(error),
                 _ => continue,
             }
         };

@@ -14,9 +14,11 @@ async fn example_streaming_prompt() {
         .temperature(0.5)
         .build();
 
-    let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner("When and where and what type is the next solar eclipse?")
+            .stream_run(),
+    );
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

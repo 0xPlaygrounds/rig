@@ -10,11 +10,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::agent::{MultiTurnStreamItem, StreamingError};
+use rig::completion::PromptError;
 use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
+use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamFinal, StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -417,7 +418,7 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
 }
 
 pub(crate) async fn collect_stream_stats(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
+    stream: impl futures::Stream<Item = Result<AgentStreamItem, PromptError>>,
     provider: &str,
 ) -> StreamStats {
     let mut stats = StreamStats::new();
@@ -426,7 +427,7 @@ pub(crate) async fn collect_stream_stats(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+            Ok(AgentStreamItem::Assistant(content)) => match content {
                 StreamedAssistantContent::Reasoning(ref reasoning) => {
                     record_reasoning(&mut stats, reasoning, provider);
                 }
@@ -461,14 +462,14 @@ pub(crate) async fn collect_stream_stats(
                     stats.events.push("unknown");
                 }
             },
-            Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
+            Ok(AgentStreamItem::User(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {
                     stats.tool_results_in_stream += 1;
                     stats.final_turn_text.clear();
                     stats.events.push("tool_result");
                 }
             },
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentStreamItem::Final(response)) => {
                 stats.final_response_text = Some(response.output().to_owned());
                 stats.got_final_response = true;
             }

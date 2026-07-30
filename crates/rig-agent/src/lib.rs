@@ -9,11 +9,13 @@
         clippy::unreachable
     )
 )]
-//! Rig's classic agent runtime.
+//! Rig's agent runtime.
 //!
-//! This crate owns the mature builder, run state machine, typed hook system,
-//! contextual tool registry, memory orchestration, extraction, and shared
-//! blocking/streaming driver. Portable provider, message, tool, and storage
+//! This crate owns the agent builder, the sans-IO run state machine, the two
+//! session drivers ([`session::AgentSession`] blocking and
+//! [`stream::AgentStream`] streaming) that every agent method rides, the
+//! concrete hook records, the tool executor, and extraction. Portable
+//! provider, message, tool, and storage
 //! contracts remain in [`rig_core`] and are reachable here through the
 //! explicit [`core`] namespace; this crate's root deliberately exports only
 //! runtime-owned items. The comprehensive end-user facade is the root `rig`
@@ -87,7 +89,7 @@ pub mod streaming;
 pub mod test_utils;
 pub mod tool;
 
-pub use agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
+pub use agent::{Agent, AgentBuilder, AgentRun, SessionRunner};
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]

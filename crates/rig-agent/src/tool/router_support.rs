@@ -19,7 +19,7 @@ use rig_core::message::{ToolCall, UserContent};
 use serde::Deserialize;
 
 use super::{IntoToolOutput, PortableTool, ToolExecutionError, ToolResult};
-use crate::agent::prompt_request::{tool_result_message, tool_result_output};
+use crate::agent::response::{tool_result_message, tool_result_output};
 use crate::agent::run::PendingToolCall;
 
 /// Parse model-emitted JSON arguments with the classic dispatch semantics,

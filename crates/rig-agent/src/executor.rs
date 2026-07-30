@@ -32,7 +32,7 @@ use tracing_futures::Instrument;
 
 use crate::agent::prepare::ToolCatalog;
 use crate::agent::run::PendingToolCall;
-use crate::agent::runner::new_execute_tool_span;
+use crate::agent::telemetry::new_execute_tool_span;
 use crate::tool::router_support::{not_found, shape_result};
 use crate::tool::{PortableDynamicTool, ToolExecutionError, ToolResult};
 use rig_core::message::{ToolCall, UserContent};
@@ -59,11 +59,29 @@ pub struct ToolBatchError {
 /// semantics); `first_error` additionally reports the lowest call-index
 /// failure for host observation.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ToolBatchOutput {
     /// One tool-result content per call, ordered by call index.
     pub results: Vec<UserContent>,
     /// The lowest call-index failure, when any call failed.
     pub first_error: Option<ToolBatchError>,
+    /// The **structured** execution result for each call whose body ran,
+    /// keyed by the provider tool-call id: the classification
+    /// (`success`/`failed`/`skipped`/`denied`, error kind, HTTP status) that
+    /// the model-visible `results` content flattens away. A driver surfacing a
+    /// post-execution decision point hands this to its host so a policy can
+    /// inspect the outcome exactly as the classic tool-result hook could.
+    pub raw_results: Vec<(String, ToolResult)>,
+    /// The `execute_tool` span opened for each call whose body ran, keyed by
+    /// the provider tool-call id. A driver that lets a hook rewrite the
+    /// model-visible presentation records the rewritten value onto the
+    /// matching span, exactly as the classic driver did.
+    pub call_spans: Vec<(String, tracing::Span)>,
+    /// Id of the last `execute_tool` span this batch opened, for drivers that
+    /// keep a linear `follows_from` span chain (the blocking driver does; see
+    /// [`ToolExecutor::execute_batch_following`]). `None` when no tool body
+    /// ran or tracing is disabled.
+    pub last_span_id: Option<u64>,
 }
 
 /// An ordered registry of executable tools that answers `ToolCallsReady`
@@ -72,6 +90,16 @@ pub struct ToolBatchOutput {
 pub struct ToolExecutor {
     tools: IndexMap<String, PortableDynamicTool>,
     concurrency: usize,
+    /// Whether tool arguments and results are recorded on `execute_tool`
+    /// spans (the classic `record_content_telemetry` setting; off by
+    /// default, since arguments and results are sensitive).
+    record_telemetry_content: bool,
+    /// Whether recording the result is left to the driver. A driver that
+    /// surfaces a post-execution decision point records the **post-hook**
+    /// presentation itself, so recording the raw result here would leak what
+    /// a redaction hook removed (the classic driver recorded only once, after
+    /// the hook).
+    defer_result_telemetry: bool,
 }
 
 impl ToolExecutor {
@@ -80,6 +108,8 @@ impl ToolExecutor {
         Self {
             tools: IndexMap::new(),
             concurrency: 1,
+            record_telemetry_content: false,
+            defer_result_telemetry: false,
         }
     }
 
@@ -101,6 +131,25 @@ impl ToolExecutor {
     /// `tool_concurrency` builder setting (default 1, sequential).
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
+        self
+    }
+
+    /// Opt in or out of recording tool arguments and results on
+    /// `execute_tool` spans (`gen_ai.tool.call.arguments` /
+    /// `gen_ai.tool.call.result`). Off by default; structural fields (name,
+    /// call id, outcome, error type) are always recorded. Mirrors the classic
+    /// `record_content_telemetry` setting.
+    pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
+        self.record_telemetry_content = enabled;
+        self
+    }
+
+    /// Leave `gen_ai.tool.call.result` to the caller. Set this when the
+    /// driver surfaces a post-execution decision point and records the
+    /// post-hook presentation itself, so a redaction rewrite is not preceded
+    /// by the raw value on the same span (classic parity).
+    pub fn defer_result_telemetry(mut self, deferred: bool) -> Self {
+        self.defer_result_telemetry = deferred;
         self
     }
 
@@ -147,7 +196,25 @@ impl ToolExecutor {
     /// every failure is shaped into a model-visible failed tool result
     /// rather than surfaced as a driver-level error. See the
     /// [module docs](self) for the batch semantics.
-    pub async fn execute_batch(&self, calls: &[PendingToolCall]) -> ToolBatchOutput {
+    // A single lifetime for both borrows: an `async fn` whose future captures
+    // two independent elided lifetimes is invariant over each of them, which
+    // makes the future fail higher-ranked `Send` bounds in callers such as the
+    // Discord integration's `async_trait` handlers.
+    pub async fn execute_batch<'a>(&'a self, calls: &'a [PendingToolCall]) -> ToolBatchOutput {
+        self.execute_batch_following(calls, None).await
+    }
+
+    /// [`ToolExecutor::execute_batch`], chaining this batch's `execute_tool`
+    /// spans onto `follows_from` (and onto each other, in call order) so a
+    /// driver can keep the classic blocking surface's linear causal trace
+    /// `chat -> execute_tool -> chat`. The id of the last span opened comes
+    /// back as [`ToolBatchOutput::last_span_id`] so the caller can continue
+    /// the chain.
+    pub async fn execute_batch_following<'a>(
+        &'a self,
+        calls: &'a [PendingToolCall],
+        follows_from: Option<u64>,
+    ) -> ToolBatchOutput {
         let concurrency = self.concurrency.min(calls.len()).max(1);
 
         // One slot per call, prefilled with preresolved passthroughs so
@@ -159,21 +226,54 @@ impl ToolExecutor {
             .collect();
         let mut first_error: Option<ToolBatchError> = None;
 
-        let mut executed = stream::iter(
-            calls
-                .iter()
-                .enumerate()
-                .filter(|(_, call)| call.preresolved_result.is_none()),
-        )
-        .map(|(index, pending)| async move {
-            let (content, error) = self.execute_one(&pending.tool_call).await;
-            (index, pending, content, error)
-        })
-        .buffer_unordered(concurrency);
-        while let Some((index, pending, content, error)) = executed.next().await {
+        // Own the per-call work up front: each future then borrows only
+        // `&self`, so the batch future carries a single lifetime and stays
+        // `Send` for every caller lifetime (a future capturing two
+        // independent borrows is invariant over each, which breaks
+        // higher-ranked `Send` bounds such as the Discord integration's
+        // `async_trait` handlers).
+        //
+        // Spans are opened here, in call order, so the `follows_from` chain is
+        // deterministic at any concurrency (mirroring the classic driver,
+        // which also chained at prepare time rather than completion time).
+        let mut chain = follows_from;
+        let mut last_span_id = None;
+        let jobs: Vec<(usize, ToolCall, tracing::Span)> = calls
+            .iter()
+            .enumerate()
+            .filter(|(_, call)| call.preresolved_result.is_none())
+            .map(|(index, call)| {
+                let span = new_execute_tool_span();
+                let span = match chain {
+                    Some(id) => span
+                        .follows_from(tracing::span::Id::from_u64(id))
+                        .to_owned(),
+                    None => span,
+                };
+                if let Some(id) = span.id() {
+                    chain = Some(id.into_u64());
+                    last_span_id = chain;
+                }
+                (index, call.tool_call.clone(), span)
+            })
+            .collect();
+        let call_spans: Vec<(String, tracing::Span)> = jobs
+            .iter()
+            .map(|(_, tool_call, span)| (tool_call.id.clone(), span.clone()))
+            .collect();
+        let mut executed = stream::iter(jobs)
+            .map(|(index, tool_call, span)| async move {
+                let (content, result) = self.execute_one(&tool_call, span).await;
+                (index, tool_call, content, result)
+            })
+            .buffer_unordered(concurrency);
+        let mut raw_results: Vec<(String, ToolResult)> = Vec::new();
+        while let Some((index, tool_call, content, result)) = executed.next().await {
             if let Some(slot) = slots.get_mut(index) {
                 *slot = Some(content);
             }
+            let error = result.error().cloned();
+            raw_results.push((tool_call.id.clone(), result));
             // Deterministic error selection: the lowest call-index failure
             // wins regardless of completion order.
             if let Some(error) = error
@@ -181,7 +281,7 @@ impl ToolExecutor {
             {
                 first_error = Some(ToolBatchError {
                     index,
-                    tool_name: pending.tool_call.function.name.clone(),
+                    tool_name: tool_call.function.name.clone(),
                     error,
                 });
             }
@@ -203,22 +303,42 @@ impl ToolExecutor {
                 })
             })
             .collect();
+        // Structured results in call order, matching `results`.
+        raw_results.sort_by_key(|(id, _)| {
+            calls
+                .iter()
+                .position(|call| call.tool_call.id == *id)
+                .unwrap_or(usize::MAX)
+        });
         ToolBatchOutput {
             results,
             first_error,
+            raw_results,
+            call_spans,
+            last_span_id,
         }
     }
 
     /// Execute a single call inside its `execute_tool` span, returning the
     /// shaped model-visible content plus the execution error, if any.
-    async fn execute_one(&self, tool_call: &ToolCall) -> (UserContent, Option<ToolExecutionError>) {
+    async fn execute_one<'a>(
+        &'a self,
+        tool_call: &'a ToolCall,
+        span: tracing::Span,
+    ) -> (UserContent, ToolResult) {
         let tool_name = &tool_call.function.name;
-        let span = new_execute_tool_span();
+        let record_content = self.record_telemetry_content;
 
         async {
             let tool_span = tracing::Span::current();
             tool_span.record("gen_ai.tool.name", tool_name.as_str());
             tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+            if record_content {
+                tool_span.record(
+                    "gen_ai.tool.call.arguments",
+                    crate::json_utils::serialize_json_value(&tool_call.function.arguments),
+                );
+            }
 
             let result = match self.tools.get(tool_name) {
                 Some(tool) => match tool.execute(tool_call.function.arguments.clone()).await {
@@ -235,7 +355,14 @@ impl ToolExecutor {
                 tool_span.record("gen_ai.tool.error.type", error.kind().as_str());
             }
             let content = shape_result(tool_call, &result);
-            (content, result.error().cloned())
+            if record_content && !self.defer_result_telemetry {
+                // The model-visible presentation, matching what the classic
+                // driver recorded. A driver that lets a hook rewrite the
+                // presentation records it post-hook instead (see
+                // `defer_result_telemetry`).
+                tool_span.record("gen_ai.tool.call.result", result.output().render());
+            }
+            (content, result)
         }
         .instrument(span)
         .await

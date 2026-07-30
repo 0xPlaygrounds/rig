@@ -7,7 +7,7 @@
 //! because the machine is fully serializable between steps — pause a run while
 //! tool calls are pending and resume it later (even in another process).
 //!
-//! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
+//! ## Part 2 — high-level [`rig::agent::SessionRunner`] with hooks
 //!
 //! For the common case you don't need that level of control: attach a
 //! [`rig::hooks::HookEntry`] to observe tool calls (and every other event)
@@ -205,10 +205,10 @@ async fn main() -> Result<()> {
     }
 
     // -----------------------------------------------------------------------
-    // Part 2 — high-level AgentRunner path with hooks
+    // Part 2 — high-level SessionRunner path with hooks
     //
     // Most use-cases don't need the manual stepping above. `agent.runner(…)`
-    // returns an `AgentRunner` that drives the same machine internally while
+    // returns a `SessionRunner` that drives the same machine internally while
     // dispatching a `HookEvent` at every observable point. Attach hooks with
     // `.add_hook(entry)`; each call appends another record to the list, and they
     // are dispatched in registration order. (An entry that wants the streaming
@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
     // `.observing_deltas()`, or it never sees them.)
     // -----------------------------------------------------------------------
 
-    println!("\n--- Part 2: AgentRunner with ToolLoggerHook ---");
+    println!("\n--- Part 2: SessionRunner with ToolLoggerHook ---");
 
     let resp = agent
         .runner("What is 2 + 5?")

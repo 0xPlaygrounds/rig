@@ -29,7 +29,7 @@
 //! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
-//! [`crate::completion::Prompt::prompt`] and
+//! [`crate::Agent::prompt`] and
 //! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow:
 //!
@@ -76,7 +76,7 @@ use rig_core::{
 
 use crate::{
     agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
-    agent::prompt_request::{
+    agent::response::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,

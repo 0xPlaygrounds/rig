@@ -688,3 +688,117 @@ sites mechanical.
 --all-targets`); workspace check 0 errors; every crate suite and the full
 facade suite green single-threaded (bedrock replay 57/57); doctests green;
 cassettes untouched.
+
+## R5 — Classic driver deletion (COMPLETE)
+
+The second agent engine is gone: `AgentSession`/`AgentStream` are the only
+drivers, and `Agent` is a thin record over them.
+
+- **Merged, per the plan's preference**: R1's `SessionAgent` and the classic
+  `Agent` were structurally identical, so there is now ONE type named
+  `Agent` — `{ config: AgentConfig, provider: ProviderConfig,
+  rt: Arc<Runtime>, tools: ToolCatalog, executor: Option<ToolExecutor>,
+  hooks: Hooks }` — carrying both surfaces' constructors (`AgentBuilder` +
+  `Agent::new`/`with_runtime`/`with_tools`/`with_executor`/`with_hooks`) and
+  inherent `prompt`/`run`/`run_with_history`/`chat`/`prompt_typed`/`runner`/
+  `stream_prompt`/`stream_chat`/`stream_run`/`tool_definitions`.
+  `rig_agent::agent_api::SessionAgent` survives as a **deprecated alias**.
+- **Deleted**: `agent/runner.rs` (9095 lines) and `agent/prompt_request/`
+  (mod.rs 2229 + streaming.rs 6164) = **17 488 lines**, i.e. `AgentRunner`,
+  `UnaryTurnSource`, `StreamingPromptRequest`, `MultiTurnStreamItem`,
+  `StreamingResult`, `StreamingError`, `drive_agent`, `TurnSource`,
+  `DriveStream`, `DriveItem`, `drive_tool_calls`, `run_single_tool`, the
+  `forward_prompt_setters!` macro and the medium-neutral decision adapters.
+  Net across the branch's R5 commit: **+14 533 / −18 926**.
+- **Relocated** (public paths unchanged): `CompletionCall`, `PromptResponse`
+  (+ its serde repr) and the shared helpers (`build_history_for_request`,
+  `build_full_history`, `tool_result_output`, `tool_result_message`,
+  `invalid_tool_retry_user_message`, `is_empty_assistant_turn`,
+  `assistant_text_from_choice`, `TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`) →
+  `agent/response.rs`; the span shapes (`acquire_agent_span`,
+  `build_chat_span!`, `SessionSpanParams`, `new_session_chat{,_streaming}_span`,
+  `new_execute_tool_span`, `record_usage_on_span`) → `agent/telemetry.rs`; the
+  scripted mock shim → `agent/mock_support.rs` (one shim, not two).
+- **Capability preserved, name changed**: the fluent per-request surface is
+  `agent::SessionRunner` (`agent/request.rs`, ~330 lines over the session
+  layer) with **every** `AgentRunner` setter name intact, so the ~110
+  `.runner(…)` consumer sites did not move. *Logged deviation*: the plan says
+  "delete `AgentRunner`", and the type is deleted — but deleting the
+  per-request override capability outright would violate the mission's
+  "remove mechanisms, never capabilities", so it was rebuilt thin. `run()`,
+  `run_typed::<T>()`, `stream()` (host-driven) and `stream_run()` (driven)
+  terminate it.
+- **New driver entry points**: `AgentSession::drive(&hooks, executor)` and
+  `AgentStream::drive(hooks, executor)` are the classic loops as data — hook
+  dispatch at every surfaced decision point plus executor-answered tool
+  batches. `Agent::stream_run` / `SessionRunner::stream_run` wrap the latter.
+- **Parity restorations the audit forced** (the session layer had drifted
+  from the classic driver; each is now pinned by a ported test):
+  1. per-call `chat`/`chat_streaming` spans get the patched-or-baseline
+     preamble, `gen_ai.input.messages`, and the accepted turn's
+     `gen_ai.output.messages` (suppressed for a retried turn), with the
+     provider-level content recording turned off so attribution matches;
+  2. per-call usage lands on the turn's own streaming span;
+  3. `execute_tool` spans record `gen_ai.tool.call.arguments`/`result` under
+     `record_content_telemetry`, and the result is recorded **once,
+     post-hook** (`ToolExecutor::defer_result_telemetry`), so a redaction
+     rewrite cannot be preceded by the raw value;
+  4. the blocking driver's linear `follows_from` chain
+     (`chat → execute_tool → chat`) via
+     `ToolExecutor::execute_batch_following` + `ToolBatchOutput::last_span_id`;
+  5. the tool-result hook again receives the **structured** `ToolResult`
+     (`ToolBatchOutput::raw_results`), so `error()`/`is_skipped()`/
+     `is_refused()`/`http_status()` read as they did classically instead of
+     flattening to `success`;
+  6. exactly one `CompletionCall` item per model call on the stream,
+     including the zero-usage fallback and the abandoned-turn drain;
+  7. a provider stream emitting visible content after its terminal record is
+     rejected again.
+- **`Send`-generality fix**: `Agent`'s public methods convert the prompt
+  eagerly into one non-generic `drive_run`, and `ToolExecutor::execute_batch`
+  owns its per-call work so the batch future captures a single lifetime.
+  Without this, `rig-agent`'s own Discord integration failed to compile
+  (`implementation of Send is not general enough` under `async_trait`'s
+  higher-ranked bound). A compile-time `Send + Sync` census over `Hooks`,
+  `HookEntry`, `ToolExecutor`, `Agent`, `AgentSession` (+ `Send` for
+  `AgentStream`) now guards the property in `hooks.rs`.
+- **Test ledger — 203 deleted tests → 191 ported, 3 already covered, 9
+  dropped with written justification. Zero intent lost.**
+  - runner.rs (110) + prompt_request/mod.rs (33): 132 ported → `session.rs`
+    (`classic_tests` 23, `classic_hook_tests` 90 incl. `structured_tool_results`
+    13, `classic_span_tests` 7), `agent/request.rs` (11), `agent/response.rs`
+    (7); 3 covered by `agent/hook.rs::protocol_helper_tests`; 8 dropped —
+    5 pinned the deleted engine's concurrent drain/cancellation-window and
+    buffered-final plumbing (batch atomicity and terminate-ordering are
+    covered by the ported `default_concurrency_terminate_skips_remaining_tools_on_both_drivers`
+    and `stream_emits_model_tool_calls_then_atomic_execution_items`), 2 pinned
+    post-final rejection (behavior restored above and re-pinned by
+    `stream.rs::visible_assistant_content_after_the_provider_final_is_rejected`),
+    1 pinned the passive-RAG store plumbing removed in P8.
+  - streaming.rs (60): 59 ported to `stream.rs::migrated_streaming_tests`
+    (one previously `#[ignore]`d span test de-ignored and now actually runs);
+    1 dropped as an `#[ignore]`d live-Anthropic duplicate.
+  - rig-agent lib tests: **179 → 372**.
+- **Known remaining deviations** (logged, not regressions in coverage):
+  per-call tool gating is sequential on both drivers, so the classic
+  concurrent drain-vs-cancel window is unobservable; a terminal hook `Skip`
+  after a `Rewrite` reports the model's original arguments (the single-action
+  inbox cannot carry the salvaged rewrite); the provider final is emitted as
+  it arrives rather than parked behind turn acceptance; hook-skipped calls
+  emit a `ToolExecutionCommitted` stream item; `AgentStream`'s
+  `StreamResponseFinish`/`ModelTurnFinished` fire once per provider turn
+  (classic additionally suppressed tool-only and reasoning-only turns).
+- **Consumer sweep**: ~110 `stream_prompt(..).await` sites across 80 files
+  retargeted onto `Box::pin(agent.runner(p)….stream_run())` with the item and
+  error mapping; `tests/mistralrs.rs` needed `#![recursion_limit = "256"]`
+  (the deeper driver future chain overflows rustc's default query depth only
+  in the unified-feature workspace check).
+
+**Verification**: `cargo fmt --all -- --check` clean; `cargo clippy
+--workspace --all-features --all-targets` **zero** warnings; `cargo check
+--workspace --all-targets` clean; `cargo test -p rig-core --all-features`
+1103+99+1 green; `cargo test -p rig-agent --all-features` 372+13+1 green;
+full facade suite green single-threaded (every provider cassette suite
+replays byte-identically, incl. gemini 108, anthropic 154, openai 130,
+chatgpt 63, openrouter 86); bedrock 57/57; `cargo test --workspace
+--all-features --doc` green; `git diff --stat -- tests/cassettes` **empty**.

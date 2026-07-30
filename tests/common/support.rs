@@ -3,9 +3,9 @@
 
 use futures::StreamExt;
 use rig::{
-    agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::{AssistantContent, ToolDefinition},
+    completion::{AssistantContent, PromptError, ToolDefinition},
     embeddings::Embedding,
+    stream::AgentStreamItem,
     streaming::{
         StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
     },
@@ -464,12 +464,12 @@ pub(crate) fn assert_embeddings_nonempty_and_consistent(
 }
 
 pub(crate) async fn collect_stream_final_response(
-    stream: &mut StreamingResult,
-) -> Result<String, StreamingError> {
+    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
+) -> Result<String, PromptError> {
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+        if let AgentStreamItem::Final(response) = item? {
             final_response = Some(response.output().to_owned());
         }
     }
@@ -478,17 +478,17 @@ pub(crate) async fn collect_stream_final_response(
 }
 
 pub(crate) async fn collect_stream_final_response_and_provider_final(
-    stream: &mut StreamingResult,
-) -> Result<(String, StreamFinal), StreamingError> {
+    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
+) -> Result<(String, StreamFinal), PromptError> {
     let mut final_response = None;
     let mut provider_final = None;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::Final(final_)) => {
                 provider_final = Some(final_);
             }
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentStreamItem::Final(response) => {
                 final_response = Some(response.output().to_owned());
             }
             _ => {}
@@ -588,12 +588,14 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(
+    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
+) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+            Ok(AgentStreamItem::Assistant(content)) => match content {
                 StreamedAssistantContent::Text(text) => {
                     observation.all_streamed_text.push_str(&text.text);
                     observation.final_turn_text.push_str(&text.text);
@@ -624,12 +626,12 @@ pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> 
                     observation.events.push("unknown");
                 }
             },
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
                 observation.events.push("tool_result");
             }
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentStreamItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 observation.events.push("final_response");

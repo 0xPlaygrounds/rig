@@ -1,10 +1,11 @@
 //! Anthropic streaming tools smoke test.
 
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
+use rig::completion::PromptError;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
+use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -34,7 +35,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -57,10 +58,12 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(8)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(TWO_TOOL_STREAM_PROMPT)
+                    .max_turns(8)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -119,11 +122,11 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
             .tool(OutOfOrderBetaSignal(order))
             .build();
 
-        let mut stream = agent
-            .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+        let mut stream =Box::pin( agent
+            .runner(TWO_TOOL_STREAM_PROMPT)
             .max_turns(8)
             .tool_concurrency(2)
-            .await;
+            .stream_run());
         let observation = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             collect_concurrent_tool_observation(&mut stream),
@@ -254,15 +257,17 @@ struct ConcurrentToolObservation {
     events: Vec<&'static str>,
 }
 
-async fn collect_concurrent_tool_observation(
-    stream: &mut StreamingResult,
-) -> ConcurrentToolObservation {
+async fn collect_concurrent_tool_observation<S>(stream: &mut S) -> ConcurrentToolObservation
+where
+    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
+        + Unpin,
+{
     let mut observation = ConcurrentToolObservation::default();
     let mut tool_names_by_id = HashMap::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
                 tool_call,
                 ..
             })) => {
@@ -270,19 +275,16 @@ async fn collect_concurrent_tool_observation(
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+            Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => {
                 observation.events.push("tool_execution_committed");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { tool_result, .. })) => {
                 observation
                     .streamed_tool_results
                     .push(tool_name_for_result(&tool_names_by_id, &tool_result.id));
                 observation.events.push("tool_result");
             }
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentStreamItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 if let Some(history) = response.messages() {
@@ -293,31 +295,25 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(_))) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                _,
-            ))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(_))) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
-            )) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ReasoningDelta { .. })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))) => {
                 observation.events.push("stream_final");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Unknown(_))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Unknown(_))) => {
                 observation.events.push("unknown");
             }
-            Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
+            Ok(AgentStreamItem::CompletionCall(_)) => {}
             Ok(_) => {}
             Err(error) => {
                 observation.errors.push(streaming_error_to_string(error));
@@ -329,7 +325,7 @@ async fn collect_concurrent_tool_observation(
     observation
 }
 
-fn streaming_error_to_string(error: StreamingError) -> String {
+fn streaming_error_to_string(error: PromptError) -> String {
     error.to_string()
 }
 

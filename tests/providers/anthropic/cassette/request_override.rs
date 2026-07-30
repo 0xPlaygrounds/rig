@@ -234,7 +234,7 @@ async fn request_overridden_by_hook_streaming() {
                 .add_hook(force_weather_only_on_first_turn())
                 .build();
 
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(5).await;
+            let mut stream = Box::pin(agent.runner(PROMPT).max_turns(5).stream_run());
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");

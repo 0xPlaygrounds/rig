@@ -29,7 +29,7 @@
 //!    ([`CallTools`](super::AgentRunStep::CallTools) /
 //!    [`Done`](super::AgentRunStep::Done)).
 //!
-//! [`crate::streaming::StreamingPrompt::stream_prompt`] drives this protocol
+//! [`crate::Agent::stream_prompt`] drives this protocol
 //! internally; hand-driven runs can use it to stream any
 //! [`AgentRun`](super::AgentRun).
 
@@ -43,7 +43,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
+    agent::response::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
     completion::{CompletionError, Message, Usage},
     json_utils,
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},

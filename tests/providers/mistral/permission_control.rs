@@ -200,14 +200,16 @@ async fn permission_control_streaming_example() -> Result<()> {
         last_result: last_result.clone(),
     };
 
-    let mut stream = agent
-        .stream_prompt(
-            "Use the available tools to read test.txt now. \
+    let mut stream = Box::pin(
+        agent
+            .runner(
+                "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
-        )
-        .max_turns(5)
-        .add_hook(hook.entry())
-        .await;
+            )
+            .max_turns(5)
+            .add_hook(hook.entry())
+            .stream_run(),
+    );
 
     let final_response = collect_stream_final_response(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();

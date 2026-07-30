@@ -4,7 +4,7 @@
 //! The prompting *traits* (`Prompt`/`Chat`/`TypedPrompt`) are gone: the
 //! prompting surface is [`Agent`](crate::Agent)'s inherent
 //! `prompt`/`chat`/`run`/`prompt_typed` methods over
-//! [`AgentRunner`](crate::AgentRunner).
+//! [`SessionRunner`](crate::SessionRunner).
 
 use thiserror::Error;
 

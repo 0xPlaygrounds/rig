@@ -10,11 +10,15 @@ use rig::providers::openai;
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
 
-async fn collect_stream_final_response(stream: &mut StreamingResult) -> Result<String> {
+async fn collect_stream_final_response<S>(stream: &mut S) -> Result<String>
+where
+    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
+        + Unpin,
+{
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+        if let AgentStreamItem::Final(response) = item? {
             final_response = Some(response.output().to_owned());
         }
     }
@@ -37,7 +41,7 @@ async fn main() -> Result<()> {
         .build();
 
     let history = sample_history();
-    let mut stream = agent.stream_chat(PROMPT, &history).await;
+    let mut stream = Box::pin(agent.runner(PROMPT).history(&history).stream_run());
     let response = collect_stream_final_response(&mut stream).await?;
     println!("{response}");
 

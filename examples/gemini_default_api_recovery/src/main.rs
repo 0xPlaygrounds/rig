@@ -5,7 +5,7 @@
 //! seeing the recoverable legacy tool-name emission.
 
 use futures::StreamExt;
-use rig::agent::{InvalidToolCallAction, MultiTurnStreamItem, PromptResponse, StreamingResult};
+use rig::agent::{InvalidToolCallAction, PromptResponse};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolResultContent;
 use rig::prelude::*;
@@ -13,6 +13,7 @@ use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
+use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -230,34 +231,35 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
     serde_json::to_value(&additional_params)
 }
 
-async fn consume_workspace_like_stream(
-    mut stream: StreamingResult,
-) -> Result<WorkspaceStreamObservation, String> {
+async fn consume_workspace_like_stream<S>(stream: S) -> Result<WorkspaceStreamObservation, String>
+where
+    S: futures::Stream<Item = Result<AgentStreamItem, rig::completion::PromptError>>,
+{
+    futures::pin_mut!(stream);
+
     let mut observation = WorkspaceStreamObservation::default();
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text.text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                reasoning,
-            )) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning)) => {
                 observation.events.push("reasoning");
                 observation
                     .reasoning_text
                     .push_str(&reasoning.display_text());
             }
-            MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
-            ) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::ReasoningDelta {
+                reasoning,
+                ..
+            }) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
+            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
+                tool_call, ..
             }) => {
                 observation.events.push("tool_call");
                 observation.tool_calls.push(tool_call.function.name.clone());
@@ -266,16 +268,11 @@ async fn consume_workspace_like_stream(
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta {
-                ..
-            }) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. }) => {
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => {
+            AgentStreamItem::User(StreamedUserContent::ToolResult { tool_result, .. }) => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
                     ToolResultContent::Json { value } => value.clone(),
@@ -294,14 +291,14 @@ async fn consume_workspace_like_stream(
                     serde_json::from_value(value).map_err(|error| error.to_string())?;
                 observation.executor_results.push(result);
             }
-            MultiTurnStreamItem::CompletionCall(completion_call) => {
+            AgentStreamItem::CompletionCall(completion_call) => {
                 observation.events.push("completion_call");
                 observation.completion_calls.push(format!(
                     "call_index={}, usage={:?}",
                     completion_call.call_index, completion_call.usage
                 ));
             }
-            MultiTurnStreamItem::FinalResponse(final_response) => {
+            AgentStreamItem::Final(final_response) => {
                 observation.events.push("final_response");
                 observation.final_response = Some(final_response);
                 return Ok(observation);
@@ -350,10 +347,10 @@ async fn run_workspace_canary_attempt(
     let invalid_tool_names = InvalidToolNames::default();
 
     let stream = agent
-        .stream_prompt(workspace_canary_prompt(attempt))
+        .runner(workspace_canary_prompt(attempt))
         .add_hook(default_api_repair_hook(invalid_tool_names.clone()))
         .history(Vec::<rig::message::Message>::new())
-        .await;
+        .stream_run();
 
     let mut observation = consume_workspace_like_stream(stream).await?;
     observation.invalid_tool_names = invalid_tool_names.names();

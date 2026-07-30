@@ -34,11 +34,13 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 .temperature(0.0)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("In one short sentence, describe the color of a clear daytime sky.")
-                .add_hook(tap_entry)
-                .max_turns(2)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("In one short sentence, describe the color of a clear daytime sky.")
+                    .add_hook(tap_entry)
+                    .max_turns(2)
+                    .stream_run(),
+            );
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -87,14 +89,14 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(
+            let mut stream =Box::pin( agent
+                .runner(
                     "First add 40 and 2 with the add tool. Then subtract 10 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .add_hook(tap_entry)
                 .max_turns(6)
-                .await;
+                .stream_run());
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -138,16 +140,16 @@ async fn streaming_result_redaction_reaches_final_response() {
                 .tool(add)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(
-                    "Use the add tool to add 5 and 5, then report the exact tool result.",
-                )
-                .add_hook(rewrite_tool_result(
-                    "add",
-                    ResultRewrite::Replace("STREAM-REDACTED-Q3"),
-                ))
-                .max_turns(4)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("Use the add tool to add 5 and 5, then report the exact tool result.")
+                    .add_hook(rewrite_tool_result(
+                        "add",
+                        ResultRewrite::Replace("STREAM-REDACTED-Q3"),
+                    ))
+                    .max_turns(4)
+                    .stream_run(),
+            );
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -186,13 +188,15 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
-                .add_hook(apply_patch(
-                    RequestPatch::new().active_tools(["add"]).temperature(0.0),
-                ))
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
+                    .add_hook(apply_patch(
+                        RequestPatch::new().active_tools(["add"]).temperature(0.0),
+                    ))
+                    .max_turns(5)
+                    .stream_run(),
+            );
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -233,14 +237,16 @@ async fn streaming_skip_leaves_tool_unexecuted() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("Add 14 and 6, and subtract 9 from 40. Report what you can.")
-                .add_hook(skip_tool_hook(
-                    "subtract",
-                    "the subtract tool is offline; continue without it",
-                ))
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("Add 14 and 6, and subtract 9 from 40. Report what you can.")
+                    .add_hook(skip_tool_hook(
+                        "subtract",
+                        "the subtract tool is offline; continue without it",
+                    ))
+                    .max_turns(5)
+                    .stream_run(),
+            );
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -302,7 +308,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(add_s)
                 .tool(sub_s)
                 .build();
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(6).await;
+            let mut stream = Box::pin(agent.runner(PROMPT).max_turns(6).stream_run());
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");

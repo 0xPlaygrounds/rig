@@ -181,7 +181,7 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
                 .add_hook(pin_units_to_celsius())
                 .build();
 
-            let mut stream = agent.stream_prompt(WEATHER_PROMPT).max_turns(5).await;
+            let mut stream = Box::pin(agent.runner(WEATHER_PROMPT).max_turns(5).stream_run());
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming weather prompt should succeed");

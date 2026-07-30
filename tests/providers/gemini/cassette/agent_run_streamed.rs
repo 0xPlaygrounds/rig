@@ -10,12 +10,13 @@ use rig::agent::run::{
     AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
     StreamedTurnEvent,
 };
-use rig::agent::{InvalidToolCallAction, MultiTurnStreamItem, StreamingError, ToolCallAction};
+use rig::agent::{InvalidToolCallAction, ToolCallAction};
 use rig::completion::{PromptError, Usage};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig::stream::AgentStreamItem;
 use rig::streaming::StreamedAssistantContent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
@@ -468,20 +469,21 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
-                .max_turns(2)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("What is 21 + 21? Use the add tool.")
+                    .max_turns(2)
+                    .stream_run(),
+            );
 
             let mut prompt_error = None;
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                    Err(error) => {
+                        prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
 
@@ -538,23 +540,24 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
-                .add_hook(cancel_on_tool_call())
-                .max_turns(2)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("What is 21 + 21? Use the add tool.")
+                    .add_hook(cancel_on_tool_call())
+                    .max_turns(2)
+                    .stream_run(),
+            );
 
             let mut prompt_error = None;
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
+                    Ok(AgentStreamItem::Final(_)) => saw_final = true,
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                    Err(error) => {
+                        prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
             assert!(

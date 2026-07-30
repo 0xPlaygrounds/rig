@@ -40,7 +40,7 @@ pub use rig_core::*;
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, SessionRunner};
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
@@ -125,10 +125,15 @@ pub use rig_agent::hooks;
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::agent_api;
 
-/// The forward-looking concrete agent type (renamed to `Agent` once the
-/// classic runtime is retired).
+/// Deprecated alias for [`Agent`]: the two agent types merged when the
+/// classic runtime was retired.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.22.0",
+    note = "`SessionAgent` and `Agent` merged into one type; use `rig::Agent`"
+)]
 pub use rig_agent::agent_api::SessionAgent;
 
 /// Common portable imports plus additive classic-runtime conveniences.
@@ -144,8 +149,8 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, MultiTurnStreamItem, PromptError, StreamingResult,
-        StructuredOutputError, ToProviderConfig,
+        Agent, AgentClientExt, AgentStream, AgentStreamItem, PromptError, PromptResponse,
+        SessionRunner, StructuredOutputError, ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }

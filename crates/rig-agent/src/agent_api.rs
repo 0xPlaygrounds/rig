@@ -1,36 +1,14 @@
-//! The thin, forward-looking agent: plain data plus inherent methods over
-//! the session drivers.
+//! Host-owned conversation memory: the recipe, and the transitional
+//! `SessionAgent` alias.
 //!
-//! [`SessionAgent`] pairs an [`AgentConfig`] with a [`ProviderConfig`], an
-//! optional [`ToolExecutor`], and attach-and-forget [`Hooks`], and drives
-//! [`AgentSession`] / [`AgentStream`] internally. There are no behavior
-//! slots beyond those fields: tools are data ([`ToolCatalog`] +
-//! executor records), hooks are data (named callback records folded with
-//! the classic semantics), and conversation memory inverts to explicit
-//! host calls (see below). It is named `SessionAgent` while the classic
-//! [`Agent`](crate::agent::Agent) still exists.
-//!
-//! ```no_run
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig_agent::agent::AgentConfig;
-//! use rig_agent::agent_api::SessionAgent;
-//! use rig_agent::provider::ProviderConfig;
-//!
-//! let agent = SessionAgent::new(
-//!     AgentConfig::new().with_preamble("You are terse."),
-//!     ProviderConfig::OpenAi(
-//!         rig_agent::core::providers::openai::functions::Config::new("gpt-4o"),
-//!     ),
-//! );
-//! println!("{}", agent.prompt("Hello!").await?);
-//! # Ok(())
-//! # }
-//! ```
+//! The forward-looking session agent this module introduced in R1 **is** now
+//! [`Agent`](crate::Agent) — the two types merged, so `SessionAgent` is only a
+//! deprecated alias. What remains genuinely documented here is the memory
+//! recipe every agent method assumes.
 //!
 //! # Conversation memory as host calls
 //!
-//! No agent in this crate owns a memory slot — neither [`SessionAgent`] nor
-//! the classic [`Agent`](crate::agent::Agent). Memory is host-owned data, and
+//! No agent in this crate owns a memory slot. Memory is host-owned data, and
 //! the semantics the classic driver used to apply internally translate to two
 //! explicit host calls around a run:
 //!
@@ -39,14 +17,14 @@
 //!   loaded only when a memory backend *and* a conversation id were both set;
 //!   with a host call, "no id" simply means "don't call load";
 //! - **append-after**: the finished run's new messages
-//!   ([`PromptResponse::messages`]) are appended in **one** call after a
+//!   ([`PromptResponse::messages`](crate::agent::PromptResponse::messages)) are appended in **one** call after a
 //!   successful run — one append per run, not per model call, so a multi-step
 //!   tool round-trip persists its committed transcript exactly once. An
 //!   append failure **warns and proceeds** (the response is still surfaced),
 //!   and a run that errors or is stopped by a hook never reaches the append;
 //! - **explicit history bypasses memory entirely** — a caller that passes its
-//!   own history (classic `.history(...)` / [`SessionAgent::chat`] /
-//!   [`SessionAgent::run_with_history`]) performs neither the load nor the
+//!   own history (`.runner(p).history(...)` / [`Agent::chat`](crate::Agent::chat) /
+//!   [`Agent::run_with_history`](crate::Agent::run_with_history)) performs neither the load nor the
 //!   append. There is no `without_memory()` switch any more: not calling the
 //!   store *is* the switch.
 //!
@@ -57,13 +35,13 @@
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! use rig_agent::agent::AgentConfig;
-//! use rig_agent::agent_api::SessionAgent;
+//! use rig_agent::Agent;
 //! use rig_agent::provider::ProviderConfig;
 //! use rig_core::memory::InMemoryConversationMemory;
 //!
 //! let memory = InMemoryConversationMemory::new();
 //! let conversation_id = "user-42";
-//! let agent = SessionAgent::new(
+//! let agent = Agent::new(
 //!     AgentConfig::new().with_preamble("You are terse."),
 //!     ProviderConfig::OpenAi(
 //!         rig_agent::core::providers::openai::functions::Config::new("gpt-4o"),
@@ -90,7 +68,7 @@
 //! # }
 //! ```
 //!
-//! Streaming is the same recipe: load before [`SessionAgent::stream`] (the
+//! Streaming is the same recipe: load before `Agent::stream_prompt` (the
 //! loaded history goes into the session's history) and append the final
 //! response's `messages` once the stream ends. A load
 //! failure that used to arrive as a one-item error stream is now just an
@@ -105,331 +83,35 @@
 //! `demoted` (archive it) and `compaction` (fold it into a summary) instead
 //! of a hook firing behind the run.
 
-use std::sync::Arc;
-
-use rig_core::message::UserContent;
-
-use crate::agent::hook::{InvalidToolCallAction, ModelTurnAction, ObservationAction};
-use crate::agent::prepare::ToolCatalog;
-use crate::agent::{AgentConfig, PromptResponse};
-use crate::completion::{CompletionError, Message, PromptError};
-use crate::executor::ToolExecutor;
-use crate::hooks::Hooks;
-use crate::provider::{ProviderConfig, Runtime};
-use crate::session::{AgentSession, SessionEvent, SessionPolicy};
-use crate::stream::AgentStream;
-use crate::tool::{ToolOutput, ToolResult};
-
-/// The forward-looking concrete agent: plain data plus inherent methods over
-/// the session layer. See the [module docs](self).
-#[derive(Clone)]
-pub struct SessionAgent {
-    /// The agent's model-free configuration.
-    pub config: AgentConfig,
-    /// The provider fulfilling model calls.
-    pub provider: ProviderConfig,
-    /// The runtime handle model calls execute on.
-    pub rt: Arc<Runtime>,
-    /// Tool definitions advertised each turn.
-    pub tools: ToolCatalog,
-    /// Executes [`SessionEvent::ToolCallsReady`] batches when present; with
-    /// no executor a run that produces an executable tool call fails.
-    pub executor: Option<ToolExecutor>,
-    /// Attach-and-forget hooks dispatched at every surfaced event.
-    pub hooks: Hooks,
-}
-
-impl std::fmt::Debug for SessionAgent {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("SessionAgent")
-            .field("config", &self.config)
-            .field("tools", &self.tools)
-            .field("executor", &self.executor)
-            .field("hooks", &self.hooks)
-            .finish_non_exhaustive()
-    }
-}
-
-impl SessionAgent {
-    /// Create an agent over a fresh default [`Runtime`].
-    pub fn new(config: AgentConfig, provider: ProviderConfig) -> Self {
-        Self {
-            config,
-            provider,
-            rt: Arc::new(Runtime::new()),
-            tools: ToolCatalog::default(),
-            executor: None,
-            hooks: Hooks::default(),
-        }
-    }
-
-    /// Use this runtime handle instead of a fresh default one.
-    pub fn with_runtime(mut self, rt: Arc<Runtime>) -> Self {
-        self.rt = rt;
-        self
-    }
-
-    /// Advertise these tool definitions each turn (the executor, when
-    /// present, answers the calls it knows; unknown names produce the
-    /// registry's not-found result).
-    pub fn with_tools(mut self, catalog: ToolCatalog) -> Self {
-        self.tools = catalog;
-        self
-    }
-
-    /// Attach a tool executor. When no catalog was set explicitly, the
-    /// executor's own [`ToolExecutor::catalog`] is adopted so the agent
-    /// advertises exactly what it can run.
-    pub fn with_executor(mut self, executor: ToolExecutor) -> Self {
-        if self.tools == ToolCatalog::default() {
-            self.tools = executor.catalog();
-        }
-        self.executor = Some(executor);
-        self
-    }
-
-    /// Attach hooks, dispatched at every surfaced event with the classic
-    /// fold semantics (see [`Hooks`]).
-    pub fn with_hooks(mut self, hooks: Hooks) -> Self {
-        self.hooks = hooks;
-        self
-    }
-
-    /// The [`SessionPolicy`] this agent drives sessions under: the default
-    /// policy when no hooks are attached; with hooks, every decision point
-    /// is surfaced so each one can be dispatched through the hook list.
-    fn session_policy(&self) -> SessionPolicy {
-        if self.hooks.is_empty() {
-            SessionPolicy::default()
-        } else {
-            SessionPolicy {
-                surface_model_turns: true,
-                surface_completion_calls: true,
-                surface_tool_calls: true,
-                surface_tool_results: true,
-            }
-        }
-    }
-
-    /// Build the configured session for one prompt.
-    fn session(&self, prompt: impl Into<Message>, history: Vec<Message>) -> AgentSession {
-        let session = AgentSession::new(
-            self.config.clone(),
-            self.provider.clone(),
-            self.rt.clone(),
-            prompt,
-        )
-        .with_tools(self.tools.clone())
-        .with_policy(self.session_policy());
-        if history.is_empty() {
-            session
-        } else {
-            session.with_history(history)
-        }
-    }
-
-    /// Run one prompt to completion, dispatching [`Hooks`] at every surfaced
-    /// event and answering tool batches through the executor when present.
-    ///
-    /// # Errors
-    /// Provider/protocol errors; a hook `Stop` cancels the run; an
-    /// executable tool call with no executor attached fails the run.
-    pub async fn run(&self, prompt: impl Into<Message>) -> Result<PromptResponse, PromptError> {
-        self.run_with_history(prompt, Vec::new()).await
-    }
-
-    /// [`SessionAgent::run`] with explicit input history preceding the
-    /// prompt. Explicit history means conversation memory (a host concern —
-    /// see the [module docs](self)) is bypassed entirely.
-    pub async fn run_with_history(
-        &self,
-        prompt: impl Into<Message>,
-        history: Vec<Message>,
-    ) -> Result<PromptResponse, PromptError> {
-        let mut session = self.session(prompt, history);
-        // The session surfaces the turn prompt on `BeforeModelCall` only; the
-        // response observation carries it too (classic parity), so keep the
-        // most recent one.
-        let mut turn_prompt: Option<Message> = None;
-        loop {
-            match session.advance().await? {
-                SessionEvent::BeforeModelCall {
-                    turn,
-                    prompt,
-                    history,
-                } => {
-                    let action = self
-                        .hooks
-                        .dispatch_completion_call(turn, &prompt, &history)
-                        .await;
-                    turn_prompt = Some(prompt);
-                    session.reply_before_call(action)?;
-                }
-                SessionEvent::TurnFinished {
-                    turn,
-                    content,
-                    usage,
-                } => {
-                    // Observation over the full provider response first
-                    // (classic order: the response hook fires before the
-                    // model-turn verdict).
-                    let observed_prompt = turn_prompt.clone().unwrap_or_else(|| Message::from(""));
-                    if let Some(response) = session.last_response().cloned()
-                        && let ObservationAction::Stop(reason) = self
-                            .hooks
-                            .dispatch_completion_response(turn, &observed_prompt, &response)
-                            .await
-                    {
-                        session.reply_turn(ModelTurnAction::Stop(reason))?;
-                        continue;
-                    }
-                    let action = self.hooks.dispatch_model_turn(turn, &content, usage).await;
-                    session.reply_turn(action)?;
-                }
-                SessionEvent::InvalidToolCall(context) => {
-                    let action = self
-                        .hooks
-                        .dispatch_invalid_tool_call(&context)
-                        .await
-                        // Preserve the classic default: fail fast.
-                        .unwrap_or_else(InvalidToolCallAction::fail);
-                    session.resolve_invalid(action)?;
-                }
-                SessionEvent::ToolCallPending { call } => {
-                    // The effective action already carries any chained
-                    // rewrite; a terminal `Skip`'s salvaged rewrite cannot be
-                    // applied through the single-action inbox and only
-                    // affects reporting, never execution (the body does not
-                    // run).
-                    let internal_call_id = call
-                        .internal_call_id
-                        .clone()
-                        .unwrap_or_else(|| call.tool_call.id.clone());
-                    let (action, _salvaged) = self
-                        .hooks
-                        .dispatch_tool_call(&call.tool_call, &internal_call_id)
-                        .await;
-                    session.reply_tool_call(action)?;
-                }
-                SessionEvent::ToolCallsReady(calls) => {
-                    let results = match &self.executor {
-                        Some(executor) => executor.execute_batch(&calls).await.results,
-                        None => {
-                            // Preresolved-only batches (hook skips, invalid
-                            // call recovery) pass through; an executable call
-                            // with no executor is a host configuration error.
-                            let mut results = Vec::with_capacity(calls.len());
-                            for call in &calls {
-                                match &call.preresolved_result {
-                                    Some(content) => results.push(content.clone()),
-                                    None => {
-                                        return Err(PromptError::CompletionError(
-                                            CompletionError::ResponseError(
-                                                "model called a tool but this SessionAgent has \
-                                                 no executor; attach one with with_executor"
-                                                    .to_string(),
-                                            ),
-                                        ));
-                                    }
-                                }
-                            }
-                            results
-                        }
-                    };
-                    session.provide_tool_results(results)?;
-                }
-                SessionEvent::ToolResultReady { call, result } => {
-                    let raw = raw_tool_result(&result);
-                    let internal_call_id = call.id.clone();
-                    let action = self
-                        .hooks
-                        .dispatch_tool_result(&call, &internal_call_id, &raw)
-                        .await;
-                    session.reply_tool_result(action)?;
-                }
-                SessionEvent::Done(response) => return Ok(response),
-            }
-        }
-    }
-
-    /// Run one prompt and return the final output text.
-    ///
-    /// # Errors
-    /// As [`SessionAgent::run`].
-    pub async fn prompt(&self, prompt: impl Into<Message>) -> Result<String, PromptError> {
-        Ok(self.run(prompt).await?.output)
-    }
-
-    /// Run one prompt against the caller's history and extend it with the
-    /// run's new messages, mirroring the classic
-    /// [`Agent::chat`](crate::Agent::chat) method. Explicit history
-    /// means conversation memory is bypassed (see the [module docs](self)).
-    ///
-    /// # Errors
-    /// As [`SessionAgent::run`]; on error the caller's history is unchanged.
-    pub async fn chat(
-        &self,
-        prompt: impl Into<Message>,
-        chat_history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let response = self.run_with_history(prompt, chat_history.clone()).await?;
-        if let Some(messages) = response.messages {
-            chat_history.extend(messages);
-        }
-        Ok(response.output)
-    }
-
-    /// Build a pre-configured [`AgentStream`] for one prompt: this agent's
-    /// tools and session policy are already applied.
-    ///
-    /// The streaming surface stays host-driven: pull items with
-    /// [`AgentStream::next_item_with_tools`] to answer
-    /// tool batches through this agent's executor, and dispatch [`Hooks`]
-    /// per surfaced item via the event-specific dispatchers
-    /// ([`Hooks::dispatch_completion_call`],
-    /// [`Hooks::dispatch_model_turn`], [`Hooks::dispatch_tool_call`],
-    /// [`Hooks::dispatch_tool_result`],
-    /// [`Hooks::dispatch_invalid_tool_call`], and
-    /// [`Hooks::dispatch_stream_finish`] for the terminal record).
-    pub fn stream(&self, prompt: impl Into<Message>) -> AgentStream {
-        AgentStream::new(
-            self.config.clone(),
-            self.provider.clone(),
-            self.rt.clone(),
-            prompt,
-        )
-        .with_tools(self.tools.clone())
-        .with_policy(self.session_policy())
-    }
-}
-
-/// Reconstruct the raw-result view the tool-result hook receives from the
-/// committed model-visible content: tool-result content blocks map back onto
-/// a successful [`ToolResult`] verbatim; any other content is rendered as
-/// text.
-fn raw_tool_result(result: &UserContent) -> ToolResult {
-    match result {
-        UserContent::ToolResult(tool_result) => {
-            ToolResult::success(ToolOutput::content(tool_result.content.clone()))
-        }
-        other => ToolResult::success(ToolOutput::text(
-            serde_json::to_string(other).unwrap_or_default(),
-        )),
-    }
-}
+/// The single agent type, re-exported under its transitional name.
+///
+/// `SessionAgent` and the classic `Agent` merged in the single-architecture
+/// migration: there is exactly one agent type now, and this alias only exists
+/// so code written against the R1 session agent keeps compiling. Use
+/// [`Agent`](crate::Agent).
+#[deprecated(
+    since = "0.22.0",
+    note = "`SessionAgent` and `Agent` merged into one type; use `rig_agent::Agent`"
+)]
+pub type SessionAgent = crate::agent::Agent;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::agent::hook::{CompletionCallAction, RequestPatch, ToolResultAction};
+    use crate::agent::{Agent, AgentConfig};
+    use crate::completion::Message;
+    use crate::executor::ToolExecutor;
+    use crate::hooks::Hooks;
     use crate::hooks::{HookDecision, HookEntry, HookEvent};
     use crate::provider::MockScript;
+    use crate::provider::ProviderConfig;
     use crate::test_utils::{AppendFailingMemory, CountingMemory, FailingMemory};
     use crate::tool::PortableDynamicTool;
+    use crate::tool::ToolOutput;
     use rig_core::OneOrMany;
     use rig_core::completion::{CompletionResponse, FinishReason, Usage};
     use rig_core::message::AssistantContent;
+    use rig_core::message::UserContent;
 
     fn usage(total: u64) -> Usage {
         let mut usage = Usage::new();
@@ -493,7 +175,7 @@ mod tests {
     #[tokio::test]
     async fn prompt_round_trips_a_text_run() {
         let script = MockScript::from_responses(vec![text_response("hello there")]);
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
         let output = agent.prompt("hi").await.expect("prompt");
         assert_eq!(output, "hello there");
     }
@@ -501,7 +183,7 @@ mod tests {
     #[tokio::test]
     async fn run_reports_usage_and_messages() {
         let script = MockScript::from_responses(vec![text_response("ok")]);
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
         let response = agent.run("hi").await.expect("run");
         assert_eq!(response.output, "ok");
         assert_eq!(response.usage.total_tokens, 5);
@@ -518,7 +200,7 @@ mod tests {
             text_response("the sum is 3"),
         ]);
         let probe = script.clone();
-        let agent = SessionAgent::new(config, ProviderConfig::Mock(script))
+        let agent = Agent::new(config, ProviderConfig::Mock(script))
             .with_executor(ToolExecutor::new().register(adder()));
 
         let response = agent.run("what is 1 + 2?").await.expect("run");
@@ -539,7 +221,7 @@ mod tests {
             "add",
             serde_json::json!({"a": 1, "b": 2}),
         )]);
-        let agent = SessionAgent::new(config, ProviderConfig::Mock(script))
+        let agent = Agent::new(config, ProviderConfig::Mock(script))
             .with_tools(ToolExecutor::new().register(adder()).catalog());
         let error = agent.run("add").await.expect_err("no executor");
         assert!(error.to_string().contains("no executor"), "got {error}");
@@ -555,8 +237,7 @@ mod tests {
             ),
             _ => HookDecision::Continue,
         }));
-        let agent =
-            SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script)).with_hooks(hooks);
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script)).with_hooks(hooks);
 
         let output = agent.prompt("hi").await.expect("prompt");
         assert_eq!(output, "patched run");
@@ -579,7 +260,7 @@ mod tests {
             }
             _ => HookDecision::Continue,
         }));
-        let agent = SessionAgent::new(config, ProviderConfig::Mock(script))
+        let agent = Agent::new(config, ProviderConfig::Mock(script))
             .with_executor(ToolExecutor::new().register(adder()))
             .with_hooks(hooks);
 
@@ -593,42 +274,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chat_extends_history_in_parity_with_the_classic_agent() {
-        use crate::agent::AgentBuilder;
-        use crate::agent::runner::test_support::{MockCompletionModel, MockTurn};
+    async fn chat_extends_the_callers_history_with_the_committed_turn() {
+        let script = MockScript::from_responses(vec![text_response("nice to meet you")]);
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let mut history = vec![Message::user("earlier"), Message::assistant("noted")];
+        let output = agent.chat("hello", &mut history).await.expect("chat");
 
-        // Two identical scripts (a MockScript clone shares its cursor).
-        let session_script = MockScript::from_responses(vec![text_response("nice to meet you")]);
-        let classic_model = MockCompletionModel::from_turns([MockTurn::text("nice to meet you")]);
-
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(session_script));
-        let mut session_history = vec![Message::user("earlier"), Message::assistant("noted")];
-        let session_output = agent
-            .chat("hello", &mut session_history)
-            .await
-            .expect("session chat");
-
-        let classic = AgentBuilder::new(classic_model.provider()).build();
-        let mut classic_history = vec![Message::user("earlier"), Message::assistant("noted")];
-        let classic_output = classic
-            .chat("hello", &mut classic_history)
-            .await
-            .expect("classic chat");
-
-        assert_eq!(session_output, classic_output);
-        assert_eq!(
-            serde_json::to_value(&session_history).expect("serialize"),
-            serde_json::to_value(&classic_history).expect("serialize"),
-        );
+        assert_eq!(output, "nice to meet you");
+        // The caller's history gained exactly the run's committed transcript:
+        // the prompt and the assistant turn.
+        assert_eq!(history.len(), 4);
+        assert!(matches!(
+            history.get(2),
+            Some(Message::User { content })
+                if matches!(content.first(), UserContent::Text(t) if t.text == "hello")
+        ));
     }
 
     #[tokio::test]
     async fn stream_is_preconfigured_with_tools_and_policy() {
         let script = MockScript::from_responses(vec![]);
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script))
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script))
             .with_executor(ToolExecutor::new().register(adder()))
             .with_hooks(Hooks::new().with(entry("noop", |_| HookDecision::Continue)));
-        let stream = agent.stream("hi");
+        let stream = agent.stream_prompt("hi");
         assert!(stream.tools.executable.contains("add"));
         assert!(stream.policy.surface_completion_calls);
         assert!(stream.policy.surface_tool_calls);
@@ -657,19 +326,29 @@ mod tests {
             }
         }
 
+        // Subscriber-scoped assertions serialize against each other, and a
+        // parallel test without a subscriber can otherwise cache
+        // `Interest::never` for these callsites.
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let names = StdArc::new(Mutex::new(Vec::new()));
         let layer = SpanNames(names.clone());
         let subscriber = tracing_subscriber::registry().with(layer);
         let _guard = tracing::subscriber::set_default(subscriber);
-        // Parallel tests without a subscriber can cache `Interest::never`
-        // for these callsites (see the runner span tests' warm-up); force a
-        // re-registration against the scoped subscriber before running.
+
+        // Warm up: register both span callsites against this subscriber,
+        // then drop what the warm-up recorded.
+        let warmup = Agent::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(MockScript::from_responses(vec![text_response("warm")])),
+        );
+        let _ = warmup.prompt("warm").await;
         tracing::callsite::rebuild_interest_cache();
+        names.lock().expect("names").clear();
 
         let script = MockScript::from_responses(vec![text_response("traced")]);
         let mut config = AgentConfig::new();
         config.record_telemetry_content = true;
-        let agent = SessionAgent::new(config, ProviderConfig::Mock(script));
+        let agent = Agent::new(config, ProviderConfig::Mock(script));
         let output = agent.prompt("hi").await.expect("prompt");
         assert_eq!(output, "traced");
 
@@ -705,7 +384,7 @@ mod tests {
 
         let script = MockScript::from_responses(vec![text_response("new-a")]);
         let probe = script.clone();
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
 
         let history = memory.load("t1").expect("load");
         let response = agent.run_with_history("new-q", history).await.expect("run");
@@ -739,7 +418,7 @@ mod tests {
             tool_call_response("call_1", "add", serde_json::json!({"a": 2, "b": 3})),
             text_response("sum is 5"),
         ]);
-        let agent = SessionAgent::new(config, ProviderConfig::Mock(script))
+        let agent = Agent::new(config, ProviderConfig::Mock(script))
             .with_executor(ToolExecutor::new().register(adder()));
 
         let response = agent.run("add 2 and 3").await.expect("run");
@@ -797,7 +476,7 @@ mod tests {
     async fn host_recipe_append_failure_does_not_drop_the_response() {
         let memory = AppendFailingMemory::default();
         let script = MockScript::from_responses(vec![text_response("ack")]);
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
 
         let history = memory.load("t1").expect("load");
         let response = agent.run_with_history("hello", history).await.expect("run");
@@ -815,7 +494,7 @@ mod tests {
         let memory = FailingMemory::default();
         let script = MockScript::from_responses(vec![text_response("unreached")]);
         let probe = script.clone();
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
 
         let error = memory.load("t1").expect_err("load fails");
         assert!(error.to_string().contains("load boom"), "got {error}");
@@ -830,7 +509,7 @@ mod tests {
         // An exhausted script errors on the first call, standing in for any
         // provider failure.
         let script = MockScript::from_responses(vec![]);
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
 
         let history = memory.load("t1").expect("load");
         let result = agent.run_with_history("hello", history).await;
@@ -850,8 +529,7 @@ mod tests {
             _ => HookDecision::Continue,
         }));
         let script = MockScript::from_responses(vec![text_response("unreached")]);
-        let agent =
-            SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script)).with_hooks(hooks);
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script)).with_hooks(hooks);
 
         let history = memory.load("t1").expect("load");
         let result = agent.run_with_history("hello", history).await;
@@ -872,7 +550,7 @@ mod tests {
 
         let script = MockScript::from_responses(vec![text_response("ack")]);
         let probe = script.clone();
-        let agent = SessionAgent::new(AgentConfig::new(), ProviderConfig::Mock(script));
+        let agent = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script));
 
         let response = agent
             .run_with_history("hello", vec![Message::user("from-caller")])

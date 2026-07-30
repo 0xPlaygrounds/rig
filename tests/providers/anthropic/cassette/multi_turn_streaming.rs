@@ -163,10 +163,12 @@ async fn multi_turn_streaming_tools() {
                 .tool(Divide::new(divide_calls.clone()))
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
-                .max_turns(10)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(MULTI_TURN_STREAMING_PROMPT)
+                    .max_turns(10)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

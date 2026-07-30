@@ -196,7 +196,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
 
 /// One hand-driven, non-streamed model call through an explicit raw model
 /// harness. This exercises the sans-IO `AgentRun` protocol without pretending
-/// to execute a configured `Agent`, whose only execution path is `AgentRunner`.
+/// to execute a configured `Agent`, whose only execution path is `SessionRunner`.
 pub(crate) async fn call_model(
     agent: &GeminiAgent,
     prompt: Message,

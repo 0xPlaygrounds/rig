@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig::stream::AgentStreamItem;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -35,13 +35,15 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 .tool(Divide::new(divide_calls.clone()))
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
-                .max_turns(10)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(MULTI_TURN_STREAMING_PROMPT)
+                    .max_turns(10)
+                    .stream_run(),
+            );
             let mut response = None;
             while let Some(item) = stream.next().await {
-                if let MultiTurnStreamItem::FinalResponse(final_response) =
+                if let AgentStreamItem::Final(final_response) =
                     item.expect("runner-driven multi-turn streaming should succeed")
                 {
                     response = Some(final_response.output);

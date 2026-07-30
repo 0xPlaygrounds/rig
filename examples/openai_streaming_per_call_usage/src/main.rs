@@ -21,10 +21,10 @@
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig::stream::AgentStreamItem;
 use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -97,38 +97,39 @@ async fn main() -> Result<()> {
         .tool(ProjectStatusTool)
         .build();
 
-    let mut stream = agent
-        .stream_prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
-        .max_turns(4)
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner("Check ticket RIG-usage-42 and summarize the result in one sentence.")
+            .max_turns(4)
+            .stream_run(),
+    );
 
     let mut final_response = None;
     let mut printed_streamed_text = false;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
+            AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 print!("{}", text.text);
                 io::stdout().flush()?;
                 printed_streamed_text = true;
             }
             // The tool call the *model emitted* (reported when the turn commits,
             // whether or not rig goes on to execute it).
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
+            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
+                tool_call, ..
             }) => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
             // Rig executed and atomically committed this tool call after its
             // batch settled. Live start/result observation belongs in hooks.
-            MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
+            AgentStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                 println!("rig committed tool execution: {}", tool_call.function.name);
             }
-            MultiTurnStreamItem::StreamUserItem(_) => {
+            AgentStreamItem::User(_) => {
                 println!("tool result sent back to model");
             }
-            MultiTurnStreamItem::CompletionCall(completion_call) => {
+            AgentStreamItem::CompletionCall(completion_call) => {
                 if printed_streamed_text {
                     println!();
                     printed_streamed_text = false;
@@ -147,7 +148,7 @@ async fn main() -> Result<()> {
                     );
                 }
             }
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentStreamItem::Final(response) => {
                 final_response = Some(response);
             }
             _ => {}

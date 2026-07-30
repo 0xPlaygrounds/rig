@@ -88,10 +88,12 @@ async fn responses_stream_preserves_tool_result_flow() {
                 .tool(StatusWordTool)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(XAI_STATUS_TOOL_PROMPT)
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(XAI_STATUS_TOOL_PROMPT)
+                    .max_turns(5)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(

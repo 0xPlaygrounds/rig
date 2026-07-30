@@ -9,11 +9,12 @@
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
-use rig::agent::{Agent, MultiTurnStreamItem};
+use rig::agent::Agent;
 use rig::completion::Message;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig::stream::AgentStreamItem;
 
 /// One streamed turn: load-before, stream, append-after.
 async fn ask(
@@ -25,12 +26,12 @@ async fn ask(
     // Load-before: a load failure is fatal, so the run never starts.
     let history = memory.load(conversation_id)?;
 
-    let mut stream = agent.stream_prompt(prompt).history(history).await;
+    let mut stream = Box::pin(agent.runner(prompt).history(history).stream_run());
 
     let mut output = None;
     let mut committed: Vec<Message> = Vec::new();
     while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+        if let AgentStreamItem::Final(response) = item? {
             output = Some(response.output().to_owned());
             committed = response.messages().unwrap_or_default().to_vec();
         }

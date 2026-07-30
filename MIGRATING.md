@@ -389,6 +389,70 @@ prompt-repeating retries), so recorded exchanges keep replaying;
 now `ExtractionOutcome<T>`. Extraction has no hook stack — port hook-driven
 extractors to `agent.runner(..).output_tool(..)`.
 
+### One driver: the classic engine is deleted (single-architecture R5)
+
+`AgentRunner`, `StreamingPromptRequest`, `MultiTurnStreamItem`,
+`StreamingResult`, and `StreamingError` are gone, and with them the second
+agent engine (`drive_agent`/`TurnSource`). `AgentSession` and `AgentStream`
+are now the only drivers; `Agent` is a thin record over them, and the R1
+`SessionAgent` merged into `Agent` (`rig::agent_api::SessionAgent` survives
+only as a deprecated alias).
+
+**Blocking code is unchanged.** `agent.prompt/run/chat/prompt_typed` and the
+fluent `agent.runner(p)….run()` keep every method name and behavior — only
+the runner's *type* was renamed:
+
+| Before | After |
+| --- | --- |
+| `rig::AgentRunner` | `rig::SessionRunner` (`rig::agent::SessionRunner`) |
+| `agent.runner(p).max_turns(3).run().await?` | unchanged |
+| `agent.runner(p).run_typed::<T>().await?` | unchanged |
+
+**Streaming call sites change.** The old surface was a future returning a
+stream of `MultiTurnStreamItem`; the new one is a stream of
+`AgentStreamItem` that must be pinned:
+
+```rust
+// before
+let mut stream = agent.stream_prompt("hi").max_turns(3).await;
+while let Some(item) = stream.next().await { … }
+
+// after
+let stream = agent.runner("hi").max_turns(3).stream_run();
+futures::pin_mut!(stream);
+while let Some(item) = stream.next().await { … }
+```
+
+With no per-request setters, `agent.stream_run("hi")` is the whole call.
+`Agent::stream_prompt`/`stream_chat` now return the **host-driven**
+[`AgentStream`] instead (pull items with `next_item`/`next_item_with_tools`
+and answer the decision inboxes yourself) — use `stream_run()` for the
+classic fire-and-forget behavior, in which hooks are dispatched and tools
+executed for you.
+
+Item mapping:
+
+| `MultiTurnStreamItem` | `rig::stream::AgentStreamItem` |
+| --- | --- |
+| `StreamAssistantItem(x)` | `Assistant(x)` |
+| `StreamUserItem(x)` | `User(x)` |
+| `CompletionCall(c)` | `CompletionCall(c)` |
+| `ToolExecutionCommitted { tool_call, internal_call_id }` | same fields |
+| `ModelTurnRetried { turn }` | same field |
+| `FinalResponse(r)` | `Final(r)` |
+
+`AgentStreamItem` carries additional decision variants
+(`BeforeModelCall`, `TurnFinished`, `InvalidToolCall`, `ToolCallPending`,
+`ToolCallsReady`, `ToolResultReady`) that a `stream_run()` stream never
+yields, so an exhaustive `match` needs a `_ => {}` arm. The stream's error
+type is now `PromptError` directly: `StreamingError::Completion(e)` was
+`PromptError::CompletionError(e)` and `StreamingError::Prompt(b)` was `*b`.
+
+`PromptResponse`, `CompletionCall`, and the shared history/tool-result
+helpers moved from the private `agent::prompt_request` module to
+`rig::agent::response`; their public paths (`rig::agent::PromptResponse`,
+`rig::agent::CompletionCall`) are unchanged.
+
 ### Hooks are records; memory is host-owned (single-architecture R3)
 
 The `AgentHook` trait, `HookStack`, `HookContext`, `Scratchpad`, and

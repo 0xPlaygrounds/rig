@@ -1,34 +1,36 @@
-use super::hook::RequestPatch;
+//! The single agent type: plain data plus inherent methods over the session
+//! drivers.
+//!
+//! [`Agent`] pairs an [`AgentConfig`](super::config::AgentConfig) with a
+//! [`ProviderConfig`](crate::provider::ProviderConfig), an advertised
+//! [`ToolCatalog`](super::prepare::ToolCatalog), an optional
+//! [`ToolExecutor`], and attach-and-forget [`Hooks`]. There are no behavior
+//! slots beyond those fields: tools are data (catalog + executor records),
+//! hooks are data (named callback records folded with the classic
+//! semantics), and conversation memory inverts to explicit host calls.
+//!
+//! Every method drives [`AgentSession`] or [`AgentStream`] — there is no
+//! second driver. Per-request configuration lives on
+//! [`SessionRunner`](super::request::SessionRunner), built with
+//! [`Agent::runner`].
+
+use super::prepare::ToolCatalog;
+use super::request::SessionRunner;
+use super::response::PromptResponse;
 use super::run::OutputMode;
-use super::runner::AgentRunner;
-use crate::hooks::Hooks;
-use crate::{
-    agent::prompt_request::{PromptResponse, streaming::StreamingPromptRequest},
-    completion::{
-        CompletionError, Document, Message, PromptError, StructuredOutputError, ToolDefinition,
-    },
-    executor::ToolExecutor,
+use crate::completion::{
+    CompletionError, Message, PromptError, StructuredOutputError, ToolDefinition,
 };
+use crate::executor::ToolExecutor;
+use crate::hooks::Hooks;
+use crate::provider::{ProviderConfig, Runtime};
+use crate::session::{AgentSession, SessionPolicy};
+use crate::stream::AgentStream;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
+use super::AgentConfig;
 use super::UNKNOWN_AGENT_NAME;
-
-/// A prepared completion request plus the executable Rig tool names advertised
-/// to the provider for this turn. Non-generic: the request is plain data
-/// (`prepare_request` output) and the model is supplied by the driver at
-/// send time.
-pub(crate) struct PreparedCompletionRequest {
-    pub(crate) request: rig_core::completion::CompletionRequest,
-    /// Exact executable records behind this turn's provider definitions,
-    /// narrowed to what was advertised (per-turn `active_tools`).
-    pub(crate) tool_executor: Arc<ToolExecutor>,
-    pub(crate) executable_tool_names: BTreeSet<String>,
-    pub(crate) allowed_tool_names: BTreeSet<String>,
-    /// When Tool output mode is active, the name of the synthetic output tool
-    /// advertised to the model (allowed but not executable). See #1928.
-    pub(crate) output_tool_name: Option<String>,
-}
 
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
@@ -215,73 +217,14 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
-/// Helper function to build a completion request from agent components while
-/// preserving the executable Rig tool names sent to the provider.
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn build_prepared_completion_request(
-    provider: &crate::provider::ProviderConfig,
-    prompt: Message,
-    chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    catalog: &super::prepare::ToolCatalog,
-    executor: &ToolExecutor,
-    output_schema: Option<&schemars::Schema>,
-    output_mode: &OutputMode,
-    committed_output_tool: Option<&str>,
-    output_tool_description: Option<&str>,
-    augment_output_preamble: bool,
-    request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest, CompletionError> {
-    let config = super::config::AgentConfig {
-        preamble: preamble.map(str::to_owned),
-        static_context: static_context.to_vec(),
-        temperature,
-        max_tokens,
-        additional_params: additional_params.cloned(),
-        tool_choice: tool_choice.cloned(),
-        output_schema: output_schema.cloned(),
-        output_mode: output_mode.clone(),
-        output_tool_description: output_tool_description.map(str::to_owned),
-        augment_output_preamble,
-        record_telemetry_content,
-        ..super::config::AgentConfig::new()
-    };
-
-    let prepared = super::prepare::prepare_request(
-        &config,
-        catalog,
-        provider.descriptor().composes_native_output_with_tools,
-        prompt,
-        chat_history,
-        committed_output_tool,
-        request_patch,
-    )?;
-
-    // Mirror the per-turn `active_tools` narrowing onto the dispatch records
-    // so execution matches exactly what was advertised this turn.
-    let tool_executor = executor.narrowed(&prepared.executable_tool_names);
-
-    Ok(PreparedCompletionRequest {
-        request: prepared.request,
-        tool_executor: Arc::new(tool_executor),
-        executable_tool_names: prepared.executable_tool_names,
-        allowed_tool_names: prepared.allowed_tool_names,
-        output_tool_name: prepared.output_tool_name,
-    })
-}
-
-/// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
-/// (i.e.: system prompt) and a static set of context documents and tools.
-/// All context documents and tools are always provided to the agent when prompted.
+/// Rig's agent: an LLM provider selection combined with a preamble (system
+/// prompt), static context documents, advertised tools, and hooks.
 ///
-/// Default hooks attached with [`AgentBuilder::add_hook`](crate::agent::AgentBuilder::add_hook)
-/// are used for every prompt request, plus any added on the request or runner.
+/// Build one with [`AgentBuilder`](super::AgentBuilder) (the ergonomic path,
+/// including `client.agent(model)`) or construct it directly from plain data
+/// with [`Agent::new`]. Every execution method drives the session layer:
+/// [`AgentSession`] for the blocking methods and [`AgentStream`] for the
+/// streaming ones.
 ///
 /// # Example
 /// ```no_run
@@ -310,10 +253,10 @@ pub(crate) async fn build_prepared_completion_request(
 /// (or `rig_memory::PolicyMemory` for windowing and rolling summaries):
 ///
 /// - **load-before** — `let history = memory.load(id)?;` then
-///   `.history(history)`. A load failure is fatal: the run never starts.
-/// - **append-after** — take `PromptResponse::messages` from an
-///   [`Agent::run`] (or [`AgentRunner::run`]) response and
-///   `memory.append(id, messages)` once per run (a multi-step tool
+///   [`Agent::run_with_history`] (or `.runner(p).history(history)`). A load
+///   failure is fatal: the run never starts.
+/// - **append-after** — take [`PromptResponse::messages`] from the finished
+///   run and `memory.append(id, messages)` once per run (a multi-step tool
 ///   round-trip commits its transcript exactly once). Log and proceed on
 ///   failure so a store hiccup never drops a reply, and skip the append
 ///   entirely when the run errored or a hook stopped it.
@@ -325,106 +268,203 @@ pub(crate) async fn build_prepared_completion_request(
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Agent {
-    /// Name of the agent used for logging and debugging
-    pub(crate) name: Option<String>,
-    /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
-    pub(crate) description: Option<String>,
+    /// The agent's model-free configuration.
+    pub config: AgentConfig,
     /// Provider selection as plain configuration (which provider, base URL,
     /// credential location, and model identifier).
-    pub(crate) provider: crate::provider::ProviderConfig,
+    pub provider: ProviderConfig,
     /// Live transport handles requests are fulfilled with.
-    pub(crate) rt: std::sync::Arc<crate::provider::Runtime>,
-    /// System prompt
-    pub(crate) preamble: Option<String>,
-    /// Context documents always available to the agent
-    pub(crate) static_context: Vec<Document>,
-    /// Temperature of the model
-    pub(crate) temperature: Option<f64>,
-    /// Maximum number of tokens for the completion
-    pub(crate) max_tokens: Option<u64>,
-    /// Additional parameters to be passed to the model
-    pub(crate) additional_params: Option<serde_json::Value>,
-    /// Whether to record sensitive request, response, and tool content on GenAI spans.
-    ///
-    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
-    /// tool results, model responses, and other sensitive or high-cardinality data
-    /// through OpenTelemetry span attributes, which can increase observability
-    /// backend storage and query costs.
-    pub(crate) record_telemetry_content: bool,
-    /// The advertised tool definitions (every registered record's definition).
-    pub(crate) catalog: super::prepare::ToolCatalog,
-    /// The executable tool records behind the catalog.
-    pub(crate) executor: ToolExecutor,
-    /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
-    pub(crate) tool_choice: Option<ToolChoice>,
-    /// Default total model-call budget, including the initial call and every
-    /// retry or continuation. `None` uses the implicit budget of one.
-    pub(crate) default_max_turns: Option<usize>,
-    /// Default hook stack applied to every prompt request and runner created
-    /// from this agent. Empty by default.
-    pub(crate) hooks: Hooks,
-    /// Optional JSON Schema for structured output. When set, providers that support
-    /// native structured outputs will constrain the model's response to match this schema.
-    pub(crate) output_schema: Option<schemars::Schema>,
-    /// How `output_schema` is enforced — tool call, native structured output, or
-    /// prompt injection (see [`OutputMode`] and issue #1928).
-    pub(crate) output_mode: OutputMode,
+    pub rt: Arc<Runtime>,
+    /// Tool definitions advertised each turn.
+    pub tools: ToolCatalog,
+    /// Executes the model's tool calls. With no executor a run that produces
+    /// an executable tool call fails.
+    pub executor: Option<ToolExecutor>,
+    /// Hooks dispatched at every surfaced event, in registration order.
+    pub hooks: Hooks,
+}
+
+impl std::fmt::Debug for Agent {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Agent")
+            .field("config", &self.config)
+            .field("tools", &self.tools)
+            .field("executor", &self.executor)
+            .field("hooks", &self.hooks)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Agent {
+    /// Create an agent over a fresh default [`Runtime`].
+    pub fn new(config: AgentConfig, provider: ProviderConfig) -> Self {
+        Self {
+            config,
+            provider,
+            rt: Arc::new(Runtime::new()),
+            tools: ToolCatalog::default(),
+            executor: None,
+            hooks: Hooks::default(),
+        }
+    }
+
+    /// Use this runtime handle instead of a fresh default one.
+    pub fn with_runtime(mut self, rt: Arc<Runtime>) -> Self {
+        self.rt = rt;
+        self
+    }
+
+    /// Advertise these tool definitions each turn (the executor, when
+    /// present, answers the calls it knows; unknown names produce the
+    /// registry's not-found result).
+    pub fn with_tools(mut self, catalog: ToolCatalog) -> Self {
+        self.tools = catalog;
+        self
+    }
+
+    /// Attach a tool executor. When no catalog was set explicitly, the
+    /// executor's own [`ToolExecutor::catalog`] is adopted so the agent
+    /// advertises exactly what it can run.
+    pub fn with_executor(mut self, executor: ToolExecutor) -> Self {
+        if self.tools == ToolCatalog::default() {
+            self.tools = executor.catalog();
+        }
+        self.executor = Some(executor);
+        self
+    }
+
+    /// Attach hooks, dispatched at every surfaced event with the classic
+    /// fold semantics (see [`Hooks`]).
+    pub fn with_hooks(mut self, hooks: Hooks) -> Self {
+        self.hooks = hooks;
+        self
+    }
+
     /// Returns the configured agent name.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.config.name.as_deref()
     }
 
     /// Returns the configured agent description.
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.config.description.as_deref()
     }
 
     pub(crate) fn name_or_default(&self) -> &str {
-        self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+        self.config.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
-    /// agent's default hook stack.
+    /// The [`SessionPolicy`] this agent drives sessions under: the default
+    /// policy when no hooks are attached; with hooks, every decision point
+    /// is surfaced so each one can be dispatched through the hook list.
+    pub(crate) fn session_policy(&self) -> SessionPolicy {
+        if self.hooks.is_empty() {
+            SessionPolicy::default()
+        } else {
+            SessionPolicy {
+                surface_model_turns: true,
+                surface_completion_calls: true,
+                surface_tool_calls: true,
+                surface_tool_results: true,
+            }
+        }
+    }
+
+    /// Build the configured session for one prompt.
+    pub(crate) fn session(
+        &self,
+        prompt: impl Into<Message>,
+        history: Vec<Message>,
+    ) -> AgentSession {
+        let session = AgentSession::new(
+            self.config.clone(),
+            self.provider.clone(),
+            self.rt.clone(),
+            prompt,
+        )
+        .with_tools(self.tools.clone())
+        .with_policy(self.session_policy());
+        if history.is_empty() {
+            session
+        } else {
+            session.with_history(history)
+        }
+    }
+
+    /// This agent's executor with content telemetry aligned to the agent's
+    /// `record_telemetry_content` setting (the classic driver passed the same
+    /// flag down to tool execution).
+    pub(crate) fn telemetry_aware_executor(&self) -> Option<ToolExecutor> {
+        // With hooks attached the driver surfaces the post-execution decision
+        // point and records the post-hook presentation itself.
+        let defer_result = !self.hooks.is_empty();
+        self.executor.clone().map(|executor| {
+            executor
+                .record_content_telemetry(self.config.record_telemetry_content)
+                .defer_result_telemetry(defer_result)
+        })
+    }
+
+    /// Build a per-request [`SessionRunner`] for this agent, seeded with the
+    /// agent's configuration and hooks.
     ///
-    /// This is **the** fluent per-request surface: it carries every per-request
-    /// knob (history, preamble, documents, temperature, token limits,
-    /// additional params, tool choice, tool concurrency, telemetry content,
-    /// turn and invalid-tool-call budgets, extra hooks) and terminates in
-    /// [`AgentRunner::run`] / [`AgentRunner::run_typed`]. It replaces the
-    /// deleted `PromptRequest`/`TypedPromptRequest` typestate builders: what
-    /// used to be `agent.prompt(p).max_turns(3).extended_details().await` is
-    /// now `agent.runner(p).max_turns(3).run().await`.
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
+    /// This is **the** fluent per-request surface: it carries every
+    /// per-request knob (history, preamble, documents, temperature, token
+    /// limits, additional params, tool choice, tool concurrency, telemetry
+    /// content, turn and invalid-tool-call budgets, extra hooks) and
+    /// terminates in [`SessionRunner::run`], [`SessionRunner::run_typed`], or
+    /// [`SessionRunner::stream`].
+    pub fn runner(&self, prompt: impl Into<Message>) -> SessionRunner {
+        SessionRunner::from_agent(self, prompt)
     }
 
-    /// Send a prompt and return the accepted assistant text after full runtime
-    /// orchestration (tools, hooks, retries, telemetry).
+    /// Send a prompt and return the accepted assistant text after full
+    /// runtime orchestration (tools, hooks, retries, telemetry).
     ///
     /// For per-request configuration use [`Agent::runner`].
     pub async fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
     ) -> Result<String, PromptError> {
-        self.runner(prompt)
-            .run()
-            .await
-            .map(|response| response.output)
+        Ok(self.run(prompt).await?.output)
     }
 
-    /// Send a prompt and return the full [`PromptResponse`] — accepted output,
-    /// aggregated usage, per-call details, and the committed message
+    /// Send a prompt and return the full [`PromptResponse`] — accepted
+    /// output, aggregated usage, per-call details, and the committed message
     /// transcript.
-    ///
-    /// This is the successor of `agent.prompt(..).extended_details().await`.
     pub async fn run(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
     ) -> Result<PromptResponse, PromptError> {
-        self.runner(prompt).run().await
+        // Convert eagerly: threading the generic prompt through the driver
+        // chain would make the returned future's `Send`-ness depend on the
+        // caller's lifetime, which breaks higher-ranked `Send` bounds (see
+        // the Discord integration's `async_trait` handlers).
+        self.drive_run(prompt.into(), Vec::new()).await
+    }
+
+    /// [`Agent::run`] with explicit input history preceding the prompt.
+    /// Explicit history means conversation memory (a host concern — see the
+    /// [`agent_api`](crate::agent_api) module docs) is bypassed entirely.
+    pub async fn run_with_history(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        history: Vec<Message>,
+    ) -> Result<PromptResponse, PromptError> {
+        self.drive_run(prompt.into(), history).await
+    }
+
+    /// The one blocking drive: non-generic, so the future it returns is
+    /// `Send` for every caller lifetime.
+    async fn drive_run(
+        &self,
+        prompt: Message,
+        history: Vec<Message>,
+    ) -> Result<PromptResponse, PromptError> {
+        let mut session = self.session(prompt, history);
+        let executor = self.telemetry_aware_executor();
+        session.drive(&self.hooks, executor.as_ref()).await
     }
 
     /// Execute one turn against caller-owned canonical history, appending only
@@ -435,16 +475,10 @@ impl Agent {
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let response = self
-            .runner(prompt)
-            .history(chat_history.clone())
-            .run()
-            .await?;
-
+        let response = self.drive_run(prompt.into(), chat_history.clone()).await?;
         if let Some(messages) = response.messages {
             chat_history.extend(messages);
         }
-
         Ok(response.output)
     }
 
@@ -452,7 +486,7 @@ impl Agent {
     ///
     /// The JSON schema for `T` is generated automatically and passed as the
     /// provider's **native** structured-output constraint (see
-    /// [`AgentRunner::run_typed`], which this delegates to). For a fluent
+    /// [`SessionRunner::run_typed`], which this delegates to). For a fluent
     /// per-request variant, use `agent.runner(prompt).run_typed::<T>()`.
     ///
     /// # Example
@@ -477,38 +511,66 @@ impl Agent {
         self.runner(prompt).run_typed::<T>().await
     }
 
-    /// Create a streaming request for `prompt`.
+    /// Build a pre-configured [`AgentStream`] for one prompt: this agent's
+    /// tools and session policy are already applied.
     ///
-    /// The returned [`StreamingPromptRequest`] is the streaming counterpart of
-    /// [`Agent::runner`]: configure it, then await it for the item stream.
-    pub fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest {
-        StreamingPromptRequest::from_agent(self, prompt)
+    /// This is the **host-driven** streaming surface: pull items with
+    /// [`AgentStream::next_item`] (or
+    /// [`AgentStream::next_item_with_tools`] to answer tool batches through
+    /// an executor) and answer the decision inboxes yourself. For the classic
+    /// fire-and-forget behavior — hooks dispatched and tools executed for you
+    /// — use [`Agent::stream_run`].
+    pub fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> AgentStream {
+        AgentStream::new(
+            self.config.clone(),
+            self.provider.clone(),
+            self.rt.clone(),
+            prompt,
+        )
+        .with_tools(self.tools.clone())
+        .with_policy(self.session_policy())
     }
 
-    /// Create a streaming request for `prompt` seeded with canonical history.
+    /// [`Agent::stream_prompt`] seeded with canonical history.
     pub fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
-    ) -> StreamingPromptRequest
+    ) -> AgentStream
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
+        let history: Vec<Message> = chat_history.into_iter().map(Into::into).collect();
+        let stream = self.stream_prompt(prompt);
+        if history.is_empty() {
+            stream
+        } else {
+            stream.with_history(history)
+        }
+    }
+
+    /// The fully driven streaming surface: this agent's hooks are dispatched
+    /// and its executor answers tool batches, so the returned stream is a
+    /// pure observation stream of assistant deltas, tool activity, per-call
+    /// records, and the terminal [`AgentStreamItem::Final`].
+    ///
+    /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
+    pub fn stream_run(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> impl futures::Stream<Item = Result<crate::stream::AgentStreamItem, PromptError>> {
+        self.stream_prompt(prompt)
+            .drive(self.hooks.clone(), self.telemetry_aware_executor())
     }
 
     /// Resolve the provider-facing tool definitions registered on the agent.
     ///
-    /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`]. Per-turn
-    /// narrowing of the advertised set happens through
-    /// [`RequestPatch::active_tools`].
+    /// This read-only view does not expose tool dispatch. Per-turn narrowing
+    /// of the advertised set happens through
+    /// [`RequestPatch::active_tools`](super::hook::RequestPatch::active_tools).
     pub async fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.catalog.definitions.clone()
+        self.tools.definitions.clone()
     }
 }
 

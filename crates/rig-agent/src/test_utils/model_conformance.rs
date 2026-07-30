@@ -19,9 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, CompletionCallAction, InvalidToolCallAction, MultiTurnStreamItem,
-        ObservationAction, OutputMode, RequestPatch, StreamingError, ToolCallAction,
-        ToolResultAction,
+        AgentBuilder, CompletionCallAction, InvalidToolCallAction, ObservationAction, OutputMode,
+        RequestPatch, ToolCallAction, ToolResultAction,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -42,9 +41,6 @@ pub enum ScenarioError {
     /// A direct model completion failed.
     #[error(transparent)]
     Completion(#[from] CompletionError),
-    /// A streaming agent run failed.
-    #[error(transparent)]
-    Streaming(#[from] StreamingError),
     /// Structured content could not be decoded.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
@@ -1761,10 +1757,11 @@ where
         .tool(AddTool(calls.clone()))
         .default_max_turns(4)
         .build();
-    let mut stream = agent
-        .stream_prompt("Use add to calculate 17 + 25, then state the final number.")
+    let stream = agent
+        .runner("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
-        .await;
+        .stream_run();
+    futures::pin_mut!(stream);
     let mut final_response = None;
     let mut final_count = 0_usize;
     let mut completion_usage = crate::completion::Usage::new();
@@ -1772,24 +1769,20 @@ where
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(
-                crate::streaming::StreamedAssistantContent::ToolCall {
-                    internal_call_id, ..
-                },
-            ) => streamed_call_ids.push(internal_call_id),
-            MultiTurnStreamItem::StreamUserItem(
-                crate::streaming::StreamedUserContent::ToolResult {
-                    internal_call_id, ..
-                },
-            ) => streamed_result_ids.push(internal_call_id),
-            MultiTurnStreamItem::CompletionCall(call) => completion_usage += call.usage,
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentStreamItem::Assistant(crate::streaming::StreamedAssistantContent::ToolCall {
+                internal_call_id,
+                ..
+            }) => streamed_call_ids.push(internal_call_id),
+            AgentStreamItem::User(crate::streaming::StreamedUserContent::ToolResult {
+                internal_call_id,
+                ..
+            }) => streamed_result_ids.push(internal_call_id),
+            AgentStreamItem::CompletionCall(call) => completion_usage += call.usage,
+            AgentStreamItem::Final(response) => {
                 final_count += 1;
                 final_response = Some(response);
             }
-            MultiTurnStreamItem::StreamAssistantItem(_)
-            | MultiTurnStreamItem::ToolExecutionCommitted { .. }
-            | MultiTurnStreamItem::ModelTurnRetried { .. } => {}
+            _ => {}
         }
     }
     let result = final_response.ok_or_else(|| {
@@ -2005,16 +1998,15 @@ where
         .tool(AddTool(calls.clone()))
         .default_max_turns(5)
         .build();
-    let mut stream = agent
-        .stream_prompt(
-            "Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.",
-        )
+    let stream = agent
+        .runner("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .max_turns(5)
-        .await;
+        .stream_run();
+    futures::pin_mut!(stream);
     let mut final_response = None;
     let mut final_count = 0_usize;
     while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+        if let AgentStreamItem::Final(response) = item? {
             final_count += 1;
             final_response = Some(response);
         }
@@ -2062,8 +2054,8 @@ where
 
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
+use crate::agent::Agent as SessionAgent;
 use crate::agent::AgentConfig;
-use crate::agent_api::SessionAgent;
 use crate::executor::ToolExecutor;
 use crate::hooks::{HookDecision, HookEntry, HookEvent, Hooks};
 use crate::stream::{AgentStream, AgentStreamItem};

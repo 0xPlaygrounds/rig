@@ -234,14 +234,14 @@ async fn permission_control_streaming_example() -> Result<()> {
                 last_result: last_result.clone(),
             };
 
-            let mut stream = agent
-                .stream_prompt(
+            let mut stream =Box::pin( agent
+                .runner(
                     "Use the available tools to read test.txt now. \
                      Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
                 .add_hook(hook.entry())
-                .await;
+                .stream_run());
 
             let final_response = stream_to_stdout(&mut stream).await?;
             let last = last_result.lock().expect("lock last_result").clone();
@@ -271,32 +271,32 @@ async fn permission_control_streaming_example() -> Result<()> {
 
 /// Local stand-in for the deleted `rig::agent::stream_to_stdout` helper:
 /// drains a streamed agent run to stdout and returns the final response.
-async fn stream_to_stdout(
-    stream: &mut rig::agent::StreamingResult,
-) -> Result<rig::agent::PromptResponse, std::io::Error> {
+async fn stream_to_stdout<S>(stream: &mut S) -> Result<rig::agent::PromptResponse, std::io::Error>
+where
+    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
+        + Unpin,
+{
     use futures::StreamExt;
-    use rig::agent::MultiTurnStreamItem;
     use rig::message::Text;
+    use rig::stream::AgentStreamItem;
     use rig::streaming::StreamedAssistantContent;
 
     let mut final_res = rig::agent::PromptResponse::empty();
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text, .. },
-            ))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
+                text, ..
+            }))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                reasoning,
-            ))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
                 print!("{}", reasoning.display_text());
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::FinalResponse(res)) => final_res = res,
-            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
+            Ok(AgentStreamItem::Final(res)) => final_res = res,
+            Ok(AgentStreamItem::ModelTurnRetried { turn }) => {
                 print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

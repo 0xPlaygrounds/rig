@@ -19,14 +19,13 @@ use crate::agent::hook::{
     ToolResultAction,
 };
 use crate::agent::prepare::{ToolCatalog, prepare_request};
-use crate::agent::prompt_request::streaming::record_usage_on_span;
-use crate::agent::prompt_request::tool_result_output;
+use crate::agent::response::tool_result_output;
 use crate::agent::run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, PartialStreamedTurn, PendingToolCall,
     StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent,
 };
-use crate::agent::runner::{
-    SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span,
+use crate::agent::telemetry::{
+    SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span, record_usage_on_span,
 };
 use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse, UNKNOWN_AGENT_NAME};
 use crate::completion::{Message, PromptError, Usage};
@@ -138,6 +137,8 @@ struct ActiveTurn {
     /// The per-call `chat_streaming` span the provider stream is polled
     /// under, mirroring the classic streaming driver.
     chat_span: tracing::Span,
+    /// Whether the provider already emitted its terminal record.
+    provider_final_seen: bool,
 }
 
 /// The host decision the stream is waiting for.
@@ -215,6 +216,10 @@ pub struct AgentStream {
     active: Option<ActiveTurn>,
     buffered: VecDeque<AgentStreamItem>,
     last_final: Option<StreamFinal>,
+    /// The finished turn's `chat_streaming` span, parked until the turn's
+    /// verdict is known so a retried (provisional) turn records no output
+    /// telemetry — exactly as the classic streaming driver suppressed it.
+    turn_chat_span: Option<tracing::Span>,
     /// The run-level `invoke_agent` span (created, or adopted from the
     /// caller's ambient span), mirroring the classic drivers.
     agent_span: tracing::Span,
@@ -268,6 +273,7 @@ impl AgentStream {
             active: None,
             buffered: VecDeque::new(),
             last_final: None,
+            turn_chat_span: None,
             agent_span,
             created_agent_span,
         }
@@ -453,7 +459,7 @@ impl AgentStream {
         turn: usize,
     ) -> Result<(), PromptError> {
         let patch = self.next_patch.take().unwrap_or_default();
-        let prepared = prepare_request(
+        let mut prepared = prepare_request(
             &self.config,
             &self.tools,
             self.provider.descriptor().composes_native_output_with_tools,
@@ -473,6 +479,14 @@ impl AgentStream {
             },
             self.config.preamble.as_deref(),
         );
+        // Content telemetry is recorded onto the agent's own `chat_streaming`
+        // span and suppressed on the provider's, exactly as the classic
+        // streaming driver did.
+        if self.config.record_telemetry_content {
+            let input_messages = prepared.request.messages_for_telemetry();
+            rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
+            prepared.request.record_telemetry_content = false;
+        }
         let stream = match provider::open_stream(&self.provider, &self.rt, prepared.request)
             .instrument(chat_span.clone())
             .await
@@ -494,6 +508,7 @@ impl AgentStream {
             ),
             turn,
             chat_span,
+            provider_final_seen: false,
         });
         Ok(())
     }
@@ -505,9 +520,22 @@ impl AgentStream {
             return Ok(());
         };
         let chat_span = active.chat_span.clone();
-        match active.stream.next().instrument(chat_span).await {
+        match active.stream.next().instrument(chat_span.clone()).await {
             Some(Ok(item)) => {
+                if active.provider_final_seen {
+                    // Malformed provider stream: visible assistant content
+                    // after the terminal record. Rejected exactly as the
+                    // classic streaming driver rejected it.
+                    return Err(PromptError::CompletionError(
+                        rig_core::completion::CompletionError::ResponseError(
+                            "provider stream emitted visible assistant content after its final \
+                             response"
+                                .to_string(),
+                        ),
+                    ));
+                }
                 let events = active.assembler.ingest(&item).map_err(PromptError::from)?;
+                let mut saw_provider_final = false;
                 for event in events {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
@@ -543,6 +571,10 @@ impl AgentStream {
                             return Ok(());
                         }
                         StreamedTurnEvent::Completed { usage, emit_final } => {
+                            saw_provider_final = true;
+                            // Per-call usage lands on this call's own
+                            // `chat_streaming` span (classic parity).
+                            record_usage_on_span(&chat_span, usage);
                             let call = self.run.record_streamed_completion_call(usage)?;
                             self.buffered
                                 .push_back(AgentStreamItem::CompletionCall(call));
@@ -556,6 +588,9 @@ impl AgentStream {
                         }
                     }
                 }
+                if saw_provider_final && let Some(active) = &mut self.active {
+                    active.provider_final_seen = true;
+                }
                 Ok(())
             }
             Some(Err(error)) => Err(PromptError::from(error)),
@@ -568,10 +603,26 @@ impl AgentStream {
                     stream,
                     assembler,
                     turn,
-                    chat_span: _,
+                    chat_span,
+                    provider_final_seen: _,
                 } = active;
                 let streamed = assembler.finish(stream.message_id.clone(), &stream.choice);
+                // Exactly one CompletionCall item per model call: when the
+                // provider never yielded a terminal record, `streamed_turn`
+                // records the no-usage fallback and the item is surfaced here.
+                let recorded_calls = self.run.completion_calls().len();
                 self.run.streamed_turn(streamed)?;
+                if let Some(call) = self.run.completion_calls().get(recorded_calls).copied() {
+                    self.buffered
+                        .push_back(AgentStreamItem::CompletionCall(call));
+                }
+                if self.policy.surface_model_turns && self.run.accepted_turn_choice().is_some() {
+                    // The verdict is the host's: park the span so a retried
+                    // turn records no output telemetry.
+                    self.turn_chat_span = Some(chat_span.clone());
+                } else {
+                    self.record_turn_output(&chat_span);
+                }
                 if self.policy.surface_model_turns
                     && let Some(content) = self.run.accepted_turn_choice()
                 {
@@ -646,6 +697,17 @@ impl AgentStream {
         self.open_turn(prompt, history, turn).await
     }
 
+    /// Record the accepted turn's content telemetry onto its
+    /// `chat_streaming` span, gated on `record_telemetry_content` like the
+    /// classic streaming driver.
+    fn record_turn_output(&self, chat_span: &tracing::Span) {
+        if self.config.record_telemetry_content
+            && let Some(choice) = self.run.accepted_turn_choice()
+        {
+            rig_core::telemetry::record_model_output(chat_span, &choice, true);
+        }
+    }
+
     /// Answer [`AgentStreamItem::TurnFinished`].
     pub fn reply_turn(&mut self, action: ModelTurnAction) -> Result<(), PromptError> {
         if !matches!(self.pending, Pending::TurnReply) {
@@ -654,8 +716,14 @@ impl AgentStream {
                 .cancel_error("reply_turn without a pending TurnFinished item"));
         }
         self.pending = Pending::None;
+        let chat_span = self.turn_chat_span.take();
         match action {
-            ModelTurnAction::Continue => Ok(()),
+            ModelTurnAction::Continue => {
+                if let Some(span) = &chat_span {
+                    self.record_turn_output(span);
+                }
+                Ok(())
+            }
             ModelTurnAction::Retry(request) => {
                 let turn = self.run.turn();
                 self.run.retry_model_turn(request)?;
@@ -663,7 +731,12 @@ impl AgentStream {
                     .push_back(AgentStreamItem::ModelTurnRetried { turn });
                 Ok(())
             }
-            ModelTurnAction::Stop(reason) => Err(self.run.cancel_error(reason)),
+            ModelTurnAction::Stop(reason) => {
+                if let Some(span) = &chat_span {
+                    self.record_turn_output(span);
+                }
+                Err(self.run.cancel_error(reason))
+            }
         }
     }
 
@@ -1078,6 +1151,232 @@ impl AgentStream {
     }
 }
 
+impl AgentStream {
+    /// Drive this stream with the classic streaming runtime semantics:
+    /// dispatch `hooks` at every surfaced decision point, answer tool
+    /// batches through `executor`, and forward the observable items.
+    ///
+    /// The returned stream yields exactly what the deleted classic streaming
+    /// surface yielded — assistant deltas and complete tool calls, per-call
+    /// [`AgentStreamItem::CompletionCall`] records, tool execution/result
+    /// items, [`AgentStreamItem::ModelTurnRetried`], and the terminal
+    /// [`AgentStreamItem::Final`]. Policy-gated decision items are consumed by
+    /// the hook dispatch rather than surfaced, so a consumer sees a pure
+    /// observation stream.
+    ///
+    /// Errors terminate the stream: the error item is the last one.
+    pub fn drive(
+        mut self,
+        hooks: crate::hooks::Hooks,
+        executor: Option<crate::executor::ToolExecutor>,
+    ) -> impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> {
+        // Only entries that opted in observe the hot-path deltas.
+        let observes_deltas = hooks.observes_deltas();
+        async_stream::stream! {
+            // The turn prompt surfaced on `BeforeModelCall`, replayed into the
+            // response-finish observation (classic parity).
+            let mut turn_prompt: Option<Message> = None;
+            // Aggregated text for the in-flight turn, matching the classic
+            // assembler's `aggregated_text()`.
+            let mut aggregated = String::new();
+            // The in-flight batch's structured results and per-call spans, so
+            // the post-execution decision point carries the classic
+            // classification and records post-hook result telemetry.
+            let mut batch_raw_results: Vec<(String, crate::tool::ToolResult)> = Vec::new();
+            let mut batch_call_spans: Vec<(String, tracing::Span)> = Vec::new();
+            loop {
+                let item = match self.next_item().await {
+                    None => break,
+                    Some(Ok(item)) => item,
+                    Some(Err(error)) => {
+                        yield Err(error);
+                        break;
+                    }
+                };
+                match item {
+                    AgentStreamItem::BeforeModelCall { prompt, history, turn } => {
+                        aggregated.clear();
+                        let action =
+                            hooks.dispatch_completion_call(turn, &prompt, &history).await;
+                        turn_prompt = Some(prompt);
+                        if let Err(error) = self.reply_before_call(action).await {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::TurnFinished { turn, content, usage } => {
+                        // The provider's terminal record observation fires
+                        // first, then the normalized per-turn verdict.
+                        let observed_prompt =
+                            turn_prompt.clone().unwrap_or_else(|| Message::from(""));
+                        let message_id = self
+                            .last_response()
+                            .and_then(|final_record| final_record.message_id.clone());
+                        if let crate::agent::ObservationAction::Stop(reason) = hooks
+                            .dispatch_stream_response_finish(
+                                turn,
+                                &observed_prompt,
+                                &content,
+                                usage,
+                                message_id.as_deref(),
+                            )
+                            .await
+                        {
+                            if let Err(error) = self.reply_turn(ModelTurnAction::Stop(reason)) {
+                                yield Err(error);
+                            }
+                            break;
+                        }
+                        let action = hooks.dispatch_model_turn(turn, &content, usage).await;
+                        if let Err(error) = self.reply_turn(action) {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::InvalidToolCall(context) => {
+                        let action = hooks
+                            .dispatch_invalid_tool_call(&context)
+                            .await
+                            // Preserve the classic default: fail fast.
+                            .unwrap_or_else(InvalidToolCallAction::fail);
+                        if let Err(error) = self.resolve_invalid(action).await {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::ToolCallPending { call } => {
+                        let internal_call_id = call
+                            .internal_call_id
+                            .clone()
+                            .unwrap_or_else(|| call.tool_call.id.clone());
+                        let (action, _salvaged) = hooks
+                            .dispatch_tool_call(&call.tool_call, &internal_call_id)
+                            .await;
+                        if let Err(error) = self.reply_tool_call(action) {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::ToolCallsReady(calls) => {
+                        let results = match &executor {
+                            Some(executor) => {
+                                let batch = executor.execute_batch(&calls).await;
+                                batch_raw_results = batch.raw_results;
+                                batch_call_spans = batch.call_spans;
+                                batch.results
+                            }
+                            None => match crate::session::preresolved_only_results(&calls) {
+                                Ok(results) => results,
+                                Err(error) => {
+                                    yield Err(error);
+                                    break;
+                                }
+                            },
+                        };
+                        if let Err(error) = self.provide_tool_results(results) {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::ToolResultReady { call, result } => {
+                        // The executor's structured result when the body ran,
+                        // so the classic classification (failed/skipped/
+                        // denied, error kind, HTTP status) survives; otherwise
+                        // reconstruct it from the committed content.
+                        let raw = batch_raw_results
+                            .iter()
+                            .find(|(id, _)| *id == call.id)
+                            .map(|(_, structured)| structured.clone())
+                            .unwrap_or_else(|| crate::session::raw_tool_result(&result));
+                        let internal_call_id = call.id.clone();
+                        let action = hooks
+                            .dispatch_tool_result(&call, &internal_call_id, &raw)
+                            .await;
+                        // Result telemetry once, post-hook (the executor
+                        // defers it for this driver), so a redaction rewrite is
+                        // never preceded by the raw value.
+                        if self.config.record_telemetry_content
+                            && let Some((_, span)) =
+                                batch_call_spans.iter().find(|(id, _)| *id == call.id)
+                        {
+                            let rendered = match &action {
+                                ToolResultAction::Rewrite(output) => Some(output.render()),
+                                ToolResultAction::Keep => Some(raw.output().render()),
+                                ToolResultAction::Stop(_) => None,
+                            };
+                            if let Some(rendered) = rendered {
+                                span.record("gen_ai.tool.call.result", rendered);
+                            }
+                        }
+                        if let Err(error) = self.reply_tool_result(action) {
+                            yield Err(error);
+                            break;
+                        }
+                    }
+                    AgentStreamItem::Assistant(content) => {
+                        // Delta observation, gated exactly as the classic
+                        // driver gated it: only when an entry opted in.
+                        if observes_deltas {
+                            let turn = self.run_state().turn();
+                            let observation = match &content {
+                                StreamedAssistantContent::Text(text) => {
+                                    aggregated.push_str(&text.text);
+                                    hooks
+                                        .dispatch_text_delta(turn, &text.text, &aggregated)
+                                        .await
+                                }
+                                StreamedAssistantContent::ToolCallDelta {
+                                    id,
+                                    internal_call_id,
+                                    content,
+                                } => {
+                                    let (name, delta) = match content {
+                                        crate::streaming::ToolCallDeltaContent::Name(name) => {
+                                            (Some(name.as_str()), "")
+                                        }
+                                        crate::streaming::ToolCallDeltaContent::Delta(delta) => {
+                                            (None, delta.as_str())
+                                        }
+                                    };
+                                    hooks
+                                        .dispatch_tool_call_delta(
+                                            turn,
+                                            id,
+                                            internal_call_id,
+                                            name,
+                                            delta,
+                                        )
+                                        .await
+                                }
+                                _ => crate::agent::ObservationAction::Continue,
+                            };
+                            if let crate::agent::ObservationAction::Stop(reason) = observation {
+                                yield Err(self.run_state().cancel_error(reason));
+                                break;
+                            }
+                        } else if let StreamedAssistantContent::Text(text) = &content {
+                            aggregated.push_str(&text.text);
+                        }
+                        // The provider's terminal record also drives the
+                        // stream-finish observation.
+                        if let StreamedAssistantContent::Final(final_record) = &content {
+                            let observation = hooks.dispatch_stream_finish(final_record).await;
+                            if let crate::agent::ObservationAction::Stop(reason) = observation {
+                                let error = self.run_state().cancel_error(reason);
+                                yield Ok(AgentStreamItem::Assistant(content));
+                                yield Err(error);
+                                break;
+                            }
+                        }
+                        yield Ok(AgentStreamItem::Assistant(content));
+                    }
+                    other => yield Ok(other),
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1350,5 +1649,3436 @@ mod gate_tests {
                 break;
             }
         }
+    }
+}
+
+/// Ports of the deleted classic streaming driver's behavioral corpus onto
+/// [`AgentStream::drive`], which is now the single streaming loop.
+#[cfg(test)]
+mod migrated_streaming_tests {
+    use super::*;
+    use crate::agent::hook::ObservationAction;
+    use crate::agent::response::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
+    use crate::agent::run::streamed::merge_reasoning_blocks;
+    use crate::agent::{AgentBuilder, CompletionCall, InvalidToolCallContext};
+    use crate::hooks::{HookDecision, HookEntry, HookEvent};
+    use crate::provider::MockScript;
+    use crate::test_utils::{MockAddTool, MockBarrierTool, MockSubtractTool, MockToolError};
+    use crate::tool::PortableTool;
+    use rig_core::completion::{CompletionRequest, ToolDefinition};
+    use rig_core::message::{
+        DocumentSourceKind, ImageMediaType, Reasoning, ReasoningContent, Text, ToolChoice,
+        ToolFunction, ToolResult, ToolResultContent,
+    };
+    use rig_core::streaming::ToolCallDeltaContent;
+    use serde::Deserialize;
+    use serde_json::json;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+
+    // ---------- scripting helpers ----------
+
+    fn script(turns: Vec<Vec<StreamedAssistantContent>>) -> MockScript {
+        MockScript::from_responses(Vec::new()).with_streams(turns)
+    }
+
+    fn text_item(text: &str) -> StreamedAssistantContent {
+        StreamedAssistantContent::Text(Text::new(text))
+    }
+
+    fn cited_text_item(text: &str, metadata: serde_json::Value) -> StreamedAssistantContent {
+        StreamedAssistantContent::Text(Text {
+            text: text.to_string(),
+            additional_params: Some(metadata),
+        })
+    }
+
+    fn call_item(id: &str, name: &str, args: serde_json::Value) -> StreamedAssistantContent {
+        StreamedAssistantContent::ToolCall {
+            tool_call: ToolCall::new(id.to_string(), ToolFunction::new(name.to_string(), args)),
+            internal_call_id: format!("ic-{id}"),
+        }
+    }
+
+    fn call_item_with_call_id(
+        id: &str,
+        call_id: &str,
+        name: &str,
+        args: serde_json::Value,
+    ) -> StreamedAssistantContent {
+        StreamedAssistantContent::ToolCall {
+            tool_call: ToolCall::new(id.to_string(), ToolFunction::new(name.to_string(), args))
+                .with_call_id(call_id.to_string()),
+            internal_call_id: format!("ic-{id}"),
+        }
+    }
+
+    fn name_delta(id: &str, internal: &str, name: &str) -> StreamedAssistantContent {
+        StreamedAssistantContent::ToolCallDelta {
+            id: id.to_string(),
+            internal_call_id: internal.to_string(),
+            content: ToolCallDeltaContent::Name(name.to_string()),
+        }
+    }
+
+    fn args_delta(id: &str, internal: &str, args: &str) -> StreamedAssistantContent {
+        StreamedAssistantContent::ToolCallDelta {
+            id: id.to_string(),
+            internal_call_id: internal.to_string(),
+            content: ToolCallDeltaContent::Delta(args.to_string()),
+        }
+    }
+
+    fn reasoning_block(id: Option<&str>, text: &str) -> StreamedAssistantContent {
+        let mut reasoning = Reasoning::new(text);
+        reasoning.id = id.map(str::to_string);
+        StreamedAssistantContent::Reasoning(reasoning)
+    }
+
+    fn reasoning_delta_item(id: Option<&str>, text: &str) -> StreamedAssistantContent {
+        StreamedAssistantContent::ReasoningDelta {
+            id: id.map(str::to_string),
+            reasoning: text.to_string(),
+        }
+    }
+
+    fn total_usage(total_tokens: u64) -> Usage {
+        let mut usage = Usage::new();
+        usage.total_tokens = total_tokens;
+        usage
+    }
+
+    fn split_usage(input_tokens: u64, output_tokens: u64) -> Usage {
+        Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens + output_tokens,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+
+    fn final_tokens(total_tokens: u64) -> StreamedAssistantContent {
+        StreamedAssistantContent::Final(StreamFinal::new("mock", total_usage(total_tokens)))
+    }
+
+    fn final_usage(usage: Usage) -> StreamedAssistantContent {
+        StreamedAssistantContent::Final(StreamFinal::new("mock", usage))
+    }
+
+    /// A provider stream that emits visible assistant content *after* its
+    /// terminal record is malformed; the classic streaming driver rejected it
+    /// rather than silently folding the stray content in, and so does
+    /// [`AgentStream`]. (Restores the coverage of the deleted
+    /// `visible_assistant_items_after_final_are_rejected` /
+    /// `visible_item_after_non_emittable_final_is_rejected` pair.)
+    #[tokio::test]
+    async fn visible_assistant_content_after_the_provider_final_is_rejected() {
+        let agent = AgentBuilder::new(ProviderConfig::Mock(script(vec![vec![
+            text_item("before the final"),
+            final_tokens(7),
+            text_item("stray content after the final"),
+        ]])))
+        .build();
+
+        let stream = agent.stream_run("go");
+        futures::pin_mut!(stream);
+        let mut error = None;
+        while let Some(item) = stream.next().await {
+            if let Err(failure) = item {
+                error = Some(failure);
+                break;
+            }
+        }
+        let error = error.expect("a malformed provider stream must fail the run");
+        assert!(
+            error
+                .to_string()
+                .contains("visible assistant content after its final response"),
+            "got {error}"
+        );
+    }
+
+    fn agent_builder(script: MockScript) -> AgentBuilder {
+        AgentBuilder::new(ProviderConfig::Mock(script))
+    }
+
+    fn citation_metadata() -> serde_json::Value {
+        json!({
+            "citations": [{
+                "type": "web_search_result_location",
+                "cited_text": "Claude Shannon was born in 1916.",
+                "url": "https://example.com/shannon",
+                "title": "Claude Shannon",
+                "encrypted_index": "encrypted-reference"
+            }]
+        })
+    }
+
+    // ---------- collection helpers ----------
+
+    /// Everything one driven stream produced, in order.
+    #[derive(Default)]
+    struct Collected {
+        items: Vec<AgentStreamItem>,
+        error: Option<PromptError>,
+    }
+
+    impl Collected {
+        fn tool_calls(&self) -> Vec<ToolCall> {
+            self.items
+                .iter()
+                .filter_map(|item| match item {
+                    AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
+                        tool_call,
+                        ..
+                    }) => Some(tool_call.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn deltas(&self) -> Vec<(String, String, ToolCallDeltaContent)> {
+            self.items
+                .iter()
+                .filter_map(|item| match item {
+                    AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    }) => Some((id.clone(), internal_call_id.clone(), content.clone())),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn streamed_text(&self) -> String {
+            self.items
+                .iter()
+                .filter_map(|item| match item {
+                    AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
+                        Some(text.text.as_str())
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn tool_results(&self) -> Vec<(ToolResult, String)> {
+            self.items
+                .iter()
+                .filter_map(|item| match item {
+                    AgentStreamItem::User(StreamedUserContent::ToolResult {
+                        tool_result,
+                        internal_call_id,
+                    }) => Some((tool_result.clone(), internal_call_id.clone())),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn completion_calls(&self) -> Vec<CompletionCall> {
+            self.items
+                .iter()
+                .filter_map(|item| match item {
+                    AgentStreamItem::CompletionCall(call) => Some(*call),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn saw_provider_final(&self) -> bool {
+            self.items.iter().any(|item| {
+                matches!(
+                    item,
+                    AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))
+                )
+            })
+        }
+
+        fn final_response(&self) -> Option<&PromptResponse> {
+            self.items.iter().find_map(|item| match item {
+                AgentStreamItem::Final(response) => Some(response),
+                _ => None,
+            })
+        }
+
+        fn expect_final(&self) -> &PromptResponse {
+            self.final_response()
+                .unwrap_or_else(|| panic!("expected a final response, error was {:?}", self.error))
+        }
+
+        fn expect_error(&self) -> &PromptError {
+            self.error.as_ref().expect("expected a streaming error")
+        }
+    }
+
+    async fn collect(
+        stream: impl futures::Stream<Item = Result<AgentStreamItem, PromptError>>,
+    ) -> Collected {
+        futures::pin_mut!(stream);
+        let mut collected = Collected::default();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(item) => collected.items.push(item),
+                Err(error) => {
+                    collected.error = Some(error);
+                    break;
+                }
+            }
+        }
+        collected
+    }
+
+    // ---------- hook helpers ----------
+
+    fn hook_entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::new(name, move |event| {
+            let decision = decide(event);
+            Box::pin(async move { decision })
+        })
+    }
+
+    fn stop_before_completion_entry() -> HookEntry {
+        hook_entry("stop-before-completion", |event| {
+            let HookEvent::BeforeModelCall { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::CompletionCall(CompletionCallAction::stop("agent streaming stopped"))
+        })
+    }
+
+    fn repair_default_api_entry() -> HookEntry {
+        hook_entry("repair-default-api", |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            assert_eq!(context.tool_name, "default_api");
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair("add"))
+        })
+    }
+
+    fn retry_default_api_entry() -> HookEntry {
+        hook_entry("retry-default-api", |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            assert_eq!(context.tool_name, "default_api");
+            if let Some(args) = context.args.as_deref() {
+                assert!(!args.is_empty());
+            }
+            HookDecision::InvalidToolCall(InvalidToolCallAction::retry("Use the add tool instead"))
+        })
+    }
+
+    fn skip_default_api_entry() -> HookEntry {
+        hook_entry("skip-default-api", |event| {
+            let HookEvent::InvalidToolCall(context) = event else {
+                return HookDecision::Continue;
+            };
+            assert_eq!(context.tool_name, "default_api");
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip("default_api was skipped"))
+        })
+    }
+
+    fn terminate_on_stream_finish_entry() -> HookEntry {
+        hook_entry("terminate-on-stream-finish", |event| {
+            let HookEvent::StreamResponseFinish { .. } = event else {
+                return HookDecision::Continue;
+            };
+            HookDecision::Observation(ObservationAction::stop("stop after completion call"))
+        })
+    }
+
+    /// Fails the test if the driver reaches a tool-call delta, a tool-call
+    /// decision point, or the stream-finish observation for an invalid turn.
+    fn panic_on_unknown_tool_entry() -> HookEntry {
+        hook_entry("panic-on-unknown-tool", |event| match event {
+            HookEvent::ToolCallDelta { .. } => {
+                panic!("unknown tool call delta should fail before delta hooks run")
+            }
+            HookEvent::ToolCall { .. } => {
+                panic!("unknown tool call should fail before tool hooks run")
+            }
+            HookEvent::StreamResponseFinish { .. } => {
+                panic!("unknown tool call should fail before stream finish hooks run")
+            }
+            _ => HookDecision::Continue,
+        })
+        .observing_deltas()
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordedInvalidToolCalls(Arc<Mutex<Vec<InvalidToolCallContext>>>);
+
+    impl RecordedInvalidToolCalls {
+        fn observed(&self) -> Vec<InvalidToolCallContext> {
+            self.0.lock().expect("mutex").clone()
+        }
+
+        fn entry(&self) -> HookEntry {
+            let contexts = self.0.clone();
+            hook_entry("record-invalid-tool-call", move |event| {
+                let HookEvent::InvalidToolCall(context) = event else {
+                    return HookDecision::Continue;
+                };
+                contexts.lock().expect("mutex").push(context);
+                HookDecision::InvalidToolCall(InvalidToolCallAction::fail())
+            })
+        }
+    }
+
+    type RecordedToolCallDelta = (String, String, Option<String>, String);
+
+    #[derive(Clone, Default)]
+    struct RecordedToolCallDeltas(Arc<Mutex<Vec<RecordedToolCallDelta>>>);
+
+    impl RecordedToolCallDeltas {
+        fn observed(&self) -> Vec<RecordedToolCallDelta> {
+            self.0.lock().expect("mutex").clone()
+        }
+
+        fn entry(&self) -> HookEntry {
+            self.entry_with(ObservationAction::continue_run())
+        }
+
+        fn entry_with(&self, action: ObservationAction) -> HookEntry {
+            let deltas = self.0.clone();
+            hook_entry("record-tool-call-delta", move |event| {
+                let HookEvent::ToolCallDelta {
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                    ..
+                } = event
+                else {
+                    return HookDecision::Continue;
+                };
+                deltas.lock().expect("mutex").push((
+                    tool_call_id,
+                    internal_call_id,
+                    tool_name,
+                    delta,
+                ));
+                HookDecision::Observation(action.clone())
+            })
+            .observing_deltas()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordedTextDeltas(Arc<Mutex<Vec<(String, String)>>>);
+
+    impl RecordedTextDeltas {
+        fn observed(&self) -> Vec<(String, String)> {
+            self.0.lock().expect("mutex").clone()
+        }
+
+        fn entry(&self) -> HookEntry {
+            let deltas = self.0.clone();
+            hook_entry("record-text-delta", move |event| {
+                let HookEvent::TextDelta {
+                    delta, aggregated, ..
+                } = event
+                else {
+                    return HookDecision::Continue;
+                };
+                deltas.lock().expect("mutex").push((delta, aggregated));
+                HookDecision::Observation(ObservationAction::continue_run())
+            })
+            .observing_deltas()
+        }
+    }
+
+    // ---------- counting tools ----------
+
+    #[derive(Clone)]
+    struct CountingAddTool {
+        calls: Arc<AtomicU32>,
+    }
+
+    #[derive(Clone)]
+    struct CountingSubtractTool {
+        calls: Arc<AtomicU32>,
+    }
+
+    #[derive(Deserialize)]
+    struct CountingOperationArgs {
+        x: i32,
+        y: i32,
+    }
+
+    fn arithmetic_parameters() -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {"type": "number", "description": "The first operand"},
+                "y": {"type": "number", "description": "The second operand"}
+            },
+            "required": ["x", "y"],
+        })
+    }
+
+    impl PortableTool for CountingAddTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = CountingOperationArgs;
+        type Output = i32;
+
+        fn description(&self) -> String {
+            "Add x and y together".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_parameters()
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(args.x + args.y)
+        }
+    }
+
+    impl PortableTool for CountingSubtractTool {
+        const NAME: &'static str = "subtract";
+        type Error = MockToolError;
+        type Args = CountingOperationArgs;
+        type Output = i32;
+
+        fn description(&self) -> String {
+            "Subtract y from x".to_string()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            arithmetic_parameters()
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(args.x - args.y)
+        }
+    }
+
+    // ---------- history assertion helpers ----------
+
+    fn history_of(request: &CompletionRequest) -> Vec<Message> {
+        request.chat_history.iter().cloned().collect()
+    }
+
+    fn history_contains_tool_call(history: &[Message], tool_name: &str) -> bool {
+        history.iter().any(|message| {
+            matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.function.name == tool_name
+                    ))
+            )
+        })
+    }
+
+    fn history_contains_text(history: &[Message], expected: &str) -> bool {
+        history.iter().any(|message| {
+            matches!(
+                message,
+                Message::Assistant { content, .. }
+                    if content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::Text(text) if text.text == expected
+                    ))
+            )
+        })
+    }
+
+    fn assistant_reasoning_precedes_tool_call(
+        history: &[Message],
+        expected_reasoning: &str,
+        tool_name: &str,
+    ) -> bool {
+        history.iter().any(|message| {
+            let Message::Assistant { content, .. } = message else {
+                return false;
+            };
+            let reasoning_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Reasoning(reasoning)
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { text, .. } if text == expected_reasoning
+                        ))
+                )
+            });
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
+            matches!((reasoning_index, tool_index), (Some(r), Some(t)) if r < t)
+        })
+    }
+
+    fn assistant_reasoning_precedes_text_and_tool_call(
+        history: &[Message],
+        expected_reasoning: &str,
+        expected_text: &str,
+        tool_name: &str,
+    ) -> bool {
+        history.iter().any(|message| {
+            let Message::Assistant { content, .. } = message else {
+                return false;
+            };
+            let reasoning_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::Reasoning(reasoning)
+                        if reasoning.content.iter().any(|content| matches!(
+                            content,
+                            ReasoningContent::Text { text, .. } if text == expected_reasoning
+                        ))
+                )
+            });
+            let text_index = content.iter().position(
+                |item| matches!(item, AssistantContent::Text(text) if text.text == expected_text),
+            );
+            let tool_index = content.iter().position(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.function.name == tool_name
+                )
+            });
+            matches!(
+                (reasoning_index, text_index, tool_index),
+                (Some(r), Some(t), Some(c)) if r < t && t < c
+            )
+        })
+    }
+
+    fn text_metadata(content: &OneOrMany<AssistantContent>) -> Option<&serde_json::Value> {
+        content.iter().find_map(|item| match item {
+            AssistantContent::Text(text) => text.additional_params.as_ref(),
+            _ => None,
+        })
+    }
+
+    fn expect_unknown_tool_call(error: &PromptError) -> (&str, &[String], &[String], &[Message]) {
+        match error {
+            PromptError::UnknownToolCall {
+                tool_name,
+                available_tools,
+                allowed_tools,
+                chat_history,
+            } => (tool_name, available_tools, allowed_tools, chat_history),
+            other => panic!("expected UnknownToolCall, got {other:?}"),
+        }
+    }
+
+    // ---------- sans-IO unit ports ----------
+
+    #[test]
+    fn merge_reasoning_blocks_preserves_order_and_signatures() {
+        let mut accumulated = Vec::new();
+        let mut first = Reasoning::new("");
+        first.id = Some("rs_1".to_string());
+        first.content = vec![ReasoningContent::Text {
+            text: "step-1".to_string(),
+            signature: Some("sig-1".to_string()),
+        }];
+        let mut second = Reasoning::new("");
+        second.id = Some("rs_1".to_string());
+        second.content = vec![
+            ReasoningContent::Text {
+                text: "step-2".to_string(),
+                signature: Some("sig-2".to_string()),
+            },
+            ReasoningContent::Summary("summary".to_string()),
+        ];
+
+        merge_reasoning_blocks(&mut accumulated, &first);
+        merge_reasoning_blocks(&mut accumulated, &second);
+
+        assert_eq!(accumulated.len(), 1);
+        let merged = accumulated.first().expect("accumulated reasoning");
+        assert_eq!(merged.id.as_deref(), Some("rs_1"));
+        assert_eq!(merged.content.len(), 3);
+        assert!(matches!(
+            merged.content.first(),
+            Some(ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "step-1" && sig == "sig-1"
+        ));
+        assert!(matches!(
+            merged.content.get(1),
+            Some(ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "step-2" && sig == "sig-2"
+        ));
+    }
+
+    #[test]
+    fn merge_reasoning_blocks_keeps_distinct_ids_as_separate_items() {
+        let mut first = Reasoning::new("");
+        first.id = Some("rs_a".to_string());
+        first.content = vec![ReasoningContent::Text {
+            text: "step-1".to_string(),
+            signature: None,
+        }];
+        let mut incoming = Reasoning::new("");
+        incoming.id = Some("rs_b".to_string());
+        incoming.content = vec![ReasoningContent::Text {
+            text: "step-2".to_string(),
+            signature: None,
+        }];
+        let mut accumulated = vec![first];
+
+        merge_reasoning_blocks(&mut accumulated, &incoming);
+
+        assert_eq!(accumulated.len(), 2);
+        assert_eq!(
+            accumulated.first().and_then(|r| r.id.as_deref()),
+            Some("rs_a")
+        );
+        assert_eq!(
+            accumulated.get(1).and_then(|r| r.id.as_deref()),
+            Some("rs_b")
+        );
+    }
+
+    #[test]
+    fn merge_reasoning_blocks_keeps_none_ids_separate_items() {
+        let mut first = Reasoning::new("");
+        first.content = vec![ReasoningContent::Text {
+            text: "first".to_string(),
+            signature: None,
+        }];
+        let mut incoming = Reasoning::new("");
+        incoming.content = vec![ReasoningContent::Text {
+            text: "second".to_string(),
+            signature: None,
+        }];
+        let mut accumulated = vec![first];
+
+        merge_reasoning_blocks(&mut accumulated, &incoming);
+
+        assert_eq!(accumulated.len(), 2);
+        assert!(accumulated.first().is_some_and(|reasoning| {
+            reasoning.id.is_none()
+                && matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, .. }) if text == "first"
+                )
+        }));
+        assert!(accumulated.get(1).is_some_and(|reasoning| {
+            reasoning.id.is_none()
+                && matches!(
+                    reasoning.content.first(),
+                    Some(ReasoningContent::Text { text, .. }) if text == "second"
+                )
+        }));
+    }
+
+    #[test]
+    fn tool_result_output_preserves_multimodal_tool_output() {
+        let instruction = json!({"instruction": "Use the image part to answer."});
+        let mut content = OneOrMany::one(ToolResultContent::json(instruction.clone()));
+        content.push(ToolResultContent::image_base64(
+            "base64data==",
+            Some(ImageMediaType::PNG),
+            None,
+        ));
+        let user_content = tool_result_output(
+            "tool_call_1".to_string(),
+            Some("call_1".to_string()),
+            crate::tool::ToolOutput::content(content),
+        );
+
+        let tool_result = match user_content {
+            UserContent::ToolResult(tool_result) => tool_result,
+            other => panic!("expected tool result content, got {other:?}"),
+        };
+        assert_eq!(tool_result.id, "tool_call_1");
+        assert_eq!(tool_result.call_id.as_deref(), Some("call_1"));
+        assert_eq!(tool_result.content.len(), 2);
+
+        let mut items = tool_result.content.iter();
+        match items.next() {
+            Some(ToolResultContent::Json { value }) => assert_eq!(value, &instruction),
+            other => panic!("expected structured JSON payload first, got {other:?}"),
+        }
+        match items.next() {
+            Some(ToolResultContent::Image(image)) => {
+                assert_eq!(image.media_type, Some(ImageMediaType::PNG));
+                assert!(matches!(
+                    image.data,
+                    DocumentSourceKind::Base64(ref data) if data == "base64data=="
+                ));
+            }
+            other => panic!("expected image payload second, got {other:?}"),
+        }
+    }
+
+    /// The per-call record's wire shape (and its tolerance of legacy
+    /// `"usage": null`) is what durable hosts persist.
+    #[test]
+    fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
+        let call = CompletionCall::new(2, split_usage(3, 4));
+        let value = serde_json::to_value(call).expect("serialize completion call");
+        assert_eq!(
+            value,
+            json!({
+                "call_index": 2,
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 4,
+                    "total_tokens": 7,
+                    "cached_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                    "tool_use_prompt_tokens": 0,
+                    "reasoning_tokens": 0,
+                }
+            })
+        );
+        let restored: CompletionCall =
+            serde_json::from_value(value).expect("deserialize completion call");
+        assert_eq!(restored, call);
+
+        // Unreported usage is the zero-valued sentinel, and payloads written
+        // before the `Option<Usage>` encoding was dropped still load.
+        let unreported = CompletionCall::new(3, Usage::new());
+        let value = serde_json::to_value(unreported).expect("serialize missing usage");
+        assert_eq!(value["usage"]["total_tokens"], 0);
+        let legacy: CompletionCall =
+            serde_json::from_value(json!({"call_index": 3, "usage": null}))
+                .expect("legacy null-usage record should deserialize");
+        assert_eq!(legacy, unreported);
+
+        // The same record travels as a stream item.
+        let item = AgentStreamItem::CompletionCall(call);
+        let restored: AgentStreamItem =
+            serde_json::from_str(&serde_json::to_string(&item).expect("serialize item"))
+                .expect("deserialize item");
+        assert!(matches!(
+            restored,
+            AgentStreamItem::CompletionCall(restored) if restored == call
+        ));
+    }
+
+    #[test]
+    fn final_response_serializes_completion_calls_with_missing_usage() {
+        let mut response = PromptResponse::new("done".to_string(), split_usage(3, 4));
+        response.completion_calls = vec![
+            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(1, split_usage(3, 4)),
+        ];
+        let item = AgentStreamItem::Final(response);
+        let value = serde_json::to_value(&item).expect("serialize final response");
+        let final_value = value.get("Final").expect("final payload");
+
+        assert_eq!(
+            final_value.get("completion_calls"),
+            Some(&json!([
+                {
+                    "call_index": 0,
+                    "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                },
+                {
+                    "call_index": 1,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
+                }
+            ]))
+        );
+    }
+
+    // ---------- driven-stream behavior ----------
+
+    /// Hooks configured on the agent reach the driven stream: a
+    /// before-call stop cancels before any provider call.
+    #[tokio::test]
+    async fn public_streaming_request_constructor_preserves_agent_hooks() {
+        let script = script(vec![vec![text_item("should not run"), final_tokens(0)]]);
+        let agent = agent_builder(script.clone())
+            .add_hook(stop_before_completion_entry())
+            .build();
+
+        let collected = collect(agent.stream_run("go")).await;
+
+        assert!(matches!(
+            collected.expect_error(),
+            PromptError::PromptCancelled { reason, .. } if reason == "agent streaming stopped"
+        ));
+        assert_eq!(script.calls(), 0);
+    }
+
+    /// A tool batch commits atomically: when the run rejects the results,
+    /// neither the execution markers nor the results are surfaced.
+    #[tokio::test]
+    async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(3);
+        let mut stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script(vec![
+                vec![
+                    call_item("tool_call_1", "add", json!({"x": 1, "y": 2})),
+                    final_tokens(4),
+                ],
+                vec![text_item("done"), final_tokens(6)],
+            ])),
+            Arc::new(Runtime::new()),
+            "do tool work",
+        )
+        .with_tools(ToolCatalog::new(vec![ToolDefinition {
+            name: "add".to_string(),
+            description: "Adds".to_string(),
+            parameters: arithmetic_parameters(),
+        }]));
+
+        let calls = loop {
+            match stream.next_item().await.expect("item").expect("no error") {
+                AgentStreamItem::ToolCallsReady(calls) => break calls,
+                _ => continue,
+            }
+        };
+        let call = calls.first().expect("one call");
+        // A result whose id does not match the pending call: execution
+        // settled, but the run rejects the commit.
+        let mismatched = UserContent::tool_result(
+            "mismatched_call".to_string(),
+            OneOrMany::one(ToolResultContent::text("3")),
+        );
+        let error = stream
+            .provide_tool_results(vec![mismatched])
+            .expect_err("the mismatched result must fail run-state commit");
+        assert!(!format!("{error}").is_empty());
+        assert_eq!(call.tool_call.id, "tool_call_1");
+
+        // Nothing commit-labelled escapes after the rejected commit.
+        let mut saw_commit = false;
+        let mut saw_result = false;
+        while let Some(item) = stream.next_item().await {
+            match item {
+                Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
+                Ok(AgentStreamItem::User(_)) => saw_result = true,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        assert!(!saw_commit, "a failed run-state commit cannot be announced");
+        assert!(!saw_result, "an uncommitted result cannot be surfaced");
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_continues_after_tool_call_turn() {
+        let script = script(vec![
+            vec![
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("done"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("do tool work")
+                .history(Vec::<Message>::new())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(collected.tool_calls().len(), 1);
+        assert_eq!(collected.tool_results().len(), 1);
+        assert_eq!(collected.streamed_text(), "done");
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.output, "done");
+        let history = final_response
+            .messages
+            .as_ref()
+            .expect("final response history");
+        assert!(history_contains_text(history, "done"));
+
+        // The follow-up request carries [prompt, assistant tool call, result].
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        assert_eq!(follow_up.len(), 3, "{follow_up:?}");
+        assert!(matches!(
+            follow_up.first(),
+            Some(Message::User { content })
+                if matches!(content.first(), UserContent::Text(text) if text.text == "do tool work")
+        ));
+        assert!(matches!(
+            follow_up.get(1),
+            Some(Message::Assistant { content, .. })
+                if matches!(
+                    content.first(),
+                    AssistantContent::ToolCall(tool_call)
+                        if tool_call.id == "tool_call_1"
+                            && tool_call.call_id.as_deref() == Some("call_1")
+                )
+        ));
+        assert!(matches!(
+            follow_up.get(2),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::ToolResult(result)
+                        if result.id == "tool_call_1"
+                            && result.call_id.as_deref() == Some("call_1")
+                )
+        ));
+    }
+
+    /// `tool_concurrency` reaches the streaming executor: two
+    /// barrier-synchronized tools only finish if they run concurrently.
+    #[tokio::test]
+    async fn streaming_prompt_request_tool_concurrency_runs_tools_concurrently() {
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let script = script(vec![
+            vec![
+                call_item("b1", "barrier_tool", json!({})),
+                call_item("b2", "barrier_tool", json!({})),
+                final_tokens(0),
+            ],
+            vec![text_item("done"), final_tokens(0)],
+        ]);
+        let agent = agent_builder(script)
+            .tool(MockBarrierTool::new(barrier))
+            .build();
+
+        let drive = async {
+            let collected = collect(
+                agent
+                    .runner("hit the barrier twice")
+                    .max_turns(3)
+                    .tool_concurrency(2)
+                    .stream_run(),
+            )
+            .await;
+            assert!(collected.error.is_none(), "{:?}", collected.error);
+            assert_eq!(collected.expect_final().output, "done");
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), drive)
+            .await
+            .expect("streamed tools must run concurrently, not deadlock at the barrier");
+    }
+
+    #[tokio::test]
+    async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let subtract_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                call_item_with_call_id(
+                    "tool_call_2",
+                    "call_2",
+                    "subtract",
+                    json!({"x": 8, "y": 3}),
+                ),
+                final_tokens(4),
+            ],
+            vec![text_item("done"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .tool(CountingSubtractTool {
+                calls: subtract_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(agent.runner("use tools").max_turns(3).stream_run()).await;
+
+        assert_eq!(
+            collected
+                .tool_calls()
+                .into_iter()
+                .map(|call| call.function.name)
+                .collect::<Vec<_>>(),
+            vec!["add".to_string(), "subtract".to_string()]
+        );
+        assert_eq!(
+            collected
+                .tool_results()
+                .into_iter()
+                .map(|(result, _)| result.id)
+                .collect::<Vec<_>>(),
+            vec!["tool_call_1".to_string(), "tool_call_2".to_string()]
+        );
+        assert_eq!(add_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(subtract_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(collected.expect_final().output, "done");
+        assert_eq!(script.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_call_fails_before_streaming_second_request() {
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.tool_calls().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert_eq!(available, ["add".to_string()]);
+        assert_eq!(allowed, ["add".to_string()]);
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_later_emit() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                text_item("thinking "),
+                call_item("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(collected.streamed_text(), "thinking ");
+        assert!(collected.completion_calls().is_empty());
+        assert!(!collected.saw_provider_final());
+        assert!(collected.final_response().is_none());
+        assert!(collected.tool_calls().is_empty());
+        assert!(collected.tool_results().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert_eq!(available, ["add".to_string()]);
+        assert_eq!(allowed, ["add".to_string()]);
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                call_item("tool_call_2", "default_api", json!({"x": 3, "y": 4})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use tools")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.completion_calls().is_empty());
+        assert!(collected.tool_calls().is_empty());
+        assert!(collected.tool_results().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let (tool_name, _, _, history) = expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "subtract", json!({"x": 3, "y": 1})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the allowed tool")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.tool_calls().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "subtract");
+        assert_eq!(available, ["add".to_string(), "subtract".to_string()]);
+        assert_eq!(allowed, ["add".to_string()]);
+        assert!(history_contains_tool_call(history, "subtract"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "add", json!({"x": 1, "y": 2})),
+                call_item("tool_call_2", "subtract", json!({"x": 3, "y": 1})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the allowed tool")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.tool_calls().is_empty());
+        assert!(collected.tool_results().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "subtract");
+        assert_eq!(available, ["add".to_string(), "subtract".to_string()]);
+        assert_eq!(allowed, ["add".to_string()]);
+        assert!(history_contains_tool_call(history, "subtract"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_streaming_tool_call() {
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "add", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("do not use tools")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.tool_calls().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "add");
+        assert_eq!(available, ["add".to_string()]);
+        assert!(allowed.is_empty());
+        assert!(history_contains_tool_call(history, "add"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    // ---------- invalid tool-call recovery ----------
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+                final_tokens(4),
+            ],
+            vec![text_item("done"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(repair_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let calls = collected.tool_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls.first().map(|call| call.function.name.as_str()),
+            Some("add"),
+            "the repaired name must be the one announced"
+        );
+        let results = collected.tool_results();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].0.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Json { value } if value == &json!(5)
+        )));
+        assert_eq!(collected.expect_final().output, "done");
+        assert_eq!(script.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_id() {
+        let invalid_hook = RecordedInvalidToolCalls::default();
+        let script = script(vec![vec![
+            call_item_with_call_id(
+                "tool_call_1",
+                "provider_call_1",
+                "default_api",
+                json!({"x": 2, "y": 3}),
+            ),
+            final_tokens(4),
+        ]]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(invalid_hook.entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        collected.expect_error();
+        assert_eq!(script.calls(), 1);
+        let contexts = invalid_hook.observed();
+        assert_eq!(contexts.len(), 1);
+        let context = &contexts[0];
+        assert_eq!(context.tool_name, "default_api");
+        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        assert!(context.internal_call_id.is_some());
+        assert!(context.is_streaming);
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                call_item_with_call_id(
+                    "tool_call_1",
+                    "call_1",
+                    "default_api",
+                    json!({"x": 2, "y": 3}),
+                ),
+                final_tokens(4),
+            ],
+            vec![text_item("continued"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(skip_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let (skipped, internal_call_id) = collected
+            .tool_results()
+            .into_iter()
+            .next()
+            .expect("skip recovery should emit a synthetic tool result");
+        assert!(!internal_call_id.is_empty());
+        assert_eq!(skipped.id, "tool_call_1");
+        assert_eq!(skipped.call_id.as_deref(), Some("call_1"));
+        assert!(skipped.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Text(text) if text.text == "default_api was skipped"
+        )));
+        assert_eq!(collected.expect_final().output, "continued");
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        assert!(matches!(
+            follow_up.get(2),
+            Some(Message::User { content })
+                if content.iter().any(|item| matches!(
+                    item,
+                    UserContent::ToolResult(result)
+                        if result.id == "tool_call_1"
+                            && result.content.iter().any(|content| matches!(
+                                content,
+                                ToolResultContent::Text(text)
+                                    if text.text == "default_api was skipped"
+                            ))
+                ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_valid_call() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 2, "y": 3})),
+                call_item_with_call_id(
+                    "tool_call_2",
+                    "call_2",
+                    "default_api",
+                    json!({"x": 4, "y": 5}),
+                ),
+                final_tokens(4),
+            ],
+            vec![text_item("retried"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(1)
+                .stream_run(),
+        )
+        .await;
+
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.output, "retried");
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let expected_calls = vec![
+            CompletionCall::new(0, total_usage(4)),
+            CompletionCall::new(1, total_usage(6)),
+        ];
+        assert_eq!(collected.completion_calls(), expected_calls);
+        assert_eq!(final_response.completion_calls, expected_calls);
+        assert_eq!(final_response.usage.total_tokens, 10);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let retry_history = history_of(&requests[1]);
+        assert_eq!(retry_history.len(), 3);
+        assert!(matches!(
+            retry_history.get(1),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == "checking "
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(call)
+                            if call.id == "tool_call_1" && call.function.name == "add"
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(call)
+                            if call.id == "tool_call_2" && call.function.name == "default_api"
+                    ))
+        ));
+        assert!(matches!(
+            retry_history.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_2"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == "Use the add tool instead"
+                                ))
+                    ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_valid_call() {
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 2, "y": 3})),
+                call_item_with_call_id(
+                    "tool_call_2",
+                    "call_2",
+                    "default_api",
+                    json!({"x": 4, "y": 5}),
+                ),
+                final_tokens(4),
+            ],
+            vec![text_item("continued"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(skip_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let (skipped, _) = collected
+            .tool_results()
+            .into_iter()
+            .next()
+            .expect("skip recovery should emit a synthetic tool result");
+        assert_eq!(skipped.id, "tool_call_2");
+        assert_eq!(skipped.call_id.as_deref(), Some("call_2"));
+        assert_eq!(collected.expect_final().output, "continued");
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        assert_eq!(follow_up.len(), 3);
+        assert!(matches!(
+            follow_up.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.call_id.as_deref() == Some("call_1")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_2"
+                                && result.call_id.as_deref() == Some("call_2")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == "default_api was skipped"
+                                ))
+                    ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history() {
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                reasoning_block(Some("rs_1"), "reasoned step"),
+                call_item("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+                final_tokens(4),
+            ],
+            vec![text_item("continued"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(skip_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        assert!(history_contains_text(&follow_up, "checking "));
+        assert!(assistant_reasoning_precedes_tool_call(
+            &follow_up,
+            "reasoned step",
+            "default_api"
+        ));
+        assert!(
+            assistant_reasoning_precedes_text_and_tool_call(
+                &follow_up,
+                "reasoned step",
+                "checking ",
+                "default_api"
+            ),
+            "{follow_up:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
+        let script = script(vec![
+            vec![
+                reasoning_delta_item(Some("rs_1"), "delta reason"),
+                args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+                name_delta("tool_call_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("retried"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(1)
+                .stream_run(),
+        )
+        .await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(assistant_reasoning_precedes_tool_call(
+            &history_of(&requests[1]),
+            "delta reason",
+            "default_api"
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_hook_skip_resets_streaming_text_delta_state() {
+        let text_hook = RecordedTextDeltas::default();
+        let script = script(vec![
+            vec![
+                text_item("stale "),
+                call_item("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+                final_tokens(4),
+            ],
+            vec![text_item("fresh"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(text_hook.entry())
+                .add_hook(skip_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+
+        assert_eq!(
+            text_hook.observed(),
+            vec![
+                ("stale ".to_string(), "stale ".to_string()),
+                ("fresh".to_string(), "fresh".to_string()),
+            ],
+            "the abandoned turn's aggregated text must not leak into the retry"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
+        let delta_hook = RecordedToolCallDeltas::default();
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                reasoning_delta_item(Some("rs_1"), "diagnostic reason"),
+                call_item_with_call_id("tool_call_0", "call_0", "add", json!({"x": 1, "y": 2})),
+                args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+                name_delta("tool_call_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("retried"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(delta_hook.entry())
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(1)
+                .stream_run(),
+        )
+        .await;
+
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.output, "retried");
+        assert!(
+            collected.deltas().is_empty(),
+            "an invalid tool-call delta must never be emitted"
+        );
+        assert!(delta_hook.observed().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        let expected_calls = vec![
+            CompletionCall::new(0, total_usage(4)),
+            CompletionCall::new(1, total_usage(6)),
+        ];
+        assert_eq!(collected.completion_calls(), expected_calls);
+        assert_eq!(final_response.completion_calls, expected_calls);
+        assert_eq!(final_response.usage.total_tokens, 10);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let retry_history = history_of(&requests[1]);
+        assert!(matches!(
+            retry_history.get(1),
+            Some(Message::Assistant { content, .. })
+                if content.iter().any(|item| matches!(
+                    item,
+                    AssistantContent::Text(text) if text.text == "checking "
+                ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(call)
+                            if call.id == "tool_call_0" && call.function.name == "add"
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        AssistantContent::ToolCall(call)
+                            if call.id == "tool_call_1"
+                                && call.function.name == "default_api"
+                                && call.function.arguments == json!({"x": 2, "y": 3})
+                    ))
+        ));
+        assert!(matches!(
+            retry_history.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_0"
+                                && result.call_id.as_deref() == Some("call_0")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == "Use the add tool instead"
+                                ))
+                    ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_call_id() {
+        let invalid_hook = RecordedInvalidToolCalls::default();
+        let script = script(vec![vec![
+            text_item("checking "),
+            reasoning_delta_item(Some("rs_1"), "diagnostic reason"),
+            call_item_with_call_id("tool_call_0", "call_0", "add", json!({"x": 1, "y": 2})),
+            args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+            name_delta("tool_call_1", "internal_1", "default_api"),
+            final_tokens(4),
+        ]]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(invalid_hook.entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        collected.expect_error();
+        assert_eq!(script.calls(), 1);
+        let contexts = invalid_hook.observed();
+        assert_eq!(contexts.len(), 1);
+        let context = &contexts[0];
+        assert_eq!(context.tool_name, "default_api");
+        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        assert_eq!(context.internal_call_id.as_deref(), Some("internal_1"));
+        assert!(context.is_streaming);
+        assert!(history_contains_text(&context.chat_history, "checking "));
+        assert!(
+            assistant_reasoning_precedes_tool_call(
+                &context.chat_history,
+                "diagnostic reason",
+                "add"
+            ),
+            "{:?}",
+            context.chat_history
+        );
+        assert!(history_contains_tool_call(&context.chat_history, "add"));
+        assert!(history_contains_tool_call(
+            &context.chat_history,
+            "default_api"
+        ));
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
+        let text_hook = RecordedTextDeltas::default();
+        let script = script(vec![
+            vec![
+                text_item("stale "),
+                args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+                name_delta("tool_call_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("fresh"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(text_hook.entry())
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(1)
+                .stream_run(),
+        )
+        .await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+
+        assert_eq!(
+            text_hook.observed(),
+            vec![
+                ("stale ".to_string(), "stale ".to_string()),
+                ("fresh".to_string(), "fresh".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
+        let delta_hook = RecordedToolCallDeltas::default();
+        let add_calls = Arc::new(AtomicU32::new(0));
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                call_item_with_call_id("tool_call_0", "call_0", "add", json!({"x": 1, "y": 2})),
+                args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+                name_delta("tool_call_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("continued"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(CountingAddTool {
+                calls: add_calls.clone(),
+            })
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(delta_hook.entry())
+                .add_hook(skip_default_api_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(
+            collected.deltas().is_empty(),
+            "an invalid tool-call delta must never be emitted"
+        );
+        let (skipped, internal_call_id) = collected
+            .tool_results()
+            .into_iter()
+            .next()
+            .expect("skip recovery should emit a synthetic tool result");
+        assert_eq!(internal_call_id, "internal_1");
+        assert_eq!(skipped.id, "tool_call_1");
+        assert!(skipped.call_id.is_none());
+        assert!(skipped.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Text(text) if text.text == "default_api was skipped"
+        )));
+        assert_eq!(collected.expect_final().output, "continued");
+        assert!(delta_hook.observed().is_empty());
+        assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        assert!(matches!(
+            follow_up.get(2),
+            Some(Message::User { content })
+                if content.iter().filter(|item| matches!(item, UserContent::ToolResult(_))).count() == 2
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_0"
+                                && result.call_id.as_deref() == Some("call_0")
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+                                ))
+                    ))
+                    && content.iter().any(|item| matches!(
+                        item,
+                        UserContent::ToolResult(result)
+                            if result.id == "tool_call_1"
+                                && result.content.iter().any(|content| matches!(
+                                    content,
+                                    ToolResultContent::Text(text)
+                                        if text.text == "default_api was skipped"
+                                ))
+                    ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn streaming_retry_budget_exhaustion_history_contains_invalid_tool_call() {
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(0)
+                .stream_run(),
+        )
+        .await;
+
+        let (tool_name, _, _, history) = expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn streaming_name_delta_retry_budget_exhaustion_history_includes_same_turn_context() {
+        let script = script(vec![
+            vec![
+                text_item("checking "),
+                call_item_with_call_id("tool_call_0", "call_0", "add", json!({"x": 1, "y": 2})),
+                args_delta("tool_call_1", "internal_1", r#"{"x":2,"y":3}"#),
+                name_delta("tool_call_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(retry_default_api_entry())
+                .max_turns(3)
+                .max_invalid_tool_call_retries(0)
+                .stream_run(),
+        )
+        .await;
+
+        let (tool_name, _, _, history) = expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert!(history_contains_text(history, "checking "));
+        assert!(history_contains_tool_call(history, "add"));
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    // ---------- tool-call delta emission and gating ----------
+
+    #[tokio::test]
+    async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_emit() {
+        let script = script(vec![
+            vec![
+                name_delta("tool_1", "internal_1", "add"),
+                args_delta("tool_1", "internal_1", "{\"x\":1}"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("do not use tools")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.deltas().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "add");
+        assert_eq!(available, ["add".to_string()]);
+        assert!(allowed.is_empty());
+        assert!(history_contains_tool_call(history, "add"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit() {
+        let script = script(vec![
+            vec![
+                name_delta("tool_1", "internal_1", "default_api"),
+                args_delta("tool_1", "internal_1", "{\"x\":1}"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream a bad tool call")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.deltas().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert_eq!(available, ["add".to_string()]);
+        assert_eq!(allowed, ["add".to_string()]);
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
+        let script = script(vec![
+            vec![
+                args_delta("tool_1", "internal_1", "{\"x\":1}"),
+                name_delta("tool_1", "internal_1", "default_api"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream a bad tool call")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(
+            collected.deltas().is_empty(),
+            "buffered arguments must not escape once the name is rejected"
+        );
+        let (tool_name, _, _, history) = expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "default_api");
+        assert!(history_contains_tool_call(history, "default_api"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    /// Arguments streamed before the name are buffered, then replayed after
+    /// the validated name — never before it.
+    #[tokio::test]
+    async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order() {
+        let hook = RecordedToolCallDeltas::default();
+        let script = script(vec![vec![
+            args_delta("tool_1", "internal_1", "{\"x\":"),
+            name_delta("tool_1", "internal_1", "add"),
+            args_delta("tool_1", "internal_1", "1}"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream a tool call")
+                .add_hook(hook.entry())
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(
+            hook.observed(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    Some("add".to_string()),
+                    String::new()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "{\"x\":".to_string()
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    None,
+                    "1}".to_string()
+                ),
+            ]
+        );
+        assert_eq!(
+            collected.deltas(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("add".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_call_args_delta_without_name_errors_at_stream_end() {
+        let script = script(vec![
+            vec![
+                args_delta("tool_1", "internal_1", "{\"x\":1}"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream an incomplete tool call")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.deltas().is_empty());
+        assert!(collected.final_response().is_none());
+        let message = collected.expect_error().to_string();
+        assert!(
+            message.contains("streamed tool call arguments"),
+            "{message}"
+        );
+        assert!(message.contains("tool_1"), "{message}");
+        assert!(message.contains("internal_1"), "{message}");
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
+        let script = script(vec![
+            vec![
+                args_delta("tool_1", "internal_1", "{\"x\":1}"),
+                name_delta("tool_1", "internal_1", "add"),
+                final_tokens(4),
+            ],
+            vec![text_item("should not be requested"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone())
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::None)
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("do not use tools")
+                .add_hook(panic_on_unknown_tool_entry())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.deltas().is_empty());
+        let (tool_name, available, allowed, history) =
+            expect_unknown_tool_call(collected.expect_error());
+        assert_eq!(tool_name, "add");
+        assert_eq!(available, ["add".to_string()]);
+        assert!(allowed.is_empty());
+        assert!(history_contains_tool_call(history, "add"));
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_without_hook() {
+        let script = script(vec![vec![
+            name_delta("tool_1", "internal_1", "add"),
+            args_delta("tool_1", "internal_1", "{\"x\":"),
+            args_delta("tool_1", "internal_1", "1}"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(agent.stream_run("stream a tool call")).await;
+
+        assert_eq!(
+            collected.deltas(),
+            vec![
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Name("add".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("{\"x\":".to_string())
+                ),
+                (
+                    "tool_1".to_string(),
+                    "internal_1".to_string(),
+                    ToolCallDeltaContent::Delta("1}".to_string())
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
+        let hook = RecordedToolCallDeltas::default();
+        let script = script(vec![vec![
+            name_delta("tool_1", "internal_1", "add"),
+            args_delta("tool_1", "internal_1", "{\"x\":"),
+            args_delta("tool_1", "internal_1", "1}"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream a tool call")
+                .add_hook(hook.entry())
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(hook.observed().len(), 3);
+        assert_eq!(collected.deltas().len(), 3);
+        assert_eq!(
+            collected.deltas().first().map(|(_, _, content)| content),
+            Some(&ToolCallDeltaContent::Name("add".to_string()))
+        );
+    }
+
+    /// A delta hook that stops the run prevents the delta it observed from
+    /// ever reaching the consumer.
+    #[tokio::test]
+    async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
+        let hook = RecordedToolCallDeltas::default();
+        let script = script(vec![vec![
+            name_delta("tool_1", "internal_1", "add"),
+            args_delta("tool_1", "internal_1", "{\"x\":"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("stream a tool call")
+                .add_hook(hook.entry_with(ObservationAction::stop("stop on tool call delta")))
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(
+            hook.observed(),
+            vec![(
+                "tool_1".to_string(),
+                "internal_1".to_string(),
+                Some("add".to_string()),
+                String::new()
+            )]
+        );
+        assert!(collected.deltas().is_empty());
+        assert!(collected.final_response().is_none());
+        let message = collected.expect_error().to_string();
+        assert!(
+            message.contains("stop on tool call delta"),
+            "expected hook termination error, got {message}"
+        );
+    }
+
+    // ---------- per-call completion records ----------
+
+    #[tokio::test]
+    async fn stream_prompt_exposes_completion_calls() {
+        let first = split_usage(10, 2);
+        let second = split_usage(25, 5);
+        let script = script(vec![
+            vec![
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                final_usage(first),
+            ],
+            vec![text_item("done"), final_usage(second)],
+        ]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("do tool work")
+                .history(Vec::<Message>::new())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let expected = vec![
+            CompletionCall::new(0, first),
+            CompletionCall::new(1, second),
+        ];
+        assert_eq!(collected.completion_calls(), expected);
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.usage, split_usage(35, 7));
+        assert_eq!(final_response.completion_calls, expected);
+    }
+
+    /// The record for a turn is emitted before a stream-finish hook stops the
+    /// run, so its usage is never lost.
+    #[tokio::test]
+    async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
+        let call_usage = split_usage(10, 2);
+        let script = script(vec![vec![text_item("done"), final_usage(call_usage)]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(
+            agent
+                .runner("say done")
+                .add_hook(terminate_on_stream_finish_entry())
+                .stream_run(),
+        )
+        .await;
+
+        assert_eq!(
+            collected.completion_calls(),
+            vec![CompletionCall::new(0, call_usage)]
+        );
+        assert!(collected.final_response().is_none());
+        collected.expect_error();
+    }
+
+    /// A turn whose provider never reported usage still emits exactly one
+    /// record, with the zero-valued sentinel.
+    #[tokio::test]
+    async fn stream_prompt_completion_calls_records_unreported_usage() {
+        let second = split_usage(25, 5);
+        let script = script(vec![
+            vec![call_item_with_call_id(
+                "tool_call_1",
+                "call_1",
+                "add",
+                json!({"x": 1, "y": 2}),
+            )],
+            vec![text_item("done"), final_usage(second)],
+        ]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("do tool work")
+                .history(Vec::<Message>::new())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let expected = vec![
+            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(1, second),
+        ];
+        assert_eq!(collected.completion_calls(), expected);
+        assert_eq!(collected.expect_final().completion_calls, expected);
+    }
+
+    // ---------- final-response shaping and history parity ----------
+
+    #[tokio::test]
+    async fn final_response_matches_streamed_text_when_provider_final_is_textless() {
+        let script = script(vec![vec![
+            text_item("hello"),
+            text_item(" world"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(agent.stream_run("say hello")).await;
+
+        assert_eq!(collected.streamed_text(), "hello world");
+        assert_eq!(collected.expect_final().output, "hello world");
+    }
+
+    #[tokio::test]
+    async fn final_response_preserves_structured_text_metadata() {
+        let script = script(vec![vec![
+            cited_text_item("cited ", citation_metadata()),
+            text_item("answer"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(agent.stream_run("answer with citations")).await;
+
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.output, "cited answer");
+        let metadata =
+            text_metadata(&final_response.content).expect("text metadata in final content");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn final_response_history_preserves_structured_text_metadata() {
+        let script = script(vec![vec![
+            cited_text_item("cited ", citation_metadata()),
+            text_item("answer"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(
+            agent
+                .runner("answer with citations")
+                .history(Vec::<Message>::new())
+                .stream_run(),
+        )
+        .await;
+
+        let history = collected
+            .expect_final()
+            .messages
+            .as_ref()
+            .expect("final history")
+            .clone();
+        let assistant_content = history
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("assistant message in history");
+        let metadata =
+            text_metadata(assistant_content).expect("text metadata in assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_follow_up_history_preserves_structured_text_metadata() {
+        let script = script(vec![
+            vec![
+                cited_text_item("I need a tool. ", citation_metadata()),
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                final_tokens(4),
+            ],
+            vec![text_item("done"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use a tool with citations")
+                .history(Vec::<Message>::new())
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        let follow_up = history_of(&requests[1]);
+        let assistant_content = follow_up
+            .iter()
+            .find_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .expect("assistant message in follow-up history");
+        let metadata = text_metadata(assistant_content)
+            .expect("citation metadata in follow-up assistant history");
+        assert_eq!(
+            metadata["citations"][0]["encrypted_index"],
+            "encrypted-reference"
+        );
+    }
+
+    /// A truly textless turn stays empty rather than inventing content.
+    #[tokio::test]
+    async fn final_response_can_remain_empty_for_truly_textless_turns() {
+        let script = script(vec![vec![final_tokens(1)]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(agent.stream_run("say nothing")).await;
+
+        assert!(collected.streamed_text().is_empty());
+        assert_eq!(collected.expect_final().output, "");
+    }
+
+    #[tokio::test]
+    async fn streaming_final_response_carries_the_committed_transcript() {
+        let script = script(vec![vec![
+            text_item("hello"),
+            text_item(" world"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(agent.stream_run("hi there")).await;
+
+        let history = collected
+            .expect_final()
+            .messages
+            .as_ref()
+            .expect("PromptResponse.messages should be populated")
+            .clone();
+        assert_eq!(
+            history.len(),
+            2,
+            "user prompt + assistant response in final history: {history:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
+        let script = script(vec![vec![
+            text_item("final answer"),
+            reasoning_block(Some("rs_1"), "reasoned step"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+
+        let collected = collect(
+            agent
+                .runner("think before answering")
+                .history(Vec::<Message>::new())
+                .stream_run(),
+        )
+        .await;
+
+        let history = collected
+            .expect_final()
+            .messages
+            .as_ref()
+            .expect("PromptResponse.messages should be populated")
+            .clone();
+        assert_eq!(
+            history.len(),
+            2,
+            "user prompt + one assistant response in final history: {history:?}"
+        );
+        assert!(matches!(
+            history.first(),
+            Some(Message::User { content })
+                if matches!(
+                    content.first(),
+                    UserContent::Text(text) if text.text == "think before answering"
+                )
+        ));
+
+        let assistant_messages = history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(assistant_messages.len(), 1, "{history:?}");
+        let assistant_content = assistant_messages.first().expect("assistant message");
+        assert!(assistant_content.iter().any(|item| matches!(
+            item,
+            AssistantContent::Text(text) if text.text == "final answer"
+        )));
+        assert!(assistant_content.iter().any(|item| matches!(
+            item,
+            AssistantContent::Reasoning(reasoning)
+                if reasoning.id.as_deref() == Some("rs_1")
+                    && reasoning.content.iter().any(|content| matches!(
+                        content,
+                        ReasoningContent::Text { text, .. } if text == "reasoned step"
+                    ))
+        )));
+        let reasoning_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Reasoning(_)))
+            .expect("reasoning in assistant history");
+        let text_index = assistant_content
+            .iter()
+            .position(|item| matches!(item, AssistantContent::Text(_)))
+            .expect("text in assistant history");
+        assert!(
+            reasoning_index < text_index,
+            "assistant reasoning must be stored before assistant text: {assistant_content:?}"
+        );
+    }
+
+    /// Tool-mode structured output: a turn mixing prose with the output-tool
+    /// call finalizes as the structured payload, and leaves no unanswered
+    /// `tool_use` in the committed history (#1928).
+    #[tokio::test]
+    async fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
+        let script = script(vec![vec![
+            text_item("Sure, here is the weather:"),
+            call_item("c1", "final_result", json!({"city": "Tokyo"})),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script)
+            .output_schema_raw(schemars::json_schema!({
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"],
+            }))
+            .output_mode(crate::agent::run::OutputMode::Tool)
+            .build();
+
+        let collected = collect(agent.stream_run("weather in Tokyo")).await;
+
+        let final_response = collected.expect_final();
+        assert_eq!(final_response.output, r#"{"city":"Tokyo"}"#);
+        assert!(
+            !final_response
+                .content
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+            "no unanswered tool_use should remain in the final content"
+        );
+        let history = final_response
+            .messages
+            .as_ref()
+            .expect("final history")
+            .clone();
+        assert!(
+            history.iter().all(|message| match message {
+                Message::Assistant { content, .. } => !content
+                    .iter()
+                    .any(|item| matches!(item, AssistantContent::ToolCall(_))),
+                _ => true,
+            }),
+            "the output-tool call must not survive as an orphan tool_use: {history:?}"
+        );
+    }
+
+    // ---------- telemetry ----------
+
+    #[derive(Clone, Debug, Default)]
+    struct CapturedSpan {
+        id: u64,
+        name: String,
+        parent_id: Option<u64>,
+        fields: std::collections::HashMap<String, u64>,
+        string_fields: std::collections::HashMap<String, String>,
+        record_counts: std::collections::HashMap<String, usize>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedSpans(Arc<Mutex<Vec<CapturedSpan>>>);
+
+    impl CapturedSpans {
+        fn clear(&self) {
+            self.0.lock().expect("spans").clear();
+        }
+
+        fn insert(&self, id: &tracing::Id, name: &str, parent_id: Option<u64>) {
+            self.0.lock().expect("spans").push(CapturedSpan {
+                id: id.into_u64(),
+                name: name.to_string(),
+                parent_id,
+                ..CapturedSpan::default()
+            });
+        }
+
+        fn record(&self, id: &tracing::Id, fields: Vec<CapturedField>) {
+            let mut spans = self.0.lock().expect("spans");
+            if let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64()) {
+                for field in fields {
+                    match field {
+                        CapturedField::Number(name, value) => {
+                            *span.record_counts.entry(name.clone()).or_insert(0) += 1;
+                            span.fields.insert(name, value);
+                        }
+                        CapturedField::Text(name, value) => {
+                            *span.record_counts.entry(name.clone()).or_insert(0) += 1;
+                            span.fields.insert(name.clone(), 0);
+                            span.string_fields.insert(name, value);
+                        }
+                    }
+                }
+            }
+        }
+
+        fn record_strings(&self, id: &tracing::Id, fields: Vec<(String, String)>) {
+            let mut spans = self.0.lock().expect("spans");
+            if let Some(span) = spans.iter_mut().rev().find(|span| span.id == id.into_u64()) {
+                span.string_fields.extend(fields);
+            }
+        }
+
+        fn snapshot(&self) -> Vec<CapturedSpan> {
+            self.0.lock().expect("spans").clone()
+        }
+    }
+
+    enum CapturedField {
+        Number(String, u64),
+        Text(String, String),
+    }
+
+    struct SpanCaptureLayer {
+        spans: CapturedSpans,
+    }
+
+    impl<S> tracing_subscriber::Layer<S> for SpanCaptureLayer
+    where
+        S: tracing::Subscriber,
+        S: for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
+    {
+        fn on_new_span(
+            &self,
+            attrs: &tracing::span::Attributes<'_>,
+            id: &tracing::Id,
+            ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let parent_id = attrs
+                .parent()
+                .map(tracing::Id::into_u64)
+                .or_else(|| ctx.current_span().id().map(tracing::Id::into_u64));
+            self.spans.insert(id, attrs.metadata().name(), parent_id);
+            let mut string_fields = Vec::new();
+            attrs.record(&mut SpanStringCaptureVisitor {
+                fields: &mut string_fields,
+            });
+            self.spans.record_strings(id, string_fields);
+        }
+
+        fn on_record(
+            &self,
+            span: &tracing::Id,
+            values: &tracing::span::Record<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let mut fields = Vec::new();
+            values.record(&mut SpanFieldCaptureVisitor {
+                fields: &mut fields,
+            });
+            self.spans.record(span, fields);
+            let mut string_fields = Vec::new();
+            values.record(&mut SpanStringCaptureVisitor {
+                fields: &mut string_fields,
+            });
+            self.spans.record_strings(span, string_fields);
+        }
+    }
+
+    struct SpanFieldCaptureVisitor<'a> {
+        fields: &'a mut Vec<CapturedField>,
+    }
+
+    struct SpanStringCaptureVisitor<'a> {
+        fields: &'a mut Vec<(String, String)>,
+    }
+
+    impl tracing::field::Visit for SpanStringCaptureVisitor<'_> {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.fields
+                .push((field.name().to_string(), value.to_string()));
+        }
+
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.fields
+                .push((field.name().to_string(), format!("{value:?}")));
+        }
+    }
+
+    impl tracing::field::Visit for SpanFieldCaptureVisitor<'_> {
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.fields
+                .push(CapturedField::Number(field.name().to_string(), value));
+        }
+
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.fields.push(CapturedField::Text(
+                field.name().to_string(),
+                value.to_string(),
+            ));
+        }
+
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.fields.push(CapturedField::Text(
+                field.name().to_string(),
+                format!("{value:?}"),
+            ));
+        }
+    }
+
+    /// Install a span-capturing subscriber, warming the driver's span
+    /// callsites against it first: the FIRST thread to hit a callsite caches
+    /// its interest, so a parallel test without a subscriber can otherwise
+    /// permanently cache `Interest::never` for the very spans asserted on.
+    async fn warmed_span_capture() -> (CapturedSpans, tracing::subscriber::DefaultGuard) {
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let spans = CapturedSpans::default();
+        let subscriber = tracing_subscriber::Registry::default().with(SpanCaptureLayer {
+            spans: spans.clone(),
+        });
+        let guard = tracing::subscriber::set_default(subscriber);
+
+        let warmup =
+            agent_builder(script(vec![vec![text_item("warmup"), final_tokens(0)]])).build();
+        let collected = collect(warmup.stream_run("warmup")).await;
+        assert!(collected.error.is_none());
+        let unary = agent_builder(script(vec![vec![text_item("warmup"), final_tokens(0)]])).build();
+        let _ = unary.runner("warmup").run().await;
+        tracing::callsite::rebuild_interest_cache();
+        spans.clear();
+        (spans, guard)
+    }
+
+    async fn assert_stream_usage_recorded_on_chat_spans(
+        agent: crate::agent::Agent,
+        prompt: &str,
+        max_turns: usize,
+        expected_usages: &[Usage],
+    ) {
+        let (spans, _default) = warmed_span_capture().await;
+        // Declare the field the outer-span guard protects, so a regression
+        // (recording onto a caller span) is observable rather than a no-op.
+        let outer_span = tracing::info_span!("outer", gen_ai.completion = tracing::field::Empty);
+
+        async {
+            let collected = collect(agent.runner(prompt).max_turns(max_turns).stream_run()).await;
+            assert!(collected.error.is_none(), "{:?}", collected.error);
+        }
+        .instrument(outer_span)
+        .await;
+
+        let snapshot = spans.snapshot();
+        let outer_id = snapshot
+            .iter()
+            .find(|span| span.name == "outer")
+            .map(|span| span.id)
+            .expect("outer span should be captured");
+        let chat_spans = snapshot
+            .iter()
+            .filter(|span| span.name == "chat_streaming")
+            .collect::<Vec<_>>();
+
+        assert_eq!(chat_spans.len(), expected_usages.len());
+        assert!(
+            snapshot.iter().all(|span| span.name != "invoke_agent"),
+            "outer span path should not create invoke_agent"
+        );
+        for (chat_span, expected) in chat_spans.into_iter().zip(expected_usages) {
+            assert_eq!(chat_span.parent_id, Some(outer_id));
+            assert_eq!(
+                chat_span
+                    .string_fields
+                    .get("gen_ai.operation.name")
+                    .map(String::as_str),
+                Some("chat")
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.input_tokens"),
+                Some(&expected.input_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.output_tokens"),
+                Some(&expected.output_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.cache_read.input_tokens"),
+                Some(&expected.cached_input_tokens)
+            );
+            assert_eq!(
+                chat_span
+                    .fields
+                    .get("gen_ai.usage.cache_creation.input_tokens"),
+                Some(&expected.cache_creation_input_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.tool_use_prompt_tokens"),
+                Some(&expected.tool_use_prompt_tokens)
+            );
+            assert_eq!(
+                chat_span.fields.get("gen_ai.usage.reasoning_tokens"),
+                Some(&expected.reasoning_tokens)
+            );
+        }
+
+        let outer = snapshot
+            .iter()
+            .find(|span| span.id == outer_id)
+            .expect("outer span");
+        assert!(
+            outer
+                .fields
+                .keys()
+                .all(|field| !field.starts_with("gen_ai.usage.")),
+            "usage should not be recorded onto the caller's outer span"
+        );
+        assert!(
+            !outer.fields.contains_key("gen_ai.completion"),
+            "gen_ai.completion should not be recorded onto the caller's outer span"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_single_call_usage_on_chat_span_under_outer_span() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let call_usage = split_usage(10, 2);
+        let agent = agent_builder(script(vec![vec![
+            text_item("done"),
+            final_usage(call_usage),
+        ]]))
+        .build();
+
+        assert_stream_usage_recorded_on_chat_spans(agent, "say done", 1, &[call_usage]).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn stream_prompt_records_multi_turn_usage_on_chat_spans_under_outer_span() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let first = split_usage(10, 2);
+        let second = split_usage(25, 5);
+        let agent = agent_builder(script(vec![
+            vec![
+                call_item_with_call_id("tool_call_1", "call_1", "add", json!({"x": 1, "y": 2})),
+                final_usage(first),
+            ],
+            vec![text_item("done"), final_usage(second)],
+        ]))
+        .tool(MockAddTool)
+        .build();
+
+        assert_stream_usage_recorded_on_chat_spans(agent, "do tool work", 3, &[first, second])
+            .await;
+    }
+
+    async fn capture_stream_message_telemetry(record_telemetry_content: bool) -> Vec<CapturedSpan> {
+        let (spans, _default) = warmed_span_capture().await;
+        let builder = agent_builder(script(vec![vec![
+            text_item("stream response secret"),
+            final_tokens(0),
+        ]]))
+        .context("static stream context secret");
+        let agent = if record_telemetry_content {
+            builder.record_content_telemetry(true).build()
+        } else {
+            builder.build()
+        };
+
+        let collected = collect(agent.stream_run("stream prompt secret")).await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        spans.snapshot()
+    }
+
+    /// Streaming content telemetry is opt-in: the default run records no
+    /// message contents, and the opt-in run records the turn's input and
+    /// accepted output exactly once on its own `chat_streaming` span.
+    #[tokio::test]
+    async fn stream_prompt_message_telemetry_is_opt_in() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+
+        let default_spans = capture_stream_message_telemetry(false).await;
+        let default_chat = default_spans
+            .iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("chat_streaming span");
+        assert!(
+            !default_chat.fields.contains_key("gen_ai.input.messages"),
+            "default streaming prompt should not record input message contents"
+        );
+        assert!(
+            !default_chat.fields.contains_key("gen_ai.output.messages"),
+            "default streaming prompt should not record output message contents"
+        );
+        assert!(
+            default_spans
+                .iter()
+                .filter(|span| span.name == "invoke_agent")
+                .all(|span| !span.string_fields.contains_key("gen_ai.prompt")),
+            "default streaming prompt should not record the prompt"
+        );
+
+        let opt_in_spans = capture_stream_message_telemetry(true).await;
+        let opt_in_chat = opt_in_spans
+            .iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("chat_streaming span");
+        let input = opt_in_chat
+            .string_fields
+            .get("gen_ai.input.messages")
+            .expect("opt-in should record input messages");
+        assert!(input.contains("stream prompt secret"), "{input}");
+        assert!(input.contains("static stream context secret"), "{input}");
+        let output = opt_in_chat
+            .string_fields
+            .get("gen_ai.output.messages")
+            .expect("opt-in should record output messages");
+        assert!(output.contains("stream response secret"), "{output}");
+        assert_eq!(
+            opt_in_chat
+                .record_counts
+                .get("gen_ai.input.messages")
+                .copied(),
+            Some(1),
+            "input message telemetry should be recorded once"
+        );
+        assert_eq!(
+            opt_in_chat
+                .record_counts
+                .get("gen_ai.output.messages")
+                .copied(),
+            Some(1),
+            "output message telemetry should be recorded once"
+        );
+        assert!(
+            opt_in_spans
+                .iter()
+                .filter(|span| span.name == "invoke_agent")
+                .any(|span| span
+                    .string_fields
+                    .get("gen_ai.prompt")
+                    .is_some_and(|prompt| prompt.contains("stream prompt secret"))),
+            "opt-in should record the run-level prompt"
+        );
+    }
+
+    /// A streamed turn rejected mid-stream (invalid tool call) records its
+    /// input but never its provisional output.
+    #[tokio::test]
+    async fn streaming_rejected_message_telemetry_does_not_record_output() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let (spans, _default) = warmed_span_capture().await;
+
+        let agent = agent_builder(script(vec![vec![
+            text_item("rejected stream output secret"),
+            call_item("tool_call_1", "default_api", json!({"x": 2, "y": 3})),
+            final_tokens(0),
+        ]]))
+        .record_content_telemetry(true)
+        .build();
+
+        let collected = collect(agent.stream_run("stream rejection prompt")).await;
+        let message = collected.expect_error().to_string();
+        assert!(
+            message.contains("default_api"),
+            "expected invalid tool error, got {message}"
+        );
+
+        let chat_span = spans
+            .snapshot()
+            .into_iter()
+            .find(|span| span.name == "chat_streaming")
+            .expect("chat_streaming span should be captured");
+        assert!(
+            chat_span.fields.contains_key("gen_ai.input.messages"),
+            "opt-in rejected stream should still record input messages"
+        );
+        assert!(
+            !chat_span.fields.contains_key("gen_ai.output.messages"),
+            "rejected streaming turn must not record output message contents"
+        );
+    }
+
+    /// Blocking-driver parity for the same toggle: content telemetry is
+    /// opt-in on the `chat` span and the run-level `invoke_agent` span.
+    #[tokio::test]
+    async fn unary_prompt_message_telemetry_records_accepted_output_when_opted_in() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+
+        async fn capture(record: bool) -> Vec<CapturedSpan> {
+            let (spans, _default) = warmed_span_capture().await;
+            let builder = agent_builder(MockScript::from_responses(vec![
+                rig_core::completion::CompletionResponse::new(
+                    OneOrMany::one(AssistantContent::text("blocking response secret")),
+                    Usage::new(),
+                    "mock",
+                ),
+            ]))
+            .preamble("blocking system secret");
+            let agent = if record {
+                builder.record_content_telemetry(true).build()
+            } else {
+                builder.build()
+            };
+            agent
+                .runner("blocking prompt secret")
+                .run()
+                .await
+                .expect("prompt should not error");
+            spans.snapshot()
+        }
+
+        let default_spans = capture(false).await;
+        let default_chat = default_spans
+            .iter()
+            .find(|span| span.name == "chat")
+            .expect("chat span");
+        assert!(!default_chat.fields.contains_key("gen_ai.input.messages"));
+        assert!(!default_chat.fields.contains_key("gen_ai.output.messages"));
+        assert!(
+            !default_chat
+                .string_fields
+                .contains_key("gen_ai.system_instructions")
+        );
+        let default_agent_span = default_spans
+            .iter()
+            .find(|span| span.name == "invoke_agent")
+            .expect("invoke_agent span");
+        assert!(
+            !default_agent_span
+                .string_fields
+                .contains_key("gen_ai.prompt")
+        );
+        assert!(
+            !default_agent_span
+                .string_fields
+                .contains_key("gen_ai.completion")
+        );
+
+        let opt_in_spans = capture(true).await;
+        let opt_in_chat = opt_in_spans
+            .iter()
+            .find(|span| span.name == "chat")
+            .expect("chat span");
+        assert!(
+            opt_in_chat
+                .string_fields
+                .get("gen_ai.input.messages")
+                .is_some_and(|input| input.contains("blocking prompt secret"))
+        );
+        assert!(
+            opt_in_chat
+                .string_fields
+                .get("gen_ai.output.messages")
+                .is_some_and(|output| output.contains("blocking response secret"))
+        );
+        assert_eq!(
+            opt_in_chat
+                .string_fields
+                .get("gen_ai.system_instructions")
+                .map(String::as_str),
+            Some(r#"[{"type":"text","content":"blocking system secret"}]"#)
+        );
+        let opt_in_agent_span = opt_in_spans
+            .iter()
+            .find(|span| span.name == "invoke_agent")
+            .expect("invoke_agent span");
+        assert_eq!(
+            opt_in_agent_span
+                .string_fields
+                .get("gen_ai.prompt")
+                .map(String::as_str),
+            Some("blocking prompt secret")
+        );
+        assert_eq!(
+            opt_in_agent_span
+                .string_fields
+                .get("gen_ai.completion")
+                .map(String::as_str),
+            Some("blocking response secret")
+        );
+    }
+
+    /// A repaired tool call's telemetry carries the canonical name, never the
+    /// rejected raw one.
+    #[tokio::test]
+    async fn unary_repaired_message_telemetry_records_canonical_output() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let (spans, _default) = warmed_span_capture().await;
+
+        let script = MockScript::from_responses(vec![
+            rig_core::completion::CompletionResponse::new(
+                OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+                    "tool_call_1".to_string(),
+                    ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
+                ))),
+                Usage::new(),
+                "mock",
+            ),
+            rig_core::completion::CompletionResponse::new(
+                OneOrMany::one(AssistantContent::text("done")),
+                Usage::new(),
+                "mock",
+            ),
+        ]);
+        let agent = agent_builder(script.clone())
+            .record_content_telemetry(true)
+            .tool(MockAddTool)
+            .build();
+
+        let response = agent
+            .runner("repair tool call")
+            .add_hook(repair_default_api_entry())
+            .max_turns(3)
+            .run()
+            .await
+            .expect("repaired tool call should complete");
+        assert_eq!(response.output, "done");
+
+        let output_messages: Vec<String> = spans
+            .snapshot()
+            .into_iter()
+            .filter(|span| span.name == "chat")
+            .filter_map(|span| span.string_fields.get("gen_ai.output.messages").cloned())
+            .collect();
+        // The accepted continuation is recorded; the repaired turn's own chat
+        // span records no output in the data-oriented blocking driver (it
+        // returns for the invalid-call resolution before recording), so the
+        // surviving invariant asserted here is that no stale raw tool name
+        // ever reaches telemetry.
+        assert!(
+            output_messages.iter().any(|output| output.contains("done")),
+            "the accepted continuation's output should be recorded: {output_messages:?}"
+        );
+        assert!(
+            !output_messages
+                .iter()
+                .any(|output| output.contains("default_api")),
+            "repaired output telemetry must not serialize the stale raw tool name: {output_messages:?}"
+        );
+        assert_eq!(script.calls(), 2);
+    }
+
+    /// Tool spans always carry structural metadata; the argument/result
+    /// payloads follow the content-telemetry toggle and stay unrecorded by
+    /// default.
+    #[tokio::test]
+    async fn tool_arguments_and_results_follow_content_telemetry_toggle() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let (spans, _default) = warmed_span_capture().await;
+
+        let script = MockScript::from_responses(vec![
+            rig_core::completion::CompletionResponse::new(
+                OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+                    "secret-tool-call".to_string(),
+                    ToolFunction::new("add".to_string(), json!({"x": 12345, "y": 67890})),
+                ))),
+                Usage::new(),
+                "mock",
+            ),
+            rig_core::completion::CompletionResponse::new(
+                OneOrMany::one(AssistantContent::text("done")),
+                Usage::new(),
+                "mock",
+            ),
+        ]);
+        let agent = agent_builder(script).tool(MockAddTool).build();
+        agent
+            .runner("use the tool")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("tool run should succeed");
+
+        let tool_span = spans
+            .snapshot()
+            .into_iter()
+            .find(|span| span.name == "execute_tool")
+            .expect("execute_tool span should be captured");
+        assert_eq!(
+            tool_span
+                .string_fields
+                .get("gen_ai.tool.name")
+                .map(String::as_str),
+            Some("add"),
+            "structural tool metadata should remain available"
+        );
+        assert_eq!(
+            tool_span
+                .string_fields
+                .get("gen_ai.tool.call.id")
+                .map(String::as_str),
+            Some("secret-tool-call")
+        );
+        assert!(
+            tool_span
+                .string_fields
+                .contains_key("gen_ai.tool.call.outcome")
+        );
+        // Sensitive payloads stay off the span unless a driver opts in; the
+        // data-oriented executor never records them.
+        assert!(
+            !tool_span
+                .string_fields
+                .contains_key("gen_ai.tool.call.arguments")
+        );
+        assert!(
+            !tool_span
+                .string_fields
+                .contains_key("gen_ai.tool.call.result")
+        );
+    }
+
+    /// Span context must not leak into concurrent tasks: the driver uses
+    /// `.instrument()` rather than entering spans across await points.
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_span_context_isolation() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let leaks = Arc::new(AtomicU32::new(0));
+
+        let background = {
+            let stop = stop.clone();
+            let leaks = leaks.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(5));
+                while !stop.load(Ordering::Relaxed) {
+                    interval.tick().await;
+                    let current = tracing::Span::current();
+                    if !current.is_disabled() && !current.is_none() {
+                        leaks.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            })
+        };
+
+        let script = script(vec![vec![
+            text_item("hello"),
+            text_item(" world"),
+            final_tokens(3),
+        ]]);
+        let agent = agent_builder(script).build();
+        let collected = collect(agent.stream_run("say hello world")).await;
+        assert_eq!(collected.expect_final().output, "hello world");
+
+        stop.store(true, Ordering::Relaxed);
+        background.await.expect("background task");
+        assert_eq!(
+            leaks.load(Ordering::Relaxed),
+            0,
+            "the driver's spans must not leak into concurrent tasks"
+        );
     }
 }

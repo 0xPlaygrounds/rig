@@ -21,7 +21,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = Box::pin(agent.runner("Calculate 2 - 5").stream_run());
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

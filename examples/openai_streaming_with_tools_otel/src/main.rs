@@ -1,7 +1,8 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, PromptResponse, StreamingResult, Text};
+use rig::agent::{PromptResponse, Text};
 use rig::prelude::*;
+use rig::stream::AgentStreamItem;
 use rig::streaming::StreamedAssistantContent;
 
 use rig::{providers, tool::Tool};
@@ -143,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .name("Bob")
         .build();
 
-    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = Box::pin(calculator_agent.runner("Calculate 2 - 5").stream_run());
 
     let res = drain_to_stdout(&mut stream).await?;
 
@@ -161,25 +162,27 @@ async fn main() -> Result<(), anyhow::Error> {
 /// its own drain loop: print assistant text and reasoning deltas as they
 /// arrive, keep the terminal `FinalResponse` for usage/output, and mark a
 /// model-turn retry (text already written to stdout cannot be retracted).
-async fn drain_to_stdout(stream: &mut StreamingResult) -> anyhow::Result<PromptResponse> {
+async fn drain_to_stdout<S>(stream: &mut S) -> anyhow::Result<PromptResponse>
+where
+    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
+        + Unpin,
+{
     let mut final_response = PromptResponse::empty();
     print!("Response: ");
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text, .. },
-            ))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
+                text, ..
+            }))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                reasoning,
-            ))) => {
+            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
                 print!("{}", reasoning.display_text());
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => final_response = response,
-            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
+            Ok(AgentStreamItem::Final(response)) => final_response = response,
+            Ok(AgentStreamItem::ModelTurnRetried { turn }) => {
                 print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

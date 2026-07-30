@@ -24,13 +24,14 @@ use std::sync::Mutex;
 
 use futures::StreamExt;
 use rig::agent::{
-    CompletionCallAction, ModelTurnAction, MultiTurnStreamItem, ObservationAction, RequestPatch,
-    StreamingError, ToolCallAction, ToolResultAction,
+    CompletionCallAction, ModelTurnAction, ObservationAction, RequestPatch, ToolCallAction,
+    ToolResultAction,
 };
 use rig::completion::Document;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 
@@ -517,14 +518,14 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(
+            let mut stream =Box::pin( agent
+                .runner(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .add_hook(recorder_entry)
                 .max_turns(6)
-                .await;
+                .stream_run());
 
             // Ordered stream-item taxonomy tags, so we can assert lifecycle order.
             let mut events: Vec<&'static str> = Vec::new();
@@ -532,7 +533,7 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
             let mut final_text = String::new();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+                    Ok(AgentStreamItem::Assistant(content)) => match content {
                         StreamedAssistantContent::Text(_) => events.push("text"),
                         StreamedAssistantContent::ToolCall { .. } => events.push("tool_call"),
                         StreamedAssistantContent::ToolCallDelta { .. } => {
@@ -540,20 +541,19 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
                         }
                         _ => {}
                     },
-                    Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+                    Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => {
                         events.push("tool_execution_committed")
                     }
-                    Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                        ..
-                    })) => events.push("tool_result"),
-                    Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                    Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { .. })) => {
+                        events.push("tool_result")
+                    }
+                    Ok(AgentStreamItem::Final(response)) => {
                         saw_final = true;
                         final_text = response.output().to_owned();
                         events.push("final_response");
                     }
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => panic!("stream errored: {error:?}"),
-                    Err(other) => panic!("stream errored: {other:?}"),
+                    Err(error) => panic!("stream errored: {error:?}"),
                 }
             }
 

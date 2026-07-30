@@ -36,7 +36,7 @@
 //! but shared lifecycle actions have identical semantics on both surfaces.
 //! Streamed deltas are provisional until the model turn is accepted; a retry is
 //! surfaced as
-//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
+//! [`AgentStreamItem::ModelTurnRetried`](crate::stream::AgentStreamItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example
@@ -161,7 +161,7 @@ pub enum RetryRequest {
     Feedback(String),
 }
 
-/// Action for the medium-neutral [`ModelTurnFinished`] event.
+/// Action for the medium-neutral [`HookEvent::ModelTurnFinished`](crate::hooks::HookEvent::ModelTurnFinished) event.
 ///
 /// Every retry consumes the run's existing total model-call budget. Rig does
 /// not impose a separate response-retry limit; hooks that need one should keep

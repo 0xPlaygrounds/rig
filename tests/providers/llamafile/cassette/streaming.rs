@@ -18,7 +18,7 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");

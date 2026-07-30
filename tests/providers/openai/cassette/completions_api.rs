@@ -103,10 +103,12 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(8)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(TWO_TOOL_STREAM_PROMPT)
+                    .max_turns(8)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -212,10 +214,12 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
                 .tool(AlphaSignal)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner(ORDERED_TOOL_STREAM_PROMPT)
+                    .max_turns(5)
+                    .stream_run(),
+            );
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(

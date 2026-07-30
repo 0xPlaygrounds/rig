@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- [**breaking**] *(agent)* one driver: `AgentRunner`, `StreamingPromptRequest`, `MultiTurnStreamItem`, `StreamingResult`, and `StreamingError` are deleted along with the second agent engine — `AgentSession`/`AgentStream` are the only drivers, `Agent` is a thin record over them (the R1 `SessionAgent` merged into it), `agent.runner(p)` now returns `SessionRunner` with the same setters, and streaming is `agent.stream_run(p)` / `agent.runner(p)….stream_run()` yielding `AgentStreamItem` with `PromptError` as the error type
 - [**breaking**] *(agent)* prompting is inherent methods: the `Prompt`/`Chat`/`TypedPrompt`/`StreamingPrompt`/`StreamingChat` traits, the `PromptRequest`/`TypedPromptRequest` typestate, `stream_to_stdout`, and the integrations' trait sugar are removed — `Agent::{prompt, run, chat, prompt_typed, stream_prompt, stream_chat}` are inherent and `agent.runner(prompt)` is the fluent per-request surface (`AgentRunner::run_typed::<T>()` replaces typed requests)
 - [**breaking**] *(agent)* extraction is a free function: `Extractor`/`ExtractorBuilder`/`client.extractor::<T>()`/`ExtractionResponse` removed in favour of `rig::extract::{extract_with_options, ExtractOptions, ExtractionOutcome}`; `ExtractOptions::classic_extractor()` reproduces the old builder's request shape byte-for-byte
 

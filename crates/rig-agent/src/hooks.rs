@@ -301,11 +301,11 @@ impl Hooks {
     /// registration order, the first `Stop` short-circuits (later entries
     /// are not invoked), via
     /// [`fold_completion_actions`].
-    pub async fn dispatch_completion_call(
-        &self,
+    pub async fn dispatch_completion_call<'a>(
+        &'a self,
         turn: usize,
-        prompt: &Message,
-        history: &[Message],
+        prompt: &'a Message,
+        history: &'a [Message],
     ) -> CompletionCallAction {
         let mut actions = Vec::new();
         for entry in &self.entries {
@@ -331,10 +331,10 @@ impl Hooks {
 
     /// Dispatch [`HookEvent::ModelTurnFinished`]: the first non-`Continue`
     /// wins and later entries are not invoked.
-    pub async fn dispatch_model_turn(
-        &self,
+    pub async fn dispatch_model_turn<'a>(
+        &'a self,
         turn: usize,
-        content: &OneOrMany<AssistantContent>,
+        content: &'a OneOrMany<AssistantContent>,
         usage: Usage,
     ) -> ModelTurnAction {
         for entry in &self.entries {
@@ -357,11 +357,11 @@ impl Hooks {
     /// Dispatch [`HookEvent::CompletionResponse`]: the first non-`Continue`
     /// observation wins, via
     /// [`fold_observation_actions`].
-    pub async fn dispatch_completion_response(
-        &self,
+    pub async fn dispatch_completion_response<'a>(
+        &'a self,
         turn: usize,
-        prompt: &Message,
-        response: &CompletionResponse,
+        prompt: &'a Message,
+        response: &'a CompletionResponse,
     ) -> ObservationAction {
         let mut actions = Vec::new();
         for entry in &self.entries {
@@ -388,9 +388,9 @@ impl Hooks {
     /// Dispatch [`HookEvent::InvalidToolCall`]: the first `Some` resolution
     /// wins (later entries are not invoked), mirroring
     /// via [`fold_invalid_resolutions`].
-    pub async fn dispatch_invalid_tool_call(
-        &self,
-        context: &InvalidToolCallContext,
+    pub async fn dispatch_invalid_tool_call<'a>(
+        &'a self,
+        context: &'a InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
         let mut resolutions = Vec::new();
         for entry in &self.entries {
@@ -418,10 +418,10 @@ impl Hooks {
     /// Returns the effective action plus, for a terminal action, any
     /// rewrite salvaged before it (so the driver can report effective
     /// arguments).
-    pub async fn dispatch_tool_call(
-        &self,
-        call: &ToolCall,
-        internal_call_id: &str,
+    pub async fn dispatch_tool_call<'a>(
+        &'a self,
+        call: &'a ToolCall,
+        internal_call_id: &'a str,
     ) -> (ToolCallAction, Option<serde_json::Value>) {
         let mut resolution = ToolCallResolution::new(call.function.arguments.clone());
         for entry in &self.entries {
@@ -448,11 +448,11 @@ impl Hooks {
     /// later entries (each sees the current effective presentation; the raw
     /// result is unchanged), `Stop` short-circuits, mirroring
     /// via [`ToolResultResolution`].
-    pub async fn dispatch_tool_result(
-        &self,
-        call: &ToolCall,
-        internal_call_id: &str,
-        result: &ToolResult,
+    pub async fn dispatch_tool_result<'a>(
+        &'a self,
+        call: &'a ToolCall,
+        internal_call_id: &'a str,
+        result: &'a ToolResult,
     ) -> ToolResultAction {
         let mut resolution = ToolResultResolution::new();
         for entry in &self.entries {
@@ -481,7 +481,10 @@ impl Hooks {
 
     /// Dispatch [`HookEvent::StreamFinish`]: the first non-`Continue`
     /// observation wins, via [`fold_observation_actions`].
-    pub async fn dispatch_stream_finish(&self, final_record: &StreamFinal) -> ObservationAction {
+    pub async fn dispatch_stream_finish<'a>(
+        &'a self,
+        final_record: &'a StreamFinal,
+    ) -> ObservationAction {
         let mut actions = Vec::new();
         for entry in &self.entries {
             let decision = entry
@@ -504,13 +507,13 @@ impl Hooks {
 
     /// Dispatch [`HookEvent::StreamResponseFinish`]: the first non-`Continue`
     /// observation wins, via [`fold_observation_actions`].
-    pub async fn dispatch_stream_response_finish(
-        &self,
+    pub async fn dispatch_stream_response_finish<'a>(
+        &'a self,
         turn: usize,
-        prompt: &Message,
-        content: &OneOrMany<AssistantContent>,
+        prompt: &'a Message,
+        content: &'a OneOrMany<AssistantContent>,
         usage: Usage,
-        message_id: Option<&str>,
+        message_id: Option<&'a str>,
     ) -> ObservationAction {
         self.fold_observations(|| HookEvent::StreamResponseFinish {
             turn,
@@ -524,11 +527,11 @@ impl Hooks {
 
     /// Dispatch [`HookEvent::TextDelta`] to the entries that opted into delta
     /// observation: the first non-`Continue` observation wins.
-    pub async fn dispatch_text_delta(
-        &self,
+    pub async fn dispatch_text_delta<'a>(
+        &'a self,
         turn: usize,
-        delta: &str,
-        aggregated: &str,
+        delta: &'a str,
+        aggregated: &'a str,
     ) -> ObservationAction {
         self.fold_delta_observations(|| HookEvent::TextDelta {
             turn,
@@ -540,13 +543,13 @@ impl Hooks {
 
     /// Dispatch [`HookEvent::ToolCallDelta`] to the entries that opted into
     /// delta observation: the first non-`Continue` observation wins.
-    pub async fn dispatch_tool_call_delta(
-        &self,
+    pub async fn dispatch_tool_call_delta<'a>(
+        &'a self,
         turn: usize,
-        tool_call_id: &str,
-        internal_call_id: &str,
-        tool_name: Option<&str>,
-        delta: &str,
+        tool_call_id: &'a str,
+        internal_call_id: &'a str,
+        tool_name: Option<&'a str>,
+        delta: &'a str,
     ) -> ObservationAction {
         self.fold_delta_observations(|| HookEvent::ToolCallDelta {
             turn,
@@ -595,6 +598,25 @@ impl Hooks {
         }
         fold_observation_actions(actions)
     }
+}
+
+/// The agent data model is plain `Send + Sync` data end to end — the
+/// property every driver future's `Send`-ness rests on. A regression here
+/// (a non-`Send` slot sneaking into a hook record, executor, agent, or
+/// session) fails to compile right here instead of at some distant
+/// `async_trait` call site.
+#[allow(dead_code)]
+fn _assert_agent_model_is_send_and_sync() {
+    fn assert<T: Send + Sync>() {}
+    assert::<Hooks>();
+    assert::<HookEntry>();
+    assert::<crate::executor::ToolExecutor>();
+    assert::<crate::agent::Agent>();
+    assert::<crate::session::AgentSession>();
+    // `AgentStream` holds a boxed provider stream (a transport-edge `dyn`
+    // that is `Send` but not `Sync`), so only `Send` is asserted for it.
+    fn assert_send<T: Send>() {}
+    assert_send::<crate::stream::AgentStream>();
 }
 
 #[cfg(test)]

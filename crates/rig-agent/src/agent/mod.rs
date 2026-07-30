@@ -8,10 +8,10 @@
 //! The [Agent] struct is highly configurable, allowing the user to define anything from
 //! a simple bot with a specific system prompt to a complex RAG system.
 //!
-//! The [Agent] struct implements the runner-backed [crate::completion::Prompt],
-//! [crate::completion::TypedPrompt], and [crate::completion::Chat] traits. All
-//! agent execution goes through [AgentRunner], so hooks and lifecycle policies
-//! cannot be bypassed through a raw agent request builder.
+//! All agent execution goes through the session drivers
+//! ([`AgentSession`](crate::session::AgentSession) and
+//! [`AgentStream`](crate::stream::AgentStream)), so hooks and lifecycle
+//! policies cannot be bypassed through a raw agent request builder.
 //!
 //! The [AgentBuilder] implements the builder pattern for creating instances of [Agent].
 //! It allows configuring the model, preamble, context documents, tools, temperature, and additional parameters
@@ -40,7 +40,7 @@
 //! // Generate a prompt completion response from a simple prompt
 //! let prompt_response = agent.prompt("Prompt").await?;
 //!
-//! // Per-run overrides stay inside the hook-aware runner.
+//! // Per-run overrides live on the per-request runner.
 //! let response = agent.runner("Prompt").temperature(0.9).run().await?;
 //! # Ok(())
 //! # }
@@ -179,10 +179,13 @@ mod builder;
 mod completion;
 pub mod config;
 pub mod hook;
+#[cfg(test)]
+pub(crate) mod mock_support;
 pub mod prepare;
-pub(crate) mod prompt_request;
+pub mod request;
+pub mod response;
 pub mod run;
-pub mod runner;
+pub(crate) mod telemetry;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
 /// configured name.
@@ -198,10 +201,7 @@ pub use hook::{
     fold_observation_actions,
 };
 pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
-pub use prompt_request::streaming::{
-    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
-};
-pub use prompt_request::{CompletionCall, PromptResponse};
+pub use request::SessionRunner;
+pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
-pub use runner::AgentRunner;

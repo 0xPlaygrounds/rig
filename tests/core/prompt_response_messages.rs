@@ -91,7 +91,7 @@ async fn standard_prompt_returns_string() {
     assert_eq!(result, "hello from mock");
 }
 
-/// Test 2: `AgentRunner::run()` returns a `PromptResponse` with `messages: Some(...)`.
+/// Test 2: `SessionRunner::run()` returns a `PromptResponse` with `messages: Some(...)`.
 #[tokio::test]
 async fn runner_run_populates_messages() {
     let agent = AgentBuilder::new(simple_text_model(1)).build();
@@ -109,7 +109,7 @@ async fn runner_run_populates_messages() {
     // Messages should be populated
     let messages = resp
         .messages
-        .expect("messages should be Some for AgentRunner::run");
+        .expect("messages should be Some for SessionRunner::run");
 
     // Should contain: [User("hi"), Assistant("hello from mock")]
     assert_eq!(messages.len(), 2);

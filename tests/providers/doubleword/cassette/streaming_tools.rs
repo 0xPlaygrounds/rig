@@ -19,7 +19,7 @@ async fn streaming_tools_smoke() {
                 .tool(Subtract)
                 .default_max_turns(2)
                 .build();
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

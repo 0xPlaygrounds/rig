@@ -262,24 +262,28 @@ impl AgentBuilder {
 
     /// Build the agent with the configured tools.
     pub fn build(self) -> Agent {
-        Agent {
+        let config = crate::agent::AgentConfig {
             name: self.name,
             description: self.description,
-            provider: self.provider,
-            rt: self.runtime.unwrap_or_else(|| Arc::new(Runtime::new())),
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,
             max_tokens: self.max_tokens,
             additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
             tool_choice: self.tool_choice,
-            catalog: self.executor.catalog(),
-            executor: self.executor,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
+            max_turns: self.default_max_turns,
             output_schema: self.output_schema,
             output_mode: self.output_mode,
+            record_telemetry_content: self.record_telemetry_content,
+            ..crate::agent::AgentConfig::new()
+        };
+        Agent {
+            config,
+            provider: self.provider,
+            rt: self.runtime.unwrap_or_else(|| Arc::new(Runtime::new())),
+            tools: self.executor.catalog(),
+            executor: Some(self.executor),
+            hooks: self.hooks,
         }
     }
 }
@@ -367,6 +371,8 @@ mod tests {
 
             let tool = agent
                 .executor
+                .as_ref()
+                .expect("the builder always attaches an executor")
                 .get(NamedTool::NAME)
                 .expect("the tool record is registered");
             let result = tool

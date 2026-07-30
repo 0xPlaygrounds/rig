@@ -34,7 +34,7 @@ async fn streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -61,7 +61,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = Box::pin(agent.runner("Calculate 2 - 5").stream_run());
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tools prompt should succeed");
@@ -138,10 +138,12 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         .tool(BetaSignal)
         .build();
 
-    let mut stream = agent
-        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-        .max_turns(8)
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner(TWO_TOOL_STREAM_PROMPT)
+            .max_turns(8)
+            .stream_run(),
+    );
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_two_tool_roundtrip_contract(
@@ -165,10 +167,12 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         .tool(AlphaSignal)
         .build();
 
-    let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
-        .max_turns(5)
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner(ORDERED_TOOL_STREAM_PROMPT)
+            .max_turns(5)
+            .stream_run(),
+    );
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(

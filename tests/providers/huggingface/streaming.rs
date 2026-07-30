@@ -15,7 +15,7 @@ async fn streaming_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -37,9 +37,11 @@ async fn together_subprovider_streaming() {
         .temperature(0.5)
         .build();
 
-    let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner("When and where and what type is the next solar eclipse?")
+            .stream_run(),
+    );
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

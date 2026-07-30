@@ -90,9 +90,11 @@ async fn openai_responses_stream_against_openrouter_completes() {
                 .preamble("You are concise. Answer directly.")
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("In one sentence, confirm this streaming response works.")
-                .await;
+            let mut stream = Box::pin(
+                agent
+                    .runner("In one sentence, confirm this streaming response works.")
+                    .stream_run(),
+            );
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should not fail on OpenRouter service_tier metadata");

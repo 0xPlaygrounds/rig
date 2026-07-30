@@ -31,9 +31,11 @@ async fn default_instructions_fill_required_instructions() {
         .expect("ChatGPT client should build");
 
     let agent = client.agent(LIVE_MODEL).build();
-    let mut stream = agent
-        .stream_prompt("Reply with the exact word from the instructions.")
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner("Reply with the exact word from the instructions.")
+            .stream_run(),
+    );
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("default-instructions streaming completion should succeed");

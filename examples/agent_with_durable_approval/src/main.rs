@@ -153,7 +153,7 @@ async fn execute_tool(tools: &ToolExecutor, name: &str, args: serde_json::Value)
 async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
-    // configured `Agent` execution instead always goes through `AgentRunner`.
+    // configured `Agent` execution instead always goes through `SessionRunner`.
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";

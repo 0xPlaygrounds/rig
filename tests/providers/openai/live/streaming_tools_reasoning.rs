@@ -17,10 +17,13 @@ async fn test_openai_streaming_tools_reasoning() {
         .build();
 
     let chat_history: Vec<Message> = Vec::new();
-    let mut stream = agent
-        .stream_chat("Call my example tool", &chat_history)
-        .max_turns(5)
-        .await;
+    let mut stream = Box::pin(
+        agent
+            .runner("Call my example tool")
+            .history(&chat_history)
+            .max_turns(5)
+            .stream_run(),
+    );
 
     while let Some(item) = stream.next().await {
         println!("Got item: {item:?}");

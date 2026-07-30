@@ -19,7 +19,7 @@
 //! attach-and-forget records — a plain function returning a [`HookEntry`] whose
 //! closure decides each event, ignoring every event other than
 //! [`HookEvent::ToolCall`]. The same entry works unchanged on the streaming
-//! driver (`stream_prompt`); only observing text / tool-call *deltas* would
+//! driver (`stream_run`); only observing text / tool-call *deltas* would
 //! additionally require `HookEntry::observing_deltas`.
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`

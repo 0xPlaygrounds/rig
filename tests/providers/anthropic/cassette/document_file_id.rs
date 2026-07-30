@@ -465,7 +465,7 @@ async fn streaming_document_file_id_roundtrip_live() {
                 assert_no_verifier_leaked_into_prompt(&stream_prompt);
                 assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
 
-                let mut stream = agent.stream_prompt(stream_prompt).await;
+                let mut stream = Box::pin(agent.runner(stream_prompt).stream_run());
                 let response = collect_stream_final_response(&mut stream)
                     .await
                     .expect("streaming Messages API should read uploaded PDF by file_id");
