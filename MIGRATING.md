@@ -280,6 +280,28 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### `rig-mcp` is renamed to `rig-rmcp`
+
+The crate is named after the `rmcp` SDK it wraps. Only a direct dependency
+needs changing:
+
+```toml
+# before
+rig-mcp = "0.41"
+# after
+rig-rmcp = "0.42"
+```
+
+```rust
+// before
+use rig_mcp::McpToolset;
+// after
+use rig_rmcp::McpToolset;
+```
+
+Nothing else moves: the facade re-export is still `rig::tool::mcp`, and the
+`mcp` feature (with `rmcp` as its legacy alias) is unchanged.
+
 ### Device-code prompts are data, not a callback
 
 `chatgpt::auth::DeviceCodeHandler` and `copilot::auth::DeviceCodeHandler` —

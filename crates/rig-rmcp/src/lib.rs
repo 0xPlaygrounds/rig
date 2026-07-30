@@ -32,7 +32,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use rig_mcp::McpToolset;
+//! use rig_rmcp::McpToolset;
 //! use rmcp::ServiceExt;
 //!
 //! let service = client_info.serve(transport).await?;

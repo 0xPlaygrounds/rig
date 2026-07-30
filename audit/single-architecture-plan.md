@@ -35,8 +35,8 @@ layer and closing the feature gaps that keep it alive.
 |---|---|---|---|
 | `AgentHook` + `DynAgentHook` + `HookStack` (`Vec<Arc<dyn DynAgentHook>>`) + `HookContext`/`Scratchpad` (TypeId map) + `StepEventKind` + rewrite frames | rig-agent `agent/hook.rs:920,1043,1172,303,157` | runtime polymorphism + Any-erasure over an already-data decision vocabulary | host `match` on `SessionEvent`/`AgentStreamItem` + `SessionPolicy`; **keep** the decision enums, `RequestPatch`, and the closure-free `fold_*`/`ToolCallResolution` helpers (promote to `agent::mod` re-exports) |
 | `ErasedTool`, `ErasedEmbeddingTool`, `DynamicTool`/`DynamicCallback`, `ToolSet` dispatch half, `ToolServer`/`ToolServerHandle` (`Arc<RwLock<…>>` registry), `Agent::into_tool` | rig-agent `tool/mod.rs:293,502,373; tool/server.rs:128,215; agent/tool.rs:26` | runtime polymorphism | host-executed tools over `ToolCatalog` + `PendingToolCall`; `router_support::{execute_typed,dispatch_pending}` is the promoted seed; sub-agent-as-tool = host composes an inner `AgentSession` |
-| `ToolContext` / `TypeMap` / `AnyMap` | rig-agent `tool/extensions.rs:10-294` (`HashMap<TypeId, Box<dyn AnyClone>>`) | **Any-erasure** | delete; MCP's typed payloads are concrete data in rig-mcp (`McpCallOutcome{result, raw}`); host closes over what it needs |
-| `tool/rmcp.rs` (1 979 lines: McpTool, handler, generation tokens) | rig-agent | runtime polymorphism + registry machinery | **already replaced**: `crates/rig-mcp` `McpToolset` (push→poll `refresh()` is a deliberate behavior change, see §6) |
+| `ToolContext` / `TypeMap` / `AnyMap` | rig-agent `tool/extensions.rs:10-294` (`HashMap<TypeId, Box<dyn AnyClone>>`) | **Any-erasure** | delete; MCP's typed payloads are concrete data in rig-rmcp (`McpCallOutcome{result, raw}`); host closes over what it needs |
+| `tool/rmcp.rs` (1 979 lines: McpTool, handler, generation tokens) | rig-agent | runtime polymorphism + registry machinery | **already replaced**: `crates/rig-rmcp` `McpToolset` (push→poll `refresh()` is a deliberate behavior change, see §6) |
 | `IntoToolOutput` blanket impl with 3-way `&dyn Any` sieve | rig-core `tool/output.rs:157-235` | Any-as-specialization | `#[rig_tool]` knows the concrete output type at expansion: emit `ToolOutput::from(…)`/`serialize_to_tool_output(value)` free fn; delete the blanket + `Any` |
 | `PortableTool` trait + `PortableToolEmbedding` + `ToolSchema`/`embeddings/tool.rs` | rig-core `tool/portable.rs:19,48` | compile-time capability trait | collapse onto `PortableDynamicTool` records; `#[rig_tool]` generates a constructor fn (generated inherent methods); tool-embedding discovery dies per the dynamic-tools→`active_tools` decision |
 | classic `Tool` trait (context param delta only) | rig-agent `tool/mod.rs:163` | typed polymorphism | rename/collapse into the portable contract (104 `impl Tool` sites drop `_context`) |
@@ -140,7 +140,7 @@ missing functions capability). Give rig-vertexai a `functions::Config` face
 tests. This phase unblocks everything.*
 
 **R2 — Tool system collapse.**
-Delete `tool/rmcp.rs` (→ rig-mcp), `ToolServer`/`Handle`/`Snapshot`
+Delete `tool/rmcp.rs` (→ rig-rmcp), `ToolServer`/`Handle`/`Snapshot`
 (→ `ToolCatalog`), `Agent::into_tool` (→ host-composed sessions),
 `DynamicTool`/`DynamicCallback` (→ `PortableDynamicTool`), `ToolEmbedding` +
 `ErasedEmbeddingTool` + `ToolSchema`/`embeddings/tool.rs`, `ToolSet`,
@@ -255,7 +255,7 @@ typestate/builders/misc ~3k), against ~3–4k added in R1.
    the trait host-side only) preserves one callback trait indefinitely.
 3. **MCP push→poll.** `McpToolset::refresh()` replaces rmcp's
    `on_tool_list_changed` live-registry push. Observable behavior change;
-   accepted in the rig-mcp design, restated here for sign-off.
+   accepted in the rig-rmcp design, restated here for sign-off.
 4. **Classic `Agent` name.** The plan keeps `Agent` as a thin concrete struct
    with inherent methods (gap 8). Alternative: delete it and bless
    `AgentSession` as the only entry point — cheaper, but turns ~270 files of

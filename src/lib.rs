@@ -187,7 +187,7 @@ pub mod streaming {
 /// the callback instead of threading a context. The full portable surface
 /// also lives under [`crate::tool::portable`], and the same exports are at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
-/// MCP tools live in `crate::tool::mcp` (the `rig-mcp` crate, `mcp` feature).
+/// MCP tools live in `crate::tool::mcp` (the `rig-rmcp` crate, `mcp` feature).
 pub mod tool {
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{
@@ -209,7 +209,7 @@ pub mod tool {
     /// execution for the data-oriented runtime.
     #[cfg(all(feature = "mcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
-    pub use rig_mcp as mcp;
+    pub use rig_rmcp as mcp;
     // Runtime support the `#[derive(ToolRouter)]` expansion calls into.
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]

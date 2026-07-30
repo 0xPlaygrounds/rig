@@ -232,7 +232,7 @@ The facade crate (`rig`) gained the data-oriented runtime surface:
   classic-loop error shaping shared via `parse_tool_args`/
   `tool_result_output`, `dispatch_all` with order-preserving bounded
   concurrency and preresolved passthrough. 8 integration tests.
-- **rig-mcp**: new agent-built crate (`McpToolset`/`McpCallOutcome`) wired
+- **rig-rmcp**: new agent-built crate (`McpToolset`/`McpCallOutcome`) wired
   into the facade as the `mcp` feature (`rig::tool::mcp`).
 
 **Documented deferrals**: `ToolOutput`/`ToolResultAction` serde (blocked on
@@ -241,7 +241,7 @@ extraction (P7); candle `ProviderConfig` arm (P7, needs artifact plumbing).
 
 **Verification**: clippy clean incl. `--all-features`; facade suite green
 single-threaded (incl. 6 new `agent_session` + 3 new `agent_stream` tests);
-rig-agent 492 + rig-core 1079 + rig-derive (8 router) + rig-mcp all green;
+rig-agent 492 + rig-core 1079 + rig-derive (8 router) + rig-rmcp all green;
 cassettes untouched.
 
 ## P6 pre-step — facade purity (maintainer direction, 2026-07-29)
@@ -540,7 +540,7 @@ cassettes untouched.
 
 The classic tool machinery is gone; tools are records:
 - Deleted: `tool/server.rs` (ToolServer/Handle/Snapshot), `tool/rmcp.rs`
-  (~2k lines — rig-mcp `McpToolset` is the replacement; facade `rmcp`
+  (~2k lines — rig-rmcp `McpToolset` is the replacement; facade `rmcp`
   feature now aliases `mcp`; the rmcp/wasm compile_error! died with it),
   `tool/extensions.rs` (`ToolContext`/TypeId map — TypeMap survives
   privately for the hook Scratchpad until R3), `agent/tool.rs`

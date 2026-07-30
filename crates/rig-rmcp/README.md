@@ -1,4 +1,4 @@
-# rig-mcp
+# rig-rmcp
 
 Host-owned MCP (Model Context Protocol) toolset for Rig's session runtime.
 
@@ -7,7 +7,7 @@ client and exposes its tools as typed, model-facing definitions plus a
 call-by-name entry point:
 
 ```rust,ignore
-use rig_mcp::McpToolset;
+use rig_rmcp::McpToolset;
 use rmcp::ServiceExt;
 
 let service = client_info.serve(transport).await?;

@@ -303,7 +303,7 @@ rig (facade)    the batteries. ProviderConfig enum (25 in-core arms +
                 closed provider set, and the only place `match provider`
                 appears.
 
-companions      rig-memory (ConversationMemory moves here), rig-mcp/rmcp
+companions      rig-memory (ConversationMemory moves here), rig-rmcp/rmcp
                 (McpToolset, typed), rig-bedrock / rig-gemini-grpc /
                 rig-candle (Config + free fns; fulfilment contract is
                 CompletionRequest in / CompletionResponse out, so non-HTTP
@@ -1007,11 +1007,11 @@ so macro users see no change.
 
 ### 7.6 MCP
 
-`rig-agent`'s `tool/rmcp.rs` moves to a companion (`rig-mcp`), where foreign
+`rig-agent`'s `tool/rmcp.rs` moves to a companion (`rig-rmcp`), where foreign
 `dyn` internals (rmcp's own machinery) are out of the mandate's scope. Shape:
 
 ```rust
-// rig-mcp — concrete; no rig trait implemented.
+// rig-rmcp — concrete; no rig trait implemented.
 pub struct McpToolset { client: rmcp::service::ServerSink, tools: Vec<rmcp::model::Tool>,
                         timeout: Option<Duration> }
 impl McpToolset {
@@ -1595,7 +1595,7 @@ wholesale cassette churn destroys reviewability).
 | P2 | The pure protocol layer | `AgentConfig`, `ToolCatalog`, `prepare_request` in rig-agent; hook fold + resolution-accumulator helpers (§6.2) + serde on action/context types. Existing runner internally rewires `build_prepared_completion_request` onto `prepare_request`. | No (additive) | Yes |
 | P3 | Provider pilot | `openai`: `Config`/`DESCRIPTOR`/`build_request`/`parse_response`/`SseParser`/`complete`/`open_stream` + `HttpRuntime`; existing trait impl becomes a thin delegate. Byte-identical cassettes prove the split total. | No | Yes |
 | P4 | Provider fleet | Remaining 24 in-core providers via `openai_compat` helpers + x-macro; companion crates (`bedrock`/`gemini-grpc`/`candle`) gain `Config` + free fns alongside their trait impls. | No | Yes (mechanical) |
-| P5 | The facade runtime | `ProviderConfig`/`Runtime` (live-handle caches)/`ModelStream`/facade `complete`/`open_stream`; `AgentSession`; `AgentStream`; `#[derive(ToolRouter)]`; `McpToolset` in rig-mcp; extraction fn; `ProviderConfig::Mock`+`ModelStream::Mock` scripted test doubles (the successor to `MockCompletionModel`, §3.6); telemetry ported into the session drivers. Ships **alongside** the classic runtime. | No | Yes |
+| P5 | The facade runtime | `ProviderConfig`/`Runtime` (live-handle caches)/`ModelStream`/facade `complete`/`open_stream`; `AgentSession`; `AgentStream`; `#[derive(ToolRouter)]`; `McpToolset` in rig-rmcp; extraction fn; `ProviderConfig::Mock`+`ModelStream::Mock` scripted test doubles (the successor to `MockCompletionModel`, §3.6); telemetry ported into the session drivers. Ships **alongside** the classic runtime. | No | Yes |
 | P6 | Classic runtime re-plumb (Revision 2) | `Agent<M>` → `Agent` (holds `ProviderConfig` + `Arc<Runtime>`); `AgentRunner`/`PromptRequest`/`StreamingPromptRequest`/`Extractor` lose `M`; internals rewired onto `prepare_request` + facade `complete`/`open_stream`; implementation stays in `rig-agent` (Revision 2.2), rewired onto the in-crate `provider` module; **hooks, memory, and the tool server are kept** as the classic runtime's convenience layer. Examples/integrations/docs updated; `MIGRATING.md` chapter written. | Yes (type-param removal; API shape preserved) | No (the migration itself) |
 | P7 | Cleanup of orphaned plumbing (Revision 2 — was "the deletion") | Delete only what the re-plumb orphaned: `GenericCompletionModel<Ext,H>`, `Client<Ext,H>`/`ClientBuilder`/`Provider(Builder)`/`Capabilities` internals (per-provider `Client::from_env()` survives as thin sugar over `Config` + `Runtime`), `CompletionRequestBuilder<M>`, `TurnSource`, `CompletionModel` retired after nothing in-tree consumes it (out-of-tree implementors migrate to `Config` + free fns or drive `AgentRun` directly), `wasm_compat` shrinks. The classic runtime surface itself is untouched. | Yes (trait retirement) | No |
 | P8 | Modalities & stores (Revision 2) | `EmbeddingModel` → embed functions + `EmbedderConfig`; transcription/image/audio/rerank per §10.2; **all 13 store crates kept and de-genericized** per §10.3 (drop the `EmbeddingModel` bound, pre-embedded queries, `StoreRecord`/`SearchHit`/`top_n_as`, no shared trait). | Yes (per-crate majors) | Per-crate |
@@ -1707,7 +1707,7 @@ them:
 4. **Foreign-crate internals** (`reqwest`, `tokio`, `rmcp`, `aws-sdk`,
    `tonic`, `tracing`). The mandate governs rig's architecture; these are
    dependencies' implementation details behind concrete rig types. `rmcp` is
-   additionally quarantined into the `rig-mcp` companion so `rig-core`/
+   additionally quarantined into the `rig-rmcp` companion so `rig-core`/
    `rig-agent` stay clean even transitively at the API level.
 5. **`Json<T: Serialize>` and `impl<T: Serialize> From<Json<T>> for ToolOutput`**
    (§7.5). A generic wrapper appearing as `Tool::Output` type state, converted

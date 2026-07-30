@@ -50,7 +50,7 @@
 //! The classic contextual `Tool` trait, `ToolContext`, `ToolSet`, and the
 //! `ToolServer` actor were removed: close over your state in a
 //! [`PortableDynamicTool`] callback (or your `PortableTool` struct's fields)
-//! instead of threading a runtime context. MCP tools live in the `rig-mcp`
+//! instead of threading a runtime context. MCP tools live in the `rig-rmcp`
 //! crate.
 
 pub mod builtin;

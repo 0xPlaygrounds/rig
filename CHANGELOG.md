@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- [**breaking**] *(rig-rmcp)* the `rig-mcp` crate is renamed to `rig-rmcp` (lib target `rig_rmcp`), naming it after the `rmcp` SDK it wraps. The facade re-export path (`rig::tool::mcp`) and both the `mcp` and legacy `rmcp` features are unchanged; only a direct `rig-mcp = ...` dependency needs updating
 - [**breaking**] *(chatgpt, copilot)* `DeviceCodeHandler` (an `Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>` in each provider) is replaced by the concrete `DeviceCodePrompter` enum — `Stdout` (default, unchanged output), `Silent`, or `Channel(UnboundedSender<DeviceCodePrompt>)` which hands the prompt to the host as an owned event. This removes the last two `dyn Fn` callback seams outside the two the architecture sanctions
 - [**breaking**] *(stores)* the `SearchFilter` trait and `Filter::interpret` are deleted; each backend exposes its filter constructors as inherent methods plus a concrete `from_filter(Filter<serde_json::Value>)`. `VectorSearchRequest<F>` keeps its type parameter, so backend-native filters with richer operators still reach a query; callers now name the filter type (`Neo4jSearchFilter::gt(...)`) where the trait method used to infer it
 - [**breaking**] *(core)* the document loaders no longer hold a `Box<dyn Iterator>` and lose their `'a` parameter: `FileLoader<'a, T>` → `FileLoader<I>` (still lazy, `read` now bounded on the newly-`pub` `Readable`), `PdfFileLoader<'a, T>` → `PdfFileLoader<T>`, `EpubFileLoader<'a, T, P>` → `EpubFileLoader<T, P>`, and the three `loaders::IntoIter` wrappers are deleted. **The PDF and EPUB loaders are now eager** — each stage materialises a `Vec` — because their stage methods are discriminated only by item type
@@ -38,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(core)* normalized `finish_reason` on completion and streaming responses — every provider maps its wire stop/finish vocabulary onto a shared `FinishReason` enum (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), closing #2090 and #1886; responses also carry `provider` and `model` metadata
 - *(agent)* data-oriented session layer: `rig::session::AgentSession` (blocking, callback-free driver with a decision inbox), `rig::stream::AgentStream` (streaming driver), and `rig::extract` (structured extraction over the session runtime), all over the sans-IO `AgentRun` protocol; `rig::provider` bundles every provider as plain serializable configuration (`ProviderConfig`, `EmbedderConfig`, `MockScript`/`MockEmbedder`) plus a process-local `Runtime` for transport handles
 - *(derive)* `#[derive(ToolRouter)]` — an inherent catalog/dispatch router over a struct of typed tools (`rig::tool_router::ToolRouter`)
-- *(mcp)* new `rig-mcp` companion crate (facade module `rig::tool::mcp`): `McpToolset` pairs a `ToolCatalog` with MCP-backed execution for the data-oriented runtime
+- *(mcp)* new `rig-rmcp` companion crate (facade module `rig::tool::mcp`): `McpToolset` pairs a `ToolCatalog` with MCP-backed execution for the data-oriented runtime
 
 ### Other
 

@@ -109,7 +109,7 @@ jobs:
 
   # MCP is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Since the
-  # MCP integration moved out of rig-agent into the `rig-mcp` crate, that crate
+  # MCP integration moved out of rig-agent into the `rig-rmcp` crate, that crate
   # is cfg'd off the wasm targets entirely and compiles to an empty library
   # there rather than raising a `compile_error!`. Assert that it still builds
   # clean on wasm — a stray ungated `use rmcp::…` is the regression this guards.
@@ -126,8 +126,8 @@ jobs:
           target: wasm32-unknown-unknown
           toolchain: ${{ env.RUST_VERSION }}
 
-      - name: rig-mcp compiles to an empty crate on wasm
-        run: cargo check --package rig-mcp --target wasm32-unknown-unknown
+      - name: rig-rmcp compiles to an empty crate on wasm
+        run: cargo check --package rig-rmcp --target wasm32-unknown-unknown
 
   clippy:
     name: stable / clippy

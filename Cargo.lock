@@ -9801,13 +9801,13 @@ dependencies = [
  "rig-gemini-grpc",
  "rig-helixdb",
  "rig-lancedb",
- "rig-mcp",
  "rig-memory",
  "rig-milvus",
  "rig-mongodb",
  "rig-neo4j",
  "rig-postgres",
  "rig-qdrant",
+ "rig-rmcp",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -10046,19 +10046,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-mcp"
-version = "0.41.0"
-dependencies = [
- "rig-core",
- "rmcp",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "rig-memory"
 version = "0.41.0"
 dependencies = [
@@ -10154,6 +10141,19 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "rig-rmcp"
+version = "0.41.0"
+dependencies = [
+ "rig-core",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
