@@ -262,6 +262,51 @@ where
 /// turns can automatically chain via `previous_response_id` unless the request
 /// explicitly sets a different one.
 ///
+/// Automatic compaction composes with that chaining behavior. Configure
+/// `context_management` on each request and send only the new turn input:
+///
+/// ```no_run
+/// use rig_core::{
+///     client::{CompletionClient, ProviderClient},
+///     completion::CompletionModel,
+///     providers::openai::{self, responses_api::ContextManagement},
+/// };
+/// use serde_json::json;
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::from_env()?;
+/// let model = client.completion_model("gpt-5.4");
+/// let mut session = client.responses_websocket("gpt-5.4").await?;
+///
+/// session
+///     .completion(
+///         model
+///             .completion_request("Begin a long task.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// session
+///     .completion(
+///         model
+///             .completion_request("Continue with the next step.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// session.close().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
 pub struct ResponsesWebSocketSession<H = reqwest::Client> {

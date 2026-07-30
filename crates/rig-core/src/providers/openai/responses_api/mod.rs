@@ -1637,6 +1637,9 @@ pub struct AdditionalParameters {
     /// Whether or not a given model task should run in the background (ie a detached process).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<bool>,
+    /// Server-managed context controls such as automatic compaction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_management: Option<Vec<ContextManagement>>,
     /// The text response format. This is where you would add structured outputs (if you want them).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<TextConfig>,
@@ -1680,6 +1683,77 @@ pub struct AdditionalParameters {
     /// Whether or not to store the response for later retrieval by API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store: Option<bool>,
+}
+
+/// Server-managed context controls for the OpenAI Responses API.
+///
+/// Automatic compaction runs during a normal Responses request when the
+/// rendered token count crosses the configured threshold. When continuing with
+/// `previous_response_id`, send only the new input for each turn and do not
+/// manually prune the conversation.
+///
+/// # Example
+///
+/// ```no_run
+/// use rig_core::{
+///     client::{CompletionClient, ProviderClient},
+///     completion::CompletionModel,
+///     providers::openai::{self, responses_api::ContextManagement},
+/// };
+/// use serde_json::json;
+///
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = openai::Client::from_env()?;
+/// let model = client.completion_model("gpt-5.4");
+///
+/// let first = model
+///     .completion(
+///         model
+///             .completion_request("Begin a long task.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+///
+/// let second = model
+///     .completion(
+///         model
+///             .completion_request("Continue with the next step.")
+///             .additional_params(json!({
+///                 "context_management": [ContextManagement::compaction(200_000)],
+///                 "previous_response_id": first.raw_response.id,
+///                 "store": false,
+///             }))
+///             .build(),
+///     )
+///     .await?;
+/// # let _ = second;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ContextManagement {
+    /// Compact the server-managed context after the optional token threshold is
+    /// crossed. When omitted, OpenAI selects the threshold.
+    Compaction {
+        /// Rendered token threshold that triggers automatic compaction.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        compact_threshold: Option<u64>,
+    },
+}
+
+impl ContextManagement {
+    /// Enables automatic server-side compaction at `compact_threshold`.
+    #[must_use]
+    pub const fn compaction(compact_threshold: u64) -> Self {
+        Self::Compaction {
+            compact_threshold: Some(compact_threshold),
+        }
+    }
 }
 
 fn deserialize_metadata<'de, D>(
@@ -1960,6 +2034,11 @@ pub enum Output {
         encrypted_content: Option<String>,
         status: Option<ToolStatus>,
     },
+    /// Opaque server-side compaction state returned by OpenAI.
+    ///
+    /// This item remains available in the raw provider response but is not
+    /// converted into Rig's provider-agnostic assistant conversation history.
+    Compaction(ResponseCompactionItem),
     /// Catch-all for output item types this version does not model. Holds the
     /// raw item object exactly as it appeared in the provider's `output[]`
     /// array, so hosted-tool payloads survive the typed decode.
@@ -2051,6 +2130,9 @@ impl Serialize for Output {
                 }
                 Ok(value)
             }
+            Output::Compaction(compaction) => {
+                return Value::from(compaction).serialize(serializer);
+            }
             Output::Unknown(value) => return value.serialize(serializer),
         };
         value
@@ -2081,6 +2163,9 @@ impl<'de> Deserialize<'de> for Output {
                 .map_err(serde::de::Error::custom),
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
+                .map_err(serde::de::Error::custom),
+            "compaction" => serde_json::from_value(value)
+                .map(Output::Compaction)
                 .map_err(serde::de::Error::custom),
             _ => Ok(Output::Unknown(value)),
         }
@@ -2136,10 +2221,43 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     },
                 )]
             }
+            Output::Compaction(_) => Vec::new(),
             Output::Unknown(_) => Vec::new(),
         };
 
         res
+    }
+}
+
+/// Opaque context state emitted by OpenAI automatic server-side compaction.
+///
+/// The encrypted content is provider state rather than a human-readable
+/// summary. When using `previous_response_id`, callers only need to carry the
+/// response ID forward; OpenAI retains this item in the response chain.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ResponseCompactionItem {
+    /// Provider-assigned compaction item ID.
+    pub id: String,
+    /// Encrypted context state used by OpenAI for subsequent turns.
+    pub encrypted_content: String,
+    /// The component that created the compaction item, when supplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+}
+
+impl From<&ResponseCompactionItem> for Value {
+    fn from(item: &ResponseCompactionItem) -> Self {
+        let mut value = Map::new();
+        value.insert("type".to_string(), Value::String("compaction".to_string()));
+        value.insert("id".to_string(), Value::String(item.id.clone()));
+        value.insert(
+            "encrypted_content".to_string(),
+            Value::String(item.encrypted_content.clone()),
+        );
+        if let Some(created_by) = &item.created_by {
+            value.insert("created_by".to_string(), Value::String(created_by.clone()));
+        }
+        Value::Object(value)
     }
 }
 

@@ -1032,6 +1032,7 @@ where
         let stream = tracing_futures::Instrument::instrument(
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
+                let mut response_id = None;
                 let mut reasoning_metadata = None;
                 let mut reasoning_context = None;
                 let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
@@ -1105,6 +1106,11 @@ where
                                         StreamingItemDoneOutput { item: responses_api::Output::Message(msg), .. } => {
                                             yield Ok(RawStreamingChoice::MessageId(msg.id.clone()));
                                         }
+                                        StreamingItemDoneOutput { item: responses_api::Output::Compaction(compaction), .. } => {
+                                            yield Ok(RawStreamingChoice::Unknown(
+                                                serde_json::Value::from(compaction),
+                                            ));
+                                        }
                                         // Surface an unmodeled output item (e.g. a hosted-tool result) to the consumer verbatim.
                                         StreamingItemDoneOutput { item: responses_api::Output::Unknown(value), .. } => {
                                             yield Ok(RawStreamingChoice::Unknown(value.clone()));
@@ -1142,6 +1148,7 @@ where
                                     responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
                                         span.record("gen_ai.response.id", response.id.as_str());
                                         span.record("gen_ai.response.model", response.model.as_str());
+                                        response_id = Some(response.id);
                                         if let Some(usage) = response.usage {
                                             final_usage = usage;
                                         }
@@ -1214,6 +1221,7 @@ where
                 yield Ok(RawStreamingChoice::FinalResponse(
                     CopilotStreamingResponse::Responses(
                         responses_api::streaming::StreamingCompletionResponse {
+                            response_id,
                             usage: final_usage,
                             reasoning_metadata,
                             reasoning_context,
