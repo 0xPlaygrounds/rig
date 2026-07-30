@@ -1043,3 +1043,154 @@ needs `Client<Ext, H>` to send, so deleting the generic shell before R7 buys
 now pure lookup shims with **zero behavior** — every wire byte is produced by
 the `functions` modules — so R7 can delete them mechanically alongside the
 client layer. Recorded as a sequencing deviation.
+
+## R7 — client-layer deletion (rig-core + rig-agent)
+
+Two commits: `81dc21fc6` (additive — the construction replacement) and
+`29511e9af` (the deletion). Scope was `crates/rig-core/src/**` and
+`crates/rig-agent/src/**` only; root `tests/**`, `examples/**` and the companion
+crates are knowingly left broken for the follow-up sweep.
+
+### The construction replacement (landed first, additive)
+
+Every provider's `functions::Config` — and its `EmbeddingConfig` /
+`RerankConfig` siblings — gained a uniform
+
+```rust
+pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError>
+```
+
+reproducing exactly what `ProviderClient::from_env` did: same variable names,
+same precedence, same base-URL overrides. 41 such constructors. The credential
+is validated eagerly but stored as `ApiKeyLocation::Env`, so secrets are still
+resolved at request time rather than held in the config.
+
+`providers::descriptor` gained `ConfigError` + `required_env_var` /
+`optional_env_var` (the `ProviderClientError` shape minus its builder arm),
+re-exported from `providers`.
+
+Wire behavior that lived **only** in the classic client was moved first:
+
+| Behavior | Where it went |
+| --- | --- |
+| azure Entra-ID bearer (`AzureOpenAIAuth::Token`, `AZURE_TOKEN`) | `azure::functions::AuthScheme::{ApiKeyHeader, Bearer}`; `from_env` maps `AZURE_API_KEY`→header, `AZURE_TOKEN`→bearer |
+| `anthropic::client::normalize_anthropic_base_url` | `anthropic::functions::normalize_base_url` |
+| zai/minimax/moonshot/xiaomimimo `AnthropicClient` (no functions face existed) | `functions::anthropic_config_from_env(model) -> anthropic::functions::Config`, incl. the `*_ANTHROPIC_API_BASE` → normalized `*_API_BASE` precedence and the `default_max_tokens = 4096` dialect value |
+| copilot / chatgpt cached-OAuth resolution | async `functions::config_from_env` (full classic precedence) and `config_from_auth(model, &Authenticator)` for custom token files / device-code handlers / `allow_device_flow` |
+
+**Bug found and fixed:** `llamafile::functions::DEFAULT_BASE_URL` omitted the
+`/v1` segment the classic client appended in its own `build_uri`, so
+functions-path llamafile requests went to `/chat/completions`. An in-file test
+had baked in the wrong URL. Both corrected.
+
+### Deletions
+
+`client/` in full (9 files: `Client<Ext, H>`, the `ClientBuilder` typestate,
+`Provider`/`ProviderBuilder`, `ProviderClient`, `ApiKey`/`BearerAuth`/`Nothing`,
+`Capabilities`/`Capability`/`Capable`, `DebugExt`, `VerifyClient`, `ModelLister`,
+the seven capability client traits); `markers.rs`; the seven model traits; the
+R6-deferred `Generic*Model<Ext, H>` shells, `ResponsesProviderExt`, every
+`type CompletionModel<H> = …` alias and the three behavior-free compat shims;
+`EmbeddingsBuilder`; `HttpClientExt` + `LazyBody`/`LazyBytes`; rig-agent's
+`ToProviderConfig`/`AgentClientExt`. 24 files deleted, **−16,246 / +4,777**
+across 134 files.
+
+`HttpClientExt` is replaced by a crate-internal `http_client::Backend` that
+`HttpRuntime`'s `Transport` enum dispatches to — monomorphic (`Vec<u8>` in,
+`Bytes` out), so `LazyBody`'s boxed futures disappear and the only erased edge
+left is the streaming one. `GenericEventSource` lost its request-body generic.
+
+`EmbeddingsBuilder` became `embeddings::embed_documents` /
+`embed_documents_with_usage`, free functions over a batch-embed closure plus the
+existing `batching.rs`. The replacement is strictly stronger: the builder folded
+into a `HashMap` and so had **nondeterministic output order** (its own tests
+sorted to compensate) and could mis-order a document's embeddings across a
+chunk boundary; the replacement keys completed chunks by index and guarantees
+both. It also rejects a chunk whose embedding count differs from its input
+count, which the builder silently mis-aligned.
+
+### Capabilities preserved rather than dropped
+
+The deletion surfaced nine capabilities reachable only through the classic
+layer. All were re-landed on the functions path before the delete:
+
+- copilot `Config.intent` (`conversation-edits` was unreachable);
+- chatgpt `Config.default_tools` / `strict_tools`;
+- openai responses `Config.tools` / `strict_tools` (hosted `web_search` /
+  `file_search` / `computer_use` have no `CompletionRequest` representation);
+- huggingface `Config.sub_provider` — restores Together/SambaNova/Fireworks/
+  Hyperbolic/Nebius/Novita/Custom routing and the Fireworks
+  `accounts/fireworks/models/` model-identifier rewrite, plus sub-provider
+  routing for `transcribe` / `generate_image`;
+- `functions::embed` faces for **mistral** (Codestral-only `output_dimension`,
+  ≤3072 bound), **together** (`requires_usage = false`), **openrouter** and
+  **llamafile** — all four previously reached embeddings only through
+  `GenericEmbeddingModel` + `OpenAIEmbeddingsCompatible`;
+- `mira::functions::list_models`, which existed only as `Client::list_models`.
+
+`HttpRuntime` gained `mock_streaming` / `streaming_error` /
+`sequenced_streaming` transports so streaming tests can run through
+`functions::open_stream` rather than reaching under it.
+
+### Test ledger
+
+~90 tests retargeted at functions entry points (`build_body`,
+`build_request`, `parse_response`, `complete`/`embed`/`transcribe`/
+`generate_image`/`generate_audio`/`rerank`/`list_models` over
+`HttpRuntime::recording`). ~35 deleted, every one with deleted machinery as its
+subject:
+
+| Class | Count | Reason |
+| --- | --- | --- |
+| `test_client_initialization` (one per provider) | 19 | subject is `Client::new` / the `ClientBuilder` typestate |
+| openrouter `with_app_identity` / `with_app_categories` header tests | 6 | subject is deleted builder methods; the headers remain expressible via `Config.extra_headers` |
+| base64 / `user` encoding rejection (openai, mistral, together, openrouter, llamafile) | 6 | the guards lived on the deleted model; `EmbeddingConfig` has no `encoding_format`/`user` knob to guard |
+| `H`-substitution and legacy-alias compile checks | 3 | exist only to prove the deleted type parameter substitutes |
+| gemini `EmbeddingModel` ctor/dims tests | 3 | subject is the deleted ctor; the lookup-table assertion survives as `test_model_default_ndims_lookup` |
+| copilot intent-builder, chatgpt/openai client-wiring, llamafile `build_uri`/`from_url` | 5 | subject is deleted builder wiring; the llamafile URL assertion was re-landed on `functions::build_request` and the copilot edits-intent header assertion on `Config::with_intent` |
+
+### Deviations and known deltas (logged, not silently taken)
+
+1. **`Config::from_env(model)` takes the model**, where `ProviderClient::from_env()`
+   took none — the client was model-less and `client.agent(m)` supplied it later.
+   One uniform constructor across all 41 configs beat a `from_env()` +
+   `from_env_with_model(m)` pair.
+2. **gemini Interactions API has no functions face.** Wire types, conversions,
+   `create_request_body`, `build_interaction_stream_path` and the three pure
+   delta→choice mappers are retained, but `InteractionsClient` /
+   `InteractionsCompletionModel` and the `HttpClientExt`-generic
+   `stream_interaction_events` are gone. It authenticates by `x-goog-api-key`
+   header, not `?key=`. **Follow-up required.**
+3. **Cohere usage source.** The classic model normalized usage from
+   `billed_units`; the functions path's `TryFrom` reads `usage.tokens`. A
+   pre-existing R6 divergence, surfaced by deleting the classic path's
+   `Usage::token_usage`. Cohere's cassette suite is all-ignored, so nothing
+   caught it.
+4. **anthropic unknown-model max_tokens.** The classic model fell back to 2048;
+   `Config::new` leaves `default_max_tokens: None` for an unknown model, so the
+   request errors unless the caller sets `max_tokens`. Pre-existing R6 shape;
+   the test now asserts the surviving half.
+5. **Telemetry spans on ollama and gemini streaming.** The deleted models built
+   `CompletionSpanBuilder` spans that `functions::{complete, open_stream}` do
+   not; `record_token_usage` now writes to the ambient span. Pre-existing R6
+   gap, widened by the deletion. **Follow-up.**
+6. **`Provider::VERIFY_PATH` has no functions equivalent** (groq `/models`,
+   deepseek `/user/balance`, hyperbolic `/models`, ollama `api/tags`).
+   Credential verification needs a home in core if it is to survive.
+7. **`ndims` is not carried** by ollama's or voyageai's `EmbeddingConfig`; the
+   dimension tables are retained and `pub` so callers sizing a vector-store
+   index can still resolve them.
+8. **openrouter loses `encoding_format` / `user`** on embeddings (it genuinely
+   supported both). Adding the two fields to its `EmbeddingConfig` is the fix.
+9. **huggingface `completion_endpoint` is sub-provider-invariant** — deliberate
+   since `35a7f6781` ("fix(rig-1016): Huggingface completions API 404"). For
+   completions the sub-provider is body-only; it changes the URL only for
+   transcription and image generation.
+
+### Evidence
+
+rig-core 1070 unit + 93 doctests green; rig-agent 368 + 12 green; `cargo fmt
+--check` clean; `cargo clippy --all-features --all-targets` zero warnings for
+both crates; `cargo doc` broken-intra-doc-link count back to zero (the 19
+remaining `redundant explicit link target` warnings are unchanged from the R6
+baseline); `git diff --stat -- tests/cassettes` empty.
