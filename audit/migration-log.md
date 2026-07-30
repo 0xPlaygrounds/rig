@@ -1249,3 +1249,74 @@ design.
 --all-targets`); workspace check 0 errors; every crate suite and all 33
 facade test targets green single-threaded; bedrock 57/57; doctests green;
 cassettes untouched.
+
+## R8 — Leaf cleanups: PARTIAL (census complete, refactors outstanding)
+
+R8 was interrupted three times by transient upstream API failures (529
+Overloaded) mid-refactor. Each partial edit was reverted or stashed so the
+committed tree stays green at R7. **What R8 delivered is the closing
+census; its five refactors remain.**
+
+### Closing census (measured against plan §3 targets)
+
+Commands and counts over `crates/rig-core/src` + `crates/rig-agent/src`:
+
+| Target | Actual | Verdict |
+|---|---|---|
+| `std::any`/`TypeId` only in `ToolExecutionError` source-downcasting | 8 hits, **all in `tool/result.rs`** | MET |
+| Typestate markers: zero | `markers.rs` deleted; no `Missing`/`Provided` anywhere | MET |
+| Function-pointer tables: zero | none | MET |
+| `dyn` only at transport edges, error sources, one callback seam | 114 total — see breakdown | ESSENTIALLY MET |
+
+`dyn` breakdown (114):
+- **98** — `Box<dyn Error>`/`Arc<dyn Error>` source chains (§2.3 KEEP: std
+  error idiom, not behavior dispatch).
+- **3** — transport-edge stream boxes: `BoxedStream`, `BoxedEventSource`
+  (`http_client/sse.rs`), and the reqwest `mapped_stream`
+  (`http_client/mod.rs:235`) (§2.3 KEEP: one box at the IO boundary
+  carrying owned events).
+- **2** — the `WasmBoxedFuture` aliases (`wasm_compat.rs:67,71`), the
+  boxed-future type the two callback seams return (§2.3 KEEP: portability
+  machinery).
+- **2** — the sanctioned callback seams: `PortableDynamicCallback`
+  (`tool/portable.rs:84`) and `HookCallback` (`hooks.rs:206`). Tool bodies
+  and hook behaviors are arbitrary host code by definition.
+- **6** — loader `Box<dyn Iterator>` (`loaders/{file,pdf,epub/loader}.rs`)
+  — **OUTSTANDING**, R8 item 3.
+- **2** — `DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt)>>)` in
+  chatgpt/copilot auth. **A SECOND callback seam beyond the one the plan
+  sanctions.** It is an interactive-OAuth user-prompt handler (the host
+  decides how to display a device code), which is defensible as a host
+  decision, but it is flagged rather than silently blessed — the maintainer
+  should rule on whether it stays or becomes data (e.g. returning the
+  prompt to the caller instead of invoking a callback).
+- 1 non-code mention (a comment in `hooks.rs:187`).
+
+Callback-serving lifetimes: **zero**. The only ones that existed
+(`ConversationMemory`'s `WasmBoxedFuture<'a>` methods) died in R3. All
+remaining lifetimes are plain borrows or serde `'de`.
+
+Behavioral traits remaining in rig-core/rig-agent: `PortableTool`
+(+`PortableToolEmbedding`), `HookCallback`, `PortableDynamicCallback`,
+`SearchFilter`, `Embed`. The first three are the sanctioned seam and its
+typed front door; the last two are R8's outstanding refactors.
+
+### Outstanding R8 refactors (none started in the committed tree)
+
+1. `SearchFilter` → concrete `Filter<serde_json::Value>` + per-backend
+   `from_filter` (ripples through 12 store crates). A partial attempt
+   covering rig-core + milvus + qdrant is preserved in `git stash` as
+   "R8-A partial: SearchFilter core+milvus+qdrant (API-interrupted)".
+2. `Embed` trait → derive-emitted inherent `embed_texts()`; delete
+   `TextEmbedder`/`EmbedError`.
+3. Loader `Box<dyn Iterator>` → concrete iterators or eager `Vec`. A naive
+   regex conversion to `std::vec::IntoIter` left 22 errors on multi-line
+   `Box::new` call sites and was reverted; it needs hand-editing.
+4. `extern crate self as rig` (rig-core `lib.rs:155`) — removable once the
+   `Embed` derive stops emitting `rig::…` paths into rig-core (item 2).
+5. `wasm_compat` shrink — inventory after items 1–4; the endgame residue
+   should be `timeout`, `if_wasm!`, and transport boxing.
+
+None of these is load-bearing for the architecture: the single execution
+path (ProviderConfig/Runtime + AgentSession/AgentStream + owned events +
+concrete decisions) is complete as of R7.
