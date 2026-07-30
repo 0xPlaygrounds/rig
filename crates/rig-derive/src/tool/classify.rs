@@ -1,4 +1,10 @@
-//! Classification of function parameters as the runtime execution context.
+//! Detection of the removed runtime execution context on tool parameters.
+//!
+//! `ToolContext` and the contextual `Tool` trait no longer exist: every
+//! `#[rig_tool]` function is a portable record. These helpers exist only so a
+//! leftover context parameter is rejected with a migration pointer instead of
+//! being silently treated as a model-facing argument (which would put it in
+//! the advertised JSON schema).
 
 use syn::{Attribute, Ident, Meta, Type};
 
@@ -67,41 +73,28 @@ pub(crate) fn has_tool_context_marker(attrs: &[Attribute]) -> syn::Result<bool> 
     Ok(marked)
 }
 
-/// Classify a function parameter as the distinguished execution context.
+/// Whether a function parameter is a leftover runtime-context parameter, in
+/// any form: marked with `#[rig(context)]`, or typed as a fully qualified
+/// `ToolContext` behind any number of references.
 ///
-/// An owned or shared `ToolContext` is almost certainly an authoring mistake:
-/// tools need the exact mutable context supplied by the runtime so result
-/// metadata and mutations remain visible to the caller.
+/// Reference form and mutability are not distinguished — every shape resolves
+/// to the same migration error, so there is nothing to tell apart.
 pub(crate) fn is_tool_context_parameter(
     ty: &Type,
     explicitly_marked: bool,
     refs: &CrateRefs,
-) -> syn::Result<bool> {
-    let ty = match ty {
-        Type::Group(group) => &*group.elem,
-        Type::Paren(paren) => &*paren.elem,
-        ty => ty,
-    };
-
-    if let Type::Reference(reference) = ty
-        && (explicitly_marked || is_tool_context_type(&reference.elem, refs))
-    {
-        if reference.mutability.is_none() {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "a `ToolContext` parameter must have type `&mut ToolContext`",
-            ));
-        }
-
-        return Ok(true);
+) -> bool {
+    if explicitly_marked {
+        return true;
     }
 
-    if explicitly_marked || is_tool_context_type(ty, refs) {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "a `ToolContext` parameter must have type `&mut ToolContext`",
-        ));
+    let mut ty = ty;
+    loop {
+        ty = match ty {
+            Type::Group(group) => &*group.elem,
+            Type::Paren(paren) => &*paren.elem,
+            Type::Reference(reference) => &*reference.elem,
+            ty => return is_tool_context_type(ty, refs),
+        };
     }
-
-    Ok(false)
 }

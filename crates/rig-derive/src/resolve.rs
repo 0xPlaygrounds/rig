@@ -54,16 +54,18 @@ pub(crate) struct CrateRefs {
     /// re-exports `serde`, `serde_json`, and `schemars`, so all generated code
     /// resolves those through it instead of assuming the caller's Cargo.toml.
     pub(crate) core: TokenStream,
-    /// Path to the classic runtime root (the crate exposing
-    /// `tool::{Tool, ToolContext}`): `rig-agent` or the `rig` facade. `None`
-    /// when neither is a dependency, in which case contextual tools cannot be
-    /// generated and get a targeted error instead of an unresolved-crate one.
+    /// Path to the agent runtime root (the crate exposing the tool router's
+    /// `tool::router_support` and `agent::prepare`): `rig-agent` or the `rig`
+    /// facade. `None` when neither is a dependency, in which case
+    /// `#[derive(ToolRouter)]` reports a targeted error instead of expanding
+    /// to an unresolved crate path.
     pub(crate) agent: Option<TokenStream>,
-    /// First path segments under which `<root>::tool::ToolContext` names the
-    /// runtime context in the expanding crate.
+    /// First path segments under which `<root>::tool::ToolContext` named the
+    /// removed runtime context. Retained only to recognize a leftover context
+    /// parameter and reject it with a migration pointer.
     context_roots: Vec<String>,
     /// First path segments under which `<root>::agent::tool::ToolContext`
-    /// names the runtime context (the facade's explicit runtime module).
+    /// named it via the facade's explicit runtime module. Same purpose.
     facade_roots: Vec<String>,
 }
 
@@ -99,8 +101,12 @@ impl CrateRefs {
     }
 
     /// Whether `segments` is an unambiguous fully qualified path to the
-    /// runtime `ToolContext` under any name the crates resolve to in this
-    /// build — including Cargo renames and `crate` self-references.
+    /// removed runtime `ToolContext` under any name the crates resolve to in
+    /// this build — including Cargo renames and `crate` self-references.
+    ///
+    /// Only fully qualified paths are recognized: matching a bare trailing
+    /// `ToolContext` segment would steal unrelated application types that
+    /// happen to share the name.
     pub(crate) fn is_context_path(&self, segments: &[String]) -> bool {
         match segments {
             [root, tool, context] => {
