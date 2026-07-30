@@ -1587,6 +1587,42 @@ default. **`Arc<dyn Fn` now has zero occurrences in rig-core and rig-agent**,
 leaving exactly the two sanctioned seams (`PortableDynamicCallback`,
 `HookCallback`) the plan blesses.
 
+### Closing census (refreshed against plan §3)
+
+Over `crates/rig-core/src` + `crates/rig-agent/src`:
+
+| Target | R8 | R9 | Verdict |
+|---|---|---|---|
+| `std::any`/`TypeId` | 8 (`tool/result.rs`) | **0** | EXCEEDED — the last downcasting is gone |
+| Typestate markers | 0 | 0 | MET |
+| Function-pointer tables | 0 | 0 | MET |
+| `Arc<dyn Fn>` callback seams beyond the sanctioned two | 2 (`DeviceCodeHandler`) | **0** | MET |
+| Total `dyn` | 114 | 122 | see breakdown |
+
+The `dyn` total rose by 8 while every category the plan targets went to zero
+or stayed there — the increase is entirely error chains and `fmt::Debug`
+parameters in code this round touched, not new erasure. Breakdown of the 122:
+
+- **96** — `Box<dyn Error>`/`Arc<dyn Error>` source chains (§2.3 KEEP).
+- **7** — `&dyn std::fmt::Debug` telemetry/logging parameters (§2.3 KEEP:
+  std formatting idiom, not dispatch over behaviour).
+- **7** — transport-edge stream boxes (`BoxedStream`, `BoxedEventSource`,
+  the reqwest `mapped_stream`, the two `RawStreamingChoice` aliases, the two
+  gemini Interactions SSE aliases) (§2.3 KEEP: one box at the IO boundary
+  carrying owned events).
+- **2** — the `WasmBoxedFuture` aliases (§2.3 KEEP: portability machinery).
+- **2** — the sanctioned seams `PortableDynamicCallback`
+  (`tool/portable.rs`) and `HookCallback` (`hooks.rs`). Tool bodies and hook
+  behaviours are arbitrary host code by definition.
+- **8** — prose in doc comments, not code.
+
+Behavioural traits remaining: `PortableTool` (+`PortableToolEmbedding`),
+`HookCallback`, `PortableDynamicCallback` — the sanctioned seam and its typed
+front door — plus `Embed` (declined, see A1) and the loaders' `Readable` /
+`Loadable` (data extraction, sealed by their modules). `SearchFilter` is gone.
+
+Callback-serving lifetimes: **0**.
+
 ### Verification
 
 `cargo fmt --check` clean; `cargo clippy --workspace --all-features
