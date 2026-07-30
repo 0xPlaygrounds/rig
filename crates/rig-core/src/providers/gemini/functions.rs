@@ -5,7 +5,7 @@
 //! [`build_request`] (data → HTTP request, no IO) and [`parse_response`]
 //! (bytes → normalized [`completion::CompletionResponse`], no IO) — plus the
 //! async [`complete`] and [`open_stream`] wrappers over
-//! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+//! [`HttpRuntime`].
 //!
 //! The pure functions delegate to the typed wire conversions in
 //! [`super::completion`] (`create_request_body` /

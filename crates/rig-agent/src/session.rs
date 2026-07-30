@@ -79,7 +79,7 @@ pub struct SessionPolicy {
 /// What a session needs from its host next.
 ///
 /// Deliberately exhaustive, like
-/// [`AgentRunStep`](crate::agent::run::AgentRunStep): a new
+/// [`AgentRunStep`]: a new
 /// decision-bearing variant must fail to compile in every host.
 #[derive(Debug)]
 pub enum SessionEvent {

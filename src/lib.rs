@@ -25,7 +25,7 @@
 //! ```
 //!
 //! Agents wrap the same configuration in
-//! [`provider::ProviderConfig`](rig_agent::provider::ProviderConfig):
+//! [`provider::ProviderConfig`]:
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -187,7 +187,7 @@ pub mod streaming {
 /// the callback instead of threading a context. The full portable surface
 /// also lives under [`crate::tool::portable`], and the same exports are at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
-/// MCP tools live in [`crate::tool::mcp`] (the `rig-mcp` crate).
+/// MCP tools live in `crate::tool::mcp` (the `rig-mcp` crate, `mcp` feature).
 pub mod tool {
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{

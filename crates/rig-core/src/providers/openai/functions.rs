@@ -5,7 +5,7 @@
 //! decompose a completion into its pure parts —
 //! [`build_request`] (data → HTTP request, no IO) and [`parse_response`]
 //! (bytes → normalized [`completion::CompletionResponse`], no IO) — plus the
-//! async [`complete`] wrapper over [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+//! async [`complete`] wrapper over [`HttpRuntime`].
 //!
 //! The typed conversion these functions delegate to
 //! ([`super::completion::CompletionRequest`]`::try_from(`[`OpenAIRequestParams`](super::completion::OpenAIRequestParams)`)`)

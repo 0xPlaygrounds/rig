@@ -16,7 +16,7 @@
 //! [`LanceDBFilter`].
 //!
 //! Queries arrive pre-embedded via
-//! [`VectorSearchRequest`](rig_core::vector_store::VectorSearchRequest):
+//! [`VectorSearchRequest`]:
 //! embed the query text with your embedding model, then pass the resulting
 //! [`Embedding`](rig_core::embeddings::Embedding) to the request builder.
 //!

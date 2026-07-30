@@ -605,6 +605,12 @@ impl Hooks {
 /// (a non-`Send` slot sneaking into a hook record, executor, agent, or
 /// session) fails to compile right here instead of at some distant
 /// `async_trait` call site.
+///
+/// Native-only: on wasm the `WasmCompatSend`/`WasmCompatSync` markers are
+/// deliberately no-ops (the runtime is single-threaded), so the callback
+/// trait objects do not carry `Send`/`Sync` there and this census would not
+/// compile.
+#[cfg(not(target_family = "wasm"))]
 #[allow(dead_code)]
 fn _assert_agent_model_is_send_and_sync() {
     fn assert<T: Send + Sync>() {}

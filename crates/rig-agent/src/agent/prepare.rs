@@ -4,7 +4,7 @@
 //! an [`AgentConfig`], a [`ToolCatalog`] (plain tool-definition data), the
 //! current step's prompt/history from
 //! [`AgentRun::next_step`](super::run::AgentRun::next_step), and an optional
-//! per-turn [`RequestPatch`](super::hook::RequestPatch), it produces the
+//! per-turn [`RequestPatch`], it produces the
 //! complete [`CompletionRequest`] plus the tool-name sets that feed
 //! [`ModelTurn`](super::run::ModelTurn). It performs no IO and holds no
 //! behavior — any driver (the classic runner, a hand-rolled loop, an ECS

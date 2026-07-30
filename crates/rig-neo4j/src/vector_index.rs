@@ -288,7 +288,7 @@ impl Neo4jVectorIndex {
     /// fields onto the node alongside the record's `id`, the embedding
     /// (`embedding_property`), and its source text (`embedded_text`). Nodes are
     /// written under the index's `node_label`, defaulting to
-    /// [`DEFAULT_NODE_LABEL`].
+    /// `DEFAULT_NODE_LABEL`.
     pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         let node_label = self
             .index_config

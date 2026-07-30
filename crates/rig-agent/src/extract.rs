@@ -2,7 +2,7 @@
 //!
 //! [`extract`] is the data-oriented successor of `Extractor<M, T>`: a
 //! generic *function* over serde/schemars capability bounds (nothing stores
-//! `T`), driving an [`AgentSession`](crate::session::AgentSession) in Tool
+//! `T`), driving an [`AgentSession`] in Tool
 //! output mode and deserializing the structured result.
 
 use std::sync::Arc;

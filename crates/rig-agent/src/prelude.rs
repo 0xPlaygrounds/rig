@@ -1,7 +1,7 @@
 //! Common imports for building and driving agents.
 //!
 //! Providers are configured as plain data — `<provider>::functions::Config` —
-//! and selected through [`ProviderConfig`](crate::provider::ProviderConfig);
+//! and selected through [`ProviderConfig`];
 //! there is no client type and no capability trait to import.
 
 pub use crate::agent::{Agent, AgentBuilder, PromptResponse, SessionRunner};

@@ -5,7 +5,7 @@
 //! expressions through [`QdrantFilter`].
 //!
 //! Queries arrive pre-embedded via
-//! [`VectorSearchRequest`](rig_core::vector_store::request::VectorSearchRequest);
+//! [`VectorSearchRequest`];
 //! the store never embeds text itself. There is no store trait: the store
 //! exposes concrete inherent async methods (`top_n`, `top_n_ids`, `top_n_as`,
 //! `insert`, `insert_as`).

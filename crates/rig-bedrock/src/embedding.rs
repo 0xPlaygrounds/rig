@@ -3,7 +3,7 @@
 //!
 //! Embedding calls are the free functions [`crate::functions::embed`] /
 //! [`crate::functions::embed_batches`], which drive
-//! [`invoke_embedding`] once per document.
+//! `invoke_embedding` once per document.
 
 use aws_smithy_types::Blob;
 use rig_core::embeddings::EmbeddingError;

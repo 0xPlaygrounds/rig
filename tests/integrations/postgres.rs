@@ -72,7 +72,11 @@ async fn vector_search_test() {
     let openai_mock = create_openai_mock_service().await;
     let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_3_SMALL)
         .with_api_key("TEST")
-        .with_base_url(openai_mock.base_url());
+        .with_base_url(openai_mock.base_url())
+        // The store's `documents.embedding` column is `vector(1536)`, so ask
+        // OpenAI for exactly that width (the config no longer infers a default
+        // dimensionality from the model name).
+        .with_dimensions(1536);
     let rt = HttpRuntime::new();
 
     // create test documents with mocked embeddings

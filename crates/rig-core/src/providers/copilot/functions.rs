@@ -5,7 +5,7 @@
 //! [`build_request`] (data → HTTP request) and [`parse_response`]
 //! (bytes → normalized [`completion::CompletionResponse`], no IO) — plus the
 //! async [`complete`] and [`open_stream`] wrappers over
-//! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+//! [`HttpRuntime`].
 //!
 //! Requests route by model: conversational models use `/chat/completions`
 //! while codex-class models use `/responses`, sharing the provider's request

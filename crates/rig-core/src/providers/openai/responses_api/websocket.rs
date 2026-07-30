@@ -200,7 +200,7 @@ impl ResponsesWebSocketSessionBuilder {
     /// Starts a websocket session builder for `config`.
     ///
     /// `config` is the same plain-data
-    /// [`Config`](super::functions::Config) the HTTP free functions take: its
+    /// [`Config`] the HTTP free functions take: its
     /// base URL, credential, model, system-instructions placement, strict-tool
     /// flag and default tools all apply to the requests this session sends.
     #[must_use]

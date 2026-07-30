@@ -4,7 +4,7 @@
 //! `VerifyClient` trait: the endpoint is a
 //! [`ProviderDescriptor::verify_path`] field, and the round trip is
 //! [`send_verify`] — a free function over
-//! [`HttpRuntime`](crate::http_runtime::HttpRuntime) that every provider's
+//! [`HttpRuntime`] that every provider's
 //! `functions::verify` calls.
 //!
 //! The status mapping is the one the deleted blanket

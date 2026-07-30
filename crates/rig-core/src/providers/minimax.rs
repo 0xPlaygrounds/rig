@@ -160,7 +160,7 @@ pub mod functions {
     //! [`DESCRIPTOR`] capability sheet, and pure
     //! [`build_request`]/[`parse_response`] free functions plus the async
     //! [`complete`]/[`open_stream`] wrappers over
-    //! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
+    //! [`HttpRuntime`]. The request/parse
     //! mechanics are shared with the other OpenAI-compatible providers via
     //! `openai::functions`' stage functions; this module is the source of truth
     //! for MiniMax's path, body assembly, and streaming dialect.

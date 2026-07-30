@@ -5,7 +5,7 @@
 //! [`DESCRIPTOR`] capability sheet, and pure
 //! [`build_request`]/[`parse_response`] free functions plus the async
 //! [`complete`]/[`open_stream`] wrappers over
-//! [`HttpRuntime`](crate::http_runtime::HttpRuntime). The request/parse
+//! [`HttpRuntime`]. The request/parse
 //! mechanics reuse the shared OpenAI-compatible stages in
 //! `openai::functions`; the Hugging Face dialect steps (`completion_path`,
 //! `build_body`) live here.

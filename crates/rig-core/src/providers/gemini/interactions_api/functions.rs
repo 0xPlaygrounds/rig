@@ -1,6 +1,6 @@
 //! The Gemini Interactions API as config + pure functions.
 //!
-//! The data-oriented face of `super`: a serde [`Config`], a [`DESCRIPTOR`]
+//! The data-oriented face of `super`: a serde `Config`, a `DESCRIPTOR`
 //! capability sheet, pure [`build_request_body`] / [`build_request`] /
 //! [`parse_response`], and the async [`complete`] / [`open_stream`] wrappers
 //! over [`HttpRuntime`]. It replaces the deleted `InteractionsClient` /

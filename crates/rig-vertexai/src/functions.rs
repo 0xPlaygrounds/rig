@@ -143,7 +143,7 @@ pub fn model_path(project: &str, location: &str, model: &str) -> String {
 /// Send `request` through the `GenerateContent` RPC and return the
 /// normalized response.
 ///
-/// The request conversion itself ([`VertexCompletionRequest`]'s accessors and
+/// The request conversion itself (`VertexCompletionRequest`'s accessors and
 /// [`model_path`]) is pure; only the RPC does IO.
 pub async fn complete(
     client: &Client,

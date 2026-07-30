@@ -54,7 +54,7 @@
 //!   `compatible_body_value`, with the provider's own
 //!   dialect steps in between (never a hand-rolled request struct or message
 //!   conversion), and a `STREAM_DIALECT` built from the descriptor;
-//! - credentials expressed as [`ApiKeyLocation`](descriptor::ApiKeyLocation)
+//! - credentials expressed as [`ApiKeyLocation`]
 //!   so they are resolved at request time and redacted in `Debug`;
 //! - model constants where they are useful and current;
 //! - request conversion from Rig request types, such as

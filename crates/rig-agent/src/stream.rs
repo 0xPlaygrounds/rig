@@ -53,7 +53,7 @@ pub enum AgentStreamItem {
     /// tool calls (surfaced in call order immediately before
     /// [`Self::ToolCallsReady`], preserving the announce-before-execute
     /// contract), and the provider's terminal
-    /// [`StreamFinal`](rig_core::streaming::StreamFinal).
+    /// [`StreamFinal`].
     Assistant(StreamedAssistantContent),
     /// Exactly one per provider call: the recorded completion-call entry.
     CompletionCall(crate::agent::CompletionCall),

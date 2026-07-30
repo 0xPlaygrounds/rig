@@ -1211,7 +1211,7 @@ pub mod functions {
         /// (`Client::embedding_model_with_ndims`) and reported to callers
         /// sizing a vector-store index. Ollama's `/api/embed` request has no
         /// dimensionality parameter, so — exactly as before — this never
-        /// reaches the wire; [`build_embedding_body`](super::build_embedding_body)
+        /// reaches the wire; `build_embedding_body`
         /// sends only `model` and `input`.
         ///
         /// [`new`](Self::new) seeds it from

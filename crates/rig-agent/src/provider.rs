@@ -549,7 +549,7 @@ impl Runtime {
     /// The Bedrock client for `cfg`, built on first use and rebuilt only
     /// when the *connection* projection of the configuration changes.
     ///
-    /// The cache is keyed on [`bedrock_connection_key`] — the inputs
+    /// The cache is keyed on `bedrock_connection_key` — the inputs
     /// `rig_bedrock::functions::client_from_config` actually consumes — so
     /// per-request knobs (model, `prompt_caching`) never rebuild the AWS
     /// client or evict a seeded one.
