@@ -243,7 +243,7 @@ pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigF
     let authenticator = super::auth::Authenticator::new(
         source,
         super::default_auth_file(),
-        super::auth::DeviceCodeHandler::default(),
+        super::auth::DeviceCodePrompter::default(),
         true,
     );
 

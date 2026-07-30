@@ -129,7 +129,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(auth_file),
-        chatgpt::auth::DeviceCodeHandler::default(),
+        chatgpt::auth::DeviceCodePrompter::default(),
         false,
     );
     let auth = authenticator

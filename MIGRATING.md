@@ -280,6 +280,121 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### Device-code prompts are data, not a callback
+
+`chatgpt::auth::DeviceCodeHandler` and `copilot::auth::DeviceCodeHandler` —
+each an `Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>` — are replaced
+by a concrete `DeviceCodePrompter` enum:
+
+```rust
+// before
+let auth = Authenticator::new(source, token, api_key,
+    DeviceCodeHandler::new(|p| my_ui.show(p.user_code)), true);
+
+// after — receive the prompt as an owned event
+let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+let auth = Authenticator::new(source, token, api_key,
+    DeviceCodePrompter::Channel(tx), true);
+tokio::spawn(async move {
+    while let Some(p) = rx.recv().await { my_ui.show(p.user_code); }
+});
+```
+
+`DeviceCodePrompter::Stdout` is the default and prints exactly what the
+callback-less handler printed, so `DeviceCodeHandler::default()` becomes
+`DeviceCodePrompter::default()` with no behaviour change.
+`DeviceCodePrompter::Silent` is new, for unattended services.
+
+A full channel or dropped receiver is ignored rather than failing the sign-in,
+matching the old contract where a misbehaving callback was the host's problem.
+
+### Vector-store filters: the `SearchFilter` trait is gone
+
+`SearchFilter` was a tagless-final constructor trait whose only job was to
+make `Filter::interpret::<F>()` generic. Both are deleted. Each backend now
+exposes its constructors as inherent methods plus a concrete `from_filter`.
+
+The practical difference is that `SearchFilter::gt(...)` used to *infer* the
+backend filter type from context. Name the type you want instead:
+
+```rust
+// before — the trait method inferred Neo4jSearchFilter from the request type
+use rig_core::vector_store::request::SearchFilter;
+let req = VectorSearchRequest::new(embedding, 5)
+    .with_filter(SearchFilter::gt("node.year", 1990.into()));
+
+// after — a native filter
+use rig_neo4j::Neo4jSearchFilter;
+let req = VectorSearchRequest::new(embedding, 5)
+    .with_filter(Neo4jSearchFilter::gt("node.year", serde_json::json!(1990)));
+
+// after — the portable filter, translated by the backend
+use rig_core::vector_store::request::Filter;
+let portable = Filter::gt("node.year", serde_json::json!(1990));
+let native = Neo4jSearchFilter::from_filter(portable);
+```
+
+`VectorSearchRequest<F>` keeps its type parameter, so backend-native filters
+with richer operators — `VectorizeFilter::in_values`,
+`milvus::Filter::array_contains`, `PgSearchFilter::member`,
+`LanceDBFilter::array_has_any` — still reach a query unchanged.
+`Filter::interpret` is replaced by the backend's own
+`from_filter(Filter<serde_json::Value>)`, which is fallible only where the
+operand type can reject a JSON value (milvus, scylladb, surrealdb, qdrant).
+
+### Document loaders: no more boxed iterators
+
+`FileLoader`, `PdfFileLoader` and `EpubFileLoader` no longer hold a
+`Box<dyn Iterator>`, and their `'a` lifetime parameter is gone.
+
+- `FileLoader<'a, T>` becomes `FileLoader<I>`, generic over its iterator. It
+  stays lazy. `read`/`read_with_path` are now one impl bounded on
+  `loaders::Readable` (newly `pub`), rather than three item-specific impls.
+- `PdfFileLoader<'a, T>` becomes `PdfFileLoader<T>` and
+  `EpubFileLoader<'a, T, P>` becomes `EpubFileLoader<T, P>`.
+- `loaders::IntoIter` (all three) is deleted; `IntoIterator` now yields the
+  underlying iterator.
+
+**Behavior change:** `PdfFileLoader` and `EpubFileLoader` are now **eager** —
+each stage materialises a `Vec` before the next runs, so a whole corpus is
+held in memory rather than streamed. `FileLoader` is unaffected. If you load
+large PDF or EPUB corpora, chunk the glob.
+
+### `EmbeddingConfig::ndims` replaces hardcoded widths
+
+`openai::functions::EmbeddingConfig::ndims()` reports the vector width of the
+configured model — an explicit `dimensions` override if set, else the model's
+native width. Use it to size a vector-store index instead of restating a
+literal:
+
+```rust
+// before
+const EMBEDDING_DIMS: usize = 1536;
+let store = SqliteVectorStore::with_distance_metric(conn, EMBEDDING_DIMS, metric).await?;
+
+// after
+let dims = embed_cfg.ndims().ok_or_else(|| anyhow!("unknown model width"))?;
+let store = SqliteVectorStore::with_distance_metric(conn, dims, metric).await?;
+```
+
+`dimensions` is unchanged and stays opt-in: it is the *request* field, and
+`text-embedding-ada-002` rejects it.
+
+### Anthropic prompt caching is reachable again
+
+`anthropic::functions::Config` gains `prompt_caching`, `automatic_caching` and
+`automatic_caching_ttl`, with `with_prompt_caching()`,
+`with_automatic_caching()` and `with_automatic_caching_1h()` mirroring the
+deleted `CompletionModel` builders. 0.41 shipped the caching machinery with no
+way to switch it on; requests were always built with caching off.
+
+```rust
+let cfg = anthropic::functions::Config::new(CLAUDE_SONNET_4_6)
+    .with_automatic_caching();
+```
+
+Defaults are unchanged (all off), so existing request bodies are identical.
+
 ### Custom OpenAI-compatible providers: the trait stack is inverted
 
 If you implemented `providers::openai::completion::OpenAICompatibleProvider`

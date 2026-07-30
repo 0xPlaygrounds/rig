@@ -1,4 +1,4 @@
-use super::{AuthContext, AuthError, DeviceCodeHandler};
+use super::{AuthContext, AuthError, DeviceCodePrompter};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -22,7 +22,7 @@ impl PlatformAuthenticator {
     pub(super) fn new(
         _access_token_file: Option<PathBuf>,
         _api_key_file: Option<PathBuf>,
-        _device_code_handler: DeviceCodeHandler,
+        _device_code_prompter: DeviceCodePrompter,
         _allow_device_flow: bool,
     ) -> Self {
         Self

@@ -55,7 +55,7 @@ pub(crate) fn live_authenticator() -> chatgpt::auth::Authenticator {
     chatgpt::auth::Authenticator::new(
         source,
         default_auth_file(),
-        chatgpt::auth::DeviceCodeHandler::default(),
+        chatgpt::auth::DeviceCodePrompter::default(),
         true,
     )
 }

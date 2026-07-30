@@ -259,7 +259,7 @@ pub async fn config_from_env(model: impl Into<String>) -> Result<Config, ConfigF
         source,
         token_dir.as_ref().map(|dir| dir.join("access-token")),
         token_dir.map(|dir| dir.join("api-key.json")),
-        super::auth::DeviceCodeHandler::default(),
+        super::auth::DeviceCodePrompter::default(),
         true,
     );
 

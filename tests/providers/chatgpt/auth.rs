@@ -21,7 +21,7 @@ fn oauth_authenticator_with_auth_file(path: &Path) -> chatgpt::auth::Authenticat
     chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(path.to_path_buf()),
-        chatgpt::auth::DeviceCodeHandler::default(),
+        chatgpt::auth::DeviceCodePrompter::default(),
         true,
     )
 }

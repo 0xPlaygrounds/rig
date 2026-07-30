@@ -1,6 +1,6 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
-use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+use super::{AuthContext, AuthError, DeviceCodePrompt, DeviceCodePrompter};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -19,7 +19,7 @@ const DEVICE_CODE_POLL_SLEEP_SECONDS: u64 = 5;
 #[derive(Debug, Clone)]
 pub(super) struct PlatformAuthenticator {
     auth_file: Option<PathBuf>,
-    device_code_handler: DeviceCodeHandler,
+    device_code_prompter: DeviceCodePrompter,
     allow_device_flow: bool,
 }
 
@@ -68,12 +68,12 @@ enum RefreshTokensError {
 impl PlatformAuthenticator {
     pub(super) fn new(
         auth_file: Option<PathBuf>,
-        device_code_handler: DeviceCodeHandler,
+        device_code_prompter: DeviceCodePrompter,
         allow_device_flow: bool,
     ) -> Self {
         Self {
             auth_file,
-            device_code_handler,
+            device_code_prompter,
             allow_device_flow,
         }
     }
@@ -183,13 +183,10 @@ impl PlatformAuthenticator {
             .json::<DeviceCodeResponse>()
             .await?;
 
-        emit_device_code_prompt(
-            &self.device_code_handler,
-            DeviceCodePrompt {
-                verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
-                user_code: device.user_code.clone(),
-            },
-        );
+        self.device_code_prompter.emit(DeviceCodePrompt {
+            verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
+            user_code: device.user_code.clone(),
+        });
 
         let interval = device.interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
         let start = std::time::Instant::now();
@@ -303,17 +300,6 @@ impl PlatformAuthenticator {
         Err(RefreshTokensError::Auth(AuthError::Message(
             format_refresh_error(status, oauth_error.as_ref(), &body),
         )))
-    }
-}
-
-fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
-    if let Some(callback) = &handler.0 {
-        callback(prompt);
-    } else {
-        println!(
-            "Sign in with ChatGPT:\n1) Visit {}\n2) Enter code: {}\nDo not share this device code.",
-            prompt.verification_uri, prompt.user_code
-        );
     }
 }
 
@@ -453,7 +439,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DeviceCodeHandler, DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse,
+        DeviceCodePrompter, DeviceCodeResponse, OAuthErrorResponse, OAuthTokenResponse,
         PlatformAuthenticator, build_auth_record, format_refresh_error,
         should_reauthenticate_after_refresh,
     };
@@ -513,7 +499,7 @@ mod tests {
 
     #[tokio::test]
     async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
-        let auth = PlatformAuthenticator::new(None, DeviceCodeHandler::default(), false);
+        let auth = PlatformAuthenticator::new(None, DeviceCodePrompter::default(), false);
         let err = auth
             .auth_context_oauth()
             .await

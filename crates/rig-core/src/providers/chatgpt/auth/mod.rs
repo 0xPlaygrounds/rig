@@ -21,24 +21,43 @@ pub struct DeviceCodePrompt {
     pub user_code: String,
 }
 
-#[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
-
-impl DeviceCodeHandler {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        Self(Some(Arc::new(handler)))
-    }
+/// Where a device-code prompt is delivered.
+///
+/// This is plain data, not a callback: the auth flow matches on it and the
+/// host chooses how the code reaches a human. [`Channel`](Self::Channel)
+/// hands the prompt back as an owned event, which is the inversion of the
+/// `Arc<dyn Fn(DeviceCodePrompt)>` this replaced — the caller receives the
+/// prompt while the flow keeps polling.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub enum DeviceCodePrompter {
+    /// Print sign-in instructions to stdout. The default, matching the
+    /// behaviour of the callback-less handler this replaced.
+    #[default]
+    Stdout,
+    /// Emit nothing. For unattended services that surface the prompt some
+    /// other way, or that never expect the device flow to trigger.
+    Silent,
+    /// Send the prompt to the host as an owned event.
+    ///
+    /// The flow does not wait on the receiver: a full channel or a dropped
+    /// receiver is ignored, exactly as a panicking callback used to be the
+    /// host's problem rather than the flow's.
+    Channel(tokio::sync::mpsc::UnboundedSender<DeviceCodePrompt>),
 }
 
-impl fmt::Debug for DeviceCodeHandler {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_some() {
-            f.write_str("DeviceCodeHandler(<callback>)")
-        } else {
-            f.write_str("DeviceCodeHandler(None)")
+impl DeviceCodePrompter {
+    /// Deliver `prompt` according to this prompter.
+    pub fn emit(&self, prompt: DeviceCodePrompt) {
+        match self {
+            Self::Stdout => println!(
+                "Sign in with ChatGPT:\n1) Visit {}\n2) Enter code: {}\nDo not share this device code.",
+                prompt.verification_uri, prompt.user_code
+            ),
+            Self::Silent => {}
+            Self::Channel(tx) => {
+                let _ = tx.send(prompt);
+            }
         }
     }
 }
@@ -89,14 +108,14 @@ impl Authenticator {
     pub fn new(
         source: AuthSource,
         auth_file: Option<PathBuf>,
-        device_code_handler: DeviceCodeHandler,
+        device_code_prompter: DeviceCodePrompter,
         allow_device_flow: bool,
     ) -> Self {
         Self {
             source,
             platform: platform::PlatformAuthenticator::new(
                 auth_file,
-                device_code_handler,
+                device_code_prompter,
                 allow_device_flow,
             ),
             state_lock: Arc::new(Mutex::new(())),

@@ -1173,15 +1173,21 @@ subject:
 5. **Telemetry spans on ollama and gemini streaming.** The deleted models built
    `CompletionSpanBuilder` spans that `functions::{complete, open_stream}` do
    not; `record_token_usage` now writes to the ambient span. Pre-existing R6
-   gap, widened by the deletion. **Follow-up.**
+   gap, widened by the deletion. **CLOSED** (verified R9): `ChatStreaming`
+   spans are built at `gemini/functions.rs:198` and `ollama.rs:1155`.
 6. **`Provider::VERIFY_PATH` has no functions equivalent** (groq `/models`,
    deepseek `/user/balance`, hyperbolic `/models`, ollama `api/tags`).
    Credential verification needs a home in core if it is to survive.
 7. **`ndims` is not carried** by ollama's or voyageai's `EmbeddingConfig`; the
    dimension tables are retained and `pub` so callers sizing a vector-store
-   index can still resolve them.
+   index can still resolve them. **CLOSED** (verified R9): both carry
+   `ndims: Option<usize>` plus `with_ndims()` (`ollama.rs:1220`,
+   `voyageai.rs:195`), seeded from `model_dimensions_from_identifier`.
 8. **openrouter loses `encoding_format` / `user`** on embeddings (it genuinely
    supported both). Adding the two fields to its `EmbeddingConfig` is the fix.
+   **CLOSED** (verified R9): both are present at
+   `openrouter/functions.rs:312`/`:317` and honoured in body construction
+   (`:397`).
 9. **huggingface `completion_endpoint` is sub-provider-invariant** — deliberate
    since `35a7f6781` ("fix(rig-1016): Huggingface completions API 404"). For
    completions the sub-provider is body-only; it changes the URL only for
@@ -1236,14 +1242,25 @@ the 19 bearer providers, anthropic's `x-api-key` path, copilot's
 editor-header path, gemini's query-key path); the five test-side
 `extra_headers` workarounds were then removed.
 
-**Open items for maintainer review**: embedding default dimensions are no
-longer applied by config construction (three examples hardcode
-`EMBEDDING_DIMS`; a `ProviderDescriptor` default-dimensions field would
-remove them); `openai::CompletionsClient`'s legacy `/completions` face has
-no functions successor (llamacpp's suite exercises chat-completions under
-the old name, all `#[ignore]`d); anthropic prompt-caching (3 tests) and
-custom HTTP backends (`Transport` is a closed enum) remain deferred by
-design.
+**Open items for maintainer review** — *all resolved in R9; the original
+wording is corrected here because two of the four claims were wrong:*
+
+- Embedding default dimensions are no longer applied by config construction.
+  **Correct** (seven examples, not three, hardcoded `EMBEDDING_DIMS`). Closed
+  by R9/B2 — via `EmbeddingConfig::ndims()`, not a `ProviderDescriptor`
+  field: width is per-model, not per-provider.
+- ~~`openai::CompletionsClient`'s legacy `/completions` face has no functions
+  successor~~ — **MISLABELLED, there was no gap.** `CompletionsClient` was
+  the *chat*-completions face (`client::Client<OpenAICompletionsExt, H>`),
+  not a legacy text-completion endpoint — no `/completions` path exists
+  anywhere at the merge base. It survives as `openai::functions`
+  (`/chat/completions`) alongside `openai::responses_api::functions`. See
+  R9/B3b for the full capability diff.
+- ~~anthropic prompt-caching (3 tests)~~ — **the test count was wrong**; no
+  prompt-caching test is ignored or deleted, ~20 pass. The actual regression
+  was the missing public knob, closed by R9/B3a.
+- Custom HTTP backends (`Transport` is a closed enum) remain deferred **by
+  design** — plan §2.3 blesses the closed enum. **Correct as written.**
 
 **Verification**: fmt ok; clippy 0 warnings (`--all-features
 --all-targets`); workspace check 0 errors; every crate suite and all 33
@@ -1320,3 +1337,260 @@ typed front door; the last two are R8's outstanding refactors.
 None of these is load-bearing for the architecture: the single execution
 path (ProviderConfig/Runtime + AgentSession/AgentStream + owned events +
 concrete decisions) is complete as of R7.
+
+## R9 — Leaf refactors and the decided items
+
+R8 catalogued five leaf refactors and left a list of "open items for
+maintainer review". R9 executes them. **Three of those open items turned out
+to be stale** — the record asserted gaps the tree had already closed, or
+never had. Each claim below was re-verified against the merge base
+(`6cfae6d829da21f9dc9e775e065fee157b264f7e`) and HEAD before being acted on.
+
+### Part A — the five leaf refactors
+
+| Item | Outcome |
+|---|---|
+| A1 `Embed` trait → inherent method | **DECLINED** — not implementable without losing capability |
+| A2 `extern crate self as rig` | **DECLINED** — gated on A1 |
+| A3 loader `Box<dyn Iterator>` (6 sites) | **DONE** (`785967081`) |
+| A4 `SearchFilter` → per-backend `from_filter` | **DONE** (`c8e452c4e`) |
+| A5 `wasm_compat` shrink | **NO-OP** — already at its endgame shape |
+
+#### A1/A2 — declined, with the compile-level reason
+
+`#[derive(Embed)]` emits `self.field.embed(embedder)?` per `#[embed]` field
+and adds a `FieldType: Embed` bound to the struct's where-clause
+(`rig-derive/src/embed/{mod,basic}.rs`). Field types are arbitrary — `String`,
+`Vec<String>`, `i32`, nested derived structs — and the blanket impls in
+`embeddings/embed.rs` are what make that recursion work:
+
+- `impl Embed for String/&str/i8..i128/f32/f64/bool/char/serde_json::Value`
+- `impl<T: Embed> Embed for &T`
+- `impl<T: Embed> Embed for Vec<T>` — **yields N texts, one per element**
+
+An inherent `embed_texts()` cannot be added to `String`, `i32` or
+`serde_json::Value` (foreign types), so a derive emitting inherent calls
+cannot handle primitive fields, nested structs, or `Vec<T>` multi-text
+expansion. A proc macro has no type information, so it cannot dispatch on
+the field type itself. The alternatives all cost capability:
+
+- bound on `Display`/`ToString` instead — loses `Vec<T>` multi-text and
+  nested structs;
+- serialize fields as JSON — changes semantics (a `String` field would embed
+  as `"\"foo\""`, and a `Vec` as one blob rather than N texts).
+
+`Embed` is monomorphised data extraction (value → `Vec<String>`) with no
+`dyn`, no vtable and no runtime dispatch — the same category as
+`serde::Serialize`, which plan §2.3 blesses. It stays, and A2 stays with it
+because the derive still emits `rig::…` paths into rig-core.
+
+`to_texts`, `TextEmbedder` and `EmbedError` are retained as its surface.
+`EmbedError`'s `Box<dyn Error>` is an error-chain box, already counted in the
+census's blessed 98.
+
+#### A3 — done, with a laziness deviation on two of the three loaders
+
+`FileLoader` became generic over its iterator (`FileLoader<I>`) and stayed
+fully lazy using return-position `impl Iterator`. Its three
+item-discriminated `read`/`read_with_path` impls collapsed into one bounded
+on the pre-existing `Readable`, which had to become `pub` since it now
+appears in a public signature.
+
+`PdfFileLoader<T>` and `EpubFileLoader<T, P>` could not take that shape:
+their stage methods (`by_page`/`by_chapter`, and two `ignore_errors`
+variants) are distinguished *only* by item type, so a generic iterator
+parameter makes them collide as inherent methods, and disambiguating would
+have meant inventing three new public traits — trading one erasure mechanism
+for a worse one. They hold `std::vec::IntoIter<T>` instead.
+
+**Deviation: those two loaders are now eager.** Each stage materialises a
+`Vec` before the next runs, so a large corpus is held in memory at once where
+it previously streamed. Documented on both types under "Evaluation is eager".
+Path enumeration (`with_glob`/`with_dir`) is eager in all three, which is
+cheap; only `FileLoader` keeps its expensive stage lazy. The public
+`loaders::IntoIter` wrappers are deleted.
+
+#### A4 — done, but *not* in the shape the stashed attempt had
+
+`SearchFilter` was a tagless-final constructor trait existing only to make
+`Filter::interpret::<F>()` generic. Both are deleted. Each of the twelve
+backends exposes its constructors as inherent methods plus a concrete
+`from_filter`; the four whose operand is not JSON (mongodb `Bson`, scylladb
+`CqlValue`, milvus `MilvusValue`, s3vectors Smithy `Document`) already had
+`From`/`TryFrom` conversions, which are kept as the translation. s3vectors
+gained the `json_to_document` conversion it lacked.
+
+**The stashed R8-A partial was rejected as a base.** It additionally dropped
+`VectorSearchRequest`'s `F` parameter so every request carried the canonical
+`Filter`. Applying it compiles for core/milvus/qdrant, which is presumably
+why it looked finished — but it silently removes backend-native filters from
+the query path: vectorize's `ne`/`in_values`, milvus's `array_contains*`,
+postgres's `member`, lancedb's `array_has_any`. `tests/integrations/
+{vectorize,sqlite}.rs` exercise exactly that. `F` is plain data
+parameterisation with no bound, so it stays; only the behavioural trait went.
+The rejected attempt is preserved as a stash entry.
+
+Ergonomic consequence, recorded in MIGRATING.md: `SearchFilter::gt(...)` used
+to infer the backend filter type at the call site. Callers now name the type
+— `Neo4jSearchFilter::gt(...)` native, `Filter::gt(...)` portable.
+
+#### A5 — no-op, with the inventory
+
+| Item | Consumers outside `wasm_compat.rs` | Verdict |
+|---|---|---|
+| `WasmCompatSend` | 67 | KEEP — portability bound |
+| `WasmCompatSync` | 29 | KEEP — portability bound |
+| `WasmCompatSendStream` | 3 | KEEP — transport-edge stream bound |
+| `WasmBoxedFuture` | 8 | KEEP — plan §2.3, return type of both callback seams |
+| `timeout` / `Elapsed` | 2 | KEEP — sanctioned residue |
+| `if_wasm!` / `if_not_wasm!` | 0 in-tree | KEEP — `#[macro_export]`ed public API, documented in MIGRATING.md §"`if_wasm!`/`if_not_wasm!` key on the target"; plan §2.3 lists them as endgame residue |
+
+The plan named the three marker traits as the shrink target, but they are the
+mechanism that makes `Send`/`Sync` bounds portable: on wasm they are no-ops,
+on native they are real. Removing them means either dropping `Send` bounds on
+native or dropping wasm support. The module is already at its intended
+endgame shape; nothing was deleted.
+
+### Part B — the decided items
+
+| Item | Outcome |
+|---|---|
+| B1 `DeviceCodeHandler` → data | **DONE** — as an enum, not a two-phase API |
+| B2 embedding default dimensions | **DONE** (`edbf0aa1e`), with a deviation |
+| B3a anthropic prompt-caching | **DONE** (`79aef15c3`) — was a real regression |
+| B3b "legacy `/completions`" | **MISLABELLED** — no gap; log corrected |
+| B3c provider parity | **CONFIRMED** — 25/25 both sides |
+| B4 pathless `verify_path` | **CONFIRMED** — 4 providers, all already justified |
+| B5 R5 deviations 5 and 8 | **ALREADY-FIXED** — log corrected |
+| B6 audit of the open-items list | **DONE** — this table |
+
+#### B2 — deviation from the ruling
+
+The ruling was to add a default-dimensions field to `ProviderDescriptor`.
+That is the wrong home: descriptors are per-provider constants, but embedding
+width is per-model — openai alone spans 1536 (`ada-002`,
+`text-embedding-3-small`) and 3072 (`text-embedding-3-large`) — so no single
+provider-level number is correct. Per-model tables already exist in
+`providers/{openai,azure,cohere,ollama,voyageai}`; `EmbeddingConfig::ndims()`
+exposes them instead, resolving an explicit `dimensions` override first.
+
+All seven `EMBEDDING_DIMS = 1536` hardcodes are gone. The constant existed
+nowhere at the merge base, confirming it was a workaround this PR introduced.
+`dimensions` remains opt-in and unchanged: it is the *request* field and
+`ada-002` rejects it, so it must not be auto-populated.
+
+#### B3a — the log's "3 deferred tests" was wrong
+
+No prompt-caching test is ignored or deleted; ~20 `test_prompt_caching_*`
+tests pass. The real regression was the missing public knob: base exposed
+`CompletionModel::with_prompt_caching()`, and `functions::Config` had no
+field, so `functions.rs` hardcoded `prompt_caching: false` and no caller
+could enable caching. Fixed with three config fields, three builders and four
+new tests. Defaults unchanged, so the 105-test anthropic cassette suite
+replays byte-identically.
+
+#### B3b — the "legacy `/completions` face" does not exist
+
+R7 recorded that "`openai::CompletionsClient`'s legacy `/completions` face
+has no functions successor". Verified against the merge base:
+
+- `CompletionsClient` was `client::Client<OpenAICompletionsExt, H>` — the
+  **chat-completions** face, the alternative to the Responses API face on the
+  same provider, reached via `.completions_api()`.
+- There is no `"/completions"` or `/v1/completions` anywhere under `crates/`
+  at the base commit. rig never had a legacy text-completion endpoint.
+- The face survives: `openai::functions` builds `/chat/completions`
+  (`functions.rs:143`) alongside `openai::responses_api::functions`, exposed
+  as the distinct `OpenAi` and `OpenAiResponses` `ProviderConfig` arms.
+
+Capability diff of base's `Capabilities` block for `OpenAICompletionsExt` —
+Completion, Embeddings, Transcription, ModelListing, ImageGeneration,
+AudioGeneration, `Rerank = Nothing` — against today: all present as
+`openai::{functions, embedding, transcription, model_listing,
+image_generation, audio_generation}`. The one apparent loss,
+`system_instructions_placement`, was carried on the ext struct only so
+`.completions_api()` could round-trip it; base's chat-completions model never
+read it (zero hits in `openai/completion/mod.rs` at base) and it survives at
+`openai/responses_api/functions.rs:67` where it is actually used.
+
+No code change. The R7 wording is corrected in place.
+
+#### B3c — provider parity table
+
+Governing rule: every provider with a completion client pre-PR must have one
+post-PR.
+
+| | Base (`6cfae6d82`) | HEAD | Verdict |
+|---|---|---|---|
+| Provider entries under `providers/` | 25 | 25 | MET |
+| …with a full `client.rs` | 10 (anthropic, cohere, doubleword, gemini, huggingface, mistral, openai, openrouter, together, xai) | n/a (client layer deleted) | — |
+| Completion providers | 24 | 24 arms in `for_each_builtin_provider` | MET |
+| Embeddings-only | voyageai | voyageai | MET |
+| Extra faces | — | `OpenAiResponses`, `GeminiInteractions`, `Bedrock`, `GeminiGrpc`, `Mock` | superset |
+
+No provider lost a completion path.
+
+#### B4 — four pathless providers, all correct
+
+`verify_path: None` appears at `perplexity.rs:203`, `azure.rs:535`,
+`copilot/functions.rs:69`, `chatgpt/functions.rs:68`. (The fifth hit,
+`descriptor.rs:58`, is the struct default, not a provider; 22 descriptors
+carry a path.) All four declared `const VERIFY_PATH: &'static str = ""` at
+the merge base, so the classic `verify()` issued a bare `GET` of the base URL
+and validated no credential. `Unsupported` is exact parity, and all four
+already carry a doc comment saying so. No change.
+
+#### B5 — both deviations were already closed
+
+- **Deviation 5, telemetry spans**: CLOSED. `CompletionSpanBuilder`
+  `ChatStreaming` spans are built at `gemini/functions.rs:198` and
+  `ollama.rs:1155`, both with doc comments recording the restoration.
+- **Deviation 8, openrouter embeddings**: CLOSED. `encoding_format`
+  (`openrouter/functions.rs:312`, with `with_encoding_format()`) and `user`
+  (`:317`) are present and honoured in body construction (`:397`).
+- **Deviation 7, ollama/voyageai `ndims`**: also already CLOSED — both carry
+  `ndims: Option<usize>` plus `with_ndims()` (`ollama.rs:1220`,
+  `voyageai.rs:195`).
+
+§R5's status lines are corrected in place. No code change.
+
+**Out of scope by maintainer instruction**: the cohere usage-source
+divergence (deviation 3, `billed_units` vs `usage.tokens`). The cohere suite
+stays all-ignored and untouched; the maintainer is testing it directly after
+merge.
+
+#### B1 — inverted to data as a concrete enum
+
+`DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>)`,
+declared independently in both providers along with its own `DeviceCodePrompt`
+(four types total), is replaced by one `DeviceCodePrompter` enum per provider:
+`Stdout` (default), `Silent`, `Channel(UnboundedSender<DeviceCodePrompt>)`.
+
+**The obvious reading of the ruling was rejected.** "Return the prompt to the
+caller and let the caller drive the polling loop" would turn `authenticate()`
+into a resumable state machine, which forces `config_from_env` — an unrelated
+public API that today returns a ready `Config` — to become two-phase, and
+ripples to every caller of the copilot/chatgpt env path. The enum achieves the
+ruling's actual goal (the prompt is data; the host decides how it reaches a
+human; no `dyn` vtable) while the flow keeps polling itself. `Channel` *is*
+the inversion: the caller receives an owned event.
+
+Delivery semantics are preserved: `Stdout` prints byte-identical text to the
+callback-less path, including chatgpt's "Do not share this device code." line
+(briefly dropped mid-refactor and restored — the security instruction is part
+of the prompt, not decoration). A full or dropped channel is ignored rather
+than failing sign-in, matching the old contract where a misbehaving callback
+was the host's problem.
+
+Four tests cover channel delivery, dropped receivers, `Silent`, and the
+default. **`Arc<dyn Fn` now has zero occurrences in rig-core and rig-agent**,
+leaving exactly the two sanctioned seams (`PortableDynamicCallback`,
+`HookCallback`) the plan blesses.
+
+### Verification
+
+`cargo fmt --check` clean; `cargo clippy --workspace --all-features
+--all-targets` zero warnings; `cargo test --workspace --all-features` green;
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features`
+clean; `cargo check --target wasm32-unknown-unknown -p rig-core -p rig-agent`
+clean; `git diff --stat -- tests/cassettes` empty at every commit.

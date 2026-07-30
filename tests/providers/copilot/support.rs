@@ -10,7 +10,7 @@ use rig::AgentBuilder;
 use rig::http_runtime::HttpRuntime;
 use rig::provider::ProviderConfig;
 use rig::providers::copilot;
-use rig::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodeHandler};
+use rig::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodePrompter};
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -112,7 +112,7 @@ pub(crate) fn authenticator(
         source,
         token_dir.map(|dir| dir.join("access-token")),
         token_dir.map(|dir| dir.join("api-key.json")),
-        DeviceCodeHandler::default(),
+        DeviceCodePrompter::default(),
         allow_device_flow,
     )
 }
