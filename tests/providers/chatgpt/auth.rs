@@ -3,7 +3,6 @@
 use assert_fs::TempDir;
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::StreamingPrompt;
 use serde_json::json;
 use std::fs;
 use std::path::Path;

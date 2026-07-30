@@ -1,12 +1,16 @@
 //! Dedicated Claude Opus 4.7 live smoke tests.
 
+use std::sync::Arc;
+
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::agent::AgentConfig;
+use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::completion::{Chat, Message, Prompt};
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::message::{DocumentSourceKind, ImageMediaType};
 use rig::prelude::*;
+use rig::provider::Runtime;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig_agent::test_utils::validate_extraction_fields;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
@@ -142,32 +146,35 @@ async fn messages_extractor_smoke() {
     super::super::support::with_anthropic_cassette(
         "opus_4_7/messages_extractor_smoke",
         |client| async move {
-            let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
-
-            let response = extractor
-                .extract_with_usage(EXTRACTOR_TEXT)
-                .await
-                .expect("extractor request should succeed");
+            let response = extract_with_options::<SmokePerson>(
+                AgentConfig::new(),
+                client.provider_config(CLAUDE_OPUS_4_7),
+                Arc::new(Runtime::new()),
+                EXTRACTOR_TEXT,
+                ExtractOptions::classic_extractor(),
+            )
+            .await
+            .expect("extractor request should succeed");
 
             validate_extraction_fields(
                 "anthropic_opus_4_7_extractor_smoke",
-                response.data.first_name.as_deref(),
-                response.data.last_name.as_deref(),
-                response.data.job.as_deref(),
+                response.value.first_name.as_deref(),
+                response.value.last_name.as_deref(),
+                response.value.job.as_deref(),
                 response.usage,
             )
             .expect("portable extraction contract should hold");
 
             assert_nonempty_response(
                 response
-                    .data
+                    .value
                     .first_name
                     .as_deref()
                     .expect("first name should be present"),
             );
             assert_nonempty_response(
                 response
-                    .data
+                    .value
                     .last_name
                     .as_deref()
                     .expect("last name should be present"),

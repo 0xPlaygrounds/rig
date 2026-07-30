@@ -44,7 +44,6 @@
 
 use anyhow::{Result, bail};
 use rig::agent::{CompletionCallAction, RequestPatch, ToolResultAction};
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -367,12 +366,14 @@ async fn main() -> Result<()> {
     // the entries are registered in that order.
     let ledger = SharedLedger::default();
     let response = agent
-        .prompt(prompt)
+        .runner(prompt)
         .max_turns(2)
         .add_hook(force_system_probe_on_first_turn())
         .add_hook(failure_recorder(ledger.clone()))
         .add_hook(fatal_failure_policy(ledger))
-        .await?;
+        .run()
+        .await?
+        .output;
     println!("\nFinal response:\n{response}");
     Ok(())
 }

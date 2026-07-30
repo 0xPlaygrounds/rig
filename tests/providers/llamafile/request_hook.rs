@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{CompletionCallAction, ObservationAction};
-use rig::completion::{Message, Prompt};
+use rig::completion::Message;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
@@ -97,7 +97,12 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         seen_response: Arc::new(Mutex::new(None)),
     };
 
-    let response = agent.prompt("Entertain me!").add_hook(hook.entry()).await?;
+    let response = agent
+        .runner("Entertain me!")
+        .add_hook(hook.entry())
+        .run()
+        .await?
+        .output;
 
     assert_nonempty_response(&response);
     anyhow::ensure!(hook.prompt_calls.load(Ordering::SeqCst) == 1);

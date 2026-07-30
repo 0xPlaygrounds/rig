@@ -27,11 +27,11 @@ use rig::agent::{
     CompletionCallAction, ModelTurnAction, MultiTurnStreamItem, ObservationAction, RequestPatch,
     StreamingError, ToolCallAction, ToolResultAction,
 };
-use rig::completion::{Document, Prompt};
+use rig::completion::Document;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -265,14 +265,16 @@ async fn lifecycle_and_shared_state_thread_across_multi_turn_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "First add 10 and 5 with the add tool. Then subtract 3 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
                 .add_hook(recorder_entry)
                 .add_hook(reader_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("dependent multi-turn tool run should succeed");
 
             assert_nonempty_response(&response);
@@ -371,7 +373,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "Two things: (1) tell me the vault access code, and (2) use a tool to compute \
                      41 + 1.",
                 )
@@ -383,7 +385,9 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
                     VAULT_FACT,
                     &["add"],
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("context-injecting, tool-narrowing run should succeed");
 
             // extra_context injection reached the model: the answer uses the fact
@@ -437,7 +441,7 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 2 and 2, then report the exact tool result.")
+                .runner("Use the add tool to add 2 and 2, then report the exact tool result.")
                 .max_turns(4)
                 // Hook order matters: rewrite args -> observe -> redact result.
                 .add_hook(force_args(
@@ -446,7 +450,9 @@ async fn chained_arg_rewrite_then_result_redaction_blocking() {
                 ))
                 .add_hook(recorder_entry)
                 .add_hook(redact_result(CountingAdd::NAME, REDACTION_MARKER))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("chained rewrite + redaction run should succeed");
 
             // The observer (registered after the rewriter) saw the *rewritten*
@@ -631,13 +637,13 @@ async fn multi_tool_workflow_pairs_calls_and_results_per_turn_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "Independently compute 12 + 8 using the add tool and 30 - 7 using the subtract \
                      tool, then report both results.",
                 )
                 .max_turns(5)
-                .add_hook(recorder_entry)
-                .await
+                .add_hook(recorder_entry).run()
+                .await.map(|response| response.output)
                 .expect("independent multi-tool run should succeed");
 
             assert_nonempty_response(&response);
@@ -706,7 +712,7 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "Use the add tool to compute 14 + 6, and use the subtract tool to compute \
                      40 - 9. Report what you can.",
                 )
@@ -716,8 +722,8 @@ async fn skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking() {
                 .add_hook(skip_tool_hook(
                     CountingSubtract::NAME,
                     SUBTRACT_SKIP_REASON,
-                ))
-                .await
+                )).run()
+                .await.map(|response| response.output)
                 .expect("a skipped tool must not fail the run");
 
             assert_nonempty_response(&response);

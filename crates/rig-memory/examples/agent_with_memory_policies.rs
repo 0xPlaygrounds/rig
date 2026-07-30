@@ -34,11 +34,7 @@ async fn ask(
     // Load-before: the policy-shaped history (plus any rolling summary).
     let history = memory.load(conversation_id)?;
 
-    let response = agent
-        .prompt(prompt)
-        .history(history)
-        .extended_details()
-        .await?;
+    let response = agent.runner(prompt).history(history).run().await?;
 
     // Append-after: warn and proceed on failure, then act on the outcome.
     if let Some(messages) = &response.messages {

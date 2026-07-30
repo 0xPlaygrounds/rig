@@ -7,7 +7,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;

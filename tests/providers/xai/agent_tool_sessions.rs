@@ -10,12 +10,12 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, CompletionRequest, Message, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, Message};
+
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai::responses_api::Output;
 use rig::providers::xai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

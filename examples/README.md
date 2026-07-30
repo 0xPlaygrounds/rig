@@ -11,9 +11,9 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 
 | Example | Description |
 | --- | --- |
-| `agent_autonomous` | Demonstrates an autonomous extractor loop that keeps feeding its own output back in. |
-| `agent_evaluator_optimizer` | See source. |
-| `agent_orchestrator` | See source. |
+| `agent_autonomous` | Demonstrates an autonomous extraction loop that keeps feeding its own output back in. |
+| `agent_evaluator_optimizer` | Generator/evaluator loop: a classic agent plus a structured-extraction judge. |
+| `agent_orchestrator` | Orchestrator/worker/judge, all three built on structured extraction. |
 | `agent_parallelization` | See source. |
 | `agent_prompt_chaining` | Demonstrates prompt chaining with two agents in sequence. |
 | `agent_routing` | Demonstrates routing one prompt into different follow-up prompts. |
@@ -43,7 +43,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `force_tool_first_turn` | Demonstrates a per-turn `RequestPatch` footgun and its fix: forcing `tool_choice = Required` on *every* turn loops until `max_turns`, so a `HookEntry` closure gates the patch on the event's `turn == 1` to force the tool only up front. |
 | `gemini_deep_research` | See source. |
 | `gemini_default_api_recovery` | Demonstrates recovering from Gemini emitting a legacy `default_api` tool name. |
-| `gemini_extractor_with_rag` | See source. |
+| `gemini_extractor_with_rag` | RAG-backed structured extraction (retrieval runs up front, into the agent config's static context). |
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
@@ -64,7 +64,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking several attach-and-forget `HookEntry` records with `add_hook` (delta events additionally require `.observing_deltas()`). |
 | `reqwest_middleware` | Demonstrates supplying a custom reqwest client with retry middleware. |
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
-| `sentiment_classifier` | Demonstrates the smallest typed extractor for classification. |
+| `sentiment_classifier` | Demonstrates the smallest structured extraction for classification. |
 | `transcription` | See source. |
 | `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a run-scoped scratchpad ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |

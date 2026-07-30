@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
-use rig::completion::{CompletionRequest, Prompt};
+use rig::completion::CompletionRequest;
 use rig::prelude::*;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;

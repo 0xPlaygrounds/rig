@@ -1,6 +1,5 @@
 //! ChatGPT agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};

@@ -1,14 +1,12 @@
 //! AWS Bedrock agent completion replay smoke test.
 
-use rig::bedrock;
-use rig::completion::Prompt;
-
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
     Adder, BASIC_PREAMBLE, BASIC_PROMPT, CONTEXT_DOCS, CONTEXT_PROMPT, STREAMING_TOOLS_PREAMBLE,
     STREAMING_TOOLS_PROMPT, Subtract, assert_contains_any_case_insensitive,
     assert_mentions_expected_number, assert_nonempty_response,
 };
+use rig::bedrock;
 
 #[tokio::test]
 async fn completion_smoke() {

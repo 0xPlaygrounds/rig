@@ -972,10 +972,16 @@ impl AgentRun {
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
+    /// - [`InvalidToolCallAction::Ignore`] drops the call from the turn with
+    ///   no model-visible feedback, letting a sibling output-tool call still
+    ///   finalize the turn (the extraction protocol's policy).
     pub fn resolve_invalid_tool_call(
         &mut self,
         action: InvalidToolCallAction,
     ) -> Result<ModelTurnOutcome, PromptError> {
+        if matches!(action, InvalidToolCallAction::Ignore) {
+            return self.ignore_invalid_tool_call();
+        }
         // Take the resolving state; rejection paths below restore it so an
         // out-of-protocol call does not corrupt a drivable run.
         let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
@@ -1010,6 +1016,12 @@ impl AgentRun {
             resolving.allowed_tool_names.iter().cloned().collect();
 
         match action {
+            // Handled by the early return above; the state has already been
+            // taken here, so restore it and delegate.
+            InvalidToolCallAction::Ignore => {
+                self.state = RunState::ResolvingToolCalls(resolving);
+                self.ignore_invalid_tool_call()
+            }
             InvalidToolCallAction::Fail => Err(unknown_tool_call_error(
                 tool_call.function.name,
                 executable_tool_names,
@@ -1098,11 +1110,11 @@ impl AgentRun {
     /// Discard the pending invalid tool call without marking the turn as
     /// recovered.
     ///
-    /// This is the extractor driver's fallback after every invalid-tool hook
-    /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
-    /// preserves the extractor's legacy response semantics: unrelated calls
-    /// disappear, a sibling output call can still finalize the turn, and
-    /// response observers still receive the canonical response fields.
+    /// Reached through [`InvalidToolCallAction::Ignore`]. Keeping it distinct
+    /// from [`InvalidToolCallAction::Skip`] preserves the extraction
+    /// protocol's response semantics: unrelated calls disappear, a sibling
+    /// output call can still finalize the turn, and response observers still
+    /// receive the canonical response fields.
     pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::ResolvingToolCalls(resolving) => resolving,
@@ -1353,6 +1365,16 @@ impl AgentRun {
                     executable_tool_names,
                     allowed_tool_names,
                     diagnostic_history,
+                ))
+            }
+            // The streamed path has already emitted the call downstream, so a
+            // silent drop is not expressible; `Skip` is the streaming
+            // equivalent (it records synthetic feedback instead).
+            InvalidToolCallAction::Ignore => {
+                self.state = RunState::Failed;
+                Err(PromptError::prompt_cancelled(
+                    diagnostic_history,
+                    "InvalidToolCallAction::Ignore is not supported while streaming; use Skip",
                 ))
             }
             InvalidToolCallAction::Retry { feedback } => {

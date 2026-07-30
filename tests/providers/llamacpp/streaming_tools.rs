@@ -1,7 +1,6 @@
 //! llama.cpp streaming tools coverage, including the migrated example path.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,

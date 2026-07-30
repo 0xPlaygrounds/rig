@@ -3,7 +3,6 @@
 use rig::completion::CompletionRequest;
 use rig::message::ToolChoice;
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use super::{

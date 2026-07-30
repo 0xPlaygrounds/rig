@@ -9,10 +9,9 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, CompletionRequest, Message, TypedPrompt};
+use rig::completion::{CompletionModel, CompletionRequest, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

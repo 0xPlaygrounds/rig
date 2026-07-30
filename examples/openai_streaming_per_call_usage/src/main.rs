@@ -25,7 +25,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

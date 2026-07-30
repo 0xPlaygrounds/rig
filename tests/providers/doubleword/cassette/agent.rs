@@ -1,6 +1,5 @@
 //! Cassette-backed Doubleword completion coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};

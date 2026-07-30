@@ -3,7 +3,6 @@
 
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use opentelemetry::trace::TracerProvider as _;

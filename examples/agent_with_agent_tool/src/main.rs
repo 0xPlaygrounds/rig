@@ -8,7 +8,7 @@
 use anyhow::Result;
 use rig::prelude::*;
 use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
-use rig::{completion::Prompt, providers, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 

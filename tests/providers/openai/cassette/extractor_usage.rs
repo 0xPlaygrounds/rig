@@ -1,19 +1,45 @@
 //! Integration tests for extractor usage tracking.
 //!
 //! These tests verify that:
-//! - The original `extract()` API still works (backward compatibility)
-//! - The new `extract_with_usage()` API correctly returns usage data
+//! - Plain extraction still yields just the extracted value (backward
+//!   compatibility with the deleted `Extractor::extract`)
+//! - [`extract_with_options`] correctly returns usage data
 //! - Usage accumulates across retry attempts
-//! - Both `extract` and `extract_with_chat_history` variants work
+//! - Both the plain and the chat-history-seeded variants work
+
+use std::sync::Arc;
 
 use anyhow::Result;
-use rig::extractor::ExtractionResponse;
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome, extract_with_options};
+use rig::message::Message;
 use rig::prelude::*;
-use rig::providers;
+use rig::provider::Runtime;
+use rig::providers::openai;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::support::with_openai_cassette_result;
+
+/// Run a classic-extractor-shaped extraction against `client`.
+async fn classic_extract<T>(
+    client: &openai::Client,
+    prompt: impl Into<Message>,
+    options: ExtractOptions,
+) -> Result<ExtractionOutcome<T>, ExtractError>
+where
+    T: schemars::JsonSchema + serde::de::DeserializeOwned,
+{
+    extract_with_options(
+        AgentConfig::new(),
+        client.provider_config(openai::GPT_4O_MINI),
+        Arc::new(Runtime::new()),
+        prompt,
+        options,
+    )
+    .await
+}
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
 struct Person {
@@ -47,20 +73,20 @@ fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Res
     Ok(())
 }
 
-/// Test backward compatibility: the original `extract()` method should still work
-/// and return just the extracted data (not wrapped in a response type).
+/// Test backward compatibility: plain extraction returns just the extracted
+/// value (not wrapped in a response type).
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     with_openai_cassette_result(
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(providers::openai::GPT_4O_MINI)
-                .build();
-
-            let person = extractor
-                .extract("John Doe is a 30 year old software engineer.")
-                .await?;
+            let person = classic_extract::<Person>(
+                &client,
+                "John Doe is a 30 year old software engineer.",
+                ExtractOptions::classic_extractor(),
+            )
+            .await?
+            .value;
 
             anyhow::ensure!(person.name.as_deref() == Some("John Doe"));
             anyhow::ensure!(person.age == Some(30));
@@ -72,23 +98,22 @@ async fn extract_backward_compatibility() -> Result<()> {
     .await
 }
 
-/// Test `extract_with_usage()` returns the extracted data with usage information.
+/// Test that extraction returns the extracted data with usage information.
 #[tokio::test]
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_openai_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(providers::openai::GPT_4O_MINI)
-                .build();
+            let response: ExtractionOutcome<Person> = classic_extract(
+                &client,
+                "Jane Smith is a 45 year old data scientist.",
+                ExtractOptions::classic_extractor(),
+            )
+            .await?;
 
-            let response: ExtractionResponse<Person> = extractor
-                .extract_with_usage("Jane Smith is a 45 year old data scientist.")
-                .await?;
-
-            anyhow::ensure!(response.data.name.as_deref() == Some("Jane Smith"));
-            anyhow::ensure!(response.data.age == Some(45));
-            anyhow::ensure!(response.data.profession.as_deref() == Some("data scientist"));
+            anyhow::ensure!(response.value.name.as_deref() == Some("Jane Smith"));
+            anyhow::ensure!(response.value.age == Some(45));
+            anyhow::ensure!(response.value.profession.as_deref() == Some("data scientist"));
 
             anyhow::ensure!(response.usage.input_tokens > 0);
             anyhow::ensure!(response.usage.output_tokens > 0);
@@ -100,33 +125,28 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     .await
 }
 
-/// Test `extract_with_chat_history_with_usage()` returns the extracted data with usage information.
+/// Test that a chat-history-seeded extraction returns the extracted data with
+/// usage information.
 #[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
-    use rig::message::Message;
-
     with_openai_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
-            let extractor = client
-                .extractor::<Address>(providers::openai::GPT_4O_MINI)
-                .build();
-
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
             )];
 
-            let response: ExtractionResponse<Address> = extractor
-                .extract_with_chat_history_with_usage(
-                    "The address is 123 Main St in Springfield, IL 62701.",
-                    chat_history,
-                )
-                .await?;
+            let response: ExtractionOutcome<Address> = classic_extract(
+                &client,
+                "The address is 123 Main St in Springfield, IL 62701.",
+                ExtractOptions::classic_extractor().with_history(chat_history),
+            )
+            .await?;
 
-            anyhow::ensure!(response.data.street.as_deref() == Some("123 Main St"));
-            anyhow::ensure!(response.data.city.as_deref() == Some("Springfield"));
-            anyhow::ensure!(response.data.state.as_deref() == Some("IL"));
-            anyhow::ensure!(response.data.zip_code.as_deref() == Some("62701"));
+            anyhow::ensure!(response.value.street.as_deref() == Some("123 Main St"));
+            anyhow::ensure!(response.value.city.as_deref() == Some("Springfield"));
+            anyhow::ensure!(response.value.state.as_deref() == Some("IL"));
+            anyhow::ensure!(response.value.zip_code.as_deref() == Some("62701"));
 
             anyhow::ensure!(response.usage.input_tokens > 0);
             anyhow::ensure!(response.usage.total_tokens > 0);
@@ -137,30 +157,31 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     .await
 }
 
-/// Test that `extract_with_usage()` and `extract()` agree on the stable extracted fields.
+/// Test that two separate extractions agree on the stable extracted fields.
 /// These are separate model calls, so exact wording can vary across runs.
 #[tokio::test]
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_openai_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(providers::openai::GPT_4O_MINI)
-                .build();
-
             let text = "Bob Johnson is a 55 year old retired teacher.";
 
-            let person = extractor.extract(text).await?;
+            let person =
+                classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor())
+                    .await?
+                    .value;
 
-            let response = extractor.extract_with_usage(text).await?;
+            let response =
+                classic_extract::<Person>(&client, text, ExtractOptions::classic_extractor())
+                    .await?;
 
             anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
-            anyhow::ensure!(response.data.name.as_deref() == Some("Bob Johnson"));
+            anyhow::ensure!(response.value.name.as_deref() == Some("Bob Johnson"));
             anyhow::ensure!(person.age == Some(55));
-            anyhow::ensure!(response.data.age == Some(55));
+            anyhow::ensure!(response.value.age == Some(55));
             assert_compatible_professions(
                 person.profession.as_deref(),
-                response.data.profession.as_deref(),
+                response.value.profession.as_deref(),
             )?;
             anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
 
@@ -176,23 +197,21 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_openai_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
-            let person_extractor = client
-                .extractor::<Person>(providers::openai::GPT_4O_MINI)
-                .build();
-
-            let person_response = person_extractor
-                .extract_with_usage("Alice is a 25 year old developer.")
-                .await?;
+            let person_response = classic_extract::<Person>(
+                &client,
+                "Alice is a 25 year old developer.",
+                ExtractOptions::classic_extractor(),
+            )
+            .await?;
 
             anyhow::ensure!(person_response.usage.total_tokens > 0);
 
-            let address_extractor = client
-                .extractor::<Address>(providers::openai::GPT_4O_MINI)
-                .build();
-
-            let address_response = address_extractor
-                .extract_with_usage("456 Oak Avenue, Cambridge, MA 02139")
-                .await?;
+            let address_response = classic_extract::<Address>(
+                &client,
+                "456 Oak Avenue, Cambridge, MA 02139",
+                ExtractOptions::classic_extractor(),
+            )
+            .await?;
 
             anyhow::ensure!(address_response.usage.total_tokens > 0);
 

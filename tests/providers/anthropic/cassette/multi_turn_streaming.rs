@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;

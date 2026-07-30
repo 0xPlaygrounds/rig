@@ -12,7 +12,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use rig::prelude::*;
-use rig::{completion::Prompt, providers, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::Level;

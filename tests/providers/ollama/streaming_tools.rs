@@ -1,12 +1,10 @@
 //! Migrated from `examples/ollama_streaming_with_tools.rs`.
 
-use rig::prelude::*;
-use rig::providers::ollama;
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::ollama;
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]

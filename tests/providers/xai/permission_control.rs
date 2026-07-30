@@ -1,12 +1,10 @@
 //! xAI permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{ToolCallAction, ToolResultAction, stream_to_stdout};
-use rig::completion::Prompt;
+use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::xai;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,7 +14,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::support::with_xai_cassette_result;
-use crate::support::assert_nonempty_response;
+use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 const TEST_CONTENT: &str = "hello world\n";
 
@@ -192,12 +190,13 @@ async fn permission_control_prompt_example() -> Result<()> {
             };
 
             let _response = agent
-                .prompt(
+                .runner(
                     "Use the available tools to read test.txt now. \
                      Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
                 .add_hook(hook.entry())
+                .run()
                 .await?;
 
             let last = last_result.lock().expect("lock last_result").clone();
@@ -244,16 +243,12 @@ async fn permission_control_streaming_example() -> Result<()> {
                 .add_hook(hook.entry())
                 .await;
 
-            let final_response = stream_to_stdout(&mut stream).await?;
+            let final_response = collect_stream_final_response(&mut stream).await?;
             let last = last_result.lock().expect("lock last_result").clone();
-            assert_nonempty_response(final_response.output());
+            assert_nonempty_response(&final_response);
             anyhow::ensure!(
-                final_response
-                    .output()
-                    .to_ascii_lowercase()
-                    .contains("hello world"),
-                "expected the streamed final response to mention the file content, got {:?}",
-                final_response.output()
+                final_response.to_ascii_lowercase().contains("hello world"),
+                "expected the streamed final response to mention the file content, got {final_response:?}"
             );
             anyhow::ensure!(last.as_deref() == Some("hello world"));
             anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);

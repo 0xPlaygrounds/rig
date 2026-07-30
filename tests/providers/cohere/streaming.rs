@@ -1,12 +1,10 @@
 //! Cohere streaming smoke test.
 
-use rig::prelude::*;
-use rig::providers::cohere;
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::cohere;
 
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]

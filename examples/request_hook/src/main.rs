@@ -35,7 +35,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
 use rig::agent::{CompletionCallAction, ObservationAction, RequestPatch, RunId};
-use rig::completion::{Document, Message, Prompt};
+use rig::completion::{Document, Message};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
@@ -158,12 +158,14 @@ async fn main() -> Result<()> {
     // same turn because `BeforeModelCall` patches accumulate and merge — neither
     // short-circuits the other, and the turn counter still runs after them.
     let response = agent
-        .prompt("Entertain me!")
+        .runner("Entertain me!")
         .add_hook(logging_entry(run_id))
         .add_hook(context_entry())
         .add_hook(sampling_entry())
         .add_hook(turn_counter_entry(turn_count.clone()))
-        .await?;
+        .run()
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
     println!(

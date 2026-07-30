@@ -2,7 +2,6 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::Prompt;
 use rig::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
     Message, UserContent, VideoMediaType,

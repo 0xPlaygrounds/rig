@@ -11,11 +11,9 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::ToolResultAction;
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;
 use serde::Deserialize;
@@ -150,9 +148,11 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .build();
 
             let response = agent
-                .prompt(LOOKUP_PROMPT)
+                .runner(LOOKUP_PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking lookup should succeed");
 
             assert_answer_hides_secret(&response, execution_probe.produced_secret());

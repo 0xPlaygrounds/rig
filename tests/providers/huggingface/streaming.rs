@@ -1,12 +1,10 @@
 //! Hugging Face streaming coverage for the default and Together-backed inference paths.
 
-use rig::prelude::*;
-use rig::providers::huggingface::{self, SubProvider};
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::huggingface::{self, SubProvider};
 
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]

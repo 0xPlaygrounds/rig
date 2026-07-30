@@ -6,7 +6,6 @@
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
 
 use rig::OneOrMany;
-use rig::completion::Prompt;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;

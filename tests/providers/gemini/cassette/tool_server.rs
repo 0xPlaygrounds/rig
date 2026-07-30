@@ -7,7 +7,7 @@
 //! the recorded wire bytes) are identical, and the model-visible consequences
 //! (which tools are advertised, called, and executed) stay pinned.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::gemini;
 

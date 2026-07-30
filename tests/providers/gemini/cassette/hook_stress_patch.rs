@@ -4,7 +4,6 @@
 //! proven by a downstream-observable change (the model can't echo settings).
 
 use rig::agent::RequestPatch;
-use rig::completion::Prompt;
 use rig::message::{Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -31,7 +30,7 @@ async fn preamble_override_forces_codeword_blocking() {
             // A hook overrides the preamble for this turn to require a codeword
             // suffix — a behavior change only the injected preamble can cause.
             let response = agent
-                .prompt("Greet me in one short sentence.")
+                .runner("Greet me in one short sentence.")
                 .max_turns(2)
                 .add_hook(apply_patch(
                     RequestPatch::new()
@@ -41,7 +40,9 @@ async fn preamble_override_forces_codeword_blocking() {
                         ))
                         .temperature(0.0),
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("preamble-override run should succeed");
 
             assert!(
@@ -73,14 +74,16 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
             // tool call on every turn and loop until max_turns — a real footgun
             // this stress test surfaced.)
             let response = agent
-                .prompt("Use the add tool to compute 12 plus 30, then report the number.")
+                .runner("Use the add tool to compute 12 plus 30, then report the number.")
                 .max_turns(4)
                 .add_hook(first_turn_patch(
                     RequestPatch::new()
                         .tool_choice(ToolChoice::Required)
                         .temperature(0.0),
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("tool_choice=Required run should succeed");
 
             assert_nonempty_response(&response);
@@ -107,7 +110,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
             // A hook replaces the messages sent this turn with a synthetic prior
             // exchange that establishes a fact — the model answers from it.
             let response = agent
-                .prompt("What is the passphrase?")
+                .runner("What is the passphrase?")
                 .max_turns(2)
                 .add_hook(apply_patch(
                     RequestPatch::new()
@@ -115,8 +118,8 @@ async fn history_replacement_injects_prior_fact_blocking() {
                             "For this session, the passphrase is OMEGA-7. Acknowledge and remember it.",
                         )])
                         .temperature(0.0),
-                ))
-                .await
+                )).run()
+                .await.map(|response| response.output)
                 .expect("history-replacement run should succeed");
 
             assert!(
@@ -142,7 +145,7 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
             // One patch sets BOTH the preamble and an extra_context document; both
             // fields must take effect.
             let response = agent
-                .prompt("What is the depot code? Keep it short.")
+                .runner("What is the depot code? Keep it short.")
                 .max_turns(2)
                 .add_hook(apply_patch(
                     RequestPatch::new()
@@ -153,7 +156,9 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
                         .context(fact_doc("depot", "The depot code is GAMMA-33."))
                         .temperature(0.0),
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("multi-field patch run should succeed");
 
             assert!(

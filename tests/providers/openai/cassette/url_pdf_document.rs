@@ -8,7 +8,6 @@
 
 use rig::OneOrMany;
 use rig::client::AgentClientExt;
-use rig::completion::Prompt;
 use rig::message::{DocumentMediaType, Message, UserContent};
 use rig::providers::openai;
 

@@ -3,11 +3,9 @@
 use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::completion::CompletionRequest;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use super::super::support::with_openai_completions_cassette;

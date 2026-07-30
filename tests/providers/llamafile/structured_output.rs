@@ -1,6 +1,5 @@
 //! Llamafile structured output coverage.
 
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -93,14 +92,19 @@ async fn prompt_typed_extended_details_structured_output() {
 
     let client = support::client();
     let model = support::model_name();
-    let agent = client.agent(model).preamble(WEATHER_PREAMBLE).build();
 
-    let extended = agent
-        .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
-        .extended_details()
-        .await
-        .expect("extended prompt_typed should succeed");
-    assert_weather_forecast(&extended.output, &["los angeles", "la"]);
+    // `prompt_typed(..).extended_details()` is gone; `extract_native` is the
+    // typed-plus-usage successor (same native structured-output request).
+    let extended = rig::extract::extract_native::<WeatherForecast>(
+        rig::agent::AgentConfig::new().with_preamble(WEATHER_PREAMBLE),
+        client.provider_config(&model),
+        std::sync::Arc::new(rig::provider::Runtime::new()),
+        "What's the weather forecast for Los Angeles?",
+        0,
+    )
+    .await
+    .expect("extended structured-output extraction should succeed");
+    assert_weather_forecast(&extended.value, &["los angeles", "la"]);
     assert!(extended.usage.total_tokens > 0, "usage should be populated");
 }
 

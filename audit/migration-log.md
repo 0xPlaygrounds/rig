@@ -637,3 +637,54 @@ serialization, trait-forwarding impls) — each logged by its slice.
 --all-targets`); workspace check 0 errors; rig-core 1103, rig-agent 399,
 rig-memory 44, rig-derive, full facade suite single-threaded and bedrock
 replay all green; doctests green; cassettes untouched.
+
+
+## R4 — Prompting surface (COMPLETE)
+
+The prompting abstractions are gone; the ergonomics survive as inherent
+methods (master-prompt decision 5), which is what kept ~525 consumer call
+sites mechanical.
+
+- **rig-agent**: `Agent` gained inherent `prompt`/`run`/`chat`/
+  `prompt_typed`/`stream_prompt`/`stream_chat` (all delegating through
+  `AgentRunner`, so hooks/tools/telemetry are the same paths);
+  `AgentRunner` gained `run_typed::<T>()` and public `output_tool(..)`;
+  `PromptResponse::output_tool_calls()` is public.
+- **Deleted**: `PromptRequest<S>` + `PromptType`/`Standard`/`Extended` +
+  `TypedPromptRequest<T,S>` + `TypedPromptResponse<T>` + four boxed
+  `IntoFuture` impls; the `Prompt`/`Chat`/`TypedPrompt`/`StreamingPrompt`/
+  `StreamingChat` traits; `stream_to_stdout`; `extractor.rs` wholesale
+  (1015 lines); `AgentClientExt::extractor::<T>()`; the integrations'
+  `CliChat` trait + `Missing`/`Provided` typestate (→ concrete `ChatBot`)
+  and `DiscordExt` (→ inherent `Agent::into_discord_bot{,_from_env}`);
+  internally `UnhandledInvalidToolCallPolicy`, `run_with_error_usage`,
+  `store_error_usage`. `prompt_request/mod.rs` 2572 → 792 lines; net
+  −1124 lines before the sweep.
+- **R1's extract gap closed**: `ExtractOptions` (+ `classic_extractor()`
+  preset) with public output-tool/preamble/tool-choice/retry-repeat
+  pinning, `AgentConfig::output_tool_name`, and
+  `InvalidToolCallAction::Ignore` replacing a private policy enum. Three
+  Mock-driven tests assert the recorded request shape rather than assuming
+  parity; the eight providers' extractor cassettes replay unchanged.
+- **Sweep**: 4 parallel agents covered 303 broken files — 67 (gemini/
+  openai/anthropic), 97 (7 openai-compat providers), 86 (16 remaining
+  providers + tool_facade_traits), 53 (all examples + rig-bedrock/
+  rig-derive/rig-lancedb/rig-gemini-grpc). **Zero tests deleted across the
+  entire sweep**; zero examples deleted. `tests/integrations` (feature-
+  gated, uncovered by the sweeps) migrated centrally.
+- **Fidelity finding, independently confirmed by three agents**: the
+  classic `ExtractorBuilder::preamble` routed through
+  `AgentBuilder::append_preamble`, which prepends its own newline — so the
+  recorded bytes carry TWO newlines before the ADDITIONAL INSTRUCTIONS
+  separator. Migrations derive the base from
+  `ExtractOptions::classic_extractor().preamble` rather than retyping it,
+  so it cannot drift.
+- **Logged for R5**: no typed-with-usage terminator on `AgentRunner`
+  (`run_typed` returns only `T`); the two sites needing it use
+  `extract_native` or an explicit `output_schema` + `run()`, both
+  cassette-verified.
+
+**Verification**: fmt ok; clippy 0 warnings (`--all-features
+--all-targets`); workspace check 0 errors; every crate suite and the full
+facade suite green single-threaded (bedrock replay 57/57); doctests green;
+cassettes untouched.

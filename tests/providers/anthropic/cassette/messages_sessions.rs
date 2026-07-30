@@ -11,11 +11,10 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, CompletionRequest, FinishReason, Message};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;

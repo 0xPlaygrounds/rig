@@ -13,7 +13,7 @@ use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};

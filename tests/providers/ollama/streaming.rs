@@ -1,10 +1,8 @@
 //! Migrated from `examples/ollama_streaming.rs`.
 
+use crate::support::{assert_nonempty_response, collect_stream_final_response};
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::streaming::StreamingPrompt;
-
-use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]

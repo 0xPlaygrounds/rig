@@ -3,7 +3,6 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, ToolOutput};

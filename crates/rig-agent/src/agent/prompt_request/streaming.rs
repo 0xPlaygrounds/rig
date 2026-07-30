@@ -31,7 +31,7 @@ use crate::{
     agent::Agent,
     completion::{CompletionError, PromptError},
 };
-use rig_core::message::{Message, Text};
+use rig_core::message::Message;
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
 // go no-op — browser wasm. `rig-core` keys those markers on this same
@@ -300,9 +300,8 @@ impl StreamingPromptRequest {
     /// initial call.
     ///
     /// Named to match the blocking
-    /// [`PromptRequest::max_turns`](super::PromptRequest::max_turns) and
-    /// [`TypedPromptRequest::max_turns`](super::TypedPromptRequest::max_turns)
-    /// builders so the same call reads identically on either surface.
+    /// [`AgentRunner::max_turns`](crate::agent::AgentRunner::max_turns) so the
+    /// same call reads identically on either surface.
     pub fn max_turns(mut self, turns: usize) -> Self {
         self.runner = self.runner.max_turns(turns);
         self
@@ -481,12 +480,6 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     }
 }
 
-pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
-    if let Some(usage) = &runner.error_usage {
-        *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
-    }
-}
-
 /// The single agent drive loop, shared by the blocking and streaming surfaces.
 ///
 /// Owns the medium-independent loop — `next_step` dispatch, the `CompletionCall`
@@ -511,7 +504,6 @@ pub(crate) fn drive_agent(
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => {
-                    store_error_usage(&runner, &run);
                     yield Err(Box::new(err).into());
                     break 'outer;
                 }
@@ -526,7 +518,6 @@ pub(crate) fn drive_agent(
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
-                                store_error_usage(&runner, &run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 break 'outer;
                             }
@@ -571,7 +562,6 @@ pub(crate) fn drive_agent(
                     {
                         Ok(prepared) => prepared,
                         Err(err) => {
-                            store_error_usage(&runner, &run);
                             yield Err(err.into());
                             break 'outer;
                         }
@@ -605,7 +595,6 @@ pub(crate) fn drive_agent(
                     }
                     drop(turn_stream);
                     if let Some(err) = turn_error {
-                        store_error_usage(&runner, &run);
                         yield Err(err);
                         break 'outer;
                     }
@@ -613,7 +602,6 @@ pub(crate) fn drive_agent(
                 }
                 AgentRunStep::CallTools { calls } => {
                     let Some(tool_executor) = pending_tool_executor.take() else {
-                        store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
                             "agent requested tool execution without prepared tool records"
                                 .to_string(),
@@ -638,7 +626,6 @@ pub(crate) fn drive_agent(
                     }
                     drop(tool_stream);
                     if let Some(err) = tool_error {
-                        store_error_usage(&runner, &run);
                         yield Err(err);
                         break 'outer;
                     }
@@ -1503,50 +1490,6 @@ impl IntoFuture for StreamingPromptRequest {
     }
 }
 
-/// Helper function to stream assistant-visible completion output to stdout.
-///
-/// This helper prints streamed assistant text and reasoning. Streaming metadata
-/// events, such as `MultiTurnStreamItem::CompletionCall`, are not printed;
-/// metadata is returned on the [`PromptResponse`] via accessors such as
-/// [`PromptResponse::completion_calls`]. A model-turn retry prints a visible
-/// boundary because text already written to stdout cannot be retracted.
-pub async fn stream_to_stdout(
-    stream: &mut StreamingResult,
-) -> Result<PromptResponse, std::io::Error> {
-    let mut final_res = PromptResponse::empty();
-    print!("Response: ");
-    while let Some(content) = stream.next().await {
-        match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text, .. },
-            ))) => {
-                print!("{text}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                reasoning,
-            ))) => {
-                let reasoning = reasoning.display_text();
-                print!("{reasoning}");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
-                final_res = res;
-            }
-            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
-                print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
-                std::io::Write::flush(&mut std::io::stdout())?;
-            }
-            Err(err) => {
-                eprintln!("Error: {err}");
-            }
-            _ => {}
-        }
-    }
-
-    Ok(final_res)
-}
-
 #[cfg(test)]
 #[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod migrated_tests {
@@ -1559,9 +1502,9 @@ mod migrated_tests {
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::AgentClientExt;
-    use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
+    use crate::completion::{CompletionRequest, PromptError, ToolDefinition, Usage};
     use crate::hooks::{HookDecision, HookEntry, HookEvent};
-    use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
+    use crate::streaming::ToolCallDeltaContent;
     use crate::test_utils::{MockAddTool, MockBarrierTool, MockSubtractTool, MockToolError};
     use crate::tool::PortableTool;
     use futures::{StreamExt, TryStreamExt};
@@ -2549,7 +2492,8 @@ mod migrated_tests {
 
         let warmup_agent = agent_builder(MockCompletionModel::text("warmup")).build();
         warmup_agent
-            .prompt("warmup")
+            .runner("warmup")
+            .run()
             .await
             .expect("warmup prompt should not error");
         tracing::callsite::rebuild_interest_cache();
@@ -2565,7 +2509,8 @@ mod migrated_tests {
         };
 
         agent
-            .prompt("blocking prompt secret")
+            .runner("blocking prompt secret")
+            .run()
             .await
             .expect("prompt should not error");
 
@@ -2872,7 +2817,8 @@ mod migrated_tests {
 
         let warmup_agent = agent_builder(MockCompletionModel::text("warmup")).build();
         warmup_agent
-            .prompt("warmup")
+            .runner("warmup")
+            .run()
             .await
             .expect("warmup prompt should not error");
         tracing::callsite::rebuild_interest_cache();
@@ -2893,12 +2839,13 @@ mod migrated_tests {
             .build();
 
         let output = agent
-            .prompt("repair tool call")
+            .runner("repair tool call")
             .add_hook(repair_default_api_entry())
             .max_turns(3)
+            .run()
             .await
             .expect("repaired tool call should complete");
-        assert_eq!(output, "done");
+        assert_eq!(output.output, "done");
 
         let output_messages: Vec<String> = spans
             .snapshot()

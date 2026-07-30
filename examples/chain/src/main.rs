@@ -2,7 +2,6 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::vector_store::request::VectorSearchRequest;

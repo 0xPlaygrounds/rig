@@ -1,10 +1,9 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::completion::{AssistantContent, Chat, CompletionModel, CompletionRequest, Message};
+use rig::completion::{AssistantContent, CompletionModel, CompletionRequest, Message};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use crate::support::{

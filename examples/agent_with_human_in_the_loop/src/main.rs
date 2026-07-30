@@ -26,7 +26,6 @@
 
 use anyhow::Result;
 use rig::agent::ToolCallAction;
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -253,10 +252,12 @@ async fn main() -> Result<()> {
     // Attach the approval hook for this run. It fires before every tool call;
     // the run pauses for your decision each time.
     let response = agent
-        .prompt(prompt)
+        .runner(prompt)
         .max_turns(10)
         .add_hook(approval_hook())
-        .await?;
+        .run()
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
 

@@ -29,7 +29,7 @@
 
 use anyhow::Result;
 use rig::agent::{CompletionCallAction, RequestPatch};
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -139,10 +139,12 @@ async fn main() -> Result<()> {
     println!("=== forcing tool_choice=Required on EVERY turn (the footgun) ===");
     let agent = make_agent();
     match agent
-        .prompt(PROMPT)
+        .runner(PROMPT)
         .max_turns(4)
         .add_hook(force_tool_every_turn())
+        .run()
         .await
+        .map(|response| response.output)
     {
         Ok(answer) => println!("(unexpected) got a final answer: {answer}\n"),
         Err(PromptError::MaxTurnsError { max_turns, .. }) => println!(
@@ -157,10 +159,12 @@ async fn main() -> Result<()> {
     println!("=== forcing tool_choice=Required on the FIRST turn only (the fix) ===");
     let agent = make_agent();
     let answer = agent
-        .prompt(PROMPT)
+        .runner(PROMPT)
         .max_turns(4)
         .add_hook(force_tool_on_first_turn())
-        .await?;
+        .run()
+        .await?
+        .output;
     println!("final answer: {answer}");
 
     Ok(())

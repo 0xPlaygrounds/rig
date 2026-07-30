@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{

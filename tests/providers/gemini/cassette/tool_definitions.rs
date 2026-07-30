@@ -5,7 +5,7 @@
 //! changes (e.g. swapping the handrolled definitions for rmcp-derived ones),
 //! replay fails with a body mismatch.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -221,7 +221,6 @@ async fn duplicate_tool_name_uses_last_registration() {
 
 #[cfg(feature = "derive")]
 mod derive_macro {
-    use rig::completion::Chat;
     use rig::completion::Message;
     use rig::tool_macro as rig_tool;
 

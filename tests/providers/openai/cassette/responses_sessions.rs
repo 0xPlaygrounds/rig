@@ -14,11 +14,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 
 use super::super::support::with_openai_cassette;

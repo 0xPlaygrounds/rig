@@ -1,13 +1,11 @@
 //! xAI streaming smoke test.
 
-use rig::prelude::*;
-use rig::providers::xai;
-use rig::streaming::StreamingPrompt;
-
 use super::support::with_xai_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::xai;
 
 #[tokio::test]
 async fn streaming_smoke() {

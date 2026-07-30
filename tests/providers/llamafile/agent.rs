@@ -1,6 +1,5 @@
 //! Migrated from `examples/agent_with_llamafile.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};

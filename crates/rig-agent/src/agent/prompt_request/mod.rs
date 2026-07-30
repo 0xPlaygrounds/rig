@@ -1,27 +1,31 @@
+//! Owned response data for one agent run, plus the history/tool-result
+//! helpers the drivers share.
+//!
+//! The typestate request builders that used to live here (`PromptRequest<S>`,
+//! `TypedPromptRequest<T, S>`, `PromptType`/`Standard`/`Extended`) are gone:
+//! [`Agent`](super::Agent)'s inherent `prompt`/`chat`/`run`/`prompt_typed`
+//! methods are the one-shot surface and [`AgentRunner`](super::runner::AgentRunner)
+//! is the fluent per-request surface.
+
 pub mod streaming;
 
-use super::{Agent, run::OutputMode, runner::AgentRunner};
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, ToolResultContent, UserContent},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
 use crate::{
-    completion::{Message, PromptError, Usage},
+    completion::{Message, Usage},
     tool::ToolOutput,
 };
 use serde::{Deserialize, Serialize};
-use std::{future::IntoFuture, marker::PhantomData};
 
-/// Generate the request-builder setters that forward verbatim to an inner
-/// receiver — `AgentRunner` for the blocking builder, the wrapped
-/// `PromptRequest` for the typed builder, and the `AgentRunner` for the
-/// streaming builder. Only the setters whose signature *and* documentation are
-/// identical across all three builders live here; `max_turns`, `add_hook`, and
-/// `tool_concurrency`, whose docs are builder-specific, stay hand-written (the
-/// blocking builders share `tool_concurrency` via [`forward_tool_concurrency`]).
-/// `$recv` is the field name to delegate through (`runner` or `inner`).
+/// Generate the per-request setters the
+/// [`StreamingPromptRequest`](streaming::StreamingPromptRequest) forwards
+/// verbatim to its inner [`AgentRunner`](super::runner::AgentRunner). Setters
+/// whose docs are surface-specific (`max_turns`, `add_hook`,
+/// `tool_concurrency`) stay hand-written.
+/// `$recv` is the field name to delegate through (`runner`).
 macro_rules! forward_prompt_setters {
     ($recv:ident) => {
         /// Add chat history to the prompt request.
@@ -145,128 +149,6 @@ macro_rules! forward_prompt_setters {
 }
 pub(crate) use forward_prompt_setters;
 
-/// Generate the `tool_concurrency` setter for the blocking builders, whose doc
-/// is identical to each other but differs from the streaming builder's (the
-/// streaming version documents how tool items are ordered in the emitted
-/// stream). `$recv` is the field name to delegate through (`runner` or `inner`).
-macro_rules! forward_tool_concurrency {
-    ($recv:ident) => {
-        /// Execute up to `concurrency` of a turn's tool calls at once.
-        ///
-        /// See [`AgentRunner::tool_concurrency`] for ordering guarantees: the tool
-        /// batch commits and surfaces atomically, so persisted history and streamed
-        /// tool results are both in tool-call order (results are surfaced only after
-        /// the whole batch settles successfully).
-        pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-            self.$recv = self.$recv.tool_concurrency(concurrency);
-            self
-        }
-    };
-}
-
-pub trait PromptType {}
-pub struct Standard;
-pub struct Extended;
-
-impl PromptType for Standard {}
-impl PromptType for Extended {}
-
-/// A builder for creating prompt requests with customizable options.
-/// Uses generics to track which options have been set during the build process.
-///
-/// When the agent has no configured `default_max_turns`, the implicit budget is
-/// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
-/// configured or implicit budget; a tool call followed by a model-authored final
-/// answer generally requires at least two model calls.
-pub struct PromptRequest<S>
-where
-    S: PromptType,
-{
-    /// The hook-aware driver this request configures and runs.
-    pub(crate) runner: AgentRunner,
-    /// Phantom data to track the type of the request (Standard vs Extended).
-    state: PhantomData<S>,
-}
-
-impl PromptRequest<Standard> {
-    /// Create a new PromptRequest from an agent, cloning the agent's data and
-    /// default hook stack.
-    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
-        PromptRequest {
-            runner: AgentRunner::from_agent(agent, prompt),
-            state: PhantomData,
-        }
-    }
-}
-
-impl<S> PromptRequest<S>
-where
-    S: PromptType,
-{
-    /// Enable returning extended details for responses (includes aggregated token usage
-    /// and the full message history accumulated during the agent loop).
-    ///
-    /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
-    /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
-    /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended> {
-        PromptRequest {
-            runner: self.runner,
-            state: PhantomData,
-        }
-    }
-
-    /// Set the total model-call budget, including the initial call and every
-    /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call. Exceeding the budget returns
-    /// [`crate::completion::PromptError::MaxTurnsError`].
-    pub fn max_turns(mut self, max_turns: usize) -> Self {
-        self.runner = self.runner.max_turns(max_turns);
-        self
-    }
-
-    /// Append a hook for this request (on top of any the agent already carries).
-    /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use first-non-`Continue`-wins). See the
-    /// [`hook`](crate::agent::hook) module docs.
-    pub fn add_hook(mut self, hook: crate::hooks::HookEntry) -> Self {
-        self.runner = self.runner.add_hook(hook);
-        self
-    }
-
-    forward_prompt_setters!(runner);
-    forward_tool_concurrency!(runner);
-}
-
-/// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
-///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
-///  directly via the associated type.
-impl IntoFuture for PromptRequest<Standard> {
-    type Output = Result<String, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
-    }
-}
-
-impl IntoFuture for PromptRequest<Extended> {
-    type Output = Result<PromptResponse, PromptError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
-    }
-}
-
-impl PromptRequest<Standard> {
-    async fn send(self) -> Result<String, PromptError> {
-        self.extended_details().send().await.map(|resp| resp.output)
-    }
-}
-
 /// Details for one successfully completed completion request made by an agent run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -304,7 +186,7 @@ where
 
 /// The result of an agent run, returned by **both** the blocking
 /// ([`PromptRequest`]) and streaming ([`StreamingPromptRequest`]) surfaces so a
-/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
+/// call site reads identically whether it used `.run()` or `.stream_prompt()`.
 ///
 /// On the streaming surface this is the payload of the terminal
 /// [`MultiTurnStreamItem::FinalResponse`] item.
@@ -443,7 +325,14 @@ impl PromptResponse {
         self
     }
 
-    pub(crate) fn output_tool_calls(&self) -> usize {
+    /// How many synthetic output-tool calls this run's finalizing turn made.
+    ///
+    /// Structured-output runs in [`OutputMode::Tool`](crate::agent::OutputMode)
+    /// finalize through a synthetic output-tool call; this is the marker an
+    /// extraction protocol checks to distinguish "the model answered in prose"
+    /// (`0`) from a real submission. Never serialized — it is a per-run
+    /// observation, not persisted state.
+    pub fn output_tool_calls(&self) -> usize {
         self.output_tool_calls
     }
 
@@ -465,50 +354,6 @@ impl PromptResponse {
     /// The structured assistant content for the final turn.
     pub fn content(&self) -> &OneOrMany<AssistantContent> {
         &self.content
-    }
-
-    /// Returns successfully completed completion requests made by this agent run.
-    ///
-    /// Zero-valued entry usage means the provider reported no usage metrics
-    /// for that request.
-    pub fn completion_calls(&self) -> &[CompletionCall] {
-        &self.completion_calls
-    }
-
-    /// Number of completion requests this agent run made.
-    pub fn requests(&self) -> usize {
-        self.completion_calls.len()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct TypedPromptResponse<T> {
-    pub output: T,
-    pub usage: Usage,
-    /// Successfully completed completion requests made by this agent run.
-    ///
-    /// `usage` remains the aggregate across the whole run. Use the last
-    /// entry's usage to inspect the final completion request's prompt/context
-    /// length. Zero-valued entry usage means the provider reported no usage
-    /// metrics for that request.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub completion_calls: Vec<CompletionCall>,
-}
-
-impl<T> TypedPromptResponse<T> {
-    pub fn new(output: T, usage: Usage) -> Self {
-        Self {
-            output,
-            usage,
-            completion_calls: Vec::new(),
-        }
-    }
-
-    /// Attach completion call details to this response.
-    pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
-        self.completion_calls = completion_calls;
-        self
     }
 
     /// Returns successfully completed completion requests made by this agent run.
@@ -632,187 +477,6 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
         .collect()
 }
 
-impl PromptRequest<Extended> {
-    async fn send(self) -> Result<PromptResponse, PromptError> {
-        self.runner.run().await
-    }
-}
-
-// ================================================================
-// TypedPromptRequest - for structured output with automatic deserialization
-// ================================================================
-
-use crate::completion::StructuredOutputError;
-use schemars::{JsonSchema, schema_for};
-use serde::de::DeserializeOwned;
-
-/// A builder for creating typed prompt requests that return deserialized structured output.
-///
-/// This struct wraps a standard `PromptRequest` and adds:
-/// - Automatic JSON schema generation from the target type `T`
-/// - Automatic deserialization of the response into `T`
-///
-/// The type parameter `S` represents the state of the request (Standard or Extended).
-/// Use `.extended_details()` to transition to Extended state for usage tracking.
-///
-/// # Example
-/// ```rust,ignore
-/// let forecast: WeatherForecast = agent
-///     .prompt_typed("What's the weather in NYC?")
-///     .max_turns(3)
-///     .await?;
-/// ```
-pub struct TypedPromptRequest<T, S>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    S: PromptType,
-{
-    inner: PromptRequest<S>,
-    _phantom: std::marker::PhantomData<T>,
-}
-
-impl<T> TypedPromptRequest<T, Standard>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
-{
-    /// Create a new TypedPromptRequest from an agent.
-    ///
-    /// This automatically sets the output schema based on the type parameter `T`.
-    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
-        let mut inner = PromptRequest::from_agent(agent, prompt);
-        // Override the output schema with the schema for T
-        inner.runner.output_schema = Some(schema_for!(T));
-        // Typed prompts deserialize the model's final string, so they pin
-        // `Native` structured output to keep the typed API's behavior unchanged
-        // across all providers (#1928). Routing the typed path through `Tool`
-        // output mode for tool-using agents on non-composing providers is a
-        // follow-up; use the untyped `output_schema`/`output_mode` API for
-        // tool-composing structured output today.
-        inner.runner.output_mode = OutputMode::Native;
-        Self {
-            inner,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<T, S> TypedPromptRequest<T, S>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    S: PromptType,
-{
-    /// Enable returning extended details for responses (includes aggregated token usage).
-    ///
-    /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
-    /// instead of just `T`. This is useful for tracking token usage across multiple turns
-    /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended> {
-        TypedPromptRequest {
-            inner: self.inner.extended_details(),
-            _phantom: std::marker::PhantomData,
-        }
-    }
-
-    /// Set the total model-call budget, including the initial call and every
-    /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call. Exceeding the budget returns a
-    /// [`StructuredOutputError::PromptError`] wrapping a `MaxTurnsError`.
-    pub fn max_turns(mut self, max_turns: usize) -> Self {
-        self.inner = self.inner.max_turns(max_turns);
-        self
-    }
-
-    /// Append a hook to this request's hook stack (on top of any the agent
-    /// already carries).
-    pub fn add_hook(mut self, hook: crate::hooks::HookEntry) -> Self {
-        self.inner = self.inner.add_hook(hook);
-        self
-    }
-
-    forward_prompt_setters!(inner);
-    forward_tool_concurrency!(inner);
-}
-
-/// Deserialize a typed structured response from the model's final text.
-///
-/// Tries a direct parse first (the common path — native and tool-call output is
-/// already clean JSON), then falls back to the first balanced JSON value in the
-/// text so prose or markdown code fences around the JSON don't break weaker
-/// `Prompted`/best-effort output (#1928).
-fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, serde_json::Error> {
-    let trimmed = text.trim();
-    match serde_json::from_str::<T>(trimmed) {
-        Ok(value) => Ok(value),
-        Err(direct_err) => {
-            let Some(start) = trimmed.find(['{', '[']) else {
-                return Err(direct_err);
-            };
-            serde_json::Deserializer::from_str(&trimmed[start..])
-                .into_iter::<T>()
-                .next()
-                .unwrap_or(Err(direct_err))
-        }
-    }
-}
-
-impl<T> TypedPromptRequest<T, Standard>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
-{
-    /// Send the typed prompt request and deserialize the response.
-    async fn send(self) -> Result<T, StructuredOutputError> {
-        let response = self.inner.send().await.map_err(Box::new)?;
-
-        if response.is_empty() {
-            return Err(StructuredOutputError::EmptyResponse);
-        }
-
-        let parsed: T = deserialize_structured_output(&response)?;
-        Ok(parsed)
-    }
-}
-
-impl<T> TypedPromptRequest<T, Extended>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend,
-{
-    /// Send the typed prompt request with extended details and deserialize the response.
-    async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
-        let response = self.inner.send().await.map_err(Box::new)?;
-
-        if response.output.is_empty() {
-            return Err(StructuredOutputError::EmptyResponse);
-        }
-
-        let parsed: T = deserialize_structured_output(&response.output)?;
-        Ok(TypedPromptResponse::new(parsed, response.usage)
-            .with_completion_calls(response.completion_calls))
-    }
-}
-
-impl<T> IntoFuture for TypedPromptRequest<T, Standard>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-{
-    type Output = Result<T, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
-    }
-}
-
-impl<T> IntoFuture for TypedPromptRequest<T, Extended>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-{
-    type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
-    type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
-
-    fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
-    }
-}
 /// Test-only shim preserving the deleted `rig_core::test_utils` mock-model
 /// ergonomics (`MockCompletionModel` / `MockTurn` / `MockStreamEvent`) on top
 /// of the scripted Mock provider (`ProviderConfig::Mock` + `MockScript`).
@@ -1135,12 +799,12 @@ pub(crate) mod mock_support {
 #[cfg(test)]
 mod tests {
     use super::mock_support::{MockCompletionModel, MockTurn, agent_builder};
-    use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, PromptResponseRepr};
     use crate::{
         agent::hook::{InvalidToolCallAction, InvalidToolCallContext},
         completion::{
-            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            StructuredOutputError, TypedPrompt, Usage,
+            AssistantContent, CompletionError, CompletionRequest, Message, PromptError,
+            StructuredOutputError, Usage,
         },
         hooks::{HookDecision, HookEntry, HookEvent},
         test_utils::{MockAddTool, MockOperationArgs, MockSubtractTool, MockToolError},
@@ -1148,22 +812,12 @@ mod tests {
     };
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
     use schemars::JsonSchema;
-    use serde::{Deserialize, Serialize};
+    use serde::Deserialize;
     use serde_json::json;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
-
-    #[derive(Serialize)]
-    struct SerializeOnly {
-        value: &'static str,
-    }
-
-    #[derive(Deserialize)]
-    struct DeserializeOnly {
-        value: String,
-    }
 
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
     struct TypedAnswer {
@@ -1174,25 +828,30 @@ mod tests {
     fn deserialize_structured_output_tolerates_fences_and_prose() {
         // Clean JSON (native / output-tool path).
         assert_eq!(
-            super::deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#).unwrap(),
+            crate::extract::deserialize_structured_output::<TypedAnswer>(r#"{"value":"x"}"#)
+                .unwrap(),
             TypedAnswer { value: "x".into() }
         );
         // Markdown-fenced JSON (weak Prompted-mode models).
         assert_eq!(
-            super::deserialize_structured_output::<TypedAnswer>("```json\n{\"value\":\"y\"}\n```")
-                .unwrap(),
+            crate::extract::deserialize_structured_output::<TypedAnswer>(
+                "```json\n{\"value\":\"y\"}\n```"
+            )
+            .unwrap(),
             TypedAnswer { value: "y".into() }
         );
         // Prose around the JSON object.
         assert_eq!(
-            super::deserialize_structured_output::<TypedAnswer>(
+            crate::extract::deserialize_structured_output::<TypedAnswer>(
                 "Here you go: {\"value\":\"z\"} — hope that helps!"
             )
             .unwrap(),
             TypedAnswer { value: "z".into() }
         );
         // No JSON at all still errors.
-        assert!(super::deserialize_structured_output::<TypedAnswer>("no json here").is_err());
+        assert!(
+            crate::extract::deserialize_structured_output::<TypedAnswer>("no json here").is_err()
+        );
     }
 
     /// Named hook entry over a synchronous decision function.
@@ -1339,39 +998,6 @@ mod tests {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
-    }
-
-    #[test]
-    fn typed_prompt_response_serializes_with_serialize_only_output() {
-        let response = TypedPromptResponse::new(
-            SerializeOnly { value: "ok" },
-            Usage {
-                input_tokens: 1,
-                output_tokens: 2,
-                total_tokens: 3,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            },
-        );
-
-        let json = serde_json::to_string(&response).expect("serialize typed prompt response");
-        assert!(json.contains("\"value\":\"ok\""));
-    }
-
-    #[test]
-    fn typed_prompt_response_deserializes_with_deserialize_only_output() {
-        let response: TypedPromptResponse<DeserializeOnly> = serde_json::from_str(
-            r#"{"output":{"value":"ok"},"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3,"cached_input_tokens":0,"cache_creation_input_tokens":0,"reasoning_tokens":0}}"#,
-        )
-        .expect("deserialize typed prompt response");
-
-        assert_eq!(response.requests(), 0);
-        assert_eq!(response.output.value, "ok");
-        assert_eq!(response.usage.input_tokens, 1);
-        assert_eq!(response.usage.output_tokens, 2);
-        assert_eq!(response.usage.total_tokens, 3);
     }
 
     #[test]
@@ -1564,8 +1190,8 @@ mod tests {
         let agent = agent_builder(model).build();
 
         let response = agent
-            .prompt("say ok")
-            .extended_details()
+            .runner("say ok")
+            .run()
             .await
             .expect("prompt should succeed");
 
@@ -1578,7 +1204,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn typed_prompt_response_preserves_completion_calls() {
+    async fn run_typed_deserializes_output_and_untyped_run_reports_completion_calls() {
+        // Ported from `typed_prompt_response_preserves_completion_calls`, whose
+        // subject (`TypedPromptResponse` via `.extended_details()`) is deleted:
+        // `run_typed` returns the deserialized value, and the same run's usage
+        // and per-call accounting stay observable on the untyped `run`.
         let call_usage = Usage {
             input_tokens: 4,
             output_tokens: 6,
@@ -1588,22 +1218,34 @@ mod tests {
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         };
-        let model =
-            MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
-        let agent = agent_builder(model).build();
+        let typed_agent = agent_builder(MockCompletionModel::new([MockTurn::text(
+            r#"{"value":"ok"}"#,
+        )
+        .with_usage(call_usage)]))
+        .build();
 
-        let response = agent
-            .prompt_typed::<TypedAnswer>("return typed json")
-            .extended_details()
+        let value = typed_agent
+            .runner("return typed json")
+            .run_typed::<TypedAnswer>()
             .await
             .expect("typed prompt should succeed");
-
         assert_eq!(
-            response.output,
+            value,
             TypedAnswer {
                 value: "ok".to_string()
             }
         );
+
+        let untyped_agent = agent_builder(MockCompletionModel::new([MockTurn::text(
+            r#"{"value":"ok"}"#,
+        )
+        .with_usage(call_usage)]))
+        .build();
+        let response = untyped_agent
+            .runner("return typed json")
+            .run()
+            .await
+            .expect("prompt should succeed");
         assert_eq!(response.usage, call_usage);
         assert_eq!(
             response.completion_calls(),
@@ -1675,9 +1317,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
-            .prompt("use the tool")
+            .runner("use the tool")
             .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("unknown model-emitted tool should fail");
 
@@ -1710,9 +1353,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
-            .prompt("use the tool")
+            .runner("use the tool")
             .add_hook(recording_invalid_tool_call_entry(invalid_hook.clone()))
             .max_turns(3)
+            .run()
             .await
             .expect_err("invalid tool should fail");
 
@@ -1743,9 +1387,10 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("use the allowed tool")
+            .runner("use the allowed tool")
             .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("disallowed model-emitted tool should fail");
 
@@ -1782,9 +1427,10 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("do not use tools")
+            .runner("do not use tools")
             .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("ToolChoice::None should reject returned tool calls");
 
@@ -1814,10 +1460,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(repair_default_api_hook())
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("repaired tool call should execute");
 
@@ -1856,11 +1502,11 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("retry should recover");
 
@@ -1918,11 +1564,11 @@ mod tests {
             .build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("retry should recover");
 
@@ -2005,10 +1651,10 @@ mod tests {
             .build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(skip_default_api_and_panic_on_tool_call_hook())
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("skip should recover without executing peer tools");
 
@@ -2056,10 +1702,11 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
+            .run()
             .await
             .expect_err("retry without budget should fail");
 
@@ -2086,10 +1733,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(skip_default_api_hook())
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("skip should continue with synthetic tool result");
 
@@ -2131,10 +1778,10 @@ mod tests {
             .build();
 
         let response = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(skip_default_api_hook())
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("skip should produce synthetic feedback under Specific");
 
@@ -2179,9 +1826,10 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("add")
+            .runner("add")
             .add_hook(repair_to_subtract_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("repair to a disallowed tool should fail");
 
@@ -2207,9 +1855,10 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("do not use tools")
+            .runner("do not use tools")
             .add_hook(repair_default_api_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("ToolChoice::None should reject repaired tool calls");
 
@@ -2235,9 +1884,10 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("do not use tools")
+            .runner("do not use tools")
             .add_hook(skip_default_api_hook())
             .max_turns(3)
+            .run()
             .await
             .expect_err("ToolChoice::None should reject skipped tool calls");
 
@@ -2260,9 +1910,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
-            .prompt_typed::<TypedAnswer>("return typed json")
+            .runner("return typed json")
             .add_hook(panic_on_unknown_tool_hook())
             .max_turns(3)
+            .run_typed::<TypedAnswer>()
             .await
             .expect_err("typed prompt should preserve fail-fast default");
 
@@ -2287,9 +1938,10 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt_typed::<TypedAnswer>("return typed json")
+            .runner("return typed json")
             .add_hook(repair_default_api_hook())
             .max_turns(3)
+            .run_typed::<TypedAnswer>()
             .await
             .expect("typed prompt should repair invalid tool call");
 
@@ -2311,10 +1963,11 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt_typed::<TypedAnswer>("return typed json")
+            .runner("return typed json")
             .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(1)
             .max_turns(3)
+            .run_typed::<TypedAnswer>()
             .await
             .expect("typed prompt should retry invalid tool call");
 
@@ -2337,10 +1990,11 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let err = agent
-            .prompt_typed::<TypedAnswer>("return typed json")
+            .runner("return typed json")
             .add_hook(retry_default_api_hook())
             .max_invalid_tool_call_retries(0)
             .max_turns(3)
+            .run_typed::<TypedAnswer>()
             .await
             .expect_err("typed prompt should fail when retry budget is exhausted");
 
@@ -2368,7 +2022,8 @@ mod tests {
             .build();
 
         let err = agent
-            .prompt("use the missing tool")
+            .runner("use the missing tool")
+            .run()
             .await
             .expect_err("invalid ToolChoice::Specific should fail before provider request");
 
@@ -2398,12 +2053,13 @@ mod tests {
             .build();
 
         let response = agent
-            .prompt("use the allowed tool")
+            .runner("use the allowed tool")
             .max_turns(3)
+            .run()
             .await
             .expect("allowed specific tool should execute");
 
-        assert_eq!(response, "done");
+        assert_eq!(response.output, "done");
         assert_eq!(recorded.request_count(), 2);
     }
 
@@ -2437,9 +2093,9 @@ mod tests {
         let agent = agent_builder(model).tool(MockAddTool).build();
 
         let response = agent
-            .prompt("do tool work")
+            .runner("do tool work")
             .max_turns(3)
-            .extended_details()
+            .run()
             .await
             .expect("empty terminal turn should not error");
 
@@ -2520,12 +2176,13 @@ mod tests {
         let agent = agent_builder(model).build();
 
         let response = agent
-            .prompt("answer with cited spans")
+            .runner("answer with cited spans")
+            .run()
             .await
             .expect("prompt should succeed");
 
         assert_eq!(
-            response,
+            response.output,
             "According to the document, the grass is green and the sky is blue."
         );
     }
@@ -2549,8 +2206,8 @@ mod tests {
         let agent = agent_builder(model).build();
 
         let response = agent
-            .prompt("answer with cited metadata")
-            .extended_details()
+            .runner("answer with cited metadata")
+            .run()
             .await
             .expect("metadata-only text turn should succeed");
 

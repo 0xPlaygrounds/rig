@@ -363,7 +363,7 @@ impl SessionAgent {
 
     /// Run one prompt against the caller's history and extend it with the
     /// run's new messages, mirroring the classic
-    /// [`Chat`](crate::completion::Chat) implementation. Explicit history
+    /// [`Agent::chat`](crate::Agent::chat) method. Explicit history
     /// means conversation memory is bypassed (see the [module docs](self)).
     ///
     /// # Errors
@@ -423,7 +423,6 @@ fn raw_tool_result(result: &UserContent) -> ToolResult {
 mod tests {
     use super::*;
     use crate::agent::hook::{CompletionCallAction, RequestPatch, ToolResultAction};
-    use crate::completion::Chat;
     use crate::hooks::{HookDecision, HookEntry, HookEvent};
     use crate::provider::MockScript;
     use crate::test_utils::{AppendFailingMemory, CountingMemory, FailingMemory};

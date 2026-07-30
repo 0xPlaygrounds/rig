@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -295,15 +294,14 @@ async fn think_tool_with_other_tools() -> Result<()> {
         .build();
 
     let response = agent
-        .prompt(
+        .runner(
             "I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. \
              I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. \
              How much will I get refunded, and is Product C in stock? \
              Also, how much would it cost to ship the exchanged items with express shipping? \
              Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?",
         )
-        .max_turns(10)
-        .extended_details()
+        .max_turns(10).run()
         .await?;
 
     assert_mentions_expected_number(&response.output, 25);

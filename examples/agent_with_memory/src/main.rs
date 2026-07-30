@@ -14,7 +14,6 @@
 
 use anyhow::Result;
 use rig::agent::Agent;
-use rig::completion::Prompt;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -29,11 +28,7 @@ async fn ask(
     // Load-before: a load failure is fatal, so the run never starts.
     let history = memory.load(conversation_id)?;
 
-    let response = agent
-        .prompt(prompt)
-        .history(history)
-        .extended_details()
-        .await?;
+    let response = agent.runner(prompt).history(history).run().await?;
 
     // Append-after: warn and proceed, so a store hiccup never drops a reply.
     if let Some(messages) = &response.messages

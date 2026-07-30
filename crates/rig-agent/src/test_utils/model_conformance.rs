@@ -25,11 +25,9 @@ use crate::{
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
-        AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-        ToolDefinition,
+        AssistantContent, CompletionError, CompletionRequest, Message, PromptError, ToolDefinition,
     },
     provider::{ProviderConfig, Runtime},
-    streaming::StreamingPrompt,
     tool::PortableTool,
 };
 use rig_core::message::{ToolChoice, UserContent};
@@ -50,9 +48,9 @@ pub enum ScenarioError {
     /// Structured content could not be decoded.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
-    /// Rig's structured extractor failed.
+    /// Structured extraction failed.
     #[error(transparent)]
-    Extraction(#[from] crate::extractor::ExtractionError),
+    Extraction(#[from] crate::extract::ExtractError),
     /// The model or agent violated the portable behavioral contract.
     #[error("{scenario} conformance failed: {details}")]
     Contract {
@@ -963,15 +961,10 @@ where
         .tool(CountingSubtract(subtract_calls.clone()))
         .default_max_turns(3)
         .build();
-    let request = agent.prompt(PARALLEL_PROMPT).max_turns(3);
+    let request = agent.runner(PARALLEL_PROMPT).max_turns(3);
     let response = match tool_concurrency {
-        Some(concurrency) => {
-            request
-                .tool_concurrency(concurrency)
-                .extended_details()
-                .await?
-        }
-        None => request.extended_details().await?,
+        Some(concurrency) => request.tool_concurrency(concurrency).run().await?,
+        None => request.run().await?,
     };
     let scenario = if tool_concurrency == Some(1) {
         "parallel_tools_serial_execution"
@@ -1057,9 +1050,9 @@ where
         .default_max_turns(2)
         .build();
     let response = agent
-        .prompt("Call the ping tool, then report the exact marker it returns.")
+        .runner("Call the ping tool, then report the exact marker it returns.")
         .max_turns(2)
-        .extended_details()
+        .run()
         .await?;
     let messages = response.messages.as_deref().ok_or_else(|| {
         ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
@@ -1108,9 +1101,9 @@ where
         .default_max_turns(3)
         .build();
     let response = agent
-        .prompt("Call fetch_motto and fetch_config, then summarize both outputs in one sentence.")
+        .runner("Call fetch_motto and fetch_config, then summarize both outputs in one sentence.")
         .max_turns(3)
-        .extended_details()
+        .run()
         .await?;
     let messages = response.messages.as_deref().ok_or_else(|| {
         ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
@@ -1180,11 +1173,11 @@ where
         .default_max_turns(3)
         .build();
     let response = agent
-        .prompt(
+        .runner(
             "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.",
         )
         .max_turns(3)
-        .extended_details()
+        .run()
         .await?;
     let observed = lock_recover(&captured).clone();
     if calls.load(Ordering::SeqCst) != 1 || observed.as_ref() != Some(&expected) {
@@ -1284,17 +1277,22 @@ pub async fn structured_extraction(
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
     let started = Instant::now();
-    let response = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(provider)
-        .max_tokens(384)
-        .retries(0)
-        .build()
-        .extract_with_usage(INPUT)
-        .await?;
+    // The classic `ExtractorBuilder` preset keeps this scenario's recorded
+    // exchange byte-identical: output tool `submit`, the extraction preamble,
+    // `ToolChoice::Required`, no preamble augmentation, one model call.
+    let response = crate::extract::extract_with_options::<ExtractedPerson>(
+        AgentConfig::new().with_max_tokens(384),
+        provider,
+        Arc::new(Runtime::new()),
+        INPUT,
+        crate::extract::ExtractOptions::classic_extractor(),
+    )
+    .await?;
     validate_extraction_fields(
         SCENARIO,
-        response.data.first_name.as_deref(),
-        response.data.last_name.as_deref(),
-        response.data.job.as_deref(),
+        response.value.first_name.as_deref(),
+        response.value.last_name.as_deref(),
+        response.value.job.as_deref(),
         response.usage,
     )?;
     Ok(ScenarioReport {
@@ -1306,9 +1304,9 @@ pub async fn structured_extraction(
         duration: started.elapsed(),
         response: format!(
             "{} {} — {}",
-            response.data.first_name.as_deref().unwrap_or_default(),
-            response.data.last_name.as_deref().unwrap_or_default(),
-            response.data.job.as_deref().unwrap_or_default()
+            response.value.first_name.as_deref().unwrap_or_default(),
+            response.value.last_name.as_deref().unwrap_or_default(),
+            response.value.job.as_deref().unwrap_or_default()
         ),
     })
 }
@@ -1545,7 +1543,7 @@ where
         .default_max_turns(3)
         .build();
     let response = agent
-        .prompt("Use add once for x=1 and y=1, then report what the tool returns.")
+        .runner("Use add once for x=1 and y=1, then report what the tool returns.")
         .max_turns(3)
         .add_hook(first_turn_patch(
             RequestPatch::new()
@@ -1557,7 +1555,7 @@ where
         .add_hook(observe_arguments(observed))
         .add_hook(replace_result("portable-redacted"))
         .add_hook(wrap_result())
-        .extended_details()
+        .run()
         .await?;
     let observations = lock_recover(&observed_probe).clone();
     validate_rewritten_arguments(
@@ -1610,9 +1608,10 @@ where
         .tool(CountingAdd(cancelled_calls.clone()))
         .build();
     let cancelled = match cancelled_agent
-        .prompt("Use add once to compute x=20 plus y=22.")
+        .runner("Use add once to compute x=20 plus y=22.")
         .max_turns(2)
         .add_hook(stop_after_result(REASON))
+        .run()
         .await
     {
         Err(error) => error,
@@ -1632,8 +1631,9 @@ where
         .tool(CountingAdd(max_turn_calls.clone()))
         .build();
     let max_turn = match max_turn_agent
-        .prompt("Use add once to compute x=20 plus y=22, then report the result.")
+        .runner("Use add once to compute x=20 plus y=22, then report the result.")
         .max_turns(1)
+        .run()
         .await
     {
         Err(error) => error,
@@ -1686,10 +1686,10 @@ where
         .default_max_turns(4)
         .build();
     let result = agent
-        .prompt(
+        .runner(
             "Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.",
         )
-        .extended_details()
+        .run()
         .await?;
     let response = result.output.clone();
     let tool_calls = calls.load(Ordering::SeqCst);
@@ -1725,10 +1725,10 @@ where
         .default_max_turns(6)
         .build();
     let result = agent
-        .prompt(
+        .runner(
             "Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.",
         )
-        .extended_details()
+        .run()
         .await?;
     let response = result.output.clone();
     let add = add_calls.load(Ordering::SeqCst);
@@ -1862,8 +1862,8 @@ where
         .default_max_turns(5)
         .build();
     let result = agent
-        .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
-        .extended_details()
+        .runner("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
+        .run()
         .await?;
     let response = result.output.clone();
     let parsed: ArithmeticResult = serde_json::from_str(&response)?;

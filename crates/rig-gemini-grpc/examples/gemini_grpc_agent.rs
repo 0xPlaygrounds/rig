@@ -1,4 +1,4 @@
-use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
+use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 
 #[tracing::instrument(ret)]
 #[tokio::main]

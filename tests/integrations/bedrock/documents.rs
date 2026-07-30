@@ -1,7 +1,6 @@
 //! AWS Bedrock document prompt smoke tests inspired by Anthropic document tests.
 
 use rig::OneOrMany;
-use rig::completion::Prompt;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 
 use super::{

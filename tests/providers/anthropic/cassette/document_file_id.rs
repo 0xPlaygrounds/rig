@@ -2,7 +2,6 @@
 
 use futures::FutureExt;
 use rig::OneOrMany;
-use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
@@ -12,7 +11,6 @@ use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,
     DocumentSource as AnthropicDocumentSource, Message as AnthropicMessage, Role as AnthropicRole,
 };
-use rig::streaming::StreamingPrompt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::future::Future;

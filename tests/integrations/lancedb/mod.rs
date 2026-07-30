@@ -13,7 +13,6 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
     client::{AgentClientExt, EmbeddingsClient},
-    completion::Prompt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     providers::openai,
     vector_store::request::VectorSearchRequest,

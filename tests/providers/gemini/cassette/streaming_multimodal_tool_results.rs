@@ -11,7 +11,6 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::streaming::StreamingPrompt;
 use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 

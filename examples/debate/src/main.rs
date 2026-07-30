@@ -2,7 +2,6 @@ use anyhow::Result;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::Prompt,
     message::Message,
     providers::{cohere, openai},
 };
@@ -45,9 +44,9 @@ impl Debater {
             };
             let resp_a = self
                 .gpt_4
-                .prompt(prompt_a.as_str())
-                .history(&history_a)
-                .extended_details()
+                .runner(prompt_a.as_str())
+                .history(history_a.clone())
+                .run()
                 .await?;
             // Extract updated history for next iteration
             history_a = resp_a
@@ -58,9 +57,9 @@ impl Debater {
             println!("================================================================");
             let resp_b = self
                 .coral
-                .prompt(resp_a.output.as_str())
-                .history(&history_b)
-                .extended_details()
+                .runner(resp_a.output.as_str())
+                .history(history_b.clone())
+                .run()
                 .await?;
             // Extract updated history for next iteration
             history_b = resp_b

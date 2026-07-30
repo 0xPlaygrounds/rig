@@ -14,10 +14,8 @@ pub use rig_core::client::image_generation::ImageGenerationClient;
 pub use crate::agent::{Agent, MultiTurnStreamItem, StreamingResult};
 pub use crate::client::{AgentClientExt, ToProviderConfig};
 pub use crate::completion::{
-    Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
-    TypedPrompt,
+    CompletionError, CompletionModel, Message, PromptError, StructuredOutputError,
 };
-pub use crate::streaming::{StreamingChat, StreamingPrompt};
 pub use crate::tool::{PortableDynamicTool, PortableTool};
 pub use rig_core::client::completion::CompletionClient;
 

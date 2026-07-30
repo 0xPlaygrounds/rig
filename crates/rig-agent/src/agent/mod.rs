@@ -60,7 +60,7 @@
 //! ```no_run
 //! use rig_agent::{
 //!     agent::{CompletionCallAction, RequestPatch},
-//!     completion::{Document, Prompt},
+//!     completion::Document,
 //!     hooks::{HookDecision, HookEntry, HookEvent},
 //!     prelude::*,
 //!     provider::{EmbedderConfig, Runtime, embed},
@@ -199,11 +199,9 @@ pub use hook::{
 };
 pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use prompt_request::streaming::{
-    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
+    MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult,
 };
-pub use prompt_request::{
-    CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
-};
+pub use prompt_request::{CompletionCall, PromptResponse};
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;

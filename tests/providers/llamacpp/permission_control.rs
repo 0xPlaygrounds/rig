@@ -1,9 +1,7 @@
 use anyhow::Result;
 use rig::agent::{ToolCallAction, ToolResultAction};
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -162,13 +160,15 @@ async fn permission_control_prompt_example() -> Result<()> {
     };
 
     let response = agent
-        .prompt(
+        .runner(
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
         .add_hook(hook.entry())
-        .await?;
+        .run()
+        .await?
+        .output;
 
     assert_nonempty_response(&response);
     let last = last_result.lock().expect("lock last_result").clone();

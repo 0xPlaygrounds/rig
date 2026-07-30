@@ -1,6 +1,5 @@
 //! Llamafile context smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};

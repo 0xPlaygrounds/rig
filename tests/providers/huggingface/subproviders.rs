@@ -1,6 +1,5 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::huggingface::{self, SubProvider};
 

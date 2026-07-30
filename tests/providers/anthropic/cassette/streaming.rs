@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{

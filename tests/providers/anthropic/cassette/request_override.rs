@@ -13,12 +13,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{CompletionCallAction, RequestPatch};
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -201,9 +199,11 @@ async fn request_overridden_by_hook_blocking() {
                 .build();
 
             let response = agent
-                .prompt(PROMPT)
+                .runner(PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking prompt should succeed");
 
             assert!(!response.is_empty(), "agent should produce a final answer");

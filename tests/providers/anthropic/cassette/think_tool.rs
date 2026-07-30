@@ -1,6 +1,5 @@
 //! Migrated from `examples/anthropic_think_tool.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::builtin::ThinkTool;
@@ -22,12 +21,14 @@ async fn think_tool_menu_planning() {
             .build();
 
         let response = agent
-            .prompt(
+            .runner(
                 "I need to plan a dinner party for 8 people, including 2 vegetarians and \
              1 person with a gluten allergy. Create appetizers, mains, and desserts.",
             )
             .max_turns(10)
+            .run()
             .await
+            .map(|response| response.output)
             .expect("think tool prompt should succeed");
 
         assert_nonempty_response(&response);

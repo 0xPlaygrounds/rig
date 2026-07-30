@@ -1,13 +1,11 @@
 //! Cassette-backed Doubleword streaming tool coverage.
 
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
-
 use super::super::{TOOL_MODEL, support::with_doubleword_cassette};
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::prelude::*;
 
 #[tokio::test]
 async fn streaming_tools_smoke() {

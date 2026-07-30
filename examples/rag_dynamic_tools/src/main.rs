@@ -15,7 +15,6 @@ use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    completion::Prompt,
     embeddings::{EmbeddingsBuilder, ToolSchema},
     providers::openai::Client,
     tool::{PortableToolEmbedding, Tool},

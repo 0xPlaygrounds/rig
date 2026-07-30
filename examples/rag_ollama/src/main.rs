@@ -5,7 +5,7 @@ use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::ollama;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
+    Embed, embeddings::EmbeddingsBuilder, providers::ollama::Client,
     vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;

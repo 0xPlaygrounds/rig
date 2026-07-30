@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,

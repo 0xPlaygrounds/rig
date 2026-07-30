@@ -1,12 +1,11 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use serde_json::json;

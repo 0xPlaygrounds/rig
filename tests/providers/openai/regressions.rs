@@ -65,12 +65,16 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         rig::http_runtime::HttpRuntime::recording(http_client.clone()),
     ));
 
-    let extracted = rig::extractor::ExtractorBuilder::<KeywordPayload>::new(provider)
-        .runtime(rt)
-        .build()
-        .extract("What fruit is mentioned in the database?")
-        .await
-        .expect("nullable strict should not prevent extraction");
+    let extracted = rig::extract::extract_with_options::<KeywordPayload>(
+        rig::agent::AgentConfig::new(),
+        provider,
+        rt,
+        "What fruit is mentioned in the database?",
+        rig::extract::ExtractOptions::classic_extractor(),
+    )
+    .await
+    .expect("nullable strict should not prevent extraction")
+    .value;
 
     assert_eq!(
         extracted,

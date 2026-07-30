@@ -4,7 +4,6 @@ use rig::OneOrMany;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,

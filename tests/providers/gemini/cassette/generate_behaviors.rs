@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, FinishReason, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;

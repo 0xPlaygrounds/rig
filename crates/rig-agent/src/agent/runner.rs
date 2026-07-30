@@ -5,11 +5,12 @@
 //! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
 //! the side-effecting concerns — building and sending completion requests,
 //! executing tools, loading/saving conversation memory — and fires an
-//! a hook ([`HookEntry`](crate::hooks::HookEntry)) at every observable point. Both the blocking
-//! [`PromptRequest`](crate::agent::prompt_request::PromptRequest) and the
+//! a hook ([`HookEntry`](crate::hooks::HookEntry)) at every observable point.
+//! [`Agent`]'s inherent `prompt`/`chat`/`run`/`prompt_typed` methods and the
 //! [`StreamingPromptRequest`](crate::agent::prompt_request::streaming::StreamingPromptRequest)
-//! APIs are thin wrappers over an `AgentRunner`, and you can build one directly
-//! to drive an agent with custom, composable hooks:
+//! API are thin wrappers over an `AgentRunner`; it is also the fluent
+//! per-request surface, so build one directly to drive an agent with custom,
+//! composable hooks:
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
@@ -25,7 +26,7 @@
 //! ```
 
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicU64, Ordering},
 };
 
@@ -53,7 +54,7 @@ use super::{
 use rig_core::message::{ToolCall, ToolChoice, UserContent};
 
 use crate::{
-    completion::{CompletionError, Document, Message, PromptError, Usage},
+    completion::{CompletionError, Document, Message, PromptError, StructuredOutputError},
     executor::ToolExecutor,
     hooks::{HookEntry, Hooks},
     json_utils,
@@ -61,13 +62,6 @@ use crate::{
 };
 
 use super::UNKNOWN_AGENT_NAME;
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum UnhandledInvalidToolCallPolicy {
-    #[default]
-    Fail,
-    IgnoreForExtractor,
-}
 
 /// Build the per-turn `chat` span shared by both turn sources.
 ///
@@ -217,10 +211,8 @@ pub struct AgentRunner {
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
-    pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
     pub(crate) hooks: Hooks,
-    pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
 impl AgentRunner {
@@ -249,10 +241,8 @@ impl AgentRunner {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
-            unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
             hooks: agent.hooks.clone(),
-            error_usage: None,
         }
     }
 
@@ -380,8 +370,18 @@ impl AgentRunner {
         self
     }
 
-    /// Configure the synthetic tool used by an internal Tool-output flow.
-    pub(crate) fn output_tool(
+    /// Pin the synthetic output tool used by [`OutputMode::Tool`] structured
+    /// output: its advertised `name` and `description`, and whether Tool mode
+    /// augments the preamble with calling instructions.
+    ///
+    /// Without this the run picks a collision-safe default (`final_result`) and
+    /// augments the preamble. Pinning it is how a bespoke extraction protocol
+    /// (for example an output tool literally named `submit`, with its own
+    /// preamble already describing the call) is expressed on the classic path;
+    /// the session path has the same knobs on
+    /// [`AgentConfig`](crate::agent::AgentConfig) and
+    /// [`ExtractOptions`](crate::extract::ExtractOptions).
+    pub fn output_tool(
         mut self,
         name: impl Into<String>,
         description: impl Into<String>,
@@ -390,18 +390,6 @@ impl AgentRunner {
         self.output_tool_name = Some(name.into());
         self.output_tool_description = Some(description.into());
         self.augment_output_preamble = augment_preamble;
-        self
-    }
-
-    /// Ignore invalid tool calls when every registered hook declines to act.
-    ///
-    /// This is an internal compatibility policy for extractors, whose legacy
-    /// transport treated every non-`submit` call as irrelevant response
-    /// content. Hooks still receive the invalid-call event first and retain
-    /// full control over recovery or termination.
-    pub(crate) fn ignore_unhandled_invalid_tool_calls(mut self) -> Self {
-        self.unhandled_invalid_tool_call_policy =
-            UnhandledInvalidToolCallPolicy::IgnoreForExtractor;
         self
     }
 
@@ -917,12 +905,6 @@ impl UnaryTurnSource {
                             .await;
                         let resolution = match action {
                             Some(action) => run.resolve_invalid_tool_call(action),
-                            None
-                                if runner.unhandled_invalid_tool_call_policy
-                                    == UnhandledInvalidToolCallPolicy::IgnoreForExtractor =>
-                            {
-                                run.ignore_invalid_tool_call()
-                            }
                             None => run.resolve_invalid_tool_call(InvalidToolCallAction::fail()),
                         };
                         outcome = match resolution {
@@ -1043,19 +1025,6 @@ impl UnaryTurnSource {
 }
 
 impl AgentRunner {
-    pub(crate) async fn run_with_error_usage(
-        mut self,
-    ) -> (Result<PromptResponse, PromptError>, Usage) {
-        let usage = Arc::new(Mutex::new(Usage::new()));
-        self.error_usage = Some(usage.clone());
-        let result = self.run().await;
-        let observed = result.as_ref().map_or_else(
-            |_| *usage.lock().unwrap_or_else(|error| error.into_inner()),
-            |response| response.usage,
-        );
-        (result, observed)
-    }
-
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
@@ -1104,6 +1073,35 @@ impl AgentRunner {
                 "agent run ended without producing a final response".to_string(),
             ))
         })
+    }
+
+    /// Drive the agent loop and deserialize the accepted output as `T`.
+    ///
+    /// `T`'s JSON schema is generated automatically and pinned as the
+    /// provider's **native** structured-output constraint (no synthetic output
+    /// tool), so the typed surface behaves identically across providers
+    /// (#1928); the final text is parsed with a balanced-JSON fallback so prose
+    /// or markdown fences around the JSON still parse. This is the fluent
+    /// successor of the deleted `TypedPromptRequest`
+    /// (`agent.prompt_typed::<T>(p).max_turns(3).await` becomes
+    /// `agent.runner(p).max_turns(3).run_typed::<T>().await`); for
+    /// tool-composing structured output use the untyped
+    /// `output_schema`/`output_mode` surface, and for retry-on-parse-failure
+    /// extraction use [`crate::extract`].
+    pub async fn run_typed<T>(mut self) -> Result<T, StructuredOutputError>
+    where
+        T: schemars::JsonSchema + serde::de::DeserializeOwned,
+    {
+        self.output_schema = Some(schemars::schema_for!(T));
+        self.output_mode = OutputMode::Native;
+
+        let response = self.run().await.map_err(Box::new)?;
+        if response.output.is_empty() {
+            return Err(StructuredOutputError::EmptyResponse);
+        }
+        Ok(crate::extract::deserialize_structured_output(
+            &response.output,
+        )?)
     }
 }
 
@@ -1802,8 +1800,8 @@ mod migrated_tests {
     use crate::agent::hook::RequestPatch;
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
-    use crate::completion::{CompletionError, Message, Prompt, PromptError, Usage};
-    use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+    use crate::completion::{CompletionError, Message, PromptError, Usage};
+    use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockOperationArgs, MockSubtractTool, MockToolError,
     };
@@ -2505,8 +2503,9 @@ mod migrated_tests {
             .tool(MockAddTool)
             .build();
         let blocking_err = blocking_agent
-            .prompt("add 2 and 3")
+            .runner("add 2 and 3")
             .max_turns(1)
+            .run()
             .await
             .expect_err("blocking prompt should reject request two");
         assert!(matches!(

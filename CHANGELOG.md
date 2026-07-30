@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- [**breaking**] *(agent)* prompting is inherent methods: the `Prompt`/`Chat`/`TypedPrompt`/`StreamingPrompt`/`StreamingChat` traits, the `PromptRequest`/`TypedPromptRequest` typestate, `stream_to_stdout`, and the integrations' trait sugar are removed — `Agent::{prompt, run, chat, prompt_typed, stream_prompt, stream_chat}` are inherent and `agent.runner(prompt)` is the fluent per-request surface (`AgentRunner::run_typed::<T>()` replaces typed requests)
+- [**breaking**] *(agent)* extraction is a free function: `Extractor`/`ExtractorBuilder`/`client.extractor::<T>()`/`ExtractionResponse` removed in favour of `rig::extract::{extract_with_options, ExtractOptions, ExtractionOutcome}`; `ExtractOptions::classic_extractor()` reproduces the old builder's request shape byte-for-byte
+
+### Other
+
 - [**breaking**] *(agent)* hooks are concrete records: `AgentHook`/`HookStack`/`HookContext`/`Scratchpad`/`StepEventKind` removed in favour of `rig::hooks::{Hooks, HookEntry, HookEvent, HookDecision}` — `.add_hook()` now takes a `HookEntry`; the decision vocabulary at `rig::agent::hook` is unchanged; delta observation requires `.observing_deltas()`; run identity and the run-scoped scratchpad are host-owned closure state; tool-call argument rewrites chain as `serde_json::Value`
 - [**breaking**] *(core, agent, memory)* memory is host-owned: `ConversationMemory`, `MessageFilter`, `DemotionHook`, and `Compactor` removed, along with `AgentBuilder::memory`/`conversation` and `AgentRunner::without_memory` — hosts call `load` before a run and `append` after it; `InMemoryConversationMemory` is a concrete store with synchronous methods; `rig-memory` ships enum policies over one concrete `PolicyMemory` whose `append` returns an owned `AppendOutcome`
 

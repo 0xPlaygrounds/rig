@@ -1,6 +1,5 @@
 //! Migrated from `examples/openai_agent_completions_api.rs` against a local llama.cpp server.
 
-use rig::completion::Prompt;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
 

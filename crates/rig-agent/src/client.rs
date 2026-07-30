@@ -1,12 +1,8 @@
 //! Classic runtime construction extensions for portable completion clients.
 
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
+use crate::agent::AgentBuilder;
 use crate::provider::ProviderConfig;
-use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
 use rig_core::providers::descriptor::ApiKeyLocation;
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// Surrender this client's connection details as plain provider configuration.
 ///
@@ -341,27 +337,38 @@ impl<H> ToProviderConfig for rig_core::providers::huggingface::Client<H> {
 /// surrender its connection details as plain configuration.
 ///
 /// Blanket-implemented for every [`ToProviderConfig`] type (each bundled
-/// in-core provider `Client`), so `openai.agent(model)` and
-/// `openai.extractor::<T>(model)` keep working: they capture the client's base
-/// URL and default headers into a [`ProviderConfig`] and hand it to the
-/// builder. `use rig::prelude::*;` brings this trait into scope.
+/// in-core provider `Client`), so `openai.agent(model)` keeps working: it
+/// captures the client's base URL and default headers into a
+/// [`ProviderConfig`] and hands it to the builder. `use rig::prelude::*;`
+/// brings this trait into scope.
+///
+/// The former `extractor::<T>(model)` sugar is **gone** along with
+/// `Extractor<T>`/`ExtractorBuilder<T>`. Structured extraction is now the
+/// free-function surface in [`crate::extract`], which takes the same plain
+/// configuration directly:
+///
+/// ```rust,no_run
+/// # use rig_agent::{agent::AgentConfig, client::{AgentClientExt, ToProviderConfig},
+/// #     extract::{ExtractOptions, extract_with_options}, provider::Runtime};
+/// # use std::sync::Arc;
+/// # #[derive(serde::Deserialize, schemars::JsonSchema)] struct Person { name: String }
+/// # async fn run(client: rig_core::providers::openai::Client) -> Result<(), Box<dyn std::error::Error>> {
+/// let person: Person = extract_with_options(
+///     AgentConfig::new(),
+///     client.provider_config("gpt-4o"),
+///     Arc::new(Runtime::new()),
+///     "John Doe is a 30 year old doctor.",
+///     ExtractOptions::classic_extractor(),
+/// )
+/// .await?
+/// .value;
+/// # Ok(())
+/// # }
+/// ```
 pub trait AgentClientExt: ToProviderConfig {
     /// Construct a classic agent builder for `model`.
     fn agent(&self, model: impl Into<String>) -> AgentBuilder {
         AgentBuilder::new(self.provider_config(&model.into()))
-    }
-
-    /// Construct a classic typed extractor builder for `model`.
-    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
-    where
-        T: JsonSchema
-            + for<'de> Deserialize<'de>
-            + Serialize
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
-    {
-        ExtractorBuilder::new(self.provider_config(&model.into()))
     }
 }
 

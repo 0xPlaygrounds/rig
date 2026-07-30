@@ -1,14 +1,33 @@
 //! xAI live coverage for batch multi-extract pipelines.
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
+use rig::provider::Runtime;
 use rig::providers::xai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::support::with_xai_cassette_result;
 use crate::cassettes::CassetteSpec;
+
+/// Reproduce the deleted `ExtractorBuilder::preamble` byte-for-byte: the
+/// classic extraction preamble with the additional instructions appended
+/// through the old `append_preamble` separator.
+fn classic_extractor_with_extra_preamble(extra: &str) -> ExtractOptions {
+    let options = ExtractOptions::classic_extractor();
+    let base = options
+        .preamble
+        .clone()
+        .expect("classic extractor pins a preamble");
+    options.with_preamble(format!(
+        "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
+    ))
+}
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -76,24 +95,19 @@ async fn batch_multi_extract_chain() -> Result<()> {
     with_xai_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
-            let names_extractor = client
-                .extractor::<Names>(xai::GROK_3_MINI)
-                .preamble("Extract names from the given text.")
-                .retries(2)
-                .build();
-            let topics_extractor = client
-                .extractor::<Topics>(xai::GROK_3_MINI)
-                .preamble("Extract topics from the given text.")
-                .retries(2)
-                .build();
-            let sentiment_extractor = client
-                .extractor::<Sentiment>(xai::GROK_3_MINI)
-                .preamble(
-                    "Extract sentiment and confidence from the given text. \
-                     Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
-                )
-                .retries(2)
-                .build();
+            let provider = client.provider_config(xai::GROK_3_MINI);
+            let rt = Arc::new(Runtime::new());
+            let names_options =
+                classic_extractor_with_extra_preamble("Extract names from the given text.")
+                    .with_retries(2);
+            let topics_options =
+                classic_extractor_with_extra_preamble("Extract topics from the given text.")
+                    .with_retries(2);
+            let sentiment_options = classic_extractor_with_extra_preamble(
+                "Extract sentiment and confidence from the given text. \
+                 Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
+            )
+            .with_retries(2);
 
             let inputs = vec![
                 "Ada Lovelace discussed analytical engines and early programming with Charles Babbage.",
@@ -102,20 +116,40 @@ async fn batch_multi_extract_chain() -> Result<()> {
             ];
             let responses: Vec<CombinedExtract> = futures::stream::iter(inputs)
                 .map(|text| {
-                    let names_extractor = &names_extractor;
-                    let topics_extractor = &topics_extractor;
-                    let sentiment_extractor = &sentiment_extractor;
+                    let provider = provider.clone();
+                    let rt = Arc::clone(&rt);
+                    let names_options = names_options.clone();
+                    let topics_options = topics_options.clone();
+                    let sentiment_options = sentiment_options.clone();
                     async move {
                         let (names, topics, sentiment) = futures::try_join!(
-                            names_extractor.extract(text),
-                            topics_extractor.extract(text),
-                            sentiment_extractor.extract(text),
+                            extract_with_options::<Names>(
+                                AgentConfig::new(),
+                                provider.clone(),
+                                Arc::clone(&rt),
+                                text,
+                                names_options,
+                            ),
+                            extract_with_options::<Topics>(
+                                AgentConfig::new(),
+                                provider.clone(),
+                                Arc::clone(&rt),
+                                text,
+                                topics_options,
+                            ),
+                            extract_with_options::<Sentiment>(
+                                AgentConfig::new(),
+                                provider.clone(),
+                                Arc::clone(&rt),
+                                text,
+                                sentiment_options,
+                            ),
                         )?;
                         anyhow::Ok(CombinedExtract {
-                            names: names.names,
-                            topics: topics.topics,
-                            sentiment: sentiment.sentiment,
-                            confidence: sentiment.confidence,
+                            names: names.value.names,
+                            topics: topics.value.topics,
+                            sentiment: sentiment.value.sentiment,
+                            confidence: sentiment.value.confidence,
                         })
                     }
                 })

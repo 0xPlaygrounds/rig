@@ -1,8 +1,7 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI Responses provider.
 
-use rig::completion::{CompletionModel, CompletionRequest, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 

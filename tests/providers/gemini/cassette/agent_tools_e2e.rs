@@ -4,10 +4,8 @@
 //! pipeline ahead of the rmcp migration.
 
 use rig::client::ToProviderConfig;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig_agent::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
 
 use super::super::agent_run_support::is_tool_result_user_message;
@@ -37,9 +35,9 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 .build();
 
             let response = agent
-                .prompt(CHAINED_PROMPT)
+                .runner(CHAINED_PROMPT)
                 .max_turns(5)
-                .extended_details()
+                .run()
                 .await
                 .expect("multi-turn tool prompt should succeed");
 

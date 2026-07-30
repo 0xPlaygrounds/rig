@@ -1,6 +1,5 @@
 //! Migrated from `examples/ollama_structured_output.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::ollama;
 use schemars::JsonSchema;

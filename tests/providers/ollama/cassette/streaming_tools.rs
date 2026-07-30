@@ -3,14 +3,12 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
-
 use super::super::support::with_ollama_cassette;
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::prelude::*;
 
 const MODEL: &str = "qwen3:4b";
 

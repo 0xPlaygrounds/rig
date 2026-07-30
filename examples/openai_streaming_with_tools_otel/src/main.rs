@@ -1,8 +1,10 @@
 use anyhow::Result;
-use rig::agent::stream_to_stdout;
+use futures::StreamExt;
+use rig::agent::{MultiTurnStreamItem, PromptResponse, StreamingResult, Text};
 use rig::prelude::*;
+use rig::streaming::StreamedAssistantContent;
 
-use rig::{providers, streaming::StreamingPrompt, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -143,7 +145,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
 
-    let res = stream_to_stdout(&mut stream).await?;
+    let res = drain_to_stdout(&mut stream).await?;
 
     println!("Token usage response: {usage:?}", usage = res.usage());
     println!("Final text response: {message:?}", message = res.output());
@@ -151,4 +153,40 @@ async fn main() -> Result<(), anyhow::Error> {
     let _ = provider.shutdown();
 
     Ok(())
+}
+
+/// Drain a streamed run to stdout, returning the final [`PromptResponse`].
+///
+/// The old `stream_to_stdout` example helper is gone, so each example inlines
+/// its own drain loop: print assistant text and reasoning deltas as they
+/// arrive, keep the terminal `FinalResponse` for usage/output, and mark a
+/// model-turn retry (text already written to stdout cannot be retracted).
+async fn drain_to_stdout(stream: &mut StreamingResult) -> anyhow::Result<PromptResponse> {
+    let mut final_response = PromptResponse::empty();
+    print!("Response: ");
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                Text { text, .. },
+            ))) => {
+                print!("{text}");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
+                reasoning,
+            ))) => {
+                print!("{}", reasoning.display_text());
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => final_response = response,
+            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
+                print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Err(err) => eprintln!("Error: {err}"),
+            _ => {}
+        }
+    }
+    println!();
+    Ok(final_response)
 }

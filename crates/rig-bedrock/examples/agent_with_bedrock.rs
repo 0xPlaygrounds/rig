@@ -1,4 +1,4 @@
-use rig_agent::{agent::AgentBuilder, completion::Prompt, provider::ProviderConfig};
+use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_core::loaders::FileLoader;
 use tracing::info;

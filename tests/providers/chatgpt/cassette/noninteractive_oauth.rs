@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_chatgpt_noninteractive_oauth_cassette;
 use crate::support::{

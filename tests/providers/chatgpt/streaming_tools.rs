@@ -1,7 +1,6 @@
 //! ChatGPT streaming tools coverage.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{

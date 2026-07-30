@@ -1,11 +1,9 @@
 //! Copilot permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{ToolCallAction, ToolResultAction, stream_to_stdout};
-use rig::completion::Prompt;
+use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -167,13 +165,15 @@ async fn permission_control_prompt_example() -> Result<()> {
             };
 
             let _response = agent
-                .prompt(
+                .runner(
                     "Use the available tools to read test.txt now. \
                  Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
                 .add_hook(hook.entry())
-                .await?;
+                .run()
+                .await?
+                .output;
 
             let last = last_result.lock().expect("lock last_result").clone();
             anyhow::ensure!(last.as_deref() == Some("hello world"));
@@ -233,4 +233,43 @@ async fn permission_control_streaming_example() -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Local stand-in for the deleted `rig::agent::stream_to_stdout` helper:
+/// drains a streamed agent run to stdout and returns the final response.
+async fn stream_to_stdout(
+    stream: &mut rig::agent::StreamingResult,
+) -> Result<rig::agent::PromptResponse, std::io::Error> {
+    use futures::StreamExt;
+    use rig::agent::MultiTurnStreamItem;
+    use rig::message::Text;
+    use rig::streaming::StreamedAssistantContent;
+
+    let mut final_res = rig::agent::PromptResponse::empty();
+    print!("Response: ");
+    while let Some(content) = stream.next().await {
+        match content {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                Text { text, .. },
+            ))) => {
+                print!("{text}");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
+                reasoning,
+            ))) => {
+                print!("{}", reasoning.display_text());
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(res)) => final_res = res,
+            Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
+                print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Err(err) => eprintln!("Error: {err}"),
+            _ => {}
+        }
+    }
+
+    Ok(final_res)
 }

@@ -1,13 +1,11 @@
 //! Together streaming tools smoke test.
 
-use rig::prelude::*;
-use rig::providers::together;
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::together;
 
 #[tokio::test]
 #[ignore = "requires TOGETHER_API_KEY"]

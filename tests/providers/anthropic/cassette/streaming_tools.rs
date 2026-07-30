@@ -5,7 +5,7 @@ use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;

@@ -1,7 +1,17 @@
-use rig::agent::{CompletionCallAction, RequestPatch};
+//! RAG-backed structured extraction.
+//!
+//! Extraction is a free function now ([`extract_with_options`]) and carries no
+//! hook stack, so the retrieval that used to live in a `BeforeModelCall` hook
+//! runs up front and lands on [`AgentConfig::static_context`]. A one-call
+//! extraction retrieves exactly once either way, so the request the model sees
+//! is the same.
+use std::sync::Arc;
+
+use rig::agent::AgentConfig;
 use rig::completion::Document;
-use rig::hooks::{HookDecision, HookEntry, HookEvent};
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
+use rig::provider::Runtime;
 use rig::providers::gemini;
 use rig::providers::gemini::client::Client;
 use rig::{
@@ -47,49 +57,28 @@ struct QuestionnaireResponses {
 /// closure that receives an owned `HookEvent` and returns a `HookDecision`;
 /// the embedding model, the store, and the sample count are captured behind an
 /// `Arc` so the returned future stays `'static + Send + Sync`.
-fn questionnaire_rag_hook(
-    embedding_model: gemini::embedding::EmbeddingModel,
-    store: InMemoryVectorStore,
+/// Retrieve the `samples` most relevant questionnaire entries for `query`.
+async fn retrieve_questions(
+    embedding_model: &gemini::embedding::EmbeddingModel,
+    store: &InMemoryVectorStore,
     samples: u64,
-) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_model, store, samples));
-    HookEntry::new("questionnaire-rag", move |event| {
-        let state = state.clone();
-        Box::pin(async move {
-            let HookEvent::BeforeModelCall { prompt, .. } = event else {
-                return HookDecision::Continue;
-            };
-            let (embedding_model, store, samples) = state.as_ref();
-            let Some(query) = prompt.rag_text() else {
-                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
-            };
-
-            let embedded = match embedding_model.embed_text(&query).await {
-                Ok(embedding) => embedding,
-                Err(error) => {
-                    return HookDecision::CompletionCall(CompletionCallAction::stop(
-                        error.to_string(),
-                    ));
-                }
-            };
-            let request = VectorSearchRequest::builder()
-                .query(embedded)
-                .samples(*samples)
-                .build();
-            match store.top_n(request).await {
-                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
-                        id: hit.id,
-                        text: hit.payload.to_string(),
-                        additional_props: Default::default(),
-                    })),
-                )),
-                Err(error) => {
-                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
-                }
-            }
+    query: &str,
+) -> Result<Vec<Document>, anyhow::Error> {
+    let embedded = embedding_model.embed_text(query).await?;
+    let request = VectorSearchRequest::builder()
+        .query(embedded)
+        .samples(samples)
+        .build();
+    Ok(store
+        .top_n(request)
+        .await?
+        .into_iter()
+        .map(|hit| Document {
+            id: hit.id,
+            text: hit.payload.to_string(),
+            additional_props: Default::default(),
         })
-    })
+        .collect())
 }
 
 const APPLICANT_INFO: &str = r#"
@@ -150,18 +139,33 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    let rag_extractor = gemini_client.extractor::<QuestionnaireResponses>("gemini-2.5-flash")
-        .preamble("
+    // Samples should match the number of questions.
+    let context = retrieve_questions(&embedding_model, &vector_store, 3, APPLICANT_INFO).await?;
+
+    const ROLE: &str = "
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
-            ")
-        // Samples should match the number of questions
-        .add_hook(questionnaire_rag_hook(embedding_model, vector_store, 3))
-        .build();
+            ";
+    let classic = ExtractOptions::classic_extractor();
+    let extraction_preamble = classic.preamble.clone().unwrap_or_default();
+    let options = classic.with_preamble(format!(
+        "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{ROLE}"
+    ));
 
-    // Prompt the agent and print the response
-    let response = rag_extractor.extract(APPLICANT_INFO).await?;
+    let mut config = AgentConfig::new();
+    config.static_context = context;
+
+    // Prompt the model and print the response
+    let response = extract_with_options::<QuestionnaireResponses>(
+        config,
+        gemini_client.provider_config("gemini-2.5-flash"),
+        Arc::new(Runtime::new()),
+        APPLICANT_INFO,
+        options,
+    )
+    .await?
+    .value;
 
     println!("{response:#?}");
 

@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::providers::groq;
 use rig::tool::Tool;

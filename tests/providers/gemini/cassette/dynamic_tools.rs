@@ -9,7 +9,7 @@
 //! contract this migration satisfies.
 
 use rig::agent::{CompletionCallAction, RequestPatch};
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::embeddings::{EmbeddingsBuilder, ToolSchema};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;

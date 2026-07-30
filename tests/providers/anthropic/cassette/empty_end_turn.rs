@@ -9,7 +9,7 @@ use std::sync::{
 };
 
 use rig::{
-    completion::{CompletionModel, CompletionRequest, Prompt, ToolDefinition},
+    completion::{CompletionModel, CompletionRequest, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
     prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -216,9 +216,9 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 .build();
 
             let response = agent
-                .prompt(TERMINAL_NOTIFY_PROMPT)
+                .runner(TERMINAL_NOTIFY_PROMPT)
                 .max_turns(5)
-                .extended_details()
+                .run()
                 .await
                 .expect("agent prompt should not fail on an empty terminal Anthropic turn");
 
@@ -267,9 +267,8 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         .build();
 
     let response = agent
-        .prompt(TERMINAL_NOTIFY_PROMPT)
-        .max_turns(5)
-        .extended_details()
+        .runner(TERMINAL_NOTIFY_PROMPT)
+        .max_turns(5).run()
         .await
         .expect("agent prompt should preserve prior-turn text when Anthropic ends empty");
 

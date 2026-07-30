@@ -5,7 +5,6 @@
 use anyhow::Result;
 use rig::agent::AgentBuilder;
 use rig::client::ToProviderConfig;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::cohere::{self, COMMAND_R};
 

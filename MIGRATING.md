@@ -344,6 +344,51 @@ agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
 clients bridge only credentials that are already cached (non-interactively);
 interactive OAuth flows still work through the classic clients themselves.
 
+### Prompting is inherent methods; extraction is a free function (R4)
+
+The `Prompt`, `Chat`, `TypedPrompt`, `StreamingPrompt`, and `StreamingChat`
+traits are gone, along with the `PromptRequest`/`TypedPromptRequest`
+typestate, `Extractor`/`ExtractorBuilder`, `stream_to_stdout`, and
+`client.extractor::<T>()`. `Agent` carries the same operations as inherent
+methods, so most call sites only lose an import:
+
+```rust
+// before
+use rig::completion::{Chat, Prompt};
+let answer = agent.prompt("hi").await?;
+// after — delete the import; the call is unchanged
+let answer = agent.prompt("hi").await?;
+```
+
+| Before | After |
+| --- | --- |
+| `agent.prompt(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run().await?.output` |
+| `agent.prompt(p).extended_details().await?` | `agent.run(p).await?` (or `agent.runner(p)….run().await?`) |
+| `agent.prompt_typed::<T>(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run_typed::<T>().await?` |
+| `stream_to_stdout(&mut stream).await?` | drain the stream yourself (it was example sugar) |
+| `ChatBotBuilder::new().agent(a)` | `ChatBotBuilder::new(a)` |
+
+`agent.runner(prompt)` is now the fluent per-request surface (it already
+carried every setter `PromptRequest` had).
+
+**Extraction** moves to a free function with an options record:
+
+```rust
+use rig::extract::{ExtractOptions, extract_with_options};
+let outcome = extract_with_options::<Person>(
+    AgentConfig::new(), client.provider_config(MODEL), Arc::new(Runtime::new()),
+    text, ExtractOptions::classic_extractor().with_retries(1),
+).await?;
+let person = outcome.value;          // was `.data`
+```
+
+`ExtractOptions::classic_extractor()` reproduces the old builder exactly
+(output tool `submit`, the extraction preamble, `ToolChoice::Required`,
+prompt-repeating retries), so recorded exchanges keep replaying;
+`ExtractOptions::new()` is the leaner default. `ExtractionResponse<T>` is
+now `ExtractionOutcome<T>`. Extraction has no hook stack — port hook-driven
+extractors to `agent.runner(..).output_tool(..)`.
+
 ### Hooks are records; memory is host-owned (single-architecture R3)
 
 The `AgentHook` trait, `HookStack`, `HookContext`, `Scratchpad`, and

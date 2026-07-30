@@ -16,7 +16,7 @@ use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{

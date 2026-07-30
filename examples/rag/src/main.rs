@@ -4,8 +4,8 @@ use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai::client::Client;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai,
-    vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorSearchRequest,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
 use std::vec;

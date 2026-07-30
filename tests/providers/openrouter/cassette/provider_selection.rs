@@ -1,6 +1,5 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openrouter::{MaxPrice, ProviderPreferences, ProviderSortStrategy};
 

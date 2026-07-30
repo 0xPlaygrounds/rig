@@ -1,6 +1,7 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
-use rig::completion::{CompletionModel, CompletionRequest, Prompt};
+use rig::completion::{CompletionModel, CompletionRequest};
+
 use rig::prelude::*;
 use serde_json::Value;
 

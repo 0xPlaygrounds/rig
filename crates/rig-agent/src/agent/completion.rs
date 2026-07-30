@@ -1,15 +1,13 @@
 use super::hook::RequestPatch;
-use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
 use crate::hooks::Hooks;
 use crate::{
-    agent::prompt_request::streaming::StreamingPromptRequest,
+    agent::prompt_request::{PromptResponse, streaming::StreamingPromptRequest},
     completion::{
-        Chat, CompletionError, Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
+        CompletionError, Document, Message, PromptError, StructuredOutputError, ToolDefinition,
     },
     executor::ToolExecutor,
-    streaming::{StreamingChat, StreamingPrompt},
 };
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
@@ -314,8 +312,8 @@ pub(crate) async fn build_prepared_completion_request(
 /// - **load-before** — `let history = memory.load(id)?;` then
 ///   `.history(history)`. A load failure is fatal: the run never starts.
 /// - **append-after** — take `PromptResponse::messages` from an
-///   [`extended_details`](crate::agent::prompt_request::PromptRequest::extended_details)
-///   run and `memory.append(id, messages)` once per run (a multi-step tool
+///   [`Agent::run`] (or [`AgentRunner::run`]) response and
+///   `memory.append(id, messages)` once per run (a multi-step tool
 ///   round-trip commits its transcript exactly once). Log and proceed on
 ///   failure so a store hiccup never drops a reply, and skip the append
 ///   entirely when the run errored or a hook stopped it.
@@ -389,62 +387,58 @@ impl Agent {
     }
 
     /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
-    /// agent's default hook stack. Attach more hooks with
-    /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
+    /// agent's default hook stack.
+    ///
+    /// This is **the** fluent per-request surface: it carries every per-request
+    /// knob (history, preamble, documents, temperature, token limits,
+    /// additional params, tool choice, tool concurrency, telemetry content,
+    /// turn and invalid-tool-call budgets, extra hooks) and terminates in
+    /// [`AgentRunner::run`] / [`AgentRunner::run_typed`]. It replaces the
+    /// deleted `PromptRequest`/`TypedPromptRequest` typestate builders: what
+    /// used to be `agent.prompt(p).max_turns(3).extended_details().await` is
+    /// now `agent.runner(p).max_turns(3).run().await`.
     pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Resolve the provider-facing tool definitions registered on the agent.
+    /// Send a prompt and return the accepted assistant text after full runtime
+    /// orchestration (tools, hooks, retries, telemetry).
     ///
-    /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`]. Per-turn
-    /// narrowing of the advertised set happens through
-    /// [`RequestPatch::active_tools`].
-    pub async fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.catalog.definitions.clone()
-    }
-}
-
-// Here, we need to ensure that usage of `.prompt` on agent uses these redefinitions on the opaque
-//  `Prompt` trait so that when `.prompt` is used at the call-site, it'll use the more specific
-//  `PromptRequest` implementation for `Agent`, making the builder's usage fluent.
-//
-// References:
-//  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
-
-#[allow(refining_impl_trait)]
-impl Prompt for Agent {
-    fn prompt(
+    /// For per-request configuration use [`Agent::runner`].
+    pub async fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
+    ) -> Result<String, PromptError> {
+        self.runner(prompt)
+            .run()
+            .await
+            .map(|response| response.output)
     }
-}
 
-#[allow(refining_impl_trait)]
-impl Prompt for &Agent {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
-    fn prompt(
+    /// Send a prompt and return the full [`PromptResponse`] — accepted output,
+    /// aggregated usage, per-call details, and the committed message
+    /// transcript.
+    ///
+    /// This is the successor of `agent.prompt(..).extended_details().await`.
+    pub async fn run(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
+    ) -> Result<PromptResponse, PromptError> {
+        self.runner(prompt).run().await
     }
-}
 
-#[allow(refining_impl_trait)]
-impl Chat for Agent {
+    /// Execute one turn against caller-owned canonical history, appending only
+    /// committed messages to `chat_history`.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
-    async fn chat(
+    pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let response = PromptRequest::from_agent(self, prompt)
+        let response = self
+            .runner(prompt)
             .history(chat_history.clone())
-            .extended_details()
+            .run()
             .await?;
 
         if let Some(messages) = response.messages {
@@ -453,16 +447,49 @@ impl Chat for Agent {
 
         Ok(response.output)
     }
-}
 
-impl StreamingPrompt for Agent {
-    fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> StreamingPromptRequest {
+    /// Send a prompt and deserialize the accepted structured response as `T`.
+    ///
+    /// The JSON schema for `T` is generated automatically and passed as the
+    /// provider's **native** structured-output constraint (see
+    /// [`AgentRunner::run_typed`], which this delegates to). For a fluent
+    /// per-request variant, use `agent.runner(prompt).run_typed::<T>()`.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+    /// struct WeatherForecast {
+    ///     city: String,
+    ///     temperature_f: f64,
+    /// }
+    ///
+    /// let forecast = agent
+    ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
+    ///     .await?;
+    /// ```
+    pub async fn prompt_typed<T>(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> Result<T, StructuredOutputError>
+    where
+        T: schemars::JsonSchema + serde::de::DeserializeOwned + WasmCompatSend,
+    {
+        self.runner(prompt).run_typed::<T>().await
+    }
+
+    /// Create a streaming request for `prompt`.
+    ///
+    /// The returned [`StreamingPromptRequest`] is the streaming counterpart of
+    /// [`Agent::runner`]: configure it, then await it for the item stream.
+    pub fn stream_prompt(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+    ) -> StreamingPromptRequest {
         StreamingPromptRequest::from_agent(self, prompt)
     }
-}
 
-impl StreamingChat for Agent {
-    fn stream_chat<I, T>(
+    /// Create a streaming request for `prompt` seeded with canonical history.
+    pub fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
@@ -473,77 +500,15 @@ impl StreamingChat for Agent {
     {
         StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
     }
-}
 
-use crate::agent::prompt_request::TypedPromptRequest;
-use schemars::JsonSchema;
-use serde::de::DeserializeOwned;
-
-#[allow(refining_impl_trait)]
-impl TypedPrompt for Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    /// Send a prompt and receive a typed structured response.
+    /// Resolve the provider-facing tool definitions registered on the agent.
     ///
-    /// The JSON schema for `T` is automatically generated and sent to the provider.
-    /// Providers that support native structured outputs will constrain the model's
-    /// response to match this schema.
-    ///
-    /// # Example
-    /// ```rust,ignore
-    /// use rig_core::prelude::*;
-    /// use schemars::JsonSchema;
-    /// use serde::Deserialize;
-    ///
-    /// #[derive(Debug, Deserialize, JsonSchema)]
-    /// struct WeatherForecast {
-    ///     city: String,
-    ///     temperature_f: f64,
-    ///     conditions: String,
-    /// }
-    ///
-    /// let agent = client.agent("gpt-4o").build();
-    ///
-    /// // Type inferred from variable
-    /// let forecast: WeatherForecast = agent
-    ///     .prompt_typed("What's the weather in NYC?")
-    ///     .await?;
-    ///
-    /// // Or explicit turbofish syntax
-    /// let forecast = agent
-    ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
-    ///     .max_turns(3)
-    ///     .await?;
-    /// ```
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    {
-        TypedPromptRequest::from_agent(self, prompt)
-    }
-}
-
-#[allow(refining_impl_trait)]
-impl TypedPrompt for &Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    {
-        TypedPromptRequest::from_agent(self, prompt)
+    /// This read-only view does not expose tool dispatch. Agent execution and
+    /// tool lifecycle hooks remain owned by [`Self::runner`]. Per-turn
+    /// narrowing of the advertised set happens through
+    /// [`RequestPatch::active_tools`].
+    pub async fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.catalog.definitions.clone()
     }
 }
 

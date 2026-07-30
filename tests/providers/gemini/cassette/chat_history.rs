@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::gemini;

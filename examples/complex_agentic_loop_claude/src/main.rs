@@ -11,8 +11,8 @@ use rig::providers::anthropic::{self, Client};
 use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
-    tool::builtin::ThinkTool, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, message::Message, tool::builtin::ThinkTool,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -268,12 +268,12 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("\nProcessing...\n");
 
     // Send the query to the orchestrator agent with extended details to get chat history
-    let empty_history: &[Message] = &[];
+    let empty_history: Vec<Message> = Vec::new();
     let response = orchestrator_agent
-        .prompt(query)
+        .runner(query)
         .history(empty_history)
         .max_turns(15) // Allow multiple turns to demonstrate the complex loop
-        .extended_details()
+        .run()
         .await?;
 
     // Print the final response

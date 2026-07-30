@@ -12,7 +12,6 @@
 use std::sync::Arc;
 
 use rig::{
-    completion::Prompt,
     prelude::*,
     providers::openai,
     tool::{PortableDynamicTool, ToolExecutionError, mcp::McpToolset},
@@ -301,7 +300,12 @@ async fn main() -> anyhow::Result<()> {
         .dynamic_tools(mcp_tools)
         .build();
 
-    let res = agent.prompt("What is 2+5?").max_turns(2).await?;
+    let res = agent
+        .runner("What is 2+5?")
+        .max_turns(2)
+        .run()
+        .await?
+        .output;
 
     println!("GPT-4o: {res}");
 

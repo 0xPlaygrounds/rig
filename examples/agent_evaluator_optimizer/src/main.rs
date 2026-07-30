@@ -1,6 +1,13 @@
-use rig::prelude::*;
+//! Generator/evaluator loop. The generator is a classic [`Agent`]; the
+//! evaluator is structured extraction, which is a free function now —
+//! `client.extractor::<Evaluation>(model)` is gone, so the evaluator's
+//! instructions are appended to the classic extraction preamble instead.
+use std::sync::Arc;
 
-use rig::completion::Prompt;
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractOptions, extract_with_options};
+use rig::prelude::*;
+use rig::provider::Runtime;
 
 use rig::providers::openai;
 use rig::providers::openai::client::Client;
@@ -47,8 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let evaluator_agent = openai_client.extractor::<Evaluation>(openai::GPT_4)
-        .preamble("
+    const EVALUATOR_ROLE: &str = "
             Evaluate this following code implementation for:
             1. code correctness
             2. time complexity
@@ -61,17 +67,29 @@ async fn main() -> Result<(), anyhow::Error> {
             Provide detailed feedback if there are areas that need improvement. You should specify what needs improvement and why.
 
             Only output JSON.
-        ")
-        .build();
+        ";
+    let classic = ExtractOptions::classic_extractor();
+    let extraction_preamble = classic.preamble.clone().unwrap_or_default();
+    let evaluator_options = classic.with_preamble(format!(
+        "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{EVALUATOR_ROLE}"
+    ));
+    let evaluator_provider = openai_client.provider_config(openai::GPT_4);
+    let rt = Arc::new(Runtime::new());
 
     let mut memories: Vec<String> = Vec::new();
     let mut response = generator_agent.prompt(TASK).await?;
     memories.push(response.clone());
 
     loop {
-        let eval_result = evaluator_agent
-            .extract(&format!("{TASK}\n\n{response}"))
-            .await?;
+        let eval_result = extract_with_options::<Evaluation>(
+            AgentConfig::new(),
+            evaluator_provider.clone(),
+            rt.clone(),
+            format!("{TASK}\n\n{response}"),
+            evaluator_options.clone(),
+        )
+        .await?
+        .value;
         if eval_result.evaluation_status == EvalStatus::Pass {
             break;
         } else {

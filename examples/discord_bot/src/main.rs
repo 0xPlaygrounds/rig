@@ -1,4 +1,5 @@
-use rig::integrations::discord_bot::DiscordExt;
+//! `Agent::into_discord_bot` is an inherent method now — the old `DiscordExt`
+//! trait is gone, so there is no trait import to bring into scope.
 use rig::prelude::*;
 use rig::providers::openai;
 

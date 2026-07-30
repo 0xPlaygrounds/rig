@@ -5,7 +5,6 @@ use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
-use rig::streaming::StreamingChat;
 
 use super::support::with_deepseek_cassette;
 use crate::support::{

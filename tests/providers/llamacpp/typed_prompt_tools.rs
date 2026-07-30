@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::{CompletionCallAction, ObservationAction, ToolCallAction, ToolResultAction};
-use rig::completion::TypedPrompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::tool::Tool;
@@ -183,8 +182,9 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
         .build();
 
     let result = agent
-        .prompt_typed::<WeatherResponse>("Hello, whats the weather in London?")
+        .runner("Hello, whats the weather in London?")
         .add_hook(hook.entry())
+        .run_typed::<WeatherResponse>()
         .await;
 
     println!("prompt_typed result: {result:#?}");

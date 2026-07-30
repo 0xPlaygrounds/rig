@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
-use rig::streaming::StreamingPrompt;
 
 use super::support::with_deepseek_cassette;
 use crate::support::{assert_nonempty_response, collect_stream_final_response};

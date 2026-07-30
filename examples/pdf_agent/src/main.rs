@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
     println!("Starting CLI chatbot...");
 
     // Start interactive CLI
-    let chatbot = ChatBotBuilder::new().agent(rag_agent).max_turns(10).build();
+    let chatbot = ChatBotBuilder::new(rag_agent).max_turns(10).build();
 
     chatbot.run().await?;
 

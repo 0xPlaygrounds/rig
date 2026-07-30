@@ -6,7 +6,6 @@ use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::xai;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

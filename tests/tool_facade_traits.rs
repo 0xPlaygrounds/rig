@@ -104,44 +104,36 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `completion_model`,
-/// `agent`, and `extractor` — the full pre-split client surface from one import.
+/// A single `use rig::prelude::*` provides `completion_model`, `agent`, and
+/// `provider_config` — the full pre-split client surface from one import. (The
+/// classic `extractor` builder is gone; structured extraction now goes through
+/// `rig::extract::*` over a `ProviderConfig`.)
 #[test]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
 
-    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-    struct Extracted {
-        value: String,
-    }
-
-    // `openai::Client::new` builds without any network call, so the three
-    // builders reachable through the single `rig::prelude::*` import each run
-    // to completion offline. A regression in any builder itself (not merely its
+    // `openai::Client::new` builds without any network call, so the surfaces
+    // reachable through the single `rig::prelude::*` import each run to
+    // completion offline. A regression in any builder itself (not merely its
     // signature) now fails this test, unlike the previous compile-only check.
     let client = rig::providers::openai::Client::new("test-key").expect("client builds");
     let _model = client.completion_model("gpt-4o");
     let _agent = client.agent("gpt-4o").build();
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build();
+    let _provider = client.provider_config("gpt-4o");
 }
 
-/// The explicit facade import pair `rig::client::{CompletionClient, AgentClientExt}`
-/// exposes the same `completion_model` + `agent` + `extractor` surface as the
-/// prelude, without depending on `rig-core`. Guards the restored
+/// The explicit facade imports `rig::client::{CompletionClient, AgentClientExt,
+/// ToProviderConfig}` expose the same `completion_model` + `agent` +
+/// `provider_config` surface as the prelude, without depending on `rig-core`. Guards the restored
 /// `rig::client::CompletionClient` path (documented in `README.md` / `MIGRATING.md`).
 #[test]
 fn completion_client_explicit_facade_import_surface() {
-    use rig::client::{AgentClientExt, CompletionClient};
-
-    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-    struct Extracted {
-        value: String,
-    }
+    use rig::client::{AgentClientExt, CompletionClient, ToProviderConfig};
 
     let client = rig::providers::openai::Client::new("test-key").expect("client builds");
     let _model = client.completion_model("gpt-4o"); // CompletionClient
     let _agent = client.agent("gpt-4o").build(); // AgentClientExt
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build(); // AgentClientExt
+    let _provider = client.provider_config("gpt-4o"); // ToProviderConfig
 }
 
 /// `use rig::prelude::*` still brings `Tool` into scope under its classic

@@ -2,14 +2,53 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
+use rig::provider::{ProviderConfig, Runtime};
 use rig::providers::deepseek;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use super::support::with_deepseek_cassette_result;
 use crate::cassettes::CassetteSpec;
 use crate::support::assert_nonempty_response;
+
+/// `ExtractorBuilder::preamble(extra)` appended the extra instructions to the
+/// pinned extraction preamble: `append_preamble` joined with a newline and the
+/// appended block itself opened with one, so the separator is two newlines.
+fn classic_options(extra: &str) -> ExtractOptions {
+    let options = ExtractOptions::classic_extractor();
+    let base = options
+        .preamble
+        .clone()
+        .expect("classic_extractor() pins a preamble");
+    options.with_preamble(format!(
+        "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
+    ))
+}
+
+/// One classic-`Extractor<T>::extract` exchange through the free-function
+/// extraction surface that replaced it.
+async fn classic_extract_value<T>(
+    provider: ProviderConfig,
+    text: &str,
+    options: ExtractOptions,
+) -> anyhow::Result<T>
+where
+    T: schemars::JsonSchema + serde::de::DeserializeOwned,
+{
+    Ok(extract_with_options::<T>(
+        AgentConfig::new(),
+        provider,
+        Arc::new(Runtime::new()),
+        text,
+        options,
+    )
+    .await?
+    .value)
+}
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -32,21 +71,10 @@ async fn batch_multi_extract_chain() -> Result<()> {
     with_deepseek_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
         |client| async move {
-            let names_extractor = client
-                .extractor::<Names>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract names from the given text.")
-                .retries(2)
-                .build();
-            let topics_extractor = client
-                .extractor::<Topics>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract topics from the given text.")
-                .retries(2)
-                .build();
-            let sentiment_extractor = client
-                .extractor::<Sentiment>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract sentiment and confidence from the given text.")
-                .retries(2)
-                .build();
+            let provider = client.provider_config(deepseek::DEEPSEEK_V4_FLASH);
+            let names_options = classic_options("Extract names from the given text.").with_retries(2);
+            let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
+            let sentiment_options = classic_options("Extract sentiment and confidence from the given text.").with_retries(2);
 
             let inputs = vec![
                 "Ada Lovelace discussed analytical engines and early programming.",
@@ -55,14 +83,19 @@ async fn batch_multi_extract_chain() -> Result<()> {
             ];
             let responses: Vec<String> = futures::stream::iter(inputs)
                 .map(|text| {
-                    let names_extractor = &names_extractor;
-                    let topics_extractor = &topics_extractor;
-                    let sentiment_extractor = &sentiment_extractor;
+                    let provider = &provider;
+                    let names_options = &names_options;
+                    let topics_options = &topics_options;
+                    let sentiment_options = &sentiment_options;
                     async move {
                         let (names, topics, sentiment) = futures::try_join!(
-                            names_extractor.extract(text),
-                            topics_extractor.extract(text),
-                            sentiment_extractor.extract(text),
+                            classic_extract_value::<Names>(provider.clone(), text, names_options.clone()),
+                            classic_extract_value::<Topics>(provider.clone(), text, topics_options.clone()),
+                            classic_extract_value::<Sentiment>(
+                                provider.clone(),
+                                text,
+                                sentiment_options.clone(),
+                            ),
                         )?;
                         anyhow::Ok(format!(
                             "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",

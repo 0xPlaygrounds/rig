@@ -1,6 +1,5 @@
 //! xAI loaders smoke test.
 
-use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 use rig::prelude::*;
 use rig::providers::xai;

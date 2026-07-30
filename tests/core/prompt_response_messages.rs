@@ -3,7 +3,7 @@
 
 use rig::OneOrMany;
 use rig::agent::AgentBuilder;
-use rig::completion::{Chat, CompletionResponse, Message, Prompt, Usage};
+use rig::completion::{CompletionResponse, Message, Usage};
 use rig::message::{AssistantContent, UserContent};
 use rig::provider::{MockScript, ProviderConfig};
 use rig_agent::test_utils::MockAddTool;
@@ -91,14 +91,14 @@ async fn standard_prompt_returns_string() {
     assert_eq!(result, "hello from mock");
 }
 
-/// Test 2: `extended_details()` returns a `PromptResponse` with `messages: Some(...)`.
+/// Test 2: `AgentRunner::run()` returns a `PromptResponse` with `messages: Some(...)`.
 #[tokio::test]
-async fn extended_details_populates_messages() {
+async fn runner_run_populates_messages() {
     let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let resp = agent
-        .prompt("hi")
-        .extended_details()
+        .runner("hi")
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -109,7 +109,7 @@ async fn extended_details_populates_messages() {
     // Messages should be populated
     let messages = resp
         .messages
-        .expect("messages should be Some for extended_details");
+        .expect("messages should be Some for AgentRunner::run");
 
     // Should contain: [User("hi"), Assistant("hello from mock")]
     assert_eq!(messages.len(), 2);
@@ -133,7 +133,7 @@ async fn extended_details_populates_messages() {
     }
 }
 
-/// Test 3: `with_history()` + `extended_details()` — the response messages
+/// Test 3: `history()` + `run()` — the response messages
 /// should contain the full conversation including any provided history.
 #[tokio::test]
 async fn extended_with_history_both_populated() {
@@ -142,9 +142,9 @@ async fn extended_with_history_both_populated() {
     let initial_history: Vec<Message> = Vec::new();
 
     let resp = agent
-        .prompt("hello")
+        .runner("hello")
         .history(&initial_history)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -175,15 +175,16 @@ async fn standard_with_history_works() {
     let history: Vec<Message> = Vec::new();
 
     let result = agent
-        .prompt("test")
+        .runner("test")
         .history(&history)
+        .run()
         .await
         .expect("prompt should succeed");
 
-    assert_eq!(result, "hello from mock");
+    assert_eq!(result.output, "hello from mock");
 
     // Note: The input history is not mutated. To get the updated history,
-    // use `.extended_details()` and access `response.messages`.
+    // read `response.messages` from the same `run()` response.
 }
 
 /// Test 5: Multi-turn agent loop with tool calls — messages should contain the
@@ -195,9 +196,9 @@ async fn multi_turn_messages_include_tool_calls() {
         .build();
 
     let resp = agent
-        .prompt("What is 2 + 3?")
+        .runner("What is 2 + 3?")
         .max_turns(5)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -300,11 +301,7 @@ async fn max_turns_error_still_contains_history() {
     .tool(MockAddTool)
     .build();
 
-    let result = agent
-        .prompt("do something")
-        .max_turns(2)
-        .extended_details()
-        .await;
+    let result = agent.runner("do something").max_turns(2).run().await;
 
     match result {
         Err(PromptError::MaxTurnsError {
@@ -327,16 +324,16 @@ async fn max_turns_error_still_contains_history() {
 /// Test 9: Extended details without `with_history()` — messages should still
 /// be populated (this is the core feature: no need for &mut borrow).
 #[tokio::test]
-async fn extended_details_works_without_with_history() {
+async fn runner_run_works_without_history() {
     let agent = AgentBuilder::new(tool_then_text_model())
         .tool(MockAddTool)
         .build();
 
     // Note: NO .messages() call — this is the new use case
     let resp = agent
-        .prompt("compute 2+3")
+        .runner("compute 2+3")
         .max_turns(5)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -349,7 +346,7 @@ async fn extended_details_works_without_with_history() {
     assert_eq!(resp.output, "The answer is 5");
 }
 
-/// Test 10: `Chat::chat` appends the prompt and response messages to the
+/// Test 10: `Agent::chat` appends the prompt and response messages to the
 /// caller-owned history.
 #[tokio::test]
 async fn chat_appends_prompt_and_assistant_to_history() {
@@ -396,7 +393,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
     );
 }
 
-/// Test 11: `Chat::chat` appends every message produced by a tool roundtrip.
+/// Test 11: `Agent::chat` appends every message produced by a tool roundtrip.
 #[tokio::test]
 async fn chat_appends_tool_roundtrip_to_history() {
     let agent = AgentBuilder::new(tool_then_text_model())
@@ -453,14 +450,14 @@ async fn sequential_prompts_have_independent_histories() {
     let agent = AgentBuilder::new(simple_text_model(2)).build();
 
     let resp1 = agent
-        .prompt("first")
-        .extended_details()
+        .runner("first")
+        .run()
         .await
         .expect("first prompt should succeed");
 
     let resp2 = agent
-        .prompt("second")
-        .extended_details()
+        .runner("second")
+        .run()
         .await
         .expect("second prompt should succeed");
 

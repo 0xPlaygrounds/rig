@@ -1,14 +1,12 @@
 //! AWS Bedrock streaming replay smoke tests.
 
-use rig::bedrock;
-use rig::streaming::StreamingPrompt;
-
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
     Subtract, assert_mentions_expected_number, assert_nonempty_response,
     collect_stream_final_response,
 };
+use rig::bedrock;
 
 #[tokio::test]
 async fn streaming_smoke() {

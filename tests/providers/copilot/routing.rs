@@ -2,7 +2,6 @@
 
 use crate::copilot::{LIVE_MODEL, live_client, live_responses_model, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 #[tokio::test]

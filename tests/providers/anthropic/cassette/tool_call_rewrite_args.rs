@@ -11,11 +11,9 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::ToolCallAction;
-use rig::completion::Prompt;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
@@ -153,9 +151,11 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
                 .build();
 
             let response = agent
-                .prompt(WEATHER_PROMPT)
+                .runner(WEATHER_PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("weather prompt should succeed");
 
             assert!(!response.is_empty(), "agent should produce a final answer");

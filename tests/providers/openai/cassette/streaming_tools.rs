@@ -6,7 +6,6 @@ use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
-use rig::streaming::StreamingPrompt;
 
 use serde::Deserialize;
 

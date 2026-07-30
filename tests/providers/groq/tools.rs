@@ -1,6 +1,5 @@
 //! Groq tools smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::groq;
 
@@ -23,10 +22,12 @@ async fn tools_smoke() {
         .build();
 
     let response = agent
-        .prompt("Calculate 2 - 5. Call `subtract` exactly once, then answer with just the result.")
+        .runner("Calculate 2 - 5. Call `subtract` exactly once, then answer with just the result.")
         .max_turns(3)
+        .run()
         .await
-        .expect("tool prompt should succeed");
+        .expect("tool prompt should succeed")
+        .output;
 
     assert_mentions_expected_number(&response, -3);
 }

@@ -98,7 +98,8 @@ pub struct PreparedRequest {
 /// locks, no behavior — see the [module docs](self).
 ///
 /// `committed_output_tool` is the output-tool name the run pinned on an
-/// earlier turn ([`AgentRun::output_tool_name`](super::run::AgentRun)), and
+/// earlier turn ([`AgentRun::output_tool_name`](super::run::AgentRun)); when
+/// unset, [`AgentConfig::output_tool_name`] pins it for the first turn, and
 /// `patch` is the merged per-turn hook patch
 /// ([`fold_completion_actions`](super::hook::fold_completion_actions)).
 ///
@@ -195,13 +196,18 @@ pub fn prepare_request(
     };
 
     let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
-        committed_output_tool.map(str::to_owned).unwrap_or_else(|| {
-            pick_output_tool_name(
-                pre_filter_tool_names
-                    .as_ref()
-                    .unwrap_or(&executable_tool_names),
-            )
-        })
+        // Precedence: the name the run already committed, then the name the
+        // configuration pins, then the collision-safe default.
+        committed_output_tool
+            .map(str::to_owned)
+            .or_else(|| config.output_tool_name.clone())
+            .unwrap_or_else(|| {
+                pick_output_tool_name(
+                    pre_filter_tool_names
+                        .as_ref()
+                        .unwrap_or(&executable_tool_names),
+                )
+            })
     });
 
     // A name pinned on turn 1 can collide if a real tool with that name

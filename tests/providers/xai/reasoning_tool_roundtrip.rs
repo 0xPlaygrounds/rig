@@ -6,13 +6,12 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
-use rig::prelude::*;
-use rig::providers::xai;
-use rig::streaming::StreamingChat;
+use rig::completion::Message;
 
 use super::support::with_xai_cassette;
 use crate::reasoning::{self, WeatherTool};
+use rig::prelude::*;
+use rig::providers::xai;
 
 #[tokio::test]
 async fn streaming() {

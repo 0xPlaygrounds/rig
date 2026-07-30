@@ -1,16 +1,14 @@
 //! Mistral streaming tools coverage, including the migrated example path.
 
-use rig::completion::Message;
-use rig::prelude::*;
-use rig::providers::mistral;
-use rig::streaming::{StreamingChat, StreamingPrompt};
-
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
     ORDERED_TOOL_STREAM_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, assert_tool_call_precedes_later_text,
     collect_stream_final_response, collect_stream_observation,
 };
+use rig::completion::Message;
+use rig::prelude::*;
+use rig::providers::mistral;
 
 use super::TOOL_MODEL;
 

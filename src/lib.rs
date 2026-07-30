@@ -40,7 +40,7 @@ pub use rig_core::*;
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
@@ -59,11 +59,12 @@ pub mod agent {
     }
 }
 
-/// Provider clients plus classic agent/extractor constructors.
+/// Provider clients plus the classic agent constructor.
 pub mod client {
-    // Classic-runtime construction extensions: `agent()` / `extractor()` on any
-    // completion client (`AgentClientExt`), plus `ToProviderConfig` for
-    // capturing a client's connection details as plain configuration.
+    // Classic-runtime construction extension: `agent()` on any completion
+    // client (`AgentClientExt`), plus `ToProviderConfig` for capturing a
+    // client's connection details as plain configuration. Extraction is the
+    // free-function surface in [`crate::extract`].
     #[cfg(feature = "agent")]
     pub use rig_agent::client::{AgentClientExt, ToProviderConfig};
 
@@ -74,20 +75,11 @@ pub mod client {
     pub use rig_core::client::*;
 }
 
-/// Low-level completion contracts plus classic prompting traits and errors.
+/// Low-level completion contracts plus the classic runtime's errors.
 pub mod completion {
     #[cfg(feature = "agent")]
-    pub use rig_agent::completion::{
-        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
-    };
+    pub use rig_agent::completion::{PromptError, StructuredOutputError};
     pub use rig_core::completion::*;
-}
-
-/// Classic typed extraction.
-#[cfg(feature = "agent")]
-#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod extractor {
-    pub use rig_agent::extractor::*;
 }
 
 /// Classic runtime integrations.
@@ -145,23 +137,21 @@ pub mod prelude {
     // `use rig::prelude::*; impl Tool for X {…}` keeps working once the
     // implementation's `call` drops the removed `ToolContext` parameter.
     pub use crate::tool::Tool;
-    // The classic construction extension `AgentClientExt` (adding `agent()` /
-    // `extractor()`) sits alongside the canonical `CompletionClient` brought in
+    // The classic construction extension `AgentClientExt` (adding `agent()`)
+    // sits alongside the canonical `CompletionClient` brought in
     // by the `rig_core::prelude::*` glob below. The two traits share no method
     // names, so both resolve without ambiguity and together restore the
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, Chat, MultiTurnStreamItem, Prompt, PromptError, StreamingChat,
-        StreamingPrompt, StreamingResult, StructuredOutputError, ToProviderConfig, TypedPrompt,
+        Agent, AgentClientExt, MultiTurnStreamItem, PromptError, StreamingResult,
+        StructuredOutputError, ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }
 
-/// Low-level streaming values plus classic streaming traits.
+/// Low-level streaming values.
 pub mod streaming {
-    #[cfg(feature = "agent")]
-    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
     pub use rig_core::streaming::*;
 }
 

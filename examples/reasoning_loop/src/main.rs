@@ -1,8 +1,18 @@
+//! A reasoning agent: extract the chain of thought, then execute it.
+//!
+//! Two abstractions this example used are gone. The `Prompt` trait no longer
+//! exists, so `ReasoningAgent::prompt` is an ordinary inherent method. And
+//! `Extractor<T>` is no longer a type you can store — the "extractor" is the
+//! plain data one [`extract_with_options`] call takes.
+use std::sync::Arc;
+
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
+use rig::provider::{ProviderConfig, Runtime};
 use rig::{
     agent::Agent,
-    completion::{CompletionError, Prompt, PromptError},
-    extractor::Extractor,
+    completion::{CompletionError, PromptError},
     message::Message,
     providers::anthropic,
     tool::Tool,
@@ -22,23 +32,31 @@ struct ChainOfThoughtSteps {
 }
 
 struct ReasoningAgent {
-    chain_of_thought_extractor: Extractor<ChainOfThoughtSteps>,
+    /// Where and how to run the chain-of-thought extraction.
+    chain_of_thought_provider: ProviderConfig,
+    chain_of_thought_options: ExtractOptions,
+    rt: Arc<Runtime>,
     executor: Agent,
 }
 
-impl Prompt for ReasoningAgent {
-    #[allow(refining_impl_trait)]
+impl ReasoningAgent {
+    /// `Prompt` was a trait; it is an inherent method now.
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();
         let chat_history = vec![prompt.clone()];
-        let extracted = self
-            .chain_of_thought_extractor
-            .extract(prompt)
-            .await
-            .map_err(|e| {
-                tracing::error!("Extraction error: {:?}", e);
-                CompletionError::ProviderError("".into())
-            })?;
+        let extracted = extract_with_options::<ChainOfThoughtSteps>(
+            AgentConfig::new(),
+            self.chain_of_thought_provider.clone(),
+            self.rt.clone(),
+            prompt,
+            self.chain_of_thought_options.clone(),
+        )
+        .await
+        .map(|outcome| outcome.value)
+        .map_err(|e| {
+            tracing::error!("Extraction error: {:?}", e);
+            CompletionError::ProviderError("".into())
+        })?;
         if extracted.steps.is_empty() {
             return Ok("No reasoning steps provided.".into());
         }
@@ -48,10 +66,10 @@ impl Prompt for ReasoningAgent {
         }
         let response = self
             .executor
-            .prompt(reasoning_prompt.as_str())
-            .history(&chat_history)
+            .runner(reasoning_prompt.as_str())
+            .history(chat_history)
             .max_turns(20)
-            .extended_details()
+            .run()
             .await?;
         if let Some(messages) = &response.messages {
             let history_vec: Vec<_> = messages.clone().into_iter().collect();
@@ -65,6 +83,16 @@ impl Prompt for ReasoningAgent {
     }
 }
 
+/// The classic extraction protocol, with the chain-of-thought instructions
+/// appended to its preamble (what `ExtractorBuilder::preamble` did).
+fn chain_of_thought_options() -> ExtractOptions {
+    let classic = ExtractOptions::classic_extractor();
+    let preamble = classic.preamble.clone().unwrap_or_default();
+    classic.with_preamble(format!(
+        "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{CHAIN_OF_THOUGHT_PROMPT}"
+    ))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -75,10 +103,10 @@ async fn main() -> anyhow::Result<()> {
     // Create Anthropic client
     let anthropic_client = anthropic::Client::from_env()?;
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: anthropic_client
-            .extractor(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(CHAIN_OF_THOUGHT_PROMPT)
-            .build(),
+        chain_of_thought_provider: anthropic_client
+            .provider_config(anthropic::completion::CLAUDE_SONNET_4_6),
+        chain_of_thought_options: chain_of_thought_options(),
+        rt: Arc::new(Runtime::new()),
 
         executor: anthropic_client
             .agent(anthropic::completion::CLAUDE_SONNET_4_6)

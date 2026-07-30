@@ -514,6 +514,14 @@ impl ToolResultAction {
 pub enum InvalidToolCallAction {
     /// Preserve fail-fast behavior.
     Fail,
+    /// Drop the invalid call from the turn entirely, with no model-visible
+    /// feedback, and continue with the rest of the turn's content.
+    ///
+    /// This is the extraction protocol's policy: an output-tool run treats a
+    /// call to anything else as irrelevant response content rather than an
+    /// error. Unlike [`Self::Skip`] it injects no synthetic tool result, so
+    /// the next request carries no trace of the call.
+    Ignore,
     /// Retry the model with corrective feedback.
     Retry {
         /// Feedback appended for the retry.
@@ -540,6 +548,12 @@ impl InvalidToolCallAction {
     /// Creates an action that preserves fail-fast invalid-call handling.
     pub fn fail() -> Self {
         Self::Fail
+    }
+
+    /// Creates an action that drops the invalid call without model-visible
+    /// feedback (see [`Self::Ignore`]).
+    pub fn ignore() -> Self {
+        Self::Ignore
     }
 
     /// Creates an action that retries the model with corrective feedback.

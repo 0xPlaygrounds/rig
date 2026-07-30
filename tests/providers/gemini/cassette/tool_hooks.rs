@@ -1,7 +1,7 @@
 //! Prompt-hook dispatch on the tool execution path: skip-with-reason,
 //! terminate-early, and observation of every call/result pair.
 
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::hooks::HookEntry;
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -33,10 +33,10 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
                 .build();
 
             let response = agent
-                .prompt("What is 19 + 23?")
+                .runner("What is 19 + 23?")
                 .max_turns(3)
                 .add_hook(skip_tool_hook(CountingAdd::NAME, SKIP_REASON))
-                .extended_details()
+                .run()
                 .await
                 .expect("a skipped tool call should not fail the run");
 
@@ -73,10 +73,10 @@ async fn on_tool_call_terminate_cancels_run() {
                 .build();
 
             let error = agent
-                .prompt("What is 19 + 23?")
+                .runner("What is 19 + 23?")
                 .max_turns(3)
                 .add_hook(terminate_on_tool_hook(CountingAdd::NAME, TERMINATE_REASON))
-                .extended_details()
+                .run()
                 .await
                 .expect_err("a terminating hook should cancel the run");
 
@@ -115,10 +115,12 @@ async fn hooks_observe_every_tool_call_and_result() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to calculate 19 + 23, then report the result.")
+                .runner("Use the add tool to calculate 19 + 23, then report the result.")
                 .max_turns(3)
                 .add_hook(recorder_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("recorded tool prompt should succeed");
 
             let calls = recorder_for_test.recorded_calls();

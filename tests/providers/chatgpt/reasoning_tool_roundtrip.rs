@@ -5,7 +5,6 @@ use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
 use rig::prelude::*;
-use rig::streaming::StreamingChat;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::reasoning::{self, WeatherTool};

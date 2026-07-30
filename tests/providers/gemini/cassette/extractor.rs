@@ -1,6 +1,11 @@
 //! Gemini extractor coverage, including the migrated example path.
 
+use std::sync::Arc;
+
+use rig::agent::AgentConfig;
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
+use rig::provider::Runtime;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -18,45 +23,55 @@ struct Person {
     job: Option<String>,
 }
 
+/// The classic `ExtractorBuilder::additional_params` knob is an
+/// [`AgentConfig`] field now.
+fn config_with_additional_params(params: AdditionalParameters) -> AgentConfig {
+    let mut config = AgentConfig::new();
+    config.additional_params =
+        Some(serde_json::to_value(params).expect("Gemini additional params should serialize"));
+    config
+}
+
 #[tokio::test]
 async fn extractor_smoke() {
     let additional_params =
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client
-            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
-            .additional_params(
-                serde_json::to_value(additional_params)
-                    .expect("Gemini additional params should serialize"),
-            )
-            .build();
-
-        let response = extractor
-            .extract_with_usage(EXTRACTOR_TEXT)
-            .await
-            .expect("extractor request should succeed");
+        let response = extract_with_options::<SmokePerson>(
+            config_with_additional_params(additional_params),
+            client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
+            Arc::new(Runtime::new()),
+            EXTRACTOR_TEXT,
+            ExtractOptions::classic_extractor(),
+        )
+        .await
+        .expect("extractor request should succeed");
 
         validate_extraction_fields(
             "gemini_extractor_smoke",
-            response.data.first_name.as_deref(),
-            response.data.last_name.as_deref(),
-            response.data.job.as_deref(),
+            response.value.first_name.as_deref(),
+            response.value.last_name.as_deref(),
+            response.value.job.as_deref(),
             response.usage,
         )
         .expect("portable extraction contract should hold");
 
         let first_name = response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first_name should be present");
         let last_name = response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last_name should be present");
-        let job = response.data.job.as_deref().expect("job should be present");
+        let job = response
+            .value
+            .job
+            .as_deref()
+            .expect("job should be present");
 
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);
@@ -71,15 +86,16 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
-
-            let person = extractor
-                .extract("Hello my name is John Doe! I am a software engineer.")
-                .await
-                .expect("extract should succeed");
+            let person = extract_with_options::<Person>(
+                config_with_additional_params(params),
+                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
+                Arc::new(Runtime::new()),
+                "Hello my name is John Doe! I am a software engineer.",
+                ExtractOptions::classic_extractor(),
+            )
+            .await
+            .expect("extract should succeed")
+            .value;
 
             assert_eq!(person.first_name.as_deref(), Some("John"));
             assert_eq!(person.last_name.as_deref(), Some("Doe"));

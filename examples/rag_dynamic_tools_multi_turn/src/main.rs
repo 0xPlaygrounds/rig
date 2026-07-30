@@ -14,7 +14,6 @@ use anyhow::Result;
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::{
-    completion::Prompt,
     embeddings::{EmbeddingsBuilder, ToolSchema},
     prelude::*,
     providers::openai::{self, Client},
@@ -237,9 +236,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Prompt the agent and print the response
     let response = calculator_rag
-        .prompt("Calculate (3 - 7) + 17")
+        .runner("Calculate (3 - 7) + 17")
         .max_turns(10)
-        .await?;
+        .run()
+        .await?
+        .output;
 
     println!("{response}");
 

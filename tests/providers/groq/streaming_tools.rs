@@ -5,7 +5,6 @@ use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,

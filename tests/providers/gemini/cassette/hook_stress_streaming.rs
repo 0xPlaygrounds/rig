@@ -6,10 +6,8 @@
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 
 use super::super::hook_stress_support::{
     CHAIN_PREAMBLE, EventTap, ResultRewrite, apply_patch, rewrite_tool_result,
@@ -279,9 +277,11 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(sub_b)
                 .build();
             let response = agent
-                .prompt(PROMPT)
+                .runner(PROMPT)
                 .max_turns(6)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking parity run should succeed");
             assert_mentions_expected_number(&response, EXPECTED);
         },

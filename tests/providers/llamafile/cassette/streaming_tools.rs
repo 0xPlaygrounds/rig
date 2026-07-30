@@ -5,7 +5,6 @@
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
 use crate::support::{

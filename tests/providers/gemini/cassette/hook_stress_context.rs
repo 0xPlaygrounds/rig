@@ -6,7 +6,6 @@
 //! Assertions are loose for model-shaped values and exact only for
 //! rig-synthesized values (see `tools_support`'s note).
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 
@@ -44,13 +43,15 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "First add 9 and 6 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
                 .add_hook(tap_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("dependent chain should succeed");
 
             assert_nonempty_response(&response);
@@ -97,10 +98,12 @@ async fn unnamed_agent_still_dispatches_every_hook_event_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 3 and 4, then report the result.")
+                .runner("Use the add tool to add 3 and 4, then report the result.")
                 .max_turns(4)
                 .add_hook(tap_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("run should succeed");
 
             assert_nonempty_response(&response);
@@ -151,7 +154,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "First add 30 and 12 with the add tool. Then subtract 5 from that sum with the \
                      subtract tool. Report the final number.",
                 )
@@ -159,8 +162,8 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
                 // Writer (tap) bumps the shared tally on each ToolCall; the
                 // reader (a *different* hook) reads it on each ModelTurnFinished.
                 .add_hook(tap_entry)
-                .add_hook(reader_entry)
-                .await
+                .add_hook(reader_entry).run()
+                .await.map(|response| response.output)
                 .expect("dependent chain should succeed");
 
             assert_nonempty_response(&response);
@@ -218,13 +221,15 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
                 .build();
 
             let response = agent
-                .prompt(
+                .runner(
                     "First add 7 and 7 with the add tool. Then subtract 2 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
                 .add_hook(tap_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("dependent chain should succeed");
 
             assert_nonempty_response(&response);
@@ -270,11 +275,13 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 8 and 8, then report the result.")
+                .runner("Use the add tool to add 8 and 8, then report the result.")
                 .max_turns(4)
                 .add_hook(first_entry)
                 .add_hook(second_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("run should succeed");
 
             assert_nonempty_response(&response);
@@ -322,10 +329,12 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 5 and 6, then report the result.")
+                .runner("Use the add tool to add 5 and 6, then report the result.")
                 .max_turns(4)
                 .add_hook(request_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("run should succeed");
 
             assert_nonempty_response(&response);
@@ -367,7 +376,7 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
             // Two independent hooks each inject a different fact via extra_context.
             // Patches must accumulate (append), so BOTH facts reach the model.
             let response = agent
-                .prompt("Tell me both the harbor code and the orchard code.")
+                .runner("Tell me both the harbor code and the orchard code.")
                 .max_turns(4)
                 .add_hook(apply_patch(
                     RequestPatch::new()
@@ -378,7 +387,9 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
                     RequestPatch::new()
                         .context(fact_doc("orchard", "The orchard code is BETA-22.")),
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("accumulated context run should succeed");
 
             assert!(
@@ -421,7 +432,7 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
 
             // Two narrowing hooks: {add, subtract} ∩ {add, multiply} == {add}.
             let response = agent
-                .prompt(
+                .runner(
                     "Compute 6 + 2, then 10 - 3, then 4 * 5. Report whichever results you can \
                      obtain.",
                 )
@@ -434,7 +445,9 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
                 .add_hook(apply_patch(
                     RequestPatch::new().active_tools(["add", "multiply"]),
                 ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("intersected-tools run should succeed");
 
             assert_nonempty_response(&response);

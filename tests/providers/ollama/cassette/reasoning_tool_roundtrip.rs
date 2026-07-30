@@ -12,13 +12,12 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
-use rig::message::AssistantContent;
-use rig::prelude::*;
-use rig::streaming::StreamingChat;
+use rig::completion::Message;
 
 use super::super::support::with_ollama_cassette;
 use crate::reasoning::{self, WeatherTool};
+use rig::message::AssistantContent;
+use rig::prelude::*;
 
 const MODEL: &str = "qwen3:4b";
 

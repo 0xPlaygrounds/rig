@@ -49,6 +49,12 @@ pub struct AgentConfig {
     pub output_schema: Option<schemars::Schema>,
     /// How `output_schema` is enforced (see [`OutputMode`] and #1928).
     pub output_mode: OutputMode,
+    /// Name advertised for the synthetic output tool in Tool mode. `None`
+    /// picks the collision-safe default (`final_result`); set it to express a
+    /// bespoke extraction protocol (for example an output tool named
+    /// `submit`). A run that has already committed a name on an earlier turn
+    /// stays pinned to it.
+    pub output_tool_name: Option<String>,
     /// Description advertised for the synthetic output tool in Tool mode.
     pub output_tool_description: Option<String>,
     /// Whether Tool output mode augments the preamble with calling
@@ -106,6 +112,21 @@ impl AgentConfig {
     /// Set the tool-choice policy.
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Pin the synthetic output tool's advertised name, description, and
+    /// whether Tool output mode augments the preamble with calling
+    /// instructions.
+    pub fn with_output_tool(
+        mut self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        augment_preamble: bool,
+    ) -> Self {
+        self.output_tool_name = Some(name.into());
+        self.output_tool_description = Some(description.into());
+        self.augment_output_preamble = augment_preamble;
         self
     }
 

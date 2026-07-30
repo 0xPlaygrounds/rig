@@ -1,13 +1,16 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
+use std::sync::Arc;
+
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::agent::AgentConfig;
+use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::completion::{Chat, Message};
-use rig::completion::{Prompt, TypedPrompt};
+use rig::extract::{ExtractOptions, extract_with_options};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
 use rig::prelude::*;
+use rig::provider::Runtime;
 use rig::providers::openai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -145,23 +148,26 @@ async fn responses_structured_output_smoke() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_extractor_smoke() {
     let client = openai::Client::from_env().expect("client should build");
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
-        .await
-        .expect("extractor request should succeed");
+    let response = extract_with_options::<SmokePerson>(
+        AgentConfig::new(),
+        client.provider_config(openai::GPT_5_5),
+        Arc::new(Runtime::new()),
+        EXTRACTOR_TEXT,
+        ExtractOptions::classic_extractor(),
+    )
+    .await
+    .expect("extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -366,23 +372,26 @@ async fn chat_completions_extractor_smoke() {
     let client = openai::Client::from_env()
         .expect("client should build")
         .completions_api();
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
-        .await
-        .expect("chat completions extractor request should succeed");
+    let response = extract_with_options::<SmokePerson>(
+        AgentConfig::new(),
+        client.provider_config(openai::GPT_5_5),
+        Arc::new(Runtime::new()),
+        EXTRACTOR_TEXT,
+        ExtractOptions::classic_extractor(),
+    )
+    .await
+    .expect("chat completions extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last name should be present"),

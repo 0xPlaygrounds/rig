@@ -1,6 +1,7 @@
 //! Perplexity multi-turn chat cassette coverage.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
+
 use rig::prelude::*;
 use rig::providers::perplexity;
 

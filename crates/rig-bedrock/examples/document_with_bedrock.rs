@@ -4,7 +4,7 @@ use rig_core::{
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_agent::{agent::AgentBuilder, prelude::*, provider::ProviderConfig};
+use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use tracing::info;
 

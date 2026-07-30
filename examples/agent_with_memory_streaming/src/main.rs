@@ -14,7 +14,6 @@ use rig::completion::Message;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 
 /// One streamed turn: load-before, stream, append-after.
 async fn ask(

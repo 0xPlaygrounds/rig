@@ -1,7 +1,6 @@
 //! ChatGPT streaming smoke tests.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{
