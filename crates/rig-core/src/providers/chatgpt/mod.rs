@@ -57,6 +57,15 @@ pub(crate) fn build_codex_responses_request(
     default_instructions: Option<&str>,
     request: completion::CompletionRequest,
 ) -> Result<ResponsesRequest, CompletionError> {
+    // Materialize the configured default as a canonical leading system message
+    // *before* conversion, so the completion span and the wire body are derived
+    // from the same request. Previously this was merged into
+    // `request.instructions` after conversion, which meant
+    // `gen_ai.system_instructions` silently omitted an instruction that was
+    // actually sent — a gap no cassette can catch, because span attributes are
+    // not part of the recorded bytes.
+    let request = apply_default_instructions(request, default_instructions);
+
     let mut request = ResponsesRequest::try_from(responses_api::ResponsesRequestParams {
         model,
         request,
@@ -71,11 +80,11 @@ pub(crate) fn build_codex_responses_request(
             .collect();
     }
 
-    if let Some(default_instructions) = default_instructions {
-        request.instructions = Some(merge_instructions(
-            default_instructions,
-            request.instructions.as_deref(),
-        ));
+    // Byte-preservation for the empty-default case: the deleted merge emitted
+    // `Some("")` here, which a canonical system message cannot express. No
+    // instruction content is involved, so telemetry loses nothing.
+    if request.instructions.is_none() && default_instructions.is_some_and(str::is_empty) {
+        request.instructions = Some(String::new());
     }
 
     request.temperature = None;
@@ -165,15 +174,49 @@ fn config_dir() -> Option<PathBuf> {
     }
 }
 
-fn merge_instructions(default_instructions: &str, existing_instructions: Option<&str>) -> String {
-    match existing_instructions
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some(existing) if existing.contains(default_instructions) => existing.to_string(),
-        Some(existing) => format!("{default_instructions}\n\n{existing}"),
-        None => default_instructions.to_string(),
+/// Prepend `default_instructions` to `request` as a leading canonical system
+/// message, unless the instructions it already carries contain them.
+///
+/// This replaced a post-conversion merge: the
+/// `AllInstructions` placement joins every system message with `"\n\n"`, so
+/// prepending here yields the same `instructions` string the post-conversion
+/// merge produced — while keeping telemetry and the wire body reading the same
+/// request.
+fn apply_default_instructions(
+    request: completion::CompletionRequest,
+    default_instructions: Option<&str>,
+) -> completion::CompletionRequest {
+    // An empty default carries no instruction text, so there is nothing to
+    // materialize — and nothing telemetry could report. It is still preserved
+    // on the wire below, because the Responses lift drops empty system
+    // messages and could not round-trip it as one.
+    let Some(default_instructions) = default_instructions.filter(|d| !d.is_empty()) else {
+        return request;
+    };
+
+    let existing = request
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            completion::Message::System { content } => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // A request already carrying the
+    // default is left alone rather than repeating it.
+    if !existing.trim().is_empty() && existing.contains(default_instructions) {
+        return request;
     }
+
+    let mut request = request;
+    // `OneOrMany::insert` keeps the non-empty invariant by construction — no
+    // rebuild through the fallible `many` constructor.
+    request
+        .chat_history
+        .insert(0, completion::Message::system(default_instructions));
+    request
 }
 
 #[cfg(test)]
@@ -193,29 +236,45 @@ data: [DONE]"#;
         assert_eq!(response.model, "gpt-5");
     }
 
-    #[test]
-    fn test_merge_instructions_uses_default_when_missing() {
-        assert_eq!(
-            merge_instructions(DEFAULT_INSTRUCTIONS, None),
-            DEFAULT_INSTRUCTIONS
-        );
+    /// The default is materialized as a leading system message on the request
+    /// itself, so telemetry and the wire body cannot disagree about it. These
+    /// pin the same three rules the deleted post-conversion merge had.
+    fn instructions_of(request: completion::CompletionRequest) -> String {
+        build_codex_responses_request(
+            GPT_5_3_CODEX.to_string(),
+            &[],
+            false,
+            Some(DEFAULT_INSTRUCTIONS),
+            request,
+        )
+        .expect("request")
+        .instructions
+        .expect("instructions")
     }
 
     #[test]
-    fn test_merge_instructions_appends_existing_request_instructions() {
-        let merged = merge_instructions(DEFAULT_INSTRUCTIONS, Some("Respond tersely."));
+    fn default_instructions_used_when_request_has_none() {
+        let request = completion::CompletionRequest::from_prompt("hi");
+        assert_eq!(instructions_of(request), DEFAULT_INSTRUCTIONS);
+    }
+
+    #[test]
+    fn default_instructions_precede_request_instructions() {
+        let request = completion::CompletionRequest::builder("hi")
+            .preamble("Respond tersely.")
+            .build();
+        let merged = instructions_of(request);
         assert!(merged.starts_with(DEFAULT_INSTRUCTIONS));
         assert!(merged.ends_with("Respond tersely."));
     }
 
     #[test]
-    fn test_merge_instructions_avoids_duplicate_default() {
-        let merged = merge_instructions(
-            DEFAULT_INSTRUCTIONS,
-            Some("You are ChatGPT, a helpful AI assistant.\n\nRespond tersely."),
-        );
+    fn default_instructions_are_not_duplicated() {
+        let request = completion::CompletionRequest::builder("hi")
+            .preamble("You are ChatGPT, a helpful AI assistant.\n\nRespond tersely.")
+            .build();
         assert_eq!(
-            merged,
+            instructions_of(request),
             "You are ChatGPT, a helpful AI assistant.\n\nRespond tersely."
         );
     }
