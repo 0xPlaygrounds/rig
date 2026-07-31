@@ -17,13 +17,13 @@ const ROUTER_PREAMBLE: &str = "
 ";
 
 fn build_router_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    AgentBuilder::new(cfg.clone())
         .preamble(ROUTER_PREAMBLE)
         .build()
 }
 
 fn build_response_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone())).build()
+    AgentBuilder::new(cfg.clone()).build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {

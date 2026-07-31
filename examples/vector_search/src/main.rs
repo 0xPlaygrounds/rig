@@ -4,11 +4,11 @@
 //!
 //! Embedding is plain data plus free functions: an
 //! `openai::functions::EmbeddingConfig` (which names the embedding model) and
-//! an [`HttpRuntime`]. `EmbeddingsBuilder` is gone — [`embed_documents`]
-//! takes the documents, the provider's per-request document limit, a
-//! concurrency bound, and a closure over the provider's free `embed`.
+//! an [`HttpRuntime`]. `EmbeddingsBuilder` is gone — [`EmbeddingJob`]
+//! accumulates the documents, takes the per-request limit from the provider's
+//! descriptor, and receives the provider closure only at `.run(..)`.
 
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::prelude::*;
 use rig::providers::openai;
 use serde::{Deserialize, Serialize};
@@ -75,16 +75,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // The provider descriptor carries the per-request document limit; the
     // batching helper chunks and parallelizes to match it.
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        sample_documents(),
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&ecfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(sample_documents())
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&ecfg, &rt, texts))
+        .await?;
 
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;

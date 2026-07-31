@@ -15,7 +15,7 @@ use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::{ToolSchema, default_concurrency, embed_documents},
+    embeddings::{EmbeddingJob, ToolSchema},
     tool::Tool,
     vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -258,25 +258,20 @@ async fn main() -> Result<(), anyhow::Error> {
             vec!["Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".into()],
         ),
     ];
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        schemas,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embedding_config, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(schemas)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embedding_config, &rt, texts))
+        .await?;
 
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
     // Create a RAG agent that carries every calculator tool and re-selects
     // which ones to advertise on each turn through the retrieval hook.
-    let calculator_rag = AgentBuilder::new(ProviderConfig::OpenAi(
+    let calculator_rag = AgentBuilder::new(
         openai::functions::Config::from_env(openai::GPT_4)?,
-    ))
+    )
     .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

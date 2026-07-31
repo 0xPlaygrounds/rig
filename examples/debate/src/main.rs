@@ -23,12 +23,8 @@ impl Debater {
         let coral_cfg = cohere::functions::Config::from_env(cohere::COMMAND_R)?;
 
         Ok(Self {
-            gpt_4: AgentBuilder::new(ProviderConfig::OpenAi(gpt_4_cfg))
-                .preamble(position_a)
-                .build(),
-            coral: AgentBuilder::new(ProviderConfig::Cohere(coral_cfg))
-                .preamble(position_b)
-                .build(),
+            gpt_4: AgentBuilder::new(gpt_4_cfg).preamble(position_a).build(),
+            coral: AgentBuilder::new(coral_cfg).preamble(position_b).build(),
         })
     }
 

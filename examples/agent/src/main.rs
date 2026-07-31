@@ -14,9 +14,7 @@ const PROMPT: &str = "Entertain me!";
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
-        .preamble(PREAMBLE)
-        .build();
+    let agent = AgentBuilder::new(cfg).preamble(PREAMBLE).build();
 
     let response = agent.prompt(PROMPT).await?;
     println!("{response}");

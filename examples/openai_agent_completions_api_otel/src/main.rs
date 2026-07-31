@@ -48,7 +48,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // The chat-completions face is `ProviderConfig::OpenAi`; the Responses
     // API face would be `ProviderConfig::OpenAiResponses`.
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble("You are a helpful assistant")
         .build();
 

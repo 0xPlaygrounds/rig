@@ -3,13 +3,13 @@
 //!
 //! Embedding is a free function over plain config data
 //! (`openai::functions::embed` + an `EmbeddingConfig` that names the model),
-//! and `rig::embeddings::embed_documents` is the document-level entry point
+//! and `rig::embeddings::EmbeddingJob` is the document-level entry point
 //! that replaced `EmbeddingsBuilder`.
 //!
 //! Requires `OPENAI_API_KEY`.
 
 use rig::OneOrMany;
-use rig::embeddings::{default_concurrency, embed_documents};
+use rig::embeddings::EmbeddingJob;
 use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -53,17 +53,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let rt = HttpRuntime::new();
     let ecfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
 
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
     let documents: Vec<String> = sample_definitions().iter().map(|s| s.to_string()).collect();
-    let embeddings = embed_documents(
-        documents,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&ecfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&ecfg, &rt, texts))
+        .await?;
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
     let agent = build_dictionary_agent(ProviderConfig::OpenAi(

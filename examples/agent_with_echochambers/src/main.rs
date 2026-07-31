@@ -304,7 +304,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
 
     // Create agent with all tools
-    let echochambers_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let echochambers_agent = AgentBuilder::new(cfg)
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

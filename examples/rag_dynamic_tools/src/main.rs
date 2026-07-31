@@ -11,7 +11,7 @@
 //! closure over owned `HookEvent`s that returns a `HookDecision`.
 //!
 //! Embedding is plain data too: an `openai::functions::EmbeddingConfig` plus
-//! an [`HttpRuntime`], batched through [`embed_documents`] (the replacement
+//! an [`HttpRuntime`], batched through [`EmbeddingJob`] (the replacement
 //! for `EmbeddingsBuilder`). The hook captures the config and the transport
 //! rather than an embedding model.
 use anyhow::Result;
@@ -20,7 +20,7 @@ use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::{ToolSchema, default_concurrency},
+    embeddings::{EmbeddingJob, ToolSchema},
     tool::Tool,
 };
 use serde::{Deserialize, Serialize};
@@ -174,9 +174,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_config =
         openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
@@ -186,13 +183,11 @@ async fn main() -> Result<(), anyhow::Error> {
             vec!["Subtract y from x (i.e.: x - y)".into()],
         ),
     ];
-    let embeddings = embed_documents(
-        schemas,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embedding_config, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(schemas)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embedding_config, &rt, texts))
+        .await?;
 
     // Create vector store with the embeddings, keyed by tool name
     let vector_store =
@@ -201,7 +196,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create an agent that carries every candidate tool but advertises only
     // the retrieved one per prompt (sample rate 1).
     let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-    let calculator_rag = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let calculator_rag = AgentBuilder::new(cfg)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         .tool(Add)
         .tool(Subtract)

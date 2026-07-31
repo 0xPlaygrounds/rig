@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use rig::OneOrMany;
 use rig::agent::{CompletionCallAction, RequestPatch};
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
@@ -158,16 +158,11 @@ async fn main() -> Result<()> {
     // `EmbeddingsBuilder` is gone: `embed_documents` chunks to the provider's
     // `max_embedding_documents` and re-associates each document with its
     // embeddings.
-    let max_documents = ollama::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        documents,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| ollama::functions::embed(&ecfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .for_provider(&ollama::functions::DESCRIPTOR)
+        .run(|texts| ollama::functions::embed(&ecfg, &rt, texts))
+        .await?;
     println!("Successfully generated embeddings");
 
     // Create vector store
@@ -176,7 +171,7 @@ async fn main() -> Result<()> {
 
     // Create RAG agent with the passive-RAG hook
     let cfg = ollama::functions::Config::new("deepseek-r1");
-    let rag_agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
+    let rag_agent = AgentBuilder::new(cfg)
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
         .add_hook(pdf_rag_hook(ecfg, rt, vector_store, 1))
         .build();

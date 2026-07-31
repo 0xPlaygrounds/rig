@@ -153,7 +153,7 @@ fn approval_policy(auto_approve: HashSet<&'static str>, max_auto_transfer: u64) 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble(
             "You are a banking assistant. Use the tools to carry out the user's request. \
              If a tool is denied by policy, explain the limit to the user instead of retrying.",

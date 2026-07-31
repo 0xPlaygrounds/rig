@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
     // A fresh agent per run (both share the same tool and preamble). The
     // provider config is plain data, so each build just clones it.
     let make_agent = || {
-        AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+        AgentBuilder::new(cfg.clone())
             .preamble(PREAMBLE)
             .tool(Add)
             .build()

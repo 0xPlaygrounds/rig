@@ -17,13 +17,13 @@ const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
 fn build_rng_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    AgentBuilder::new(cfg.clone())
         .preamble(RNG_PREAMBLE)
         .build()
 }
 
 fn build_adder_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    AgentBuilder::new(cfg.clone())
         .preamble(ADDER_PREAMBLE)
         .build()
 }

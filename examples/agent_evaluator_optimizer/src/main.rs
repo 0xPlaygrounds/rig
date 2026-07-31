@@ -41,7 +41,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // (cloned) by both the generator agent and the evaluator extraction.
     let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
 
-    let generator_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    let generator_agent = AgentBuilder::new(cfg.clone())
         .preamble(
             "
             Your goal is to complete the task based on <user input>. If there are feedback

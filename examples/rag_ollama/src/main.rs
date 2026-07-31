@@ -3,14 +3,14 @@
 //!
 //! Both halves of this example are plain data now. Embedding is an
 //! `ollama::functions::EmbeddingConfig` plus an [`HttpRuntime`], driven
-//! through [`embed_documents`] (the replacement for `EmbeddingsBuilder`);
+//! through [`EmbeddingJob`] (the replacement for `EmbeddingsBuilder`);
 //! the agent is an `ollama::functions::Config` wrapped in
 //! [`ProviderConfig`]. The hook captures the embedding config and the
 //! transport instead of an embedding model. Ollama needs no credentials, so
 //! both configs are built with `new` rather than `from_env`.
 use rig::agent::{CompletionCallAction, RequestPatch};
 use rig::completion::Document;
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::ollama;
@@ -111,13 +111,10 @@ async fn main() -> Result<(), anyhow::Error> {
     // shared HTTP transport.
     let embedding_config = ollama::functions::EmbeddingConfig::new("nomic-embed-text");
     let rt = HttpRuntime::new();
-    let max_documents = ollama::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding config.
-    let embeddings = embed_documents(
-        vec![
+    let embeddings = EmbeddingJob::new()
+        .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
@@ -142,18 +139,16 @@ async fn main() -> Result<(), anyhow::Error> {
                     "2. *linglingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| ollama::functions::embed(&embedding_config, &rt, texts),
-    )
+        ])
+        .for_provider(&ollama::functions::DESCRIPTOR)
+        .run(|texts| ollama::functions::embed(&embedding_config, &rt, texts))
     .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
     let cfg = ollama::functions::Config::new("qwen2.5:14b");
-    let rag_agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
+    let rag_agent = AgentBuilder::new(cfg)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

@@ -4,10 +4,10 @@
 //!
 //! Ollama needs no credentials, so its embedding configuration is built with
 //! `EmbeddingConfig::new` (plus an explicit base URL) rather than
-//! `from_env`. `EmbeddingsBuilder` is gone: [`embed_documents`] batches the
+//! `from_env`. `EmbeddingsBuilder` is gone: [`EmbeddingJob`] batches the
 //! documents through the provider's free `embed` function.
 
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::prelude::*;
 use rig::providers::ollama;
 
@@ -74,16 +74,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_base_url("http://localhost:11434");
     let rt = HttpRuntime::new();
 
-    let max_documents = ollama::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        sample_documents(),
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| ollama::functions::embed(&ecfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(sample_documents())
+        .for_provider(&ollama::functions::DESCRIPTOR)
+        .run(|texts| ollama::functions::embed(&ecfg, &rt, texts))
+        .await?;
 
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;

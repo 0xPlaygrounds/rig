@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
     // `OPENAI_BASE_URL` is honored by `Config::from_env`, so the same binary
     // points at an OpenAI-compatible server without any client type.
     let cfg = openai::functions::Config::from_env(model)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble(
             "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \

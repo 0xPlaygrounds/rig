@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
 
     // Create a tool-using agent over that config
-    let agent = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

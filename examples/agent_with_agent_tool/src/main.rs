@@ -112,7 +112,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?;
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    let calculator_agent = AgentBuilder::new(cfg.clone())
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)
@@ -154,7 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     // Create agent which has the calculator agent as a tool
-    let agent_using_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let agent_using_agent = AgentBuilder::new(cfg)
         .preamble("You are a helpful assistant that can solve problems. Use the tool provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)

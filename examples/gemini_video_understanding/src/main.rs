@@ -48,7 +48,7 @@ fn build_additional_params() -> Result<serde_json::Value> {
 async fn main() -> Result<()> {
     let cfg = gemini::functions::Config::from_env(MODEL)?;
     let additional_params = build_additional_params()?;
-    let agent = AgentBuilder::new(ProviderConfig::Gemini(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .additional_params(additional_params)

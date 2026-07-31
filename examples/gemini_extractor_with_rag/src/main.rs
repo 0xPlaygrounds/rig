@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use rig::agent::AgentConfig;
 use rig::completion::Document;
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::extract::{ExtractOptions, extract_with_options};
 use rig::prelude::*;
 use rig::provider::Runtime;
@@ -137,16 +137,11 @@ async fn main() -> Result<(), anyhow::Error> {
             },
         ];
 
-    let max_documents = gemini::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        questions,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| gemini::functions::embed(&ecfg, &http, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(questions)
+        .for_provider(&gemini::functions::DESCRIPTOR)
+        .run(|texts| gemini::functions::embed(&ecfg, &http, texts))
+        .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;

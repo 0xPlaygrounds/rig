@@ -337,7 +337,7 @@ async fn run_workspace_canary_attempt(
     let cfg = gemini::functions::Config::from_env(GEMINI_CANARY_MODEL)
         .map_err(|error| error.to_string())?;
     let agent_name = format!("workspace-default-api-canary-{attempt}");
-    let agent = AgentBuilder::new(ProviderConfig::Gemini(cfg))
+    let agent = AgentBuilder::new(cfg)
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)
         .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)

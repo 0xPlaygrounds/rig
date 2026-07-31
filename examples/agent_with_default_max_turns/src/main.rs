@@ -82,7 +82,7 @@ const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
-    let agent = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \
              Never compute the result yourself.",

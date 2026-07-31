@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     // Provider selection is plain data, so the same config value is simply
     // cloned into each agent built below.
     let cfg = openai::functions::Config::from_env(openai::GPT_4O_MINI)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    let agent = AgentBuilder::new(cfg.clone())
         .preamble(
             "Follow this protocol exactly. For the initial request, reply exactly \
              `RETRY: incomplete draft`. If the latest user message asks you to \
@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
     // the prompt and preceding history, while freshly preparing the next
     // request. It is configured here but not run because this deterministic
     // protocol deliberately returns the same marker each time.
-    let _repeat_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let _repeat_agent = AgentBuilder::new(cfg)
         .default_max_turns(2)
         .add_hook(retry_on_marker("RETRY:", 1, RetryMode::Repeat))
         .build();

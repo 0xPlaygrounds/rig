@@ -10,7 +10,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
 
     // Create agent with a single context prompt
-    let mut discord_bot = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let mut discord_bot = AgentBuilder::new(cfg)
         .preamble("You are a helpful assistant.")
         .build()
         .into_discord_bot(&discord_bot_token)

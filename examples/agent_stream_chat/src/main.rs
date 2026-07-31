@@ -36,9 +36,7 @@ fn sample_history() -> Vec<Message> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
-        .preamble(PREAMBLE)
-        .build();
+    let agent = AgentBuilder::new(cfg).preamble(PREAMBLE).build();
 
     let history = sample_history();
     let mut stream = Box::pin(agent.runner(PROMPT).history(&history).stream_run());

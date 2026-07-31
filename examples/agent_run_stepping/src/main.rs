@@ -28,7 +28,6 @@ use rig::executor::ToolExecutor;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::http_runtime::HttpRuntime;
 use rig::message::UserContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
@@ -102,7 +101,7 @@ async fn main() -> Result<()> {
     // to call the provider's free `complete` function directly.
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
     let http = HttpRuntime::new();
-    let agent = rig::agent::AgentBuilder::new(ProviderConfig::OpenAi(cfg.clone()))
+    let agent = rig::agent::AgentBuilder::new(cfg.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();

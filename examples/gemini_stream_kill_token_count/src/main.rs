@@ -319,12 +319,11 @@ async fn run_scenario(
     let cfg = gemini::functions::Config::from_env(MODEL)?;
     let rt = HttpRuntime::new();
 
-    let request = rig::completion::CompletionRequest {
-        temperature: Some(0.7),
-        max_tokens: Some(2000),
-        additional_params: Some(no_thinking_params()?),
-        ..rig::completion::CompletionRequest::from_prompt(prompt)
-    };
+    let request = rig::completion::CompletionRequest::builder(prompt)
+        .temperature(0.7)
+        .max_tokens(2000)
+        .additional_params(no_thinking_params()?)
+        .build();
     let stream = gemini::functions::open_stream(&cfg, &rt, request).await?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);

@@ -7,7 +7,7 @@
 //! model; it is now a field on `cohere::functions::EmbeddingConfig`, so the
 //! two roles are simply two configs (`with_input_type`) over the same model.
 
-use rig::embeddings::default_concurrency;
+use rig::embeddings::EmbeddingJob;
 use rig::prelude::*;
 use rig::providers::cohere;
 use serde::{Deserialize, Serialize};
@@ -68,16 +68,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_input_type("search_query");
     let rt = HttpRuntime::new();
 
-    let max_documents = cohere::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-    let embeddings = embed_documents(
-        sample_documents(),
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| cohere::functions::embed(&document_config, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(sample_documents())
+        .for_provider(&cohere::functions::DESCRIPTOR)
+        .run(|texts| cohere::functions::embed(&document_config, &rt, texts))
+        .await?;
 
     let vector_store =
         InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;

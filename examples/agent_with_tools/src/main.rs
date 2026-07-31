@@ -49,7 +49,7 @@ fn runtime_tools() -> Vec<PortableDynamicTool> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let agent = AgentBuilder::new(cfg)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              You must use the provided tools before answering.",

@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
         chain_of_thought_options: chain_of_thought_options(),
         rt: Arc::new(Runtime::new()),
 
-        executor: AgentBuilder::new(ProviderConfig::Anthropic(cfg))
+        executor: AgentBuilder::new(cfg)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.
