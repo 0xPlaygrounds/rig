@@ -1630,3 +1630,95 @@ Callback-serving lifetimes: **0**.
 `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features`
 clean; `cargo check --target wasm32-unknown-unknown -p rig-core -p rig-agent`
 clean; `git diff --stat -- tests/cassettes` empty at every commit.
+
+---
+
+## R10 — further data-driven pass (post-R9)
+
+Continues the rearchitecture against the remaining mechanism generics. Scope
+was limited to type parameters, associated types, and behavioural traits
+standing in for configuration, schemas, protocol records, or a closed set of
+runtime choices. Hook architecture was explicitly out of scope and untouched.
+
+### Removed
+
+| Mechanism | Was | Now | Evidence it was a mechanism |
+| --- | --- | --- | --- |
+| Portable filter operand | `Filter<V>` (`vector_store/request.rs`) | `Filter` over `serde_json::Value` | Every instantiation workspace-wide was `Filter<serde_json::Value>` — 14 files, zero other operand types |
+| SSE retry strategy | `GenericEventSource<HttpClient, Retry = ExponentialBackoff>` + `trait RetryPolicy` | `GenericEventSource<HttpClient>` holding a concrete `ExponentialBackoff` config | One impl; `new` only ever built `DEFAULT_RETRY`; `Stream` was implemented solely for the default specialization, so `Retry` was unusable as a variation point |
+| Mongo collection type | `MongoDbVectorIndex<C>` | `MongoDbVectorIndex` storing `Collection<bson::Document>` | `C` never reached the wire: the two read paths (`top_n`, `top_n_ids`) call the document-agnostic `Collection::aggregate` and immediately `.with_type::<serde_json::Value>()` the cursor, and the insert path already called `clone_with_type::<bson::Document>()`. `new<C>` still accepts a typed collection and erases at construction |
+| Neo4j row wire type | `pub struct RowResultNode<T>` | private `RowResultNode` with `node: serde_json::Value` | Only ever instantiated with `Value`. It was `pub` inside `pub mod vector_index` (`lib.rs:100`), so `rig_neo4j::vector_index::RowResultNode` was technically reachable — making it private is a real semver break, though all its fields were already private so nothing could be read from it |
+| Tool discovery | `trait PortableToolEmbedding` (`InitError`/`Context`/`State` + `init`) | `ToolSchema` owned discovery record | `init` had **no callers anywhere**; the sole consumer serialized name/context/embedding_docs into `ToolSchema`, which is already exactly that record |
+
+This supersedes the R9 census line "Behavioural traits remaining: `PortableTool`
+(+`PortableToolEmbedding`), `HookCallback`, `PortableDynamicCallback`". After
+R10 the list is **`PortableTool`, `HookCallback`, `PortableDynamicCallback`** —
+the typed authoring front door plus the two sanctioned callback seams — with
+`Embed` and the loaders' `Readable`/`Loadable` unchanged (declined earlier).
+`RetryPolicy` and `PortableToolEmbedding` are gone.
+
+`ToolSchema` gained `new`/`with_context`/`try_with_context`; `try_from` is
+gone. `context` is retained as an owned, Rig-uninterpreted slot for hosts
+keeping their own registry keyed by tool name — the reconstruction *mechanism*
+went, the data channel did not.
+
+### Kept, with evidence
+
+- `VectorSearchRequest<F>` — `F` still carries backend-native filter records
+  (vectorize `ne`/`in_values`, Milvus `in_values`, PostgreSQL membership,
+  LanceDB/SQLite native expressions) whose operators the portable language does
+  not model. Verified present and constructible after the `Filter` change.
+- `ExponentialBackoff` as a struct rather than split config/state — splitting
+  would have changed `set_reconnection_time`'s in-place clamp widening, which
+  is observable behaviour. Removing the trait removed the mechanism; the data
+  shape was already data.
+- `MongoDbVectorIndex::new<C>` — one-time authoring generic, erased at
+  construction (§ "generic used once at construction" category).
+
+### Analyzed, not executed
+
+Both are genuine candidates with a concrete plan; neither could be completed
+atomically within this pass, and partial migrations are disallowed.
+
+- **Modality response wrappers** (`TranscriptionResponse<T>`,
+  `ImageGenerationResponse<T>`, `AudioGenerationResponse<T>`). `T` really does
+  encode provider identity (`openai::TranscriptionResponse`,
+  `GenerateContentResponse`, `MistralTranscriptionResponse`, `bytes::Bytes`).
+  Plan: a `RawProviderResponse { Json, Bytes }` envelope in
+  `provider_response.rs` with `decode::<T>()` for typed recovery. **Blocker:**
+  none of the ~15 provider wire types derive `Serialize`, so the change needs
+  15 derives plus 25 call-site edits with per-modality error mapping. Note the
+  consumer surface is tiny — one reader workspace-wide
+  (`tests/providers/gemini/cassette/image_generation.rs:28`, `model_version`).
+- **Loaders** (`FileLoader<I>`, `PdfFileLoader<T>`, `EpubFileLoader<T, P>`),
+  ~1550 lines of chained-iterator code. The EPUB half turns on a keep/remove
+  decision rather than a mechanical edit: `TextProcessor` is a fully public
+  exported trait (`loaders/mod.rs:34`, `epub/mod.rs:7`) with 19 bound sites in
+  `loader.rs`. Only two in-tree impls, but external impls are a supported
+  public capability, so collapsing to an `EpubTextMode` enum requires an
+  explicit custom-callback path first.
+
+`SqliteVectorStore<T>` and the `PortableTool`/`PortableDynamicTool` split were
+not reached in this pass.
+
+### Verification
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+--all-features` zero warnings; `cargo test --workspace --all-features`
+**3254 passed, 0 failed** across 158 test binaries;
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features`
+clean; `cargo test --workspace --all-features --doc` green;
+`cargo check --target wasm32-unknown-unknown -p rig-core -p rig-agent` clean;
+`git diff --stat -- tests/cassettes` empty.
+
+Behaviour proofs added rather than assumed:
+
+- `Filter` serde wire format pinned (`and`/`eq`/`gt` lowercase newtype shape)
+  so dropping the operand parameter cannot silently move a persisted format.
+- Retry timing/limits now have tests at all (there were none): start delay,
+  factor scaling, `max_duration` clamping, `max_retries` termination, and the
+  server-`retry:` clamp-widening rule.
+- `ToolSchema` embeds every doc in order; `context` round-trips verbatim.
+- The three gemini `dynamic_tools` cassettes replay byte-identically, proving
+  discovery→selection→`active_tools` still works across multi-turn runs after
+  `PortableToolEmbedding`'s removal.

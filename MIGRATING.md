@@ -280,6 +280,79 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### Tool discovery is a record, not a trait
+
+`PortableToolEmbedding` is gone — along with its `InitError`, `Context`, and
+`State` associated types and its `init` method. Build the discovery record
+directly instead:
+
+```rust
+// before
+impl PortableToolEmbedding for Add {
+    type InitError = InitError;
+    type Context = ();
+    type State = ();
+    fn init(_state: (), _context: ()) -> Result<Self, InitError> { Ok(Add) }
+    fn embedding_docs(&self) -> Vec<String> { vec!["Add x and y".into()] }
+    fn context(&self) {}
+}
+let schemas = vec![ToolSchema::try_from(&Add)?];
+
+// after — the docs move to the construction site
+let schemas = vec![ToolSchema::new(Add::NAME, vec!["Add x and y".into()])];
+```
+
+Nothing in Rig ever called `init`, so no reconstruction path is lost. If you
+need to rebuild a tool from discovery data, keep your own registry keyed by
+tool name; `ToolSchema::context` is still there as an uninterpreted slot
+(`with_context` / `try_with_context`) if you want the entry to travel with the
+record. Dynamic tool selection is otherwise unchanged: register tools as
+executable records, embed the discovery batch, and narrow the advertised set
+per turn with `RequestPatch::active_tools`.
+
+### The portable filter operand is concrete
+
+`Filter<V>` is now `Filter`, with `serde_json::Value` operands — which is what
+every use in the workspace already instantiated. Constructors take
+`impl Into<serde_json::Value>`, so the `json!` wrapper is optional:
+
+```rust
+// before
+Filter::<serde_json::Value>::eq("category", serde_json::json!("fruit"))
+// after — both work
+Filter::eq("category", serde_json::json!("fruit"))
+Filter::eq("category", "fruit")
+```
+
+The serde representation is unchanged, so persisted filters still load.
+`VectorSearchRequest<F>` keeps its type parameter: backend-native filters with
+richer operators (vectorize `ne`/`in_values`, Milvus array ops, PostgreSQL
+membership, SQLite native expressions) are unaffected.
+
+### `RetryPolicy` is gone; backoff is configuration
+
+The SSE event source no longer takes a retry type parameter, and the
+`RetryPolicy` trait is deleted. `http_client::retry::ExponentialBackoff` is now
+plain configuration with inherent `retry` and `set_reconnection_time` methods.
+There was only ever one implementation and the `Stream` impl only covered the
+default specialization, so no working code could have substituted a policy.
+Reconnection timing, backoff clamping, and retry limits are unchanged.
+
+### Mongo and Neo4j wrappers are concrete
+
+`MongoDbVectorIndex<C>` is now `MongoDbVectorIndex`. `new` still accepts a
+collection of any document type and converts it internally, so most call sites
+are unchanged — only explicit type annotations need updating:
+
+```rust
+// before
+let index: MongoDbVectorIndex<MyDoc> = MongoDbVectorIndex::new(collection, "idx", params).await?;
+// after
+let index: MongoDbVectorIndex = MongoDbVectorIndex::new(collection, "idx", params).await?;
+```
+
+Neo4j's `RowResultNode<T>` was internal-only and is now private.
+
 ### `rig-mcp` is renamed to `rig-rmcp`
 
 The crate is named after the `rmcp` SDK it wraps. Only a direct dependency
@@ -360,9 +433,9 @@ let native = Neo4jSearchFilter::from_filter(portable);
 with richer operators — `VectorizeFilter::in_values`,
 `milvus::Filter::array_contains`, `PgSearchFilter::member`,
 `LanceDBFilter::array_has_any` — still reach a query unchanged.
-`Filter::interpret` is replaced by the backend's own
-`from_filter(Filter<serde_json::Value>)`, which is fallible only where the
-operand type can reject a JSON value (milvus, scylladb, surrealdb, qdrant).
+`Filter::interpret` is replaced by the backend's own `from_filter(Filter)`,
+which is fallible only where the operand type can reject a JSON value (milvus,
+scylladb, surrealdb, qdrant).
 
 ### Document loaders: no more boxed iterators
 
