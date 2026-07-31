@@ -232,6 +232,41 @@ impl HookEntry {
         }
     }
 
+    /// Create a named hook entry from a **synchronous** callback.
+    ///
+    /// Most hooks inspect the event and answer immediately; they do not await
+    /// anything. This spares them the `Box::pin(async move { .. })` wrapper
+    /// [`Self::new`] requires, so the callback reads as what it is — a
+    /// function from event to decision:
+    ///
+    /// ```
+    /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
+    ///
+    /// let entry = HookEntry::sync("logger", |event| match event {
+    ///     HookEvent::BeforeModelCall { turn, .. } => {
+    ///         tracing::info!(turn, "model call");
+    ///         HookDecision::Continue
+    ///     }
+    ///     _ => HookDecision::Continue,
+    /// });
+    /// # let _ = entry;
+    /// ```
+    ///
+    /// Dispatch, fold semantics, ordering, and the
+    /// [`observing_deltas`](Self::observing_deltas) opt-in are identical to
+    /// [`Self::new`] — this only changes how the callback is written. Reach for
+    /// [`Self::new`] when the hook genuinely awaits (embedding a retrieval
+    /// query, say).
+    pub fn sync<F>(name: impl Into<String>, callback: F) -> Self
+    where
+        F: Fn(HookEvent) -> HookDecision + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        Self::new(name, move |event| {
+            let decision = callback(event);
+            Box::pin(async move { decision })
+        })
+    }
+
     /// The entry's name.
     pub fn name(&self) -> &str {
         &self.name
@@ -636,10 +671,7 @@ mod tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     fn tool_call(args: serde_json::Value) -> ToolCall {
