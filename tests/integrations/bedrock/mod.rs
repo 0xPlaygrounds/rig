@@ -29,4 +29,5 @@ mod embeddings;
 mod extractor;
 mod image_generation;
 mod image_prompt;
+mod prompt_caching_with_reasoning;
 mod streaming;
