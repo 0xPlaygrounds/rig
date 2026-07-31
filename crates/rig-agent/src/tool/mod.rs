@@ -57,6 +57,6 @@ pub mod builtin;
 pub mod router_support;
 
 pub use rig_core::tool::{
-    IntoToolOutput, PortableDynamicTool, PortableTool, PortableToolEmbedding, ToolErrorKind,
-    ToolExecutionError, ToolOutput, ToolResult, portable_tool_definition, serialize_to_tool_output,
+    IntoToolOutput, PortableDynamicTool, PortableTool, ToolErrorKind, ToolExecutionError,
+    ToolOutput, ToolResult, portable_tool_definition, serialize_to_tool_output,
 };

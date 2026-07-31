@@ -28,7 +28,7 @@ use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::completion::ToolDefinition;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{ImageMediaType, ToolResultContent};
-use rig::tool::{PortableToolEmbedding, Tool, ToolOutput};
+use rig::tool::{Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -482,20 +482,11 @@ macro_rules! embeddable_operation {
             }
         }
 
-        impl PortableToolEmbedding for $name {
-            type InitError = InitError;
-            type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self::default())
+        impl $name {
+            /// This tool's discovery record, as owned data.
+            pub fn discovery() -> rig::embeddings::ToolSchema {
+                rig::embeddings::ToolSchema::new(Self::NAME, vec![$embedding_doc.into()])
             }
-
-            fn embedding_docs(&self) -> Vec<String> {
-                vec![$embedding_doc.into()]
-            }
-
-            fn context(&self) -> Self::Context {}
         }
     };
 }

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::{
     completion::ToolDefinition,
@@ -42,23 +42,6 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
         &self,
         arguments: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + WasmCompatSend;
-}
-
-/// A portable tool that can be embedded and reconstructed for discovery.
-pub trait PortableToolEmbedding: PortableTool {
-    /// Failure returned while reconstructing the typed implementation.
-    type InitError: std::error::Error + WasmCompatSend + WasmCompatSync + 'static;
-    /// Serializable reconstruction data.
-    type Context: for<'de> Deserialize<'de> + Serialize;
-    /// Runtime initialization state supplied by the authoring integration.
-    type State: WasmCompatSend;
-
-    /// Documents used by a discovery implementation.
-    fn embedding_docs(&self) -> Vec<String>;
-    /// Serializable reconstruction data.
-    fn context(&self) -> Self::Context;
-    /// Reconstruct the typed implementation.
-    fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
 
 trait PortableDynamicCallback:

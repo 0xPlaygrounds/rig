@@ -22,7 +22,7 @@ use rig::{
     embeddings::{ToolSchema, default_concurrency},
     prelude::*,
     providers::openai,
-    tool::{PortableToolEmbedding, Tool},
+    tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -36,10 +36,6 @@ struct OperationArgs {
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
 struct MathError;
-
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct InitError;
 
 #[derive(Deserialize, Serialize)]
 struct Add;
@@ -76,22 +72,6 @@ impl Tool for Add {
     }
 }
 
-impl PortableToolEmbedding for Add {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Add)
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Add x and y together".into()]
-    }
-
-    fn context(&self) -> Self::Context {}
-}
-
 #[derive(Deserialize, Serialize)]
 struct Subtract;
 
@@ -124,22 +104,6 @@ impl Tool for Subtract {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
-    }
-}
-
-impl PortableToolEmbedding for Subtract {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Subtract)
-    }
-
-    fn context(&self) -> Self::Context {}
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Subtract y from x (i.e.: x - y)".into()]
     }
 }
 
@@ -221,8 +185,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
-        ToolSchema::try_from(&Add)?,
-        ToolSchema::try_from(&Subtract)?,
+        ToolSchema::new(Add::NAME, vec!["Add x and y together".into()]),
+        ToolSchema::new(
+            Subtract::NAME,
+            vec!["Subtract y from x (i.e.: x - y)".into()],
+        ),
     ];
     let embeddings = embed_documents(
         schemas,

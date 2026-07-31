@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
-use rig::tool::{PortableTool, PortableToolEmbedding};
-use serde::{Deserialize, Serialize};
+use rig::tool::PortableTool;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Arguments {
@@ -33,31 +33,6 @@ impl PortableTool for StablePortableTool {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
-struct StableContext {
-    label: String,
-}
-
-impl PortableToolEmbedding for StablePortableTool {
-    type InitError = Infallible;
-    type Context = StableContext;
-    type State = ();
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["stable portable document".to_string()]
-    }
-
-    fn context(&self) -> Self::Context {
-        StableContext {
-            label: "stable".to_string(),
-        }
-    }
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Self)
-    }
-}
-
 // The portable contract is reachable through every explicit path, in every
 // feature combination (including `--no-default-features`).
 fn assert_root_portable<T: rig::tool::PortableTool>() {}
@@ -78,6 +53,15 @@ fn main() {
         |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
     );
     let _ = &portable_dynamic;
+
+    // Tool discovery is owned data, and its record is reachable in every
+    // feature combination too.
+    let discovery = rig::embeddings::ToolSchema::new(
+        <StablePortableTool as rig::tool::PortableTool>::NAME,
+        vec!["stable portable document".to_string()],
+    );
+    assert_eq!(discovery.name, "stable_portable_tool");
+    assert!(discovery.context.is_null());
 
     // Enabling the agent runtime is purely additive: `rig::tool::Tool` stays
     // the portable, context-free trait it is under `--no-default-features`,

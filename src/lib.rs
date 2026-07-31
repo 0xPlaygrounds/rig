@@ -46,9 +46,9 @@
 //! [`embeddings::embed_documents`].
 //!
 //! `rig::tool` exposes the portable, context-free tool contracts —
-//! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool` — and
-//! aliases `Tool` to `PortableTool`. The same surface also lives at
-//! [`crate::agent::tool`].
+//! `PortableTool` and `PortableDynamicTool` — and aliases `Tool` to
+//! `PortableTool`. The same surface also lives at [`crate::agent::tool`].
+//! Tool discovery is the owned [`embeddings::ToolSchema`] record.
 //!
 //! # Companion integrations
 //!
@@ -199,9 +199,7 @@ pub mod tool {
     /// for the (single) signature change relative to the removed contextual
     /// trait.
     pub use rig_core::tool::PortableTool as Tool;
-    pub use rig_core::tool::{
-        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
-    };
+    pub use rig_core::tool::{PortableDynamicTool, PortableTool, portable_tool_definition};
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;
     /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a

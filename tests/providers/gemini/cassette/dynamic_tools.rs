@@ -1,5 +1,5 @@
-//! Dynamic (RAG) tools re-expressed as the hook recipe: `PortableToolEmbedding`
-//! tool schemas are embedded into a vector store per prompt, and a
+//! Dynamic (RAG) tools re-expressed as the hook recipe: `ToolSchema`
+//! discovery records are embedded into a vector store per prompt, and a
 //! completion-call hook embeds the query, retrieves the best-matching tool
 //! names, and narrows the advertised set for the turn with
 //! `RequestPatch::active_tools`. These cassettes were recorded against the
@@ -122,10 +122,7 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
-            let schemas = vec![
-                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
-                ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
-            ];
+            let schemas = vec![EmbedSubtract::discovery(), EmbedMultiply::discovery()];
             let store = build_tool_store(&client, schemas).await;
             let embedding_model = (
                 client.embedding_config(gemini::embedding::EMBEDDING_001),
@@ -179,10 +176,7 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
-            let schemas = vec![
-                ToolSchema::try_from(&EmbedAdd::default()).expect("tool schemas should build"),
-                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
-            ];
+            let schemas = vec![EmbedAdd::discovery(), EmbedSubtract::discovery()];
             let store = build_tool_store(&client, schemas).await;
             let embedding_model = (
                 client.embedding_config(gemini::embedding::EMBEDDING_001),
@@ -224,9 +218,9 @@ async fn sample_caps_retrieved_definitions() {
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
             let schemas = vec![
-                ToolSchema::try_from(&EmbedAdd::default()).expect("tool schemas should build"),
-                ToolSchema::try_from(&EmbedSubtract::default()).expect("tool schemas should build"),
-                ToolSchema::try_from(&EmbedMultiply::default()).expect("tool schemas should build"),
+                EmbedAdd::discovery(),
+                EmbedSubtract::discovery(),
+                EmbedMultiply::discovery(),
             ];
             let store = build_tool_store(&client, schemas).await;
             let embedding_model = (
