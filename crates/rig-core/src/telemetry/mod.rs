@@ -27,7 +27,7 @@ pub use tracing as __tracing;
 /// direct `tracing` dependency — the crate's own `__tracing` path is hidden,
 /// and `Option::<&str>::None` is the only other portable spelling. `rig-core`
 /// already exposes `tracing` types across this module's public API
-/// ([`CompletionSpanBuilder::build`] returns a [`tracing::Span`]), so this adds
+/// ([`completion_span`] returns a [`tracing::Span`]), so this adds
 /// no new semver surface.
 pub use tracing::field::Empty;
 
@@ -130,7 +130,7 @@ impl CompletionOperation {
 /// no-ops for any field absent from a span's static metadata: a span carrying
 /// only the marker would be adopted and then drop every recorded completion
 /// field, losing telemetry with no error. A span missing any required field is
-/// therefore *not* adopted — [`CompletionSpanBuilder::build`] creates a fresh
+/// therefore *not* adopted — [`completion_span`] creates a fresh
 /// `rig::completions` child span instead, so telemetry is never silently lost.
 ///
 /// The declarative source of the contract is the
@@ -144,7 +144,7 @@ pub const COMPLETION_PARENT_MARKER_FIELD: &str = "rig.completion_parent";
 
 /// Fields a completion-parent span must statically declare (as
 /// [`tracing::field::Empty`] or a value) to be adopted by
-/// [`CompletionSpanBuilder::build`], alongside [`COMPLETION_PARENT_MARKER_FIELD`].
+/// [`completion_span`], alongside [`COMPLETION_PARENT_MARKER_FIELD`].
 ///
 /// These mirror the canonical fields the builder's own `rig::completions` span
 /// declares, so an adopted span can absorb the request, response, usage, and
@@ -177,7 +177,7 @@ pub const COMPLETION_PARENT_REQUIRED_FIELDS: &[&str] = &[
 /// This macro is the single declarative source of the contract: it declares
 /// [`COMPLETION_PARENT_MARKER_FIELD`] and every field in
 /// [`COMPLETION_PARENT_REQUIRED_FIELDS`], so a span it builds is always
-/// adoptable by [`CompletionSpanBuilder::build`] and can absorb every field
+/// adoptable by [`completion_span`] and can absorb every field
 /// recorded over the completion's lifetime. Runtimes should declare their
 /// completion-parent spans through it rather than hand-writing the marker and
 /// field list — [`tracing::Span::record`] silently no-ops on undeclared
@@ -265,7 +265,7 @@ macro_rules! completion_parent_span {
 // constants it implements.
 pub use crate::completion_parent_span;
 
-/// What [`CompletionSpanBuilder::build`] decided about the span that is
+/// What [`completion_span`] decided about the span that is
 /// current when it runs.
 ///
 /// This is the whole adoption decision table in one place, kept free of
@@ -392,91 +392,79 @@ fn warn_once_on_completion_parent_verdict(
 /// turn has exactly one model span. Other ambient spans — and marker spans that
 /// omit a required field — remain parents of a newly created `rig::completions`
 /// span.
-pub struct CompletionSpanBuilder<'a> {
-    provider: &'a str,
-    request_model: &'a str,
+/// Build a canonical completion span, or enrich Rig's current
+/// completion-parent span when one is adoptable.
+///
+/// System instructions are read from the request's canonical
+/// [`Message::System`] entries via
+/// [`system_instructions_json`], so telemetry and wire conversion see the same
+/// data. There is no scalar setter: a provider that materializes configured
+/// defaults must fold them into the request it passes here, so the span and the
+/// wire body cannot disagree.
+///
+/// This builds the span immediately, so the `provider`/`request_model` borrows
+/// never escape and the type needs no lifetime or type parameters.
+pub fn completion_span(
+    provider: &str,
+    request_model: &str,
     operation: CompletionOperation,
-    system_instructions: Option<String>,
-}
+    request: &crate::completion::CompletionRequest,
+) -> tracing::Span {
+    let system_instructions = system_instructions_json(request);
 
-impl<'a> CompletionSpanBuilder<'a> {
-    /// Create a completion-span builder for a provider request.
-    pub fn new(provider: &'a str, request_model: &'a str, operation: CompletionOperation) -> Self {
-        Self {
+    let current = tracing::Span::current();
+    if let Some(metadata) = current.metadata() {
+        let verdict = classify_completion_parent(metadata);
+        warn_once_on_completion_parent_verdict(verdict, metadata);
+        if verdict == CompletionParentVerdict::Adopt {
+            current.record("gen_ai.operation.name", operation.as_str());
+            current.record("gen_ai.provider.name", provider);
+            current.record("gen_ai.request.model", request_model);
+            if let Some(system_instructions) = system_instructions.as_deref() {
+                current.record("gen_ai.system_instructions", system_instructions);
+            }
+            return current;
+        }
+    }
+
+    let operation_name = operation.as_str();
+    let system_instructions = system_instructions.as_deref();
+    match operation {
+        CompletionOperation::Chat => new_completion_span!(
+            "chat",
             provider,
             request_model,
-            operation,
-            system_instructions: None,
-        }
-    }
-
-    /// Set the system instructions sent with the request when sensitive content
-    /// telemetry has been explicitly enabled.
-    pub fn system_instructions(
-        mut self,
-        system_instructions: Option<&'a str>,
-        record_content: bool,
-    ) -> Self {
-        self.system_instructions = system_instructions_json(system_instructions, record_content);
-        self
-    }
-
-    /// Build a canonical completion span or enrich Rig's current completion-parent span.
-    pub fn build(self) -> tracing::Span {
-        let current = tracing::Span::current();
-        if let Some(metadata) = current.metadata() {
-            let verdict = classify_completion_parent(metadata);
-            warn_once_on_completion_parent_verdict(verdict, metadata);
-            if verdict == CompletionParentVerdict::Adopt {
-                current.record("gen_ai.operation.name", self.operation.as_str());
-                current.record("gen_ai.provider.name", self.provider);
-                current.record("gen_ai.request.model", self.request_model);
-                if let Some(system_instructions) = self.system_instructions.as_deref() {
-                    current.record("gen_ai.system_instructions", system_instructions);
-                }
-                return current;
-            }
-        }
-
-        let operation = self.operation.as_str();
-        let system_instructions = self.system_instructions.as_deref();
-        match self.operation {
-            CompletionOperation::Chat => new_completion_span!(
-                "chat",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::ChatStreaming => new_completion_span!(
-                "chat_streaming",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::GenerateContent => new_completion_span!(
-                "generate_content",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::Interactions => new_completion_span!(
-                "interactions",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-            CompletionOperation::InteractionsStreaming => new_completion_span!(
-                "interactions_streaming",
-                self.provider,
-                self.request_model,
-                operation,
-                system_instructions
-            ),
-        }
+            operation_name,
+            system_instructions
+        ),
+        CompletionOperation::ChatStreaming => new_completion_span!(
+            "chat_streaming",
+            provider,
+            request_model,
+            operation_name,
+            system_instructions
+        ),
+        CompletionOperation::GenerateContent => new_completion_span!(
+            "generate_content",
+            provider,
+            request_model,
+            operation_name,
+            system_instructions
+        ),
+        CompletionOperation::Interactions => new_completion_span!(
+            "interactions",
+            provider,
+            request_model,
+            operation_name,
+            system_instructions
+        ),
+        CompletionOperation::InteractionsStreaming => new_completion_span!(
+            "interactions_streaming",
+            provider,
+            request_model,
+            operation_name,
+            system_instructions
+        ),
     }
 }
 
@@ -696,7 +684,43 @@ fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutput
 }
 
 /// Serializes system instructions using the normalized GenAI telemetry shape.
-pub fn system_instructions_json(instructions: Option<&str>, enabled: bool) -> Option<String> {
+pub fn system_instructions_json(request: &crate::completion::CompletionRequest) -> Option<String> {
+    if !request.record_telemetry_content {
+        return None;
+    }
+
+    // Read the canonical representation directly: every `Message::System` in
+    // request order, each serialized as its own part. Deliberately *not*
+    // `messages_for_telemetry()`, which clones and normalizes unrelated prompt
+    // and document content this attribute has no business carrying.
+    let parts: Vec<TelemetryPart> = request
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            crate::message::Message::System { content } => Some(TelemetryPart::Text {
+                content: content.clone(),
+            }),
+            _ => None,
+        })
+        .collect();
+
+    if parts.is_empty() {
+        return None;
+    }
+
+    serde_json::to_string(&parts).ok()
+}
+
+/// Serialize a scalar system prompt for the run-level `invoke_agent` span.
+///
+/// Narrowly scoped to agent telemetry: at run level no turn request exists yet,
+/// so the agent's configured preamble is the only thing available. Completion
+/// spans must use [`system_instructions_json`] instead, so that the attribute
+/// and the wire body are derived from the same request.
+pub fn configured_system_instructions_json(
+    instructions: Option<&str>,
+    enabled: bool,
+) -> Option<String> {
     if !enabled {
         return None;
     }
@@ -837,13 +861,51 @@ mod tests {
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
 
+    /// A request carrying `systems` as canonical leading system messages.
+    fn request_with_systems(
+        systems: &[&str],
+        record: bool,
+    ) -> crate::completion::CompletionRequest {
+        let mut request = crate::completion::CompletionRequest::with_history(
+            systems.iter().map(|s| Message::system(*s)).collect(),
+            "prompt",
+        );
+        request.record_telemetry_content = record;
+        request
+    }
+
+    #[test]
+    fn system_instructions_read_canonical_messages_in_order() {
+        // Every system message becomes its own ordered part.
+        assert_eq!(
+            system_instructions_json(&request_with_systems(&["follow policy"], true)).as_deref(),
+            Some(r#"[{"type":"text","content":"follow policy"}]"#)
+        );
+        assert_eq!(
+            system_instructions_json(&request_with_systems(&["first", "second"], true)).as_deref(),
+            Some(r#"[{"type":"text","content":"first"},{"type":"text","content":"second"}]"#)
+        );
+        // Opt-out and "no system messages" both yield nothing.
+        assert_eq!(
+            system_instructions_json(&request_with_systems(&["secret"], false)),
+            None
+        );
+        assert_eq!(
+            system_instructions_json(&request_with_systems(&[], true)),
+            None
+        );
+    }
+
     #[test]
     fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
         assert_eq!(
-            system_instructions_json(Some("follow policy"), true).as_deref(),
+            configured_system_instructions_json(Some("follow policy"), true).as_deref(),
             Some(r#"[{"type":"text","content":"follow policy"}]"#)
         );
-        assert_eq!(system_instructions_json(Some("secret"), false), None);
+        assert_eq!(
+            configured_system_instructions_json(Some("secret"), false),
+            None
+        );
 
         let input = input_messages(&[
             Message::system("follow policy"),
@@ -1123,9 +1185,8 @@ mod tests {
                 span: captured.clone(),
             });
             tracing::subscriber::with_default(subscriber, || {
-                let span = CompletionSpanBuilder::new("openai", "gpt-5", operation)
-                    .system_instructions(Some("system prompt"), true)
-                    .build();
+                let request = request_with_systems(&["system prompt"], true);
+                let span = completion_span("openai", "gpt-5", operation, &request);
                 assert!(!span.is_disabled());
             });
 
@@ -1236,8 +1297,8 @@ mod tests {
         tracing::subscriber::with_default(subscriber, || {
             let ambient = tracing::info_span!(target: "application", "ambient");
             let _guard = ambient.enter();
-            let span =
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            let span = completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             assert_ne!(span.id(), ambient.id());
         });
 
@@ -1290,8 +1351,8 @@ mod tests {
                 "hand-written marker literal is stale; update it to {COMPLETION_PARENT_MARKER_FIELD}"
             );
             let _guard = partial_marker.enter();
-            let span =
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            let span = completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             assert_ne!(span.id(), partial_marker.id());
         });
 
@@ -1397,8 +1458,8 @@ mod tests {
 
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
         tracing::subscriber::with_default(Registry::default(), || {
-            let span =
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            let span = completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             let Some(metadata) = span.metadata() else {
                 panic!("completion span was disabled");
             };
@@ -1546,10 +1607,12 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
             );
             let _guard = near_miss.enter();
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             // Second completion under the *same* span callsite: the budget is
             // per callsite, so this one must stay silent.
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
         });
 
         let captured = warnings.take();
@@ -1600,7 +1663,8 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
             );
             first.in_scope(|| {
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+                let request = request_with_systems(&[], false);
+                completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             });
 
             let second = tracing::info_span!(
@@ -1610,7 +1674,8 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
             );
             second.in_scope(|| {
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+                let request = request_with_systems(&[], false);
+                completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             });
         });
 
@@ -1649,7 +1714,8 @@ mod tests {
                 gen_ai.operation.name = tracing::field::Empty,
             );
             near_miss.in_scope(|| {
-                CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+                let request = request_with_systems(&[], false);
+                completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
             });
             assert_eq!(
                 warnings.take().len(),
@@ -1664,7 +1730,8 @@ mod tests {
                 system_instructions: Option::<&str>::None,
             );
             let _guard = conforming.enter();
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
 
             // An ordinary ambient span is not a parent at all, and must not warn
             // either — a runtime that never opted in should never hear about
@@ -1672,7 +1739,8 @@ mod tests {
             drop(_guard);
             let ambient = tracing::info_span!(target: "application", "ambient");
             let _ambient_guard = ambient.enter();
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
         });
 
         // The control drained the buffer, so anything here was emitted by the
@@ -1699,13 +1767,13 @@ mod tests {
                 system_instructions: tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
-            let span = CompletionSpanBuilder::new(
+            let request = request_with_systems(&["provider system"], true);
+            let span = completion_span(
                 "anthropic",
                 "claude-sonnet",
                 CompletionOperation::ChatStreaming,
-            )
-            .system_instructions(Some("provider system"), true)
-            .build();
+                &request,
+            );
             assert_eq!(span.id(), completion_parent.id());
         });
 
@@ -1744,12 +1812,13 @@ mod tests {
                 system_instructions: tracing::field::Empty,
             );
             let _guard = completion_parent.enter();
-            let span = CompletionSpanBuilder::new(
+            let request = request_with_systems(&[], false);
+            let span = completion_span(
                 "neutral-provider",
                 "neutral-model",
                 CompletionOperation::Chat,
-            )
-            .build();
+                &request,
+            );
             assert_eq!(span.id(), completion_parent.id());
         });
 
@@ -1784,7 +1853,8 @@ mod tests {
                 system_instructions: "effective agent instructions",
             );
             let _guard = completion_parent.enter();
-            CompletionSpanBuilder::new("openai", "gpt-5", CompletionOperation::Chat).build();
+            let request = request_with_systems(&[], false);
+            completion_span("openai", "gpt-5", CompletionOperation::Chat, &request);
         });
 
         let Ok(captured) = captured.0.lock() else {

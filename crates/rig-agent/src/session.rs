@@ -493,13 +493,6 @@ impl AgentSession {
                     }
 
                     let patch = self.next_patch.take().unwrap_or_default();
-                    // This turn's base system prompt — the patched-or-baseline
-                    // preamble, before any output-mode augmentation the request
-                    // builder appends.
-                    let effective_preamble = patch
-                        .preamble
-                        .clone()
-                        .or_else(|| self.config.preamble.clone());
                     let mut prepared = prepare_request(
                         &self.config,
                         &self.tools,
@@ -512,7 +505,7 @@ impl AgentSession {
                     self.run
                         .set_output_tool_name(prepared.output_tool_name.clone());
 
-                    let chat_span = self.next_chat_span(effective_preamble.as_deref());
+                    let chat_span = self.next_chat_span(&prepared.request);
                     // Content telemetry is recorded onto the agent's own `chat`
                     // span and suppressed on the provider's, exactly as the
                     // classic blocking driver did.
@@ -617,12 +610,14 @@ impl AgentSession {
     /// Build this turn's `chat` span and chain it onto the previous one via
     /// `follows_from`, preserving the classic blocking driver's linear causal
     /// trace.
-    fn next_chat_span(&mut self, effective_preamble: Option<&str>) -> tracing::Span {
+    fn next_chat_span(
+        &mut self,
+        request: &rig_core::completion::CompletionRequest,
+    ) -> tracing::Span {
         let params = SessionSpanParams {
-            record_telemetry_content: self.config.record_telemetry_content,
             agent_name: self.config.name.as_deref(),
         };
-        let span = new_session_chat_span(&params, effective_preamble);
+        let span = new_session_chat_span(&params, request);
         let span = match self.chat_chain_head {
             0 => span,
             id => span
@@ -3446,7 +3441,6 @@ mod classic_hook_tests {
 
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("raw request")),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -8328,10 +8322,9 @@ mod classic_span_tests {
         tracing::subscriber::with_default(Registry::default(), || {
             let span = crate::agent::telemetry::new_session_chat_span(
                 &crate::agent::telemetry::SessionSpanParams {
-                    record_telemetry_content: false,
                     agent_name: Some("contract-agent"),
                 },
-                None,
+                &rig_core::completion::CompletionRequest::from_prompt("prompt"),
             );
             let Some(metadata) = span.metadata() else {
                 panic!("chat span was disabled");

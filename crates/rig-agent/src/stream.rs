@@ -474,10 +474,9 @@ impl AgentStream {
         // streaming driver's, parented into the ambient span tree.
         let chat_span = new_session_chat_streaming_span(
             &SessionSpanParams {
-                record_telemetry_content: self.config.record_telemetry_content,
                 agent_name: self.config.name.as_deref(),
             },
-            self.config.preamble.as_deref(),
+            &prepared.request,
         );
         // Content telemetry is recorded onto the agent's own `chat_streaming`
         // span and suppressed on the provider's, exactly as the classic

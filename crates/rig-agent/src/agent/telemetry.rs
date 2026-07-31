@@ -19,11 +19,11 @@ use super::UNKNOWN_AGENT_NAME;
 /// which dashboards split on). Every other field is identical across the two
 /// surfaces, so it lives here once.
 macro_rules! build_chat_span {
-    ($params:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
-        let system_instructions = $crate::core::telemetry::system_instructions_json(
-            $effective_preamble,
-            $params.record_telemetry_content,
-        );
+    ($params:expr, $request:expr, $name:literal, $operation:literal) => {{
+        // Derived from the prepared request, not a scalar preamble: the scalar
+        // path missed history system messages, output-mode preamble
+        // augmentation, and per-turn overrides.
+        let system_instructions = $crate::core::telemetry::system_instructions_json($request);
         // The core macro is the single source of the completion-parent
         // contract (marker + required fields); only the agent-specific field
         // is declared here.
@@ -51,7 +51,7 @@ pub(crate) fn acquire_agent_span(
 ) -> (tracing::Span, bool) {
     if tracing::Span::current().is_disabled() {
         let system_instructions =
-            rig_core::telemetry::system_instructions_json(preamble, record_content);
+            rig_core::telemetry::configured_system_instructions_json(preamble, record_content);
         let span = info_span!(
             "invoke_agent",
             gen_ai.operation.name = "invoke_agent",
@@ -74,7 +74,6 @@ pub(crate) fn acquire_agent_span(
 
 /// The name/content-recording pair the drivers feed into [`build_chat_span!`].
 pub(crate) struct SessionSpanParams<'a> {
-    pub(crate) record_telemetry_content: bool,
     pub(crate) agent_name: Option<&'a str>,
 }
 
@@ -89,9 +88,9 @@ impl SessionSpanParams<'_> {
 /// [`AgentSession`]: crate::session::AgentSession
 pub(crate) fn new_session_chat_span(
     params: &SessionSpanParams<'_>,
-    effective_preamble: Option<&str>,
+    request: &rig_core::completion::CompletionRequest,
 ) -> tracing::Span {
-    build_chat_span!(params, effective_preamble, "chat", "chat")
+    build_chat_span!(params, request, "chat", "chat")
 }
 
 /// Build the per-model-call `chat_streaming` span for [`AgentStream`]'s
@@ -100,9 +99,9 @@ pub(crate) fn new_session_chat_span(
 /// [`AgentStream`]: crate::stream::AgentStream
 pub(crate) fn new_session_chat_streaming_span(
     params: &SessionSpanParams<'_>,
-    effective_preamble: Option<&str>,
+    request: &rig_core::completion::CompletionRequest,
 ) -> tracing::Span {
-    build_chat_span!(params, effective_preamble, "chat_streaming", "chat")
+    build_chat_span!(params, request, "chat_streaming", "chat")
 }
 
 /// Build the per-tool `execute_tool` span carrying the `gen_ai.tool.*` fields
