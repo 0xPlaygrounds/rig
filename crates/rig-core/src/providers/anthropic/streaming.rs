@@ -313,9 +313,20 @@ where
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
+                                            // Prefer `message_delta.usage.input_tokens` when the
+                                            // provider supplies it. Anthropic itself reports input
+                                            // usage on `message_start`, but Anthropic-compatible
+                                            // gateways (e.g. OpenRouter) send `input_tokens: 0`
+                                            // there and the real count on `message_delta`. Reading
+                                            // `message_start` alone silently yields a zero prompt
+                                            // count against those providers, which breaks any
+                                            // consumer that sizes its context from input tokens.
                                             let usage = PartialUsage {
                                                  output_tokens: usage.output_tokens,
-                                                 input_tokens: usize::try_from(input_tokens).ok(),
+                                                 input_tokens: usage
+                                                     .input_tokens
+                                                     .filter(|v| *v > 0)
+                                                     .or_else(|| usize::try_from(input_tokens).ok()),
                                                  cache_creation_input_tokens: usage.cache_creation_input_tokens,
                                                  cache_read_input_tokens: usage.cache_read_input_tokens
                                             };
