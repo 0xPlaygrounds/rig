@@ -421,6 +421,30 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// Starts a fluent [`CompletionRequestBuilder`] for `prompt`.
+    ///
+    /// The builder holds only owned request data — no model, transport, or
+    /// provider — so [`CompletionRequestBuilder::build`] hands back a plain
+    /// [`CompletionRequest`] that you pass to a provider's `functions::complete`
+    /// or `functions::open_stream`.
+    ///
+    /// ```
+    /// use rig_core::completion::CompletionRequest;
+    ///
+    /// let request = CompletionRequest::builder("What is Rust?")
+    ///     .preamble("You are concise.")
+    ///     .temperature(0.2)
+    ///     .max_tokens(256)
+    ///     .build();
+    ///
+    /// // The preamble is canonicalized into a leading system message.
+    /// assert_eq!(request.chat_history.len(), 2);
+    /// assert!(request.preamble.is_none());
+    /// ```
+    pub fn builder(prompt: impl Into<Message>) -> CompletionRequestBuilder {
+        CompletionRequestBuilder::new(prompt)
+    }
+
     /// A request for `prompt` with `preamble` and prior `history`: the
     /// canonical hand-built request shape (history first, prompt last, every
     /// other field defaulted for functional-update syntax).
@@ -576,6 +600,480 @@ fn merge_provider_tools_into_additional_params(
     merged_tools.append(&mut provider_tools_json);
     params_map.insert("tools".to_string(), serde_json::Value::Array(merged_tools));
     Some(serde_json::Value::Object(params_map))
+}
+
+/// A fluent builder for [`CompletionRequest`].
+///
+/// This is request *data* only: it stores no model, transport, provider, or
+/// callback, and has no type parameter. [`Self::build`] returns a concrete
+/// [`CompletionRequest`] which you hand to a provider's free functions —
+/// there is deliberately no `send`/`stream` terminal, because that would put
+/// a provider back inside the builder.
+///
+/// ```no_run
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// use rig_core::{completion::CompletionRequest, http_runtime::HttpRuntime, providers::openai};
+///
+/// let request = CompletionRequest::builder("Explain ownership.")
+///     .preamble("You are a Rust tutor.")
+///     .temperature(0.2)
+///     .build();
+///
+/// let cfg = openai::functions::Config::from_env("gpt-4o")?;
+/// let response = openai::functions::complete(&cfg, &HttpRuntime::new(), request).await?;
+/// # let _ = response;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct CompletionRequestBuilder {
+    prompt: Message,
+    request_model: Option<String>,
+    preamble: Option<String>,
+    chat_history: Vec<Message>,
+    documents: Vec<Document>,
+    tools: Vec<ToolDefinition>,
+    provider_tools: Vec<ProviderToolDefinition>,
+    temperature: Option<f64>,
+    max_tokens: Option<u64>,
+    tool_choice: Option<ToolChoice>,
+    additional_params: Option<serde_json::Value>,
+    output_schema: Option<schemars::Schema>,
+    record_telemetry_content: bool,
+}
+
+impl CompletionRequestBuilder {
+    /// Starts a builder for `prompt`. Prefer [`CompletionRequest::builder`].
+    pub fn new(prompt: impl Into<Message>) -> Self {
+        Self {
+            prompt: prompt.into(),
+            request_model: None,
+            preamble: None,
+            chat_history: Vec::new(),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            provider_tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// Sets the preamble, canonicalized at [`Self::build`] into a leading
+    /// [`Message::System`] rather than the legacy `preamble` field.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Clears any preamble set so far.
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
+        self
+    }
+
+    /// Overrides the model used for this request.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.request_model = Some(model.into());
+        self
+    }
+
+    /// Overrides the model used for this request, or clears the override.
+    pub fn model_opt(mut self, model: Option<String>) -> Self {
+        self.request_model = model;
+        self
+    }
+
+    /// Appends a message to the chat history.
+    pub fn message(mut self, message: Message) -> Self {
+        self.chat_history.push(message);
+        self
+    }
+
+    /// Appends messages to the chat history, in order.
+    pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
+        self.chat_history.extend(messages);
+        self
+    }
+
+    /// Appends a document to the request.
+    pub fn document(mut self, document: Document) -> Self {
+        self.documents.push(document);
+        self
+    }
+
+    /// Appends documents to the request, in order.
+    pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
+        self.documents.extend(documents);
+        self
+    }
+
+    /// Appends a tool definition.
+    pub fn tool(mut self, tool: ToolDefinition) -> Self {
+        self.tools.push(tool);
+        self
+    }
+
+    /// Appends tool definitions, in order.
+    pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
+        self.tools.extend(tools);
+        self
+    }
+
+    /// Appends a provider-hosted tool, merged into `additional_params.tools`
+    /// at [`Self::build`].
+    pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
+        self.provider_tools.push(tool);
+        self
+    }
+
+    /// Appends provider-hosted tools, in order.
+    pub fn provider_tools(
+        mut self,
+        tools: impl IntoIterator<Item = ProviderToolDefinition>,
+    ) -> Self {
+        self.provider_tools.extend(tools);
+        self
+    }
+
+    /// **Merges** provider-specific parameters into any already set.
+    ///
+    /// Use [`Self::additional_params_opt`] to replace them outright.
+    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
+        self.additional_params = match self.additional_params {
+            Some(params) => Some(crate::json_utils::merge(params, additional_params)),
+            None => Some(additional_params),
+        };
+        self
+    }
+
+    /// **Replaces** provider-specific parameters (or clears them with `None`).
+    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
+        self.additional_params = additional_params;
+        self
+    }
+
+    /// Sets the sampling temperature.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    /// Sets or clears the sampling temperature.
+    pub fn temperature_opt(mut self, temperature: Option<f64>) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    /// Sets the maximum tokens. Required by Anthropic.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Sets or clears the maximum tokens.
+    pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
+    /// Sets whether the model must call a tool.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Sets or clears the tool-choice policy.
+    pub fn tool_choice_opt(mut self, tool_choice: Option<ToolChoice>) -> Self {
+        self.tool_choice = tool_choice;
+        self
+    }
+
+    /// Sets the JSON Schema constraining structured output.
+    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Sets or clears the structured-output schema.
+    pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
+        self.output_schema = schema;
+        self
+    }
+
+    /// Opts in or out of recording sensitive content on GenAI telemetry spans.
+    ///
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved
+    /// context, tool results, and model responses through span attributes.
+    pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
+        self.record_telemetry_content = enabled;
+        self
+    }
+
+    /// The normalized input messages runtime telemetry would record, without
+    /// consuming the builder.
+    pub fn messages_for_telemetry(&self) -> Vec<Message> {
+        let mut chat_history = self.chat_history.clone();
+        if let Some(preamble) = &self.preamble {
+            chat_history.insert(0, Message::system(preamble.clone()));
+        }
+        chat_history.push(self.prompt.clone());
+
+        if let Some(documents) = CompletionRequest::normalized_documents_from(&self.documents) {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+
+        chat_history
+    }
+
+    /// Builds the concrete [`CompletionRequest`].
+    ///
+    /// Any preamble becomes a leading [`Message::System`] and the request's
+    /// legacy `preamble` field stays `None`; history keeps its order with the
+    /// prompt last; provider tools merge into `additional_params.tools`.
+    pub fn build(self) -> CompletionRequest {
+        let mut chat_history = self.chat_history;
+        let prompt = self.prompt;
+        if let Some(preamble) = self.preamble {
+            chat_history.insert(0, Message::system(preamble));
+        }
+
+        chat_history.push(prompt.clone());
+
+        let chat_history =
+            OneOrMany::from_iter_optional(chat_history).unwrap_or_else(|| OneOrMany::one(prompt));
+        let additional_params = merge_provider_tools_into_additional_params(
+            self.additional_params,
+            self.provider_tools,
+        );
+
+        CompletionRequest {
+            model: self.request_model,
+            preamble: None,
+            chat_history,
+            documents: self.documents,
+            tools: self.tools,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            tool_choice: self.tool_choice,
+            additional_params,
+            output_schema: self.output_schema,
+            record_telemetry_content: self.record_telemetry_content,
+        }
+    }
+}
+
+#[cfg(test)]
+mod builder_equivalence_tests {
+    use super::*;
+
+    fn tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            parameters: serde_json::json!({ "type": "object" }),
+        }
+    }
+
+    #[test]
+    fn build_matches_explicit_construction_for_the_default_shape() {
+        let built = CompletionRequest::builder("prompt").build();
+        let explicit = CompletionRequest::from_prompt("prompt");
+
+        // `from_prompt` leaves the legacy preamble field `None` too, so with no
+        // preamble the two constructions agree field for field.
+        assert_eq!(built.chat_history, explicit.chat_history);
+        assert_eq!(built.preamble, explicit.preamble);
+        assert_eq!(built.model, explicit.model);
+        assert_eq!(built.documents, explicit.documents);
+        assert_eq!(built.tools, explicit.tools);
+        assert_eq!(built.temperature, explicit.temperature);
+        assert_eq!(built.max_tokens, explicit.max_tokens);
+        assert_eq!(built.tool_choice, explicit.tool_choice);
+        assert_eq!(built.additional_params, explicit.additional_params);
+        assert!(built.output_schema.is_none());
+        assert!(!built.record_telemetry_content);
+    }
+
+    #[test]
+    fn preamble_becomes_a_leading_system_message_not_the_legacy_field() {
+        let request = CompletionRequest::builder("prompt")
+            .preamble("be terse")
+            .build();
+
+        let messages: Vec<Message> = request.chat_history.clone().into_iter().collect();
+        assert_eq!(messages.len(), 2);
+        assert!(matches!(messages[0], Message::System { .. }));
+        assert_eq!(messages[1], Message::from("prompt"));
+        // The legacy field stays empty: the system message is canonical.
+        assert!(request.preamble.is_none());
+    }
+
+    #[test]
+    fn history_precedes_the_prompt_and_keeps_its_order() {
+        let request = CompletionRequest::builder("prompt")
+            .message(Message::from("first"))
+            .messages([Message::from("second"), Message::from("third")])
+            .preamble("system")
+            .build();
+
+        let messages: Vec<Message> = request.chat_history.into_iter().collect();
+        assert!(matches!(messages[0], Message::System { .. }));
+        assert_eq!(messages[1], Message::from("first"));
+        assert_eq!(messages[2], Message::from("second"));
+        assert_eq!(messages[3], Message::from("third"));
+        assert_eq!(messages[4], Message::from("prompt"));
+    }
+
+    #[test]
+    fn without_preamble_clears_a_previously_set_preamble() {
+        let request = CompletionRequest::builder("prompt")
+            .preamble("discarded")
+            .without_preamble()
+            .build();
+
+        assert_eq!(request.chat_history.len(), 1);
+        assert!(request.preamble.is_none());
+    }
+
+    #[test]
+    fn additional_params_merges_while_the_opt_setter_replaces() {
+        let merged = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params(serde_json::json!({ "b": 2 }))
+            .build();
+        assert_eq!(
+            merged.additional_params,
+            Some(serde_json::json!({ "a": 1, "b": 2 }))
+        );
+
+        let replaced = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params_opt(Some(serde_json::json!({ "b": 2 })))
+            .build();
+        assert_eq!(
+            replaced.additional_params,
+            Some(serde_json::json!({ "b": 2 }))
+        );
+
+        let cleared = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params_opt(None)
+            .build();
+        assert_eq!(cleared.additional_params, None);
+    }
+
+    #[test]
+    fn optional_setters_clear_their_field() {
+        let request = CompletionRequest::builder("p")
+            .temperature(0.5)
+            .temperature_opt(None)
+            .max_tokens(10)
+            .max_tokens_opt(None)
+            .model("m")
+            .model_opt(None)
+            .output_schema_opt(None)
+            .build();
+
+        assert_eq!(request.temperature, None);
+        assert_eq!(request.max_tokens, None);
+        assert_eq!(request.model, None);
+        assert!(request.output_schema.is_none());
+    }
+
+    #[test]
+    fn tools_and_documents_accumulate_in_order() {
+        let request = CompletionRequest::builder("p")
+            .tool(tool("one"))
+            .tools([tool("two"), tool("three")])
+            .document(Document {
+                id: "a".into(),
+                text: "first".into(),
+                additional_props: HashMap::new(),
+            })
+            .documents([Document {
+                id: "b".into(),
+                text: "second".into(),
+                additional_props: HashMap::new(),
+            }])
+            .build();
+
+        let names: Vec<&str> = request.tools.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["one", "two", "three"]);
+        let ids: Vec<&str> = request.documents.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
+    }
+
+    #[test]
+    fn provider_tools_merge_into_additional_params_like_the_inherent_setters() {
+        let via_builder = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "keep": true }))
+            .provider_tool(ProviderToolDefinition::new("web_search"))
+            .provider_tools([ProviderToolDefinition::new("code_interpreter")])
+            .build();
+
+        let via_inherent = CompletionRequest {
+            additional_params: Some(serde_json::json!({ "keep": true })),
+            ..CompletionRequest::from_prompt("p")
+        }
+        .with_provider_tool(ProviderToolDefinition::new("web_search"))
+        .with_provider_tools(vec![ProviderToolDefinition::new("code_interpreter")]);
+
+        assert_eq!(
+            via_builder.additional_params,
+            via_inherent.additional_params
+        );
+        // And the merge really did land under `tools`, preserving `keep`.
+        let params = via_builder.additional_params.expect("params present");
+        assert_eq!(params["keep"], serde_json::json!(true));
+        assert_eq!(params["tools"].as_array().expect("tools array").len(), 2);
+    }
+
+    #[test]
+    fn messages_for_telemetry_matches_the_built_requests_view() {
+        let builder = CompletionRequest::builder("prompt")
+            .preamble("system")
+            .message(Message::from("history"))
+            .document(Document {
+                id: "d".into(),
+                text: "doc".into(),
+                additional_props: HashMap::new(),
+            });
+
+        let from_builder = builder.clone().messages_for_telemetry();
+        let from_request = builder.build().messages_for_telemetry();
+
+        assert_eq!(from_builder, from_request);
+        // Documents land after the system message, before the first non-system one.
+        assert!(matches!(from_builder[0], Message::System { .. }));
+    }
+
+    #[test]
+    fn scalar_setters_reach_the_built_request() {
+        let schema = schemars::schema_for!(String);
+        let request = CompletionRequest::builder("p")
+            .model("gpt-4o")
+            .temperature(0.25)
+            .max_tokens(512)
+            .tool_choice(ToolChoice::Auto)
+            .output_schema(schema)
+            .record_content_telemetry(true)
+            .build();
+
+        assert_eq!(request.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(request.temperature, Some(0.25));
+        assert_eq!(request.max_tokens, Some(512));
+        assert_eq!(request.tool_choice, Some(ToolChoice::Auto));
+        assert!(request.output_schema.is_some());
+        assert!(request.record_telemetry_content);
+    }
 }
 
 #[cfg(test)]
