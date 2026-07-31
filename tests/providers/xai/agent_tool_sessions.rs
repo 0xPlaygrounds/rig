@@ -621,17 +621,13 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let cfg = env.config(SESSION_MODEL);
             let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&tool)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::with_history(
-                    Some("Use the requested tool call and no prose before it."),
-                    Vec::new(),
-                    "Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
+            let request = CompletionRequest::builder("Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
-                     Do not write normal text before the tool call.",
-                )
-            };
+                     Do not write normal text before the tool call.")
+                              .preamble("Use the requested tool call and no prose before it.")
+                              .tools(vec![rig::tool::portable_tool_definition(&tool)])
+                              .tool_choice(ToolChoice::Required)
+                              .build();
 
             let observation = collect_raw_stream_observation(xai::functions::open_stream(&cfg, &rt, request).await?).await;
 
@@ -663,12 +659,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
         |env| async move {
             let cfg = env.config(SESSION_MODEL);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                tool_choice: Some(ToolChoice::None),
-                ..CompletionRequest::with_history(
-                    Some("You are concise and should rely on the provided chat history."),
-                    vec![
+            let request = CompletionRequest::builder("Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.")
+                              .preamble("You are concise and should rely on the provided chat history.")
+                              .messages(vec![
                         Message::user("My favorite color is teal. Please remember it."),
                         Message::assistant("Noted: your favorite color is teal."),
                         Message::user("For this release, use the canary lane."),
@@ -689,11 +683,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                             ALPHA_SIGNAL_OUTPUT,
                         ),
                         Message::assistant("The harbor label is crimson-harbor."),
-                    ],
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-            };
+                    ])
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .tool_choice(ToolChoice::None)
+                              .build();
 
             let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -809,16 +802,12 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
         |env| async move {
             let cfg = env.config(REASONING_MODEL);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                additional_params: Some(json!({
+            let request = CompletionRequest::builder("Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.")
+                              .preamble("You are a concise reliability engineer.")
+                              .additional_params(json!({
                     "reasoning": { "effort": "low", "summary": "detailed" }
-                })),
-                ..CompletionRequest::with_history(
-                    Some("You are a concise reliability engineer."),
-                    Vec::new(),
-                    "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
-                )
-            };
+                }))
+                              .build();
 
             let response = xai::functions::complete(&cfg, &rt, request).await?;
 
@@ -872,8 +861,9 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
         |env| async move {
             let cfg = env.config(SESSION_MODEL);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                additional_params: Some(json!({
+            let request = CompletionRequest::builder("Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.")
+                              .preamble("Return only JSON matching the supplied schema.")
+                              .additional_params(json!({
                     "text": {
                         "format": {
                             "type": "json_schema",
@@ -909,13 +899,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                             }
                         }
                     }
-                })),
-                ..CompletionRequest::with_history(
-                    Some("Return only JSON matching the supplied schema."),
-                    Vec::new(),
-                    "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
-                )
-            };
+                }))
+                              .build();
 
             let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)

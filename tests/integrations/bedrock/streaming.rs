@@ -52,17 +52,13 @@ async fn streaming_tools_smoke() {
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn raw_streaming_tool_call_smoke() {
     let aws = aws_client().await;
-    let request = CompletionRequest {
-        tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-        tool_choice: Some(ToolChoice::Specific {
+    let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+        .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+        .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
-        }),
-        ..CompletionRequest::with_history(
-            Some(ORDERED_TOOL_STREAM_PREAMBLE),
-            Vec::new(),
-            ORDERED_TOOL_STREAM_PROMPT,
-        )
-    };
+        })
+        .build();
 
     let observation = collect_raw_stream_observation(
         rig::bedrock::functions::open_stream(&aws, BEDROCK_COMPLETION_MODEL, request)

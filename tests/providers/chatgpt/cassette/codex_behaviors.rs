@@ -25,14 +25,10 @@ async fn strict_tools_opt_in_roundtrip() {
             let model = client
                 .completion_model(chatgpt::GPT_5_4)
                 .with_strict_tools();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "Use the add tool to add 7 and 5.",
-                )
-            };
+            let request = CompletionRequest::builder("Use the add tool to add 7 and 5.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                .build();
 
             let response = model
                 .completion(request)

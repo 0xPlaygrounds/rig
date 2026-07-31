@@ -16,14 +16,12 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
         |env| async move {
             let cfg = env.chat_config(model_name());
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                max_tokens: Some(256),
-                ..CompletionRequest::with_history(
-                    Some(SYSTEM_PROMPT),
-                    Vec::new(),
-                    "Think briefly, then answer in one sentence why token usage should be reported.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Think briefly, then answer in one sentence why token usage should be reported.",
+            )
+            .preamble(SYSTEM_PROMPT)
+            .max_tokens(256)
+            .build();
             let _response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("raw chat completion should succeed");

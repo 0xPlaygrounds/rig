@@ -45,17 +45,13 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     let model_cfg =
         groq::functions::Config::from_env(STREAMING_TOOLS_RAW_MODEL).expect("config should build");
     let rt = HttpRuntime::new();
-    let request = CompletionRequest {
-        tools: vec![
+    let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+        .preamble(TWO_TOOL_STREAM_PREAMBLE)
+        .tools(vec![
             rig::tool::portable_tool_definition(&AlphaSignal),
             rig::tool::portable_tool_definition(&BetaSignal),
-        ],
-        ..CompletionRequest::with_history(
-            Some(TWO_TOOL_STREAM_PREAMBLE),
-            Vec::new(),
-            TWO_TOOL_STREAM_PROMPT,
-        )
-    };
+        ])
+        .build();
 
     let observation = collect_raw_stream_observation(
         groq::functions::open_stream(&model_cfg, &rt, request)
@@ -119,14 +115,10 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     let model_cfg =
         groq::functions::Config::from_env(STREAMING_TOOLS_RAW_MODEL).expect("config should build");
     let rt = HttpRuntime::new();
-    let request = CompletionRequest {
-        tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-        ..CompletionRequest::with_history(
-            Some(ORDERED_TOOL_STREAM_PREAMBLE),
-            Vec::new(),
-            ORDERED_TOOL_STREAM_PROMPT,
-        )
-    };
+    let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+        .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+        .build();
 
     let first_turn = collect_raw_stream_observation(
         groq::functions::open_stream(&model_cfg, &rt, request)

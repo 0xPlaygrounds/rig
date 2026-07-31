@@ -567,17 +567,13 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let cfg = client.config(SESSION_MODEL);
             let rt = client.http();
             let tool = InspectManifest { log };
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&tool)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::with_history(
-                    Some("Use the requested tool call and no prose before it."),
-                    Vec::new(),
-                    "Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
+            let request = CompletionRequest::builder("Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
-                     Do not write normal text before the tool call.",
-                )
-            };
+                     Do not write normal text before the tool call.")
+                              .preamble("Use the requested tool call and no prose before it.")
+                              .tools(vec![rig::tool::portable_tool_definition(&tool)])
+                              .tool_choice(ToolChoice::Required)
+                              .build();
 
             let observation = collect_raw_stream_observation(openrouter::functions::open_stream(&cfg, &rt, request).await?).await;
 
@@ -626,16 +622,13 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT),
                 Message::assistant("The harbor label is crimson-harbor."),
             ];
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                tool_choice: Some(ToolChoice::None),
-                ..CompletionRequest::with_history(
-                    Some("You are concise and should rely on the provided chat history."),
-                    history,
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-            };
+            let request = CompletionRequest::builder("Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.")
+                              .preamble("You are concise and should rely on the provided chat history.")
+                              .messages(history)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .tool_choice(ToolChoice::None)
+                              .build();
 
             let response = openrouter::functions::complete(&cfg, &rt, request).await?;
             let text = response

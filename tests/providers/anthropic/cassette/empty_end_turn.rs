@@ -138,15 +138,11 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
         |client| async move {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
 
-            let first_request = CompletionRequest {
-                max_tokens: Some(1024),
-                tools: vec![notify_tool_definition()],
-                ..CompletionRequest::with_history(
-                    Some(TERMINAL_NOTIFY_PREAMBLE),
-                    Vec::new(),
-                    TERMINAL_NOTIFY_PROMPT,
-                )
-            };
+            let first_request = CompletionRequest::builder(TERMINAL_NOTIFY_PROMPT)
+                .preamble(TERMINAL_NOTIFY_PREAMBLE)
+                .max_tokens(1024)
+                .tools(vec![notify_tool_definition()])
+                .build();
             let first_turn = model
                 .completion(first_request)
                 .await
@@ -161,21 +157,18 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 })
                 .expect("first Anthropic turn should emit a notify tool call");
 
-            let followup_request = CompletionRequest {
-                max_tokens: Some(1024),
-                ..CompletionRequest::with_history(
-                    Some(TERMINAL_NOTIFY_PREAMBLE),
-                    vec![Message::Assistant {
-                        id: first_turn.message_id.clone(),
-                        content: first_turn.choice.clone(),
-                    }],
-                    Message::tool_result_with_call_id(
-                        tool_call.id.clone(),
-                        tool_call.call_id.clone(),
-                        "sent: deploy finished",
-                    ),
-                )
-            };
+            let followup_request = CompletionRequest::builder(Message::tool_result_with_call_id(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                "sent: deploy finished",
+            ))
+            .preamble(TERMINAL_NOTIFY_PREAMBLE)
+            .messages(vec![Message::Assistant {
+                id: first_turn.message_id.clone(),
+                content: first_turn.choice.clone(),
+            }])
+            .max_tokens(1024)
+            .build();
             let followup = model
                 .completion(followup_request)
                 .await

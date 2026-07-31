@@ -2157,10 +2157,7 @@ fn hook_entry(
     name: &str,
     decide: impl Fn(HookEvent) -> HookDecision + WasmCompatSend + WasmCompatSync + 'static,
 ) -> HookEntry {
-    HookEntry::new(name, move |event| {
-        let decision = decide(event);
-        Box::pin(async move { decision })
-    })
+    HookEntry::sync(name, decide)
 }
 
 /// Build the scenario's base [`AgentConfig`] and apply the overrides.

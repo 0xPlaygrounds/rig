@@ -24,10 +24,7 @@ impl ObservingHook {
     /// The hook record: records the outbound prompt text and counts responses.
     fn entry(&self) -> HookEntry {
         let hook = self.clone();
-        HookEntry::new("observing", move |event| {
-            let decision = hook.decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync("observing", move |event| hook.decide(event))
     }
 
     fn decide(&self, event: HookEvent) -> HookDecision {

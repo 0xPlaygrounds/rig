@@ -25,14 +25,10 @@ async fn strict_tools_opt_in_roundtrip() {
             // false, all properties required) must be accepted by the API.
             let cfg = client.config(openai::GPT_4O).with_strict_tools();
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "Use the add tool to add 7 and 5.",
-                )
-            };
+            let request = CompletionRequest::builder("Use the add tool to add 7 and 5.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
@@ -80,14 +76,12 @@ async fn incomplete_response_surfaces_partial_output() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                max_tokens: Some(16),
-                ..CompletionRequest::with_history(
-                    Some("You are a storyteller."),
-                    Vec::new(),
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.")
+            .max_tokens(16)
+            .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await

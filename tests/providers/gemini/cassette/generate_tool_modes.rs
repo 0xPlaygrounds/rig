@@ -21,16 +21,12 @@ async fn required_maps_to_any_and_forces_function_call() {
         "generate_tool_modes/required_maps_to_any_and_forces_function_call",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "Please greet me.",
-                )
-            };
+            let request = CompletionRequest::builder("Please greet me.")
+                .preamble(TOOLS_PREAMBLE)
+                .temperature(0.0)
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                .tool_choice(ToolChoice::Required)
+                .build();
 
             let response = client
                 .complete(model, request)

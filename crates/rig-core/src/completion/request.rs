@@ -1134,14 +1134,10 @@ mod tests {
 
     #[test]
     fn message_telemetry_includes_normalized_documents() {
-        let request = CompletionRequest {
-            documents: vec![test_document("doc1", "static context secret")],
-            ..CompletionRequest::with_history(
-                None,
-                vec![Message::system("system"), Message::user("history")],
-                "prompt",
-            )
-        };
+        let request = CompletionRequest::builder("prompt")
+            .messages(vec![Message::system("system"), Message::user("history")])
+            .documents(vec![test_document("doc1", "static context secret")])
+            .build();
 
         let messages = request.messages_for_telemetry();
         assert_eq!(messages.len(), 4);

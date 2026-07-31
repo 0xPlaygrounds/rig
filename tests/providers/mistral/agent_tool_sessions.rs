@@ -676,17 +676,13 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
             let model_cfg = env.config(SESSION_MODEL);
             let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&tool)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::with_history(
-                    Some("Use the requested tool call and no prose before it."),
-                    Vec::new(),
-                    "Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, \
+            let request = CompletionRequest::builder("Call inspect_manifest exactly once for project rig-mistral with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
-                     Do not write normal text before the tool call.",
-                )
-            };
+                     Do not write normal text before the tool call.")
+                              .preamble("Use the requested tool call and no prose before it.")
+                              .tools(vec![rig::tool::portable_tool_definition(&tool)])
+                              .tool_choice(ToolChoice::Required)
+                              .build();
 
             let observation = collect_raw_stream_observation(mistral::functions::open_stream(&model_cfg, &rt, request).await?).await;
 
@@ -714,12 +710,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             let model_cfg = env.config(SESSION_MODEL);
             let rt = HttpRuntime::new();
             let tool_call_id = "call_REDACTED_1";
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                tool_choice: Some(ToolChoice::None),
-                ..CompletionRequest::with_history(
-                    Some("You are concise and should rely on the provided chat history."),
-                    vec![
+            let request = CompletionRequest::builder("Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.")
+                              .preamble("You are concise and should rely on the provided chat history.")
+                              .messages(vec![
                         Message::user("My favorite color is teal. Please remember it."),
                         Message::assistant("Noted: your favorite color is teal."),
                         Message::user("For this release, use the canary lane."),
@@ -739,11 +733,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                             ALPHA_SIGNAL_OUTPUT,
                         ),
                         Message::assistant("The harbor label is crimson-harbor."),
-                    ],
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-            };
+                    ])
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .tool_choice(ToolChoice::None)
+                              .build();
 
             let response = mistral::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -860,14 +853,10 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         |env| async move {
             let model_cfg = env.config(STRUCTURED_MODEL);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                additional_params: Some(json!({"response_format": { "type": "json_object" }})),
-                ..CompletionRequest::with_history(
-                    Some("Return only valid JSON. No markdown."),
-                    Vec::new(),
-                    "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
-                )
-            };
+            let request = CompletionRequest::builder("Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.")
+                              .preamble("Return only valid JSON. No markdown.")
+                              .additional_params(json!({"response_format": { "type": "json_object" }}))
+                              .build();
 
             let response = mistral::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -907,14 +896,12 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
         |env| async move {
             let model_cfg = env.config(STRUCTURED_MODEL);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                output_schema: Some(schemars::schema_for!(StructuredReleasePlan)),
-                ..CompletionRequest::with_history(
-                    Some("Return only the requested structured object."),
-                    Vec::new(),
-                    "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
+            )
+            .preamble("Return only the requested structured object.")
+            .output_schema(schemars::schema_for!(StructuredReleasePlan))
+            .build();
 
             let response = mistral::functions::complete(&model_cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)

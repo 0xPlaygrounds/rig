@@ -106,17 +106,14 @@ fn redact_ssn(record: &str) -> String {
 /// `ToolResult` event, before the model ever sees it — the post-tool redaction
 /// use case `ToolResultAction::Rewrite` exists for.
 fn redact_ssn_from_result() -> HookEntry {
-    HookEntry::new("redact-ssn-from-result", |event| {
-        let decision = match event {
-            HookEvent::ToolResult {
-                call, presentation, ..
-            } if call.function.name == GetUserRecord::NAME => HookDecision::ToolResult(
-                ToolResultAction::rewrite(redact_ssn(&presentation.render())),
-            ),
-            HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("redact-ssn-from-result", |event| match event {
+        HookEvent::ToolResult {
+            call, presentation, ..
+        } if call.function.name == GetUserRecord::NAME => HookDecision::ToolResult(
+            ToolResultAction::rewrite(redact_ssn(&presentation.render())),
+        ),
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
     })
 }
 

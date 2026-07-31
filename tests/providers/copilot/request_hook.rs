@@ -25,10 +25,7 @@ impl SessionIdHook {
     /// The hook record: records the outbound prompt and the normalized response.
     fn entry(&self) -> HookEntry {
         let hook = self.clone();
-        HookEntry::new("session-id", move |event| {
-            let decision = hook.decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync("session-id", move |event| hook.decide(event))
     }
 
     fn decide(&self, event: HookEvent) -> HookDecision {

@@ -167,15 +167,11 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_request = CompletionRequest {
-                max_tokens: Some(256),
-                temperature: Some(0.0),
-                ..CompletionRequest::with_history(
-                    Some("Answer using the supplied document and preserve citation metadata."),
-                    Vec::new(),
-                    prompt.clone(),
-                )
-            };
+            let first_request = CompletionRequest::builder(prompt.clone())
+                .preamble("Answer using the supplied document and preserve citation metadata.")
+                .max_tokens(256)
+                .temperature(0.0)
+                .build();
             let first_turn = model
                 .completion(first_request)
                 .await
@@ -222,21 +218,19 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 _ => false,
             }));
 
-            let followup_request = CompletionRequest {
-                max_tokens: Some(64),
-                temperature: Some(0.0),
-                ..CompletionRequest::with_history(
-                    Some("Answer using the supplied document and preserve citation metadata."),
-                    vec![
+            let followup_request =
+                CompletionRequest::builder("Reply exactly: citations follow-up ok")
+                    .preamble("Answer using the supplied document and preserve citation metadata.")
+                    .messages(vec![
                         prompt,
                         Message::Assistant {
                             id: first_turn.message_id.clone(),
                             content: first_turn.choice.clone(),
                         },
-                    ],
-                    "Reply exactly: citations follow-up ok",
-                )
-            };
+                    ])
+                    .max_tokens(64)
+                    .temperature(0.0)
+                    .build();
             let followup = model
                 .completion(followup_request)
                 .await

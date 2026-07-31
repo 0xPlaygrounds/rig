@@ -60,10 +60,7 @@ impl StepLogger {
     /// and tool result, in dispatch order.
     fn entry(&self) -> HookEntry {
         let logger = self.clone();
-        HookEntry::new("step-logger", move |event| {
-            let decision = logger.log(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync("step-logger", move |event| logger.log(event))
     }
 
     fn log(&self, event: HookEvent) -> HookDecision {

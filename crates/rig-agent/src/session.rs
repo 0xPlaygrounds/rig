@@ -1608,10 +1608,7 @@ mod classic_tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     #[derive(Debug, Deserialize, JsonSchema, PartialEq)]
@@ -2778,10 +2775,7 @@ mod classic_hook_tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     /// Test-local mirror of the deleted `StepEventKind`: the recorded identity of
@@ -8093,10 +8087,7 @@ mod classic_span_tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     #[derive(Clone)]

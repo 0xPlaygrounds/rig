@@ -107,21 +107,18 @@ impl Tool for GetTime {
 /// `get_weather` and forces a tool call. Later turns are left untouched (the
 /// override is per-turn and non-sticky), so the model can answer with text.
 fn force_weather_only_on_first_turn() -> HookEntry {
-    HookEntry::new("force-weather-only-on-first-turn", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { turn: 1, .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new()
-                        .active_tools([GetWeather::NAME])
-                        .tool_choice(ToolChoice::Required),
-                ))
-            }
-            HookEvent::BeforeModelCall { .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::continue_run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("force-weather-only-on-first-turn", |event| match event {
+        HookEvent::BeforeModelCall { turn: 1, .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new()
+                    .active_tools([GetWeather::NAME])
+                    .tool_choice(ToolChoice::Required),
+            ))
+        }
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 

@@ -102,22 +102,19 @@ impl Tool for GetWeather {
 /// exists for. It reads the model's emitted arguments, adds the field, and
 /// returns the rewritten object via [`ToolCallAction::rewrite`].
 fn pin_units_to_celsius() -> HookEntry {
-    HookEntry::new("pin-units-to-celsius", |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } if call.function.name == GetWeather::NAME => {
-                let mut value = call.function.arguments;
-                if !value.is_object() {
-                    value = json!({});
-                }
-                if let Some(object) = value.as_object_mut() {
-                    object.insert("units".to_string(), json!("celsius"));
-                }
-                HookDecision::ToolCall(ToolCallAction::rewrite(value))
+    HookEntry::sync("pin-units-to-celsius", |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == GetWeather::NAME => {
+            let mut value = call.function.arguments;
+            if !value.is_object() {
+                value = json!({});
             }
-            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+            if let Some(object) = value.as_object_mut() {
+                object.insert("units".to_string(), json!("celsius"));
+            }
+            HookDecision::ToolCall(ToolCallAction::rewrite(value))
+        }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
     })
 }
 

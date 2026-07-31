@@ -86,17 +86,18 @@ mod tests {
     fn perplexity_drops_tool_choice_instead_of_erroring() {
         // Multi-name Specific errors on tool-supporting providers; with
         // `supports_tools: false` it must be dropped before that validation.
-        let body = body_for(crate::completion::CompletionRequest {
-            tools: vec![crate::completion::ToolDefinition {
-                name: "lookup".to_string(),
-                description: String::new(),
-                parameters: serde_json::json!({}),
-            }],
-            tool_choice: Some(crate::message::ToolChoice::Specific {
-                function_names: vec!["a".to_string(), "b".to_string()],
-            }),
-            ..crate::completion::CompletionRequest::from_prompt("Hello!")
-        });
+        let body = body_for(
+            crate::completion::CompletionRequest::builder("Hello!")
+                .tools(vec![crate::completion::ToolDefinition {
+                    name: "lookup".to_string(),
+                    description: String::new(),
+                    parameters: serde_json::json!({}),
+                }])
+                .tool_choice(crate::message::ToolChoice::Specific {
+                    function_names: vec!["a".to_string(), "b".to_string()],
+                })
+                .build(),
+        );
 
         assert!(
             body.get("tools")
@@ -145,15 +146,16 @@ mod tests {
 
     #[test]
     fn perplexity_body_drops_tools() {
-        let body = body_for(crate::completion::CompletionRequest {
-            tools: vec![crate::completion::ToolDefinition {
-                name: "lookup".to_string(),
-                description: "Lookup".to_string(),
-                parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            }],
-            tool_choice: Some(crate::message::ToolChoice::Required),
-            ..crate::completion::CompletionRequest::from_prompt("What's new today?")
-        });
+        let body = body_for(
+            crate::completion::CompletionRequest::builder("What's new today?")
+                .tools(vec![crate::completion::ToolDefinition {
+                    name: "lookup".to_string(),
+                    description: "Lookup".to_string(),
+                    parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
+                }])
+                .tool_choice(crate::message::ToolChoice::Required)
+                .build(),
+        );
 
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());

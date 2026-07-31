@@ -33,15 +33,11 @@ async fn required_forces_a_tool_call() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "Please greet me.",
-                )
-            };
+            let request = CompletionRequest::builder("Please greet me.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                .tool_choice(ToolChoice::Required)
+                .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
@@ -69,15 +65,12 @@ async fn none_suppresses_tool_calls() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                tool_choice: Some(ToolChoice::None),
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "What is 2 plus 3? Reply with just the number.",
-                )
-            };
+            let request =
+                CompletionRequest::builder("What is 2 plus 3? Reply with just the number.")
+                    .preamble(TOOLS_PREAMBLE)
+                    .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                    .tool_choice(ToolChoice::None)
+                    .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
@@ -112,20 +105,16 @@ async fn specific_single_function_targets_named_tool() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![
+            let request = CompletionRequest::builder("Compute 9 minus 4 using a tool.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![
                     rig::tool::portable_tool_definition(&Adder),
                     rig::tool::portable_tool_definition(&Subtract),
-                ],
-                tool_choice: Some(ToolChoice::Specific {
+                ])
+                .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
-                }),
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "Compute 9 minus 4 using a tool.",
-                )
-            };
+                })
+                .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
@@ -176,21 +165,17 @@ async fn specific_multiple_functions_use_allowed_tools() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![
+            let request = CompletionRequest::builder("What is 2 plus 3? Use exactly one tool.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![
                     rig::tool::portable_tool_definition(&Adder),
                     rig::tool::portable_tool_definition(&Subtract),
                     rig::tool::portable_tool_definition(&AlphaSignal),
-                ],
-                tool_choice: Some(ToolChoice::Specific {
+                ])
+                .tool_choice(ToolChoice::Specific {
                     function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],
-                }),
-                ..CompletionRequest::with_history(
-                    Some(TOOLS_PREAMBLE),
-                    Vec::new(),
-                    "What is 2 plus 3? Use exactly one tool.",
-                )
-            };
+                })
+                .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await

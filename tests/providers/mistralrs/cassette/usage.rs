@@ -14,14 +14,11 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
         |env| async move {
             let cfg = env.chat_config(model_name());
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                max_tokens: Some(64),
-                ..CompletionRequest::with_history(
-                    Some(SYSTEM_PROMPT),
-                    Vec::new(),
-                    "/no_think Explain usage accounting in one sentence.",
-                )
-            };
+            let request =
+                CompletionRequest::builder("/no_think Explain usage accounting in one sentence.")
+                    .preamble(SYSTEM_PROMPT)
+                    .max_tokens(64)
+                    .build();
             let _response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("usage check completion should succeed");

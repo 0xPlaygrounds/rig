@@ -180,15 +180,12 @@ Agent hooks are attach-and-forget **records**, not trait impls. A hook is a
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 
 fn logger() -> HookEntry {
-    HookEntry::new("logger", |event| {
-        let decision = match event {
+    HookEntry::sync("logger", |event| match event {
             HookEvent::BeforeModelCall { turn, .. } => {
                 tracing::info!(turn, "model call");
                 HookDecision::Continue
             }
             _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
     })
 }
 ```

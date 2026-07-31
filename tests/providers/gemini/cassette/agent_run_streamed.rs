@@ -513,14 +513,11 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 
 /// Cancels the run from the pre-execution tool event.
 fn cancel_on_tool_call() -> HookEntry {
-    HookEntry::new("cancel-on-tool-call", |event| {
-        let decision = match event {
-            HookEvent::ToolCall { .. } => {
-                HookDecision::ToolCall(ToolCallAction::stop("cancelled by test hook"))
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("cancel-on-tool-call", |event| match event {
+        HookEvent::ToolCall { .. } => {
+            HookDecision::ToolCall(ToolCallAction::stop("cancelled by test hook"))
+        }
+        _ => HookDecision::Continue,
     })
 }
 

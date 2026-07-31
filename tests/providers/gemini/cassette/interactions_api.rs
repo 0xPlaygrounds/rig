@@ -40,16 +40,10 @@ async fn basic_interaction_returns_id() {
                 store: Some(true),
                 ..Default::default()
             };
-            let request = CompletionRequest {
-                additional_params: Some(
-                    serde_json::to_value(params).expect("params should serialize"),
-                ),
-                ..CompletionRequest::with_history(
-                    Some("Be concise."),
-                    Vec::new(),
-                    "Give me two fun facts about hummingbirds.",
-                )
-            };
+            let request = CompletionRequest::builder("Give me two fun facts about hummingbirds.")
+                              .preamble("Be concise.")
+                              .additional_params(serde_json::to_value(params).expect("params should serialize"),)
+                              .build();
             let response = model
                 .completion(request)
                 .await

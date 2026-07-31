@@ -135,19 +135,18 @@ mod tests {
 
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {
-        let request = CompletionRequest {
-            max_tokens: Some(64),
-            tools: vec![crate::completion::ToolDefinition {
+        let request = CompletionRequest::builder("Return JSON")
+            .max_tokens(64)
+            .tools(vec![crate::completion::ToolDefinition {
                 name: "choose_beta".to_string(),
                 description: "Choose beta".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            }],
-            tool_choice: Some(crate::message::ToolChoice::Specific {
+            }])
+            .tool_choice(crate::message::ToolChoice::Specific {
                 function_names: vec!["choose_beta".to_string()],
-            }),
-            output_schema: Some(schemars::schema_for!(serde_json::Value)),
-            ..CompletionRequest::from_prompt("Return JSON")
-        };
+            })
+            .output_schema(schemars::schema_for!(serde_json::Value))
+            .build();
 
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -189,17 +188,16 @@ mod tests {
 
     #[test]
     fn groq_build_body_merges_native_tools_into_compound_custom() {
-        let request = CompletionRequest {
-            tools: vec![crate::completion::ToolDefinition {
+        let request = CompletionRequest::builder("search")
+            .tools(vec![crate::completion::ToolDefinition {
                 name: "local_tool".to_string(),
                 description: "A local function tool".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            }],
-            additional_params: Some(serde_json::json!({
+            }])
+            .additional_params(serde_json::json!({
                 "tools": [{"type": "browser_search"}, {"type": "browser_search"}],
-            })),
-            ..CompletionRequest::from_prompt("search")
-        };
+            }))
+            .build();
 
         let body = super::functions::build_body(
             "llama-3.3-70b-versatile",

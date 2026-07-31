@@ -392,60 +392,51 @@ impl ToolEventRecorder {
     pub(crate) fn entry(&self) -> HookEntry {
         let calls = self.calls.clone();
         let results = self.results.clone();
-        HookEntry::new("tool-event-recorder", move |event| {
-            let decision = match event {
-                HookEvent::ToolCall { call, .. } => {
-                    calls
-                        .lock()
-                        .expect("calls lock should not be poisoned")
-                        .push((call.function.name, call.function.arguments.to_string()));
-                    HookDecision::ToolCall(ToolCallAction::run())
-                }
-                HookEvent::ToolResult {
-                    call, presentation, ..
-                } => {
-                    results
-                        .lock()
-                        .expect("results lock should not be poisoned")
-                        .push((
-                            call.function.name,
-                            call.function.arguments.to_string(),
-                            presentation.render(),
-                        ));
-                    HookDecision::ToolResult(ToolResultAction::keep())
-                }
-                _ => HookDecision::Continue,
-            };
-            Box::pin(async move { decision })
+        HookEntry::sync("tool-event-recorder", move |event| match event {
+            HookEvent::ToolCall { call, .. } => {
+                calls
+                    .lock()
+                    .expect("calls lock should not be poisoned")
+                    .push((call.function.name, call.function.arguments.to_string()));
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            HookEvent::ToolResult {
+                call, presentation, ..
+            } => {
+                results
+                    .lock()
+                    .expect("results lock should not be poisoned")
+                    .push((
+                        call.function.name,
+                        call.function.arguments.to_string(),
+                        presentation.render(),
+                    ));
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
         })
     }
 }
 
 /// Hook that skips a named tool with a fixed reason instead of executing it.
 pub(crate) fn skip_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
-    HookEntry::new("skip-tool", move |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
-                HookDecision::ToolCall(ToolCallAction::skip(reason))
-            }
-            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("skip-tool", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolCall(ToolCallAction::skip(reason))
+        }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
     })
 }
 
 /// Hook that terminates the run when a named tool is about to execute.
 pub(crate) fn terminate_on_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
-    HookEntry::new("terminate-on-tool", move |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
-                HookDecision::ToolCall(ToolCallAction::stop(reason))
-            }
-            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("terminate-on-tool", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolCall(ToolCallAction::stop(reason))
+        }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
     })
 }
 

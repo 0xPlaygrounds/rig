@@ -87,18 +87,14 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         |env| async move {
             let model_cfg = env.config(DEEPSEEK_V4_FLASH);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                tools: vec![
+            let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tools(vec![
                     rig::tool::portable_tool_definition(&AlphaSignal),
                     rig::tool::portable_tool_definition(&BetaSignal),
-                ],
-                additional_params: Some(non_thinking_params()),
-                ..CompletionRequest::with_history(
-                    Some(TWO_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    TWO_TOOL_STREAM_PROMPT,
-                )
-            };
+                ])
+                .additional_params(non_thinking_params())
+                .build();
 
             let observation = collect_raw_stream_observation(
                 deepseek::functions::open_stream(&model_cfg, &rt, request)
@@ -130,18 +126,14 @@ async fn raw_stream_tool_call_arguments_are_objects() {
         |env| async move {
             let model_cfg = env.config(DEEPSEEK_V4_FLASH);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                tools: vec![
+            let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tools(vec![
                     rig::tool::portable_tool_definition(&AlphaSignal),
                     rig::tool::portable_tool_definition(&BetaSignal),
-                ],
-                additional_params: Some(non_thinking_params()),
-                ..CompletionRequest::with_history(
-                    Some(TWO_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    TWO_TOOL_STREAM_PROMPT,
-                )
-            };
+                ])
+                .additional_params(non_thinking_params())
+                .build();
 
             let observation = collect_raw_stream_observation(
                 deepseek::functions::open_stream(&model_cfg, &rt, request)
@@ -225,15 +217,11 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         |env| async move {
             let model_cfg = env.config(DEEPSEEK_V4_FLASH);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                additional_params: Some(non_thinking_params()),
-                ..CompletionRequest::with_history(
-                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    ORDERED_TOOL_STREAM_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                              .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .additional_params(non_thinking_params())
+                              .build();
 
             let first_turn = collect_raw_stream_observation(
                 deepseek::functions::open_stream(&model_cfg, &rt, request)
@@ -259,14 +247,11 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 tool_call.call_id,
                 ALPHA_SIGNAL_OUTPUT,
             );
-            let followup_request = CompletionRequest {
-                additional_params: Some(non_thinking_params()),
-                ..CompletionRequest::with_history(
-                    Some("Use the provided tool result and answer directly."),
-                    vec![assistant_message, tool_result_message],
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-            };
+            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+                                       .preamble("Use the provided tool result and answer directly.")
+                                       .messages(vec![assistant_message, tool_result_message])
+                                       .additional_params(non_thinking_params())
+                                       .build();
 
             let second_turn = collect_raw_stream_observation(
                 deepseek::functions::open_stream(&model_cfg, &rt, followup_request)

@@ -114,14 +114,10 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         |env| async move {
             let cfg = env.config(xai::completion::GROK_4);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&StatusWordTool)],
-                ..CompletionRequest::with_history(
-                    Some(XAI_STATUS_TOOL_PREAMBLE),
-                    Vec::new(),
-                    XAI_STATUS_TOOL_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(XAI_STATUS_TOOL_PROMPT)
+                .preamble(XAI_STATUS_TOOL_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&StatusWordTool)])
+                .build();
 
             let first_turn = collect_raw_stream_observation(
                 xai::functions::open_stream(&cfg, &rt, request)

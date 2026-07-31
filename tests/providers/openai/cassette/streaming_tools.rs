@@ -165,14 +165,10 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                ..CompletionRequest::with_history(
-                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    ORDERED_TOOL_STREAM_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                              .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .build();
 
             let first_turn = collect_raw_stream_observation(
                 openai::responses_api::functions::open_stream(&cfg, &rt, request)

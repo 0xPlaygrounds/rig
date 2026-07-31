@@ -52,19 +52,15 @@ async fn raw_stream_decorates_reasoning_tool_call_metadata() {
             let rt = client.http();
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::portable_tool_definition(&weather_tool);
-            let request = CompletionRequest {
-                max_tokens: Some(4096),
-                tools: vec![tool_definition],
-                additional_params: Some(serde_json::json!({
+            let request = CompletionRequest::builder(crate::reasoning::TOOL_USER_PROMPT)
+                              .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT)
+                              .max_tokens(4096)
+                              .tools(vec![tool_definition])
+                              .additional_params(serde_json::json!({
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
-                })),
-                ..CompletionRequest::with_history(
-                    Some(crate::reasoning::TOOL_SYSTEM_PROMPT),
-                    Vec::new(),
-                    crate::reasoning::TOOL_USER_PROMPT,
-                )
-            };
+                }))
+                              .build();
 
             let stream = openrouter::functions::open_stream(&cfg, &rt, request).await.expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
@@ -105,17 +101,13 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         |client| async move {
             let cfg = client.config(TOOL_MODEL);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![
+            let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tools(vec![
                     rig::tool::portable_tool_definition(&AlphaSignal),
                     rig::tool::portable_tool_definition(&BetaSignal),
-                ],
-                ..CompletionRequest::with_history(
-                    Some(TWO_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    TWO_TOOL_STREAM_PROMPT,
-                )
-            };
+                ])
+                .build();
 
             let observation = collect_raw_stream_observation(
                 openrouter::functions::open_stream(&cfg, &rt, request)
@@ -140,14 +132,10 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         |client| async move {
             let cfg = client.config(TOOL_MODEL);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                ..CompletionRequest::with_history(
-                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    ORDERED_TOOL_STREAM_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                              .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .build();
 
             let first_turn = collect_raw_stream_observation(
                 openrouter::functions::open_stream(&cfg, &rt, request)

@@ -167,15 +167,15 @@ async fn send_streaming_cache_probe(
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> StreamingCacheProbeResponse {
-    let request = CompletionRequest {
-        tools,
-        additional_params: Some(json!({
+    let request = CompletionRequest::builder(prompt)
+                      .preamble(&preamble)
+                      .tools()
+                      .additional_params(json!({
             "tool_choice": { "type": "none" }
-        })),
-        temperature: Some(0.0),
-        max_tokens: Some(16),
-        ..CompletionRequest::with_history(Some(&preamble), Vec::new(), prompt)
-    };
+        }))
+                      .temperature(0.0)
+                      .max_tokens(16)
+                      .build();
     let mut stream = model
         .stream(request)
         .await

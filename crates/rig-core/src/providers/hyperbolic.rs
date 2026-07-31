@@ -162,16 +162,15 @@ mod tests {
     fn hyperbolic_body_drops_tools_and_tool_choice() {
         use crate::providers::openai::completion::CompletionModelOptions;
 
-        let request = crate::completion::CompletionRequest {
-            tools: vec![crate::completion::ToolDefinition {
+        let request = crate::completion::CompletionRequest::builder("hello")
+            .tools(vec![crate::completion::ToolDefinition {
                 name: "lookup".to_string(),
                 description: "Lookup".to_string(),
                 parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
-            }],
-            tool_choice: Some(crate::message::ToolChoice::Required),
-            output_schema: Some(schemars::schema_for!(serde_json::Value)),
-            ..crate::completion::CompletionRequest::from_prompt("hello")
-        };
+            }])
+            .tool_choice(crate::message::ToolChoice::Required)
+            .output_schema(schemars::schema_for!(serde_json::Value))
+            .build();
 
         let bytes = super::functions::build_body(
             "meta-llama/Meta-Llama-3.1-8B-Instruct",

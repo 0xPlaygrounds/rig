@@ -11,14 +11,11 @@ use tokio::time::{Duration, sleep};
 async fn streaming_pause_and_resume() {
     let cfg = ollama::functions::Config::from_env("gemma3:4b").expect("config should build");
     let rt = HttpRuntime::new();
-    let request = rig::completion::CompletionRequest {
-        temperature: Some(0.7),
-        ..rig::completion::CompletionRequest::with_history(
-            Some("You are a helpful AI assistant. Provide concise explanations."),
-            Vec::new(),
-            "Explain backpropagation in neural networks.",
-        )
-    };
+    let request =
+        rig::completion::CompletionRequest::builder("Explain backpropagation in neural networks.")
+            .preamble("You are a helpful AI assistant. Provide concise explanations.")
+            .temperature(0.7)
+            .build();
     let mut stream = ollama::functions::open_stream(&cfg, &rt, request)
         .await
         .expect("stream should start");

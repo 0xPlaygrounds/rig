@@ -41,14 +41,10 @@ async fn raw_stream_text_response_smoke() {
         |client| async move {
             let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                ..CompletionRequest::with_history(
-                    Some("Reply with exactly the requested text."),
-                    Vec::new(),
-                    RAW_TEXT_RESPONSE_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+                .preamble("Reply with exactly the requested text.")
+                .temperature(0.0)
+                .build();
 
             let observation = collect_raw_stream_observation(
                 rig::bedrock::functions::open_stream(aws, model_id, request)
@@ -75,17 +71,13 @@ async fn raw_stream_emits_tool_call_before_text() {
         |client| async move {
             let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                tool_choice: Some(ToolChoice::Specific {
+            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                .tool_choice(ToolChoice::Specific {
                     function_names: vec!["lookup_harbor_label".to_string()],
-                }),
-                ..CompletionRequest::with_history(
-                    Some(ORDERED_TOOL_STREAM_PREAMBLE),
-                    Vec::new(),
-                    ORDERED_TOOL_STREAM_PROMPT,
-                )
-            };
+                })
+                .build();
 
             let observation = collect_raw_stream_observation(
                 rig::bedrock::functions::open_stream(aws, model_id, request)

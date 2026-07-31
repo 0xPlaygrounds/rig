@@ -113,10 +113,7 @@ impl PermissionHook {
     /// records every tool result's normalized presentation.
     fn entry(&self) -> HookEntry {
         let hook = self.clone();
-        HookEntry::new("permission-control", move |event| {
-            let decision = hook.decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync("permission-control", move |event| hook.decide(event))
     }
 
     fn decide(&self, event: HookEvent) -> HookDecision {

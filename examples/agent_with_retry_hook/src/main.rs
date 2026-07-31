@@ -38,9 +38,8 @@ fn retry_on_marker(marker: &'static str, max_retries: usize, mode: RetryMode) ->
     // The attempt counter lives with the hook record, not in a run-scoped
     // scratchpad: the closure captures it and every clone of the entry shares it.
     let attempts = Arc::new(AtomicUsize::new(0));
-    HookEntry::new("retry-on-marker", move |event| {
-        let decision = decide(&attempts, marker, max_retries, mode, event);
-        Box::pin(async move { decision })
+    HookEntry::sync("retry-on-marker", move |event| {
+        decide(&attempts, marker, max_retries, mode, event)
     })
 }
 

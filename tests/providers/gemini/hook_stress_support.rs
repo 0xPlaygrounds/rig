@@ -194,11 +194,7 @@ impl EventTap {
     /// streaming suites still see `TextDelta` / `ToolCallDelta`.
     pub(crate) fn entry(&self) -> HookEntry {
         let tap = self.clone();
-        HookEntry::new("event-tap", move |event| {
-            let decision = tap.observe(event);
-            Box::pin(async move { decision })
-        })
-        .observing_deltas()
+        HookEntry::sync("event-tap", move |event| tap.observe(event)).observing_deltas()
     }
 
     fn observe(&self, event: HookEvent) -> HookDecision {
@@ -292,14 +288,11 @@ pub(crate) fn tally_reader(reader: &TallyReader, tally: ToolCallTally) -> HookEn
 /// the `RequestPatch` suite (preamble / temperature / max_tokens / tool_choice /
 /// active_tools / additional_params / extra_context / history).
 pub(crate) fn apply_patch(patch: RequestPatch) -> HookEntry {
-    HookEntry::new("apply-patch", move |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("apply-patch", move |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -308,17 +301,14 @@ pub(crate) fn apply_patch(patch: RequestPatch) -> HookEntry {
 /// `tool_choice = Required`, which, if re-applied every turn, would force a tool
 /// call on every turn and loop until `max_turns`.
 pub(crate) fn first_turn_patch(patch: RequestPatch) -> HookEntry {
-    HookEntry::new("first-turn-patch", move |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { turn: 1, .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
-            }
-            HookEvent::BeforeModelCall { .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::continue_run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("first-turn-patch", move |event| match event {
+        HookEvent::BeforeModelCall { turn: 1, .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
+        }
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -338,20 +328,17 @@ pub(crate) fn set_arg(
     key: &'static str,
     value: serde_json::Value,
 ) -> HookEntry {
-    HookEntry::new("set-arg", move |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } if call.function.name == tool => {
-                let mut parsed = call.function.arguments;
-                if !parsed.is_object() {
-                    parsed = json!({});
-                }
-                parsed[key] = value.clone();
-                HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
+    HookEntry::sync("set-arg", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool => {
+            let mut parsed = call.function.arguments;
+            if !parsed.is_object() {
+                parsed = json!({});
             }
-            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+            parsed[key] = value.clone();
+            HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
+        }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
     })
 }
 
@@ -372,37 +359,31 @@ pub(crate) enum ResultRewrite {
 /// Rewrites a named tool's result. Chains with other `rewrite_tool_result`s:
 /// each entry sees the running presentation, not the raw output.
 pub(crate) fn rewrite_tool_result(tool: &'static str, rewrite: ResultRewrite) -> HookEntry {
-    HookEntry::new("rewrite-tool-result", move |event| {
-        let decision = match event {
-            HookEvent::ToolResult {
-                call, presentation, ..
-            } if call.function.name == tool => {
-                let new = match &rewrite {
-                    ResultRewrite::Replace(marker) => (*marker).to_string(),
-                    ResultRewrite::Wrap { prefix, suffix } => {
-                        format!("{prefix}{}{suffix}", presentation.render())
-                    }
-                    ResultRewrite::Truncate(n) => presentation.render().chars().take(*n).collect(),
-                };
-                HookDecision::ToolResult(ToolResultAction::rewrite(new))
-            }
-            HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("rewrite-tool-result", move |event| match event {
+        HookEvent::ToolResult {
+            call, presentation, ..
+        } if call.function.name == tool => {
+            let new = match &rewrite {
+                ResultRewrite::Replace(marker) => (*marker).to_string(),
+                ResultRewrite::Wrap { prefix, suffix } => {
+                    format!("{prefix}{}{suffix}", presentation.render())
+                }
+                ResultRewrite::Truncate(n) => presentation.render().chars().take(*n).collect(),
+            };
+            HookDecision::ToolResult(ToolResultAction::rewrite(new))
+        }
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
     })
 }
 
 /// Terminates the run when a named tool *produces a result* (post-execution).
 pub(crate) fn terminate_on_result(tool: &'static str, reason: &'static str) -> HookEntry {
-    HookEntry::new("terminate-on-result", move |event| {
-        let decision = match event {
-            HookEvent::ToolResult { call, .. } if call.function.name == tool => {
-                HookDecision::ToolResult(ToolResultAction::stop(reason))
-            }
-            HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("terminate-on-result", move |event| match event {
+        HookEvent::ToolResult { call, .. } if call.function.name == tool => {
+            HookDecision::ToolResult(ToolResultAction::stop(reason))
+        }
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
     })
 }

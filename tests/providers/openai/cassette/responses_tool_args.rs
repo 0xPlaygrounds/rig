@@ -155,14 +155,10 @@ async fn zero_argument_tool_call_streaming() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![zero_arg_tool_definition("ping")],
-                ..CompletionRequest::with_history(
-                    Some("Follow the tool-calling instructions exactly."),
-                    Vec::new(),
-                    REQUIRED_ZERO_ARG_TOOL_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .preamble("Follow the tool-calling instructions exactly.")
+                .tools(vec![zero_arg_tool_definition("ping")])
+                .build();
 
             let stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
                 .await
@@ -181,14 +177,10 @@ async fn zero_argument_tool_call_nonstreaming() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![zero_arg_tool_definition("ping")],
-                ..CompletionRequest::with_history(
-                    Some("Follow the tool-calling instructions exactly."),
-                    Vec::new(),
-                    REQUIRED_ZERO_ARG_TOOL_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .preamble("Follow the tool-calling instructions exactly.")
+                .tools(vec![zero_arg_tool_definition("ping")])
+                .build();
 
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
@@ -265,14 +257,10 @@ async fn nested_arguments_streaming() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![rig::tool::portable_tool_definition(&PlanTrip)],
-                ..CompletionRequest::with_history(
-                    Some(NESTED_ARGS_PREAMBLE),
-                    Vec::new(),
-                    NESTED_ARGS_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(NESTED_ARGS_PROMPT)
+                .preamble(NESTED_ARGS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&PlanTrip)])
+                .build();
 
             let observation = collect_raw_stream_observation(
                 openai::responses_api::functions::open_stream(&cfg, &rt, request)
@@ -304,28 +292,26 @@ async fn unicode_arguments_streaming() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![ToolDefinition {
-                    name: "echo".to_string(),
-                    description: "Echo a message back to the user.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "message": { "type": "string" }
-                        },
-                        "required": ["message"]
-                    }),
-                }],
-                ..CompletionRequest::with_history(
-                    Some(
-                        "You must call the echo tool with the exact text the user provides. \
-                         Do not translate, reword, or drop any characters.",
-                    ),
-                    Vec::new(),
-                    "Call the echo tool exactly once with the message argument set to \
+            let request = CompletionRequest::builder(
+                "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-                )
-            };
+            )
+            .preamble(
+                "You must call the echo tool with the exact text the user provides. \
+                         Do not translate, reword, or drop any characters.",
+            )
+            .tools(vec![ToolDefinition {
+                name: "echo".to_string(),
+                description: "Echo a message back to the user.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string" }
+                    },
+                    "required": ["message"]
+                }),
+            }])
+            .build();
 
             let observation = collect_raw_stream_observation(
                 openai::responses_api::functions::open_stream(&cfg, &rt, request)

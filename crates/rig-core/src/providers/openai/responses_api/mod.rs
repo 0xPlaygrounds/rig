@@ -3335,18 +3335,14 @@ mod tests {
 
     #[test]
     fn responses_request_keeps_documents_after_lifted_system_messages() {
-        let request = crate::completion::CompletionRequest {
-            documents: vec![test_document("doc1", "Document text.")],
-            ..crate::completion::CompletionRequest::with_history(
-                None,
-                vec![
-                    completion::Message::system("System prompt"),
-                    completion::Message::user("Earlier user turn"),
-                    completion::Message::assistant("Earlier assistant turn"),
-                ],
-                "Prompt",
-            )
-        };
+        let request = crate::completion::CompletionRequest::builder("Prompt")
+            .messages(vec![
+                completion::Message::system("System prompt"),
+                completion::Message::user("Earlier user turn"),
+                completion::Message::assistant("Earlier assistant turn"),
+            ])
+            .documents(vec![test_document("doc1", "Document text.")])
+            .build();
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request conversion should succeed");

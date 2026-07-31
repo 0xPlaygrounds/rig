@@ -117,36 +117,33 @@ impl LifecycleRecorder {
 
     fn entry(&self) -> HookEntry {
         let recorder = self.clone();
-        HookEntry::new("lifecycle-recorder", move |event| {
-            let decision = match event {
-                HookEvent::BeforeModelCall { turn, .. } => {
-                    recorder.record("CompletionCall", Some(turn));
-                    HookDecision::CompletionCall(CompletionCallAction::continue_run())
-                }
-                HookEvent::CompletionResponse { turn, .. } => {
-                    recorder.record("CompletionResponse", Some(turn));
-                    HookDecision::Observation(ObservationAction::continue_run())
-                }
-                HookEvent::ModelTurnFinished { turn, .. } => {
-                    recorder.record("ModelTurnFinished", Some(turn));
-                    HookDecision::ModelTurn(ModelTurnAction::continue_run())
-                }
-                HookEvent::StreamResponseFinish { turn, .. } => {
-                    recorder.record("StreamResponseFinish", Some(turn));
-                    HookDecision::Observation(ObservationAction::continue_run())
-                }
-                HookEvent::ToolCall { .. } => {
-                    recorder.record("ToolCall", None);
-                    recorder.tally.bump();
-                    HookDecision::ToolCall(ToolCallAction::run())
-                }
-                HookEvent::ToolResult { .. } => {
-                    recorder.record("ToolResult", None);
-                    HookDecision::ToolResult(ToolResultAction::keep())
-                }
-                _ => HookDecision::Continue,
-            };
-            Box::pin(async move { decision })
+        HookEntry::sync("lifecycle-recorder", move |event| match event {
+            HookEvent::BeforeModelCall { turn, .. } => {
+                recorder.record("CompletionCall", Some(turn));
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            HookEvent::CompletionResponse { turn, .. } => {
+                recorder.record("CompletionResponse", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::ModelTurnFinished { turn, .. } => {
+                recorder.record("ModelTurnFinished", Some(turn));
+                HookDecision::ModelTurn(ModelTurnAction::continue_run())
+            }
+            HookEvent::StreamResponseFinish { turn, .. } => {
+                recorder.record("StreamResponseFinish", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::ToolCall { .. } => {
+                recorder.record("ToolCall", None);
+                recorder.tally.bump();
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            HookEvent::ToolResult { .. } => {
+                recorder.record("ToolResult", None);
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
         })
     }
 }
@@ -185,53 +182,44 @@ fn inject_context_and_narrow_tools(
     fact_text: &'static str,
     allow: &'static [&'static str],
 ) -> HookEntry {
-    HookEntry::new("inject-context-narrow-tools", move |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => {
-                let doc = Document {
-                    id: fact_id.to_string(),
-                    text: fact_text.to_string(),
-                    additional_props: Default::default(),
-                };
-                HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new()
-                        .context(doc)
-                        .active_tools(allow.iter().copied())
-                        .temperature(0.0),
-                ))
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("inject-context-narrow-tools", move |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            let doc = Document {
+                id: fact_id.to_string(),
+                text: fact_text.to_string(),
+                additional_props: Default::default(),
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new()
+                    .context(doc)
+                    .active_tools(allow.iter().copied())
+                    .temperature(0.0),
+            ))
+        }
+        _ => HookDecision::Continue,
     })
 }
 
 /// `ToolCall` hook that rewrites a named tool's arguments to a fixed object,
 /// regardless of what the model emitted (execution-args rewrite).
 fn force_args(tool_name: &'static str, args: serde_json::Value) -> HookEntry {
-    HookEntry::new("force-args", move |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
-                HookDecision::ToolCall(ToolCallAction::rewrite(args.clone()))
-            }
-            HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("force-args", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolCall(ToolCallAction::rewrite(args.clone()))
+        }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
     })
 }
 
 /// `ToolResult` hook that redacts a named tool's output with a fixed marker.
 fn redact_result(tool_name: &'static str, marker: &'static str) -> HookEntry {
-    HookEntry::new("redact-result", move |event| {
-        let decision = match event {
-            HookEvent::ToolResult { call, .. } if call.function.name == tool_name => {
-                HookDecision::ToolResult(ToolResultAction::rewrite(marker))
-            }
-            HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("redact-result", move |event| match event {
+        HookEvent::ToolResult { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolResult(ToolResultAction::rewrite(marker))
+        }
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
     })
 }
 

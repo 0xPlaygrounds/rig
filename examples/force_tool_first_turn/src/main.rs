@@ -90,15 +90,12 @@ impl Tool for Add {
 // ---------------------------------------------------------------------------
 
 fn force_tool_every_turn() -> HookEntry {
-    HookEntry::new("force-tool-every-turn", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
-                CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
-            ),
-            // Every other event is none of this entry's business.
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("force-tool-every-turn", |event| match event {
+        HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
+            CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
+        ),
+        // Every other event is none of this entry's business.
+        _ => HookDecision::Continue,
     })
 }
 
@@ -108,17 +105,14 @@ fn force_tool_every_turn() -> HookEntry {
 // ---------------------------------------------------------------------------
 
 fn force_tool_on_first_turn() -> HookEntry {
-    HookEntry::new("force-tool-on-first-turn", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { turn: 1, .. } => HookDecision::CompletionCall(
-                CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
-            ),
-            HookEvent::BeforeModelCall { .. } => {
-                HookDecision::CompletionCall(CompletionCallAction::continue_run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("force-tool-on-first-turn", |event| match event {
+        HookEvent::BeforeModelCall { turn: 1, .. } => HookDecision::CompletionCall(
+            CompletionCallAction::patch(RequestPatch::new().tool_choice(ToolChoice::Required)),
+        ),
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 

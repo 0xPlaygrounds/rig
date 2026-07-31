@@ -197,15 +197,11 @@ async fn nested_arguments_streaming() {
         "generate_tool_args/nested_arguments_streaming",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![rig::tool::portable_tool_definition(&PlanTrip)],
-                ..CompletionRequest::with_history(
-                    Some(NESTED_ARGS_PREAMBLE),
-                    Vec::new(),
-                    NESTED_ARGS_PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(NESTED_ARGS_PROMPT)
+                .preamble(NESTED_ARGS_PREAMBLE)
+                .temperature(0.0)
+                .tools(vec![rig::tool::portable_tool_definition(&PlanTrip)])
+                .build();
 
             let observation = collect_raw_stream_observation(
                 client
@@ -237,29 +233,27 @@ async fn unicode_arguments_streaming() {
         "generate_tool_args/unicode_arguments_streaming",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![ToolDefinition {
-                    name: "echo".to_string(),
-                    description: "Echo a message back to the user.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "message": { "type": "string" }
-                        },
-                        "required": ["message"]
-                    }),
-                }],
-                ..CompletionRequest::with_history(
-                    Some(
-                        "You must call the echo tool with the exact text the user provides. \
-                         Do not translate, reword, or drop any characters.",
-                    ),
-                    Vec::new(),
-                    "Call the echo tool exactly once with the message argument set to \
+            let request = CompletionRequest::builder(
+                "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-                )
-            };
+            )
+            .preamble(
+                "You must call the echo tool with the exact text the user provides. \
+                         Do not translate, reword, or drop any characters.",
+            )
+            .temperature(0.0)
+            .tools(vec![ToolDefinition {
+                name: "echo".to_string(),
+                description: "Echo a message back to the user.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string" }
+                    },
+                    "required": ["message"]
+                }),
+            }])
+            .build();
 
             let observation = collect_raw_stream_observation(
                 client
@@ -302,34 +296,32 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![ToolDefinition {
-                    name: "log_event".to_string(),
-                    description: "Record an event with an optional free-form note.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "note": {
-                                "type": "string",
-                                "nullable": true,
-                                "description": "Optional note; omit when the user gives none."
-                            }
-                        },
-                        "required": ["name"]
-                    }),
-                }],
-                ..CompletionRequest::with_history(
-                    Some(
-                        "Use the log_event tool for every logging request. Only fill optional \
-                         arguments when the user explicitly provides them.",
-                    ),
-                    Vec::new(),
-                    "Log an event named \"deploy\" using the log_event tool. \
+            let request = CompletionRequest::builder(
+                "Log an event named \"deploy\" using the log_event tool. \
                      Do not attach a note.",
-                )
-            };
+            )
+            .preamble(
+                "Use the log_event tool for every logging request. Only fill optional \
+                         arguments when the user explicitly provides them.",
+            )
+            .temperature(0.0)
+            .tools(vec![ToolDefinition {
+                name: "log_event".to_string(),
+                description: "Record an event with an optional free-form note.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "note": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Optional note; omit when the user gives none."
+                        }
+                    },
+                    "required": ["name"]
+                }),
+            }])
+            .build();
 
             let response = client
                 .complete(model, request)

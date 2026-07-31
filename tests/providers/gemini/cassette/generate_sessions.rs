@@ -194,34 +194,33 @@ async fn long_history_replay_nonstreaming() {
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
-                ..CompletionRequest::with_history(
-                    Some("You are a concise assistant with perfect recall of this conversation."),
-                    vec![
-                        Message::user("My favorite color is teal. Please remember it."),
-                        Message::assistant("Noted - your favorite color is teal."),
-                        Message::user("Now look up the harbor label with the tool."),
-                        Message::Assistant {
-                            id: None,
-                            content: rig::OneOrMany::many(vec![
-                                AssistantContent::text("Checking the harbor label now."),
-                                AssistantContent::tool_call(
-                                    AlphaSignal::NAME,
-                                    AlphaSignal::NAME,
-                                    serde_json::json!({}),
-                                ),
-                            ])
-                            .expect("assistant content should be non-empty"),
-                        },
-                        Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT),
-                        Message::assistant("The harbor label is crimson-harbor."),
-                    ],
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequest::builder(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-            };
+            )
+            .preamble("You are a concise assistant with perfect recall of this conversation.")
+            .messages(vec![
+                Message::user("My favorite color is teal. Please remember it."),
+                Message::assistant("Noted - your favorite color is teal."),
+                Message::user("Now look up the harbor label with the tool."),
+                Message::Assistant {
+                    id: None,
+                    content: rig::OneOrMany::many(vec![
+                        AssistantContent::text("Checking the harbor label now."),
+                        AssistantContent::tool_call(
+                            AlphaSignal::NAME,
+                            AlphaSignal::NAME,
+                            serde_json::json!({}),
+                        ),
+                    ])
+                    .expect("assistant content should be non-empty"),
+                },
+                Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT),
+                Message::assistant("The harbor label is crimson-harbor."),
+            ])
+            .temperature(0.0)
+            .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+            .build();
 
             let response = client
                 .complete(model, request)

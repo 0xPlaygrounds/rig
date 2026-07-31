@@ -19,14 +19,12 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest {
-                max_tokens: Some(64),
-                ..CompletionRequest::with_history(
-                    Some("You are a storyteller."),
-                    Vec::new(),
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.")
+            .max_tokens(64)
+            .build();
 
             let response = model
                 .completion(request)

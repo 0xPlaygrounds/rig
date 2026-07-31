@@ -47,34 +47,31 @@ use rig::providers::openai;
 // ---------------------------------------------------------------------------
 
 fn logging_entry(run_id: RunId) -> HookEntry {
-    HookEntry::new("logging", move |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { turn, prompt, .. } => {
-                if let Message::User { content } = prompt {
-                    let prompt_text = content
-                        .iter()
-                        .filter_map(|c| match c {
-                            UserContent::Text(text) => Some(text.text.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    if !prompt_text.is_empty() {
-                        println!("[run {run_id} · turn {turn}] sending prompt: {prompt_text}");
-                    }
+    HookEntry::sync("logging", move |event| match event {
+        HookEvent::BeforeModelCall { turn, prompt, .. } => {
+            if let Message::User { content } = prompt {
+                let prompt_text = content
+                    .iter()
+                    .filter_map(|c| match c {
+                        UserContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !prompt_text.is_empty() {
+                    println!("[run {run_id} · turn {turn}] sending prompt: {prompt_text}");
                 }
-                HookDecision::CompletionCall(CompletionCallAction::continue_run())
             }
-            HookEvent::CompletionResponse { response, .. } => {
-                println!(
-                    "[run {run_id}] received response (usage: {:?}, message_id: {:?}): {:?}",
-                    response.usage, response.message_id, response.choice
-                );
-                HookDecision::Observation(ObservationAction::continue_run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        HookEvent::CompletionResponse { response, .. } => {
+            println!(
+                "[run {run_id}] received response (usage: {:?}, message_id: {:?}): {:?}",
+                response.usage, response.message_id, response.choice
+            );
+            HookDecision::Observation(ObservationAction::continue_run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -83,21 +80,18 @@ fn logging_entry(run_id: RunId) -> HookEntry {
 // ---------------------------------------------------------------------------
 
 fn context_entry() -> HookEntry {
-    HookEntry::new("context", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => {
-                let doc = Document {
-                    id: "style-guide".to_string(),
-                    text: "House style: keep jokes short and family-friendly.".to_string(),
-                    additional_props: Default::default(),
-                };
-                HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new().context(doc),
-                ))
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("context", |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            let doc = Document {
+                id: "style-guide".to_string(),
+                text: "House style: keep jokes short and family-friendly.".to_string(),
+                additional_props: Default::default(),
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().context(doc),
+            ))
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -107,14 +101,11 @@ fn context_entry() -> HookEntry {
 // ---------------------------------------------------------------------------
 
 fn sampling_entry() -> HookEntry {
-    HookEntry::new("sampling", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
-                CompletionCallAction::patch(RequestPatch::new().temperature(0.2)),
-            ),
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("sampling", |event| match event {
+        HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.2)),
+        ),
+        _ => HookDecision::Continue,
     })
 }
 
@@ -124,16 +115,13 @@ fn sampling_entry() -> HookEntry {
 // ---------------------------------------------------------------------------
 
 fn turn_counter_entry(count: Arc<AtomicUsize>) -> HookEntry {
-    HookEntry::new("turn-counter", move |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { .. } => {
-                let n = count.fetch_add(1, Ordering::SeqCst) + 1;
-                println!("[turn-counter] completion call #{n} this run");
-                HookDecision::CompletionCall(CompletionCallAction::continue_run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("turn-counter", move |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            let n = count.fetch_add(1, Ordering::SeqCst) + 1;
+            println!("[turn-counter] completion call #{n} this run");
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 

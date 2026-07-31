@@ -1939,10 +1939,7 @@ mod migrated_streaming_tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     fn stop_before_completion_entry() -> HookEntry {

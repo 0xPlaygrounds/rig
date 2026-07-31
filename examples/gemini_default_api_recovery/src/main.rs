@@ -154,21 +154,18 @@ impl InvalidToolNames {
 /// failing fast on anything else. Every other event gets
 /// `HookDecision::Continue`.
 fn default_api_repair_hook(observed: InvalidToolNames) -> HookEntry {
-    HookEntry::new("default-api-repair", move |event| {
-        let decision = match event {
-            HookEvent::InvalidToolCall(context) => {
-                if let Ok(mut names) = observed.0.lock() {
-                    names.push(context.tool_name.clone());
-                }
-                HookDecision::InvalidToolCall(if context.tool_name == "default_api" {
-                    InvalidToolCallAction::repair(JavaScript::NAME)
-                } else {
-                    InvalidToolCallAction::fail()
-                })
+    HookEntry::sync("default-api-repair", move |event| match event {
+        HookEvent::InvalidToolCall(context) => {
+            if let Ok(mut names) = observed.0.lock() {
+                names.push(context.tool_name.clone());
             }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+            HookDecision::InvalidToolCall(if context.tool_name == "default_api" {
+                InvalidToolCallAction::repair(JavaScript::NAME)
+            } else {
+                InvalidToolCallAction::fail()
+            })
+        }
+        _ => HookDecision::Continue,
     })
 }
 

@@ -162,17 +162,14 @@ fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
 
 /// Forces `system_probe` on turn 1 only; every other event is left alone.
 fn force_system_probe_on_first_turn() -> HookEntry {
-    HookEntry::new("force-system-probe", |event| {
-        let decision = match event {
-            HookEvent::BeforeModelCall { turn, .. } => {
-                HookDecision::CompletionCall(match system_probe_patch(turn) {
-                    Some(patch) => CompletionCallAction::patch(patch),
-                    None => CompletionCallAction::continue_run(),
-                })
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("force-system-probe", |event| match event {
+        HookEvent::BeforeModelCall { turn, .. } => {
+            HookDecision::CompletionCall(match system_probe_patch(turn) {
+                Some(patch) => CompletionCallAction::patch(patch),
+                None => CompletionCallAction::continue_run(),
+            })
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -217,34 +214,29 @@ fn failure_record(
 
 /// Records structured failures into the shared ledger; never steers the run.
 fn failure_recorder(ledger: SharedLedger) -> HookEntry {
-    HookEntry::new("failure-recorder", move |event| {
-        let decision = match event {
-            HookEvent::ToolResult {
-                call,
-                internal_call_id,
-                result,
-                ..
-            } => {
-                if let Some(record) =
-                    failure_record(&internal_call_id, &call.function.name, &result)
-                {
-                    println!(
-                        "[recorder] {} {} failed: kind={}, code={}, resource={}",
-                        record.tool_name,
-                        record.operation.as_str(),
-                        record.kind,
-                        record.code.as_deref().unwrap_or("none"),
-                        record.resource
-                    );
-                    if let Ok(mut ledger) = ledger.0.lock() {
-                        ledger.0.push(record);
-                    }
+    HookEntry::sync("failure-recorder", move |event| match event {
+        HookEvent::ToolResult {
+            call,
+            internal_call_id,
+            result,
+            ..
+        } => {
+            if let Some(record) = failure_record(&internal_call_id, &call.function.name, &result) {
+                println!(
+                    "[recorder] {} {} failed: kind={}, code={}, resource={}",
+                    record.tool_name,
+                    record.operation.as_str(),
+                    record.kind,
+                    record.code.as_deref().unwrap_or("none"),
+                    record.resource
+                );
+                if let Ok(mut ledger) = ledger.0.lock() {
+                    ledger.0.push(record);
                 }
-                HookDecision::ToolResult(ToolResultAction::keep())
             }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+            HookDecision::ToolResult(ToolResultAction::keep())
+        }
+        _ => HookDecision::Continue,
     })
 }
 
@@ -289,28 +281,25 @@ fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Tool
 /// Reads the ledger the recorder wrote, correlating by `internal_call_id`, and
 /// terminates the run on a fatal classification.
 fn fatal_failure_policy(ledger: SharedLedger) -> HookEntry {
-    HookEntry::new("fatal-failure-policy", move |event| {
-        let decision = match event {
-            HookEvent::ToolResult {
-                internal_call_id,
-                result,
-                ..
-            } => {
-                let action = if result.error().is_none() {
-                    ToolResultAction::keep()
-                } else {
-                    match ledger.0.lock() {
-                        Ok(ledger) => policy_action(Some(&*ledger), &internal_call_id),
-                        // A poisoned ledger means the recorder panicked; fall
-                        // back to the no-record path (keep the result).
-                        Err(_) => policy_action(None, &internal_call_id),
-                    }
-                };
-                HookDecision::ToolResult(action)
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("fatal-failure-policy", move |event| match event {
+        HookEvent::ToolResult {
+            internal_call_id,
+            result,
+            ..
+        } => {
+            let action = if result.error().is_none() {
+                ToolResultAction::keep()
+            } else {
+                match ledger.0.lock() {
+                    Ok(ledger) => policy_action(Some(&*ledger), &internal_call_id),
+                    // A poisoned ledger means the recorder panicked; fall
+                    // back to the no-record path (keep the result).
+                    Err(_) => policy_action(None, &internal_call_id),
+                }
+            };
+            HookDecision::ToolResult(action)
+        }
+        _ => HookDecision::Continue,
     })
 }
 

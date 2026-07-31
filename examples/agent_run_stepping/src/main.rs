@@ -79,18 +79,15 @@ impl Tool for Add {
 // ---------------------------------------------------------------------------
 
 fn tool_logger_hook() -> HookEntry {
-    HookEntry::new("tool-logger", |event| {
-        let decision = match event {
-            HookEvent::ToolCall { call, .. } => {
-                println!(
-                    "[hook] tool call: {}({})",
-                    call.function.name, call.function.arguments
-                );
-                HookDecision::ToolCall(ToolCallAction::run())
-            }
-            _ => HookDecision::Continue,
-        };
-        Box::pin(async move { decision })
+    HookEntry::sync("tool-logger", |event| match event {
+        HookEvent::ToolCall { call, .. } => {
+            println!(
+                "[hook] tool call: {}({})",
+                call.function.name, call.function.arguments
+            );
+            HookDecision::ToolCall(ToolCallAction::run())
+        }
+        _ => HookDecision::Continue,
     })
 }
 

@@ -39,14 +39,10 @@ async fn responses_api_reasoning_plus_answer_completes() {
         |env| async move {
             let cfg = env.responses_config(model_name());
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                max_tokens: Some(512),
-                ..CompletionRequest::with_history(
-                    Some(SYSTEM_PROMPT),
-                    Vec::new(),
-                    "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
-                )
-            };
+            let request = CompletionRequest::builder("Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.")
+                              .preamble(SYSTEM_PROMPT)
+                              .max_tokens(512)
+                              .build();
             let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");

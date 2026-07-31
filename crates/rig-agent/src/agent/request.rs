@@ -398,10 +398,7 @@ mod tests {
         name: &str,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(name, move |event| {
-            let decision = decide(event);
-            Box::pin(async move { decision })
-        })
+        HookEntry::sync(name, decide)
     }
 
     /// Counts `BeforeModelCall` dispatches.
