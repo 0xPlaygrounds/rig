@@ -711,4 +711,44 @@ mod tests {
             .expect("should be JsonSchema variant");
         assert_eq!(json_schema.name(), Some("response_schema"));
     }
+
+    /// Bedrock carries system instructions in a dedicated `system` block list,
+    /// so canonical `Message::System` entries must land there in order **and**
+    /// must not leak into the Converse message array. Bedrock's conversion is
+    /// outside the nine-provider cassette claim, so this pins it directly.
+    #[test]
+    fn system_messages_land_in_the_system_block_and_not_in_messages() {
+        let mut request = minimal_request();
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("second"));
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("first"));
+
+        let converted = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
+
+        let system = converted
+            .system_prompt()
+            .expect("system prompt builds")
+            .expect("system blocks present");
+        let texts: Vec<&str> = system
+            .iter()
+            .filter_map(|block| match block {
+                SystemContentBlock::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["first", "second"], "order must be preserved");
+
+        // And they must not also appear as conversation turns.
+        let messages = converted.messages().expect("messages build");
+        assert!(
+            messages.len() <= 1,
+            "system messages must not leak into the Converse message array: {messages:?}"
+        );
+    }
 }

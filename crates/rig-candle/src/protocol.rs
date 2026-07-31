@@ -1253,4 +1253,26 @@ mod tests {
             Err(CandleError::MalformedToolCall(reason)) if reason.contains("no correlated")
         ));
     }
+
+    /// Candle renders the conversation as a prompt string, so system messages
+    /// must survive `messages_with_documents` in order rather than being
+    /// dropped with the deleted preamble field.
+    #[test]
+    fn system_messages_survive_in_order() {
+        let req = request(vec![
+            Message::system("first"),
+            Message::system("second"),
+            Message::user("hello"),
+        ]);
+
+        let messages = messages_with_documents(&req);
+        let systems: Vec<&str> = messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::System { content } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(systems, ["first", "second"]);
+    }
 }

@@ -1027,4 +1027,37 @@ mod tests {
                 .contains("thinking_budget and thinking_level cannot both be set")
         );
     }
+
+    /// Vertex AI uses a dedicated `system_instruction` Content, so canonical
+    /// system messages must land there in order and must not appear among the
+    /// conversation `contents`.
+    #[test]
+    fn system_messages_land_in_system_instruction_not_contents() {
+        let mut request = minimal_request();
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("second"));
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("first"));
+
+        let converted = VertexCompletionRequest(request);
+        let instruction = converted
+            .system_instruction()
+            .expect("system instruction present");
+        let joined = format!("{instruction:?}");
+        assert!(joined.contains("first"), "missing first: {joined}");
+        assert!(joined.contains("second"), "missing second: {joined}");
+        assert!(
+            joined.find("first") < joined.find("second"),
+            "order must be preserved: {joined}"
+        );
+
+        let contents = converted.contents().expect("contents build");
+        let rendered = format!("{contents:?}");
+        assert!(
+            !rendered.contains("first"),
+            "system text must not leak into contents: {rendered}"
+        );
+    }
 }

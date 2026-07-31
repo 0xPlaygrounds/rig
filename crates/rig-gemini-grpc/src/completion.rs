@@ -965,4 +965,40 @@ mod tests {
         assert_eq!(params.required, vec!["city".to_string()]);
         assert!(params.properties.contains_key("city"));
     }
+
+    /// Gemini gRPC carries system instructions in a dedicated
+    /// `system_instruction` Content, and `rig_message_to_grpc_content`
+    /// deliberately *errors* on a system message — so they must be split out of
+    /// the history before conversion. This pins both halves: ordered placement
+    /// in `system_instruction`, and no system content among `contents`.
+    #[test]
+    fn system_messages_land_in_system_instruction_not_contents() {
+        let request = rig_core::completion::CompletionRequest::builder("now")
+            .preamble("first")
+            .message(rig_core::message::Message::system("second"))
+            .message(rig_core::message::Message::user("earlier"))
+            .build();
+
+        let converted =
+            create_grpc_request("gemini-2.5-flash".to_string(), request).expect("request builds");
+
+        let instruction = converted
+            .system_instruction
+            .expect("system instruction present");
+        let texts: Vec<String> = instruction
+            .parts
+            .iter()
+            .filter_map(|part| match &part.data {
+                Some(proto::part::Data::Text(text)) => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["first", "second"], "order must be preserved");
+
+        let rendered = format!("{:?}", converted.contents);
+        assert!(
+            !rendered.contains("first") && !rendered.contains("second"),
+            "system text must not leak into contents: {rendered}"
+        );
+    }
 }

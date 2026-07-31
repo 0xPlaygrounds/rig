@@ -512,4 +512,35 @@ mod usage_tests {
     fn verify_path_matches_the_deleted_provider_const() {
         assert_eq!(DESCRIPTOR.verify_path, Some("/models"));
     }
+
+    /// Cohere renders system instructions as `system`-role messages in the
+    /// array (it has no dedicated system field), so canonical `Message::System`
+    /// entries must survive conversion in order. Cohere has no cassette
+    /// coverage, so this is its only replay-equivalent proof.
+    #[test]
+    fn system_messages_become_ordered_system_role_messages() {
+        let cfg = Config::new("command-r");
+        let request = crate::completion::CompletionRequest::builder("now")
+            .preamble("first")
+            .message(crate::message::Message::system("second"))
+            .message(crate::message::Message::user("earlier"))
+            .build();
+
+        let body = build_request_body(&cfg, &request, false).expect("request builds");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let messages = value["messages"].as_array().expect("messages array");
+
+        let systems: Vec<String> = messages
+            .iter()
+            .filter(|m| m["role"] == "system")
+            .map(|m| {
+                m["content"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| m["content"][0]["text"].as_str().map(str::to_string))
+                    .expect("system content")
+            })
+            .collect();
+        assert_eq!(systems, ["first", "second"], "order must be preserved");
+    }
 }
