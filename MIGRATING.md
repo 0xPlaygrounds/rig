@@ -280,6 +280,99 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### Fluent builders are back (without the models)
+
+The data-oriented rewrite replaced several builders with explicit struct
+literals and multi-argument free functions. The ergonomics are restored, but
+the builders now hold **owned data only** — no model, transport, provider
+implementation, trait object, or typestate marker — so the architecture is
+unchanged. Where a builder used to end in a model-bound `.send()`/`.stream()`,
+it now ends in `.build()` and you pass the record to the provider's free
+function; that terminal is deliberately *not* restored.
+
+`CompletionRequestBuilder` returns via `CompletionRequest::builder(prompt)`:
+
+```rust
+// verbose form (still supported)
+let request = CompletionRequest {
+    temperature: Some(0.5),
+    ..CompletionRequest::with_history(Some("Be concise."), history, "Who are you?")
+};
+
+// fluent form
+let request = CompletionRequest::builder("Who are you?")
+    .preamble("Be concise.")
+    .messages(history)
+    .temperature(0.5)
+    .build();
+let response = openai::functions::complete(&cfg, &rt, request).await?;
+```
+
+**These two are not interchangeable when a preamble is involved.** The builder
+canonicalizes `preamble` into a leading `Message::System` and leaves the legacy
+`request.preamble` field `None` — exactly what the deleted builder did — while
+`CompletionRequest::with_history(Some(..), ..)` populates `request.preamble`
+instead. Many providers read that legacy field directly — at the time of
+writing: Anthropic, ChatGPT, Cohere, Copilot, Gemini (both the
+`generateContent` and Interactions faces), Ollama, OpenAI (including the
+Responses API), OpenRouter, and xAI — so swapping one form for the other can
+change the request you send. Migrate `with_history(None, ..)` and
+`from_prompt(..)` sites freely; leave preamble-carrying ones alone unless you
+have verified that provider's output. Grep `\.preamble` under
+`crates/rig-core/src/providers/` to check a specific one.
+
+`additional_params` **merges** into whatever is already set;
+`additional_params_opt` replaces (and clears with `None`).
+
+Provider configs convert into `ProviderConfig`, so `AgentBuilder::new` takes
+either:
+
+```rust
+// before
+let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg)).preamble("…").build();
+// after — both still compile
+let agent = AgentBuilder::new(cfg).preamble("…").build();
+```
+
+Extraction gained a fluent runner at `agent.extractor(prompt)`. It is not
+generic over the extracted type — pick that at the terminal:
+
+```rust
+let person: Person = agent.extractor("Alice is 30.").classic().retries(2).run().await?;
+```
+
+Document embedding gained `EmbeddingJob`, which takes the provider closure only
+at the terminal:
+
+```rust
+// before
+let max_documents = openai::functions::DESCRIPTOR
+    .max_embedding_documents
+    .unwrap_or(usize::MAX);
+let embeddings = embed_documents(
+    docs,
+    max_documents,
+    default_concurrency(max_documents),
+    |texts| openai::functions::embed(&cfg, &rt, texts),
+)
+.await?;
+
+// after
+let embeddings = EmbeddingJob::new()
+    .documents(docs)
+    .for_provider(&openai::functions::DESCRIPTOR)
+    .run(|texts| openai::functions::embed(&cfg, &rt, texts))
+    .await?;
+```
+
+`embed_documents` and `default_concurrency` remain, so nothing forces the
+change. Tool registries similarly gained `ToolExecutor::builder()` with
+`.tool(..)` (typed, erased on the spot) and `.dynamic_tool(..)`/`.tools(..)`,
+ending in `.build()`.
+
+`VectorSearchRequest::new(..).with_*()` and the transcription,
+image-generation, and audio-generation request builders are unchanged.
+
 ### Tool discovery is a record, not a trait
 
 `PortableToolEmbedding` is gone — along with its `InitError`, `Context`, and
