@@ -47,19 +47,15 @@ async fn generate_content_keeps_documents_after_system_before_history() {
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                max_tokens: Some(32),
-                documents: vec![ordering_document()],
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::system(SYSTEM_INSTRUCTION),
-                        Message::assistant("Acknowledged."),
-                    ],
-                    PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(PROMPT)
+                .messages(vec![
+                    Message::system(SYSTEM_INSTRUCTION),
+                    Message::assistant("Acknowledged."),
+                ])
+                .temperature(0.0)
+                .max_tokens(32)
+                .documents(vec![ordering_document()])
+                .build();
             let response = client
                 .complete(model, request)
                 .await

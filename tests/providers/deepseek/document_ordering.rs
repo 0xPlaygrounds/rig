@@ -50,21 +50,17 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         |env| async move {
             let model_cfg = env.config(deepseek::DEEPSEEK_V4_FLASH);
             let rt = HttpRuntime::new();
-            let request = CompletionRequest {
-                documents: vec![ordering_document()],
-                temperature: Some(0.0),
+            let request = CompletionRequest::builder(PROMPT)
+                .messages([
+                    Message::system(SYSTEM_INSTRUCTION),
+                    Message::assistant("Acknowledged."),
+                ])
+                .document(ordering_document())
+                .temperature(0.0)
                 // Needs headroom for deepseek-v4-flash's thinking tokens now
                 // that max_tokens is actually forwarded to the API.
-                max_tokens: Some(512),
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::system(SYSTEM_INSTRUCTION),
-                        Message::assistant("Acknowledged."),
-                    ],
-                    PROMPT,
-                )
-            };
+                .max_tokens(512)
+                .build();
             let response = deepseek::functions::complete(&model_cfg, &rt, request)
                 .await
                 .expect("DeepSeek document ordering request should succeed");

@@ -51,17 +51,16 @@ async fn specific_add_raw_streaming_allows_only_add() {
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![
-                    rig::tool::portable_tool_definition(&Adder),
-                    rig::tool::portable_tool_definition(&Subtract),
-                ],
-                tool_choice: Some(specific_add_choice()),
-                ..CompletionRequest::from_prompt(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
             let stream = client
                 .stream(model, request)
                 .await
@@ -109,17 +108,16 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![
-                    rig::tool::portable_tool_definition(&Adder),
-                    rig::tool::portable_tool_definition(&Subtract),
-                ],
-                tool_choice: Some(specific_add_choice()),
-                ..CompletionRequest::from_prompt(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
             let response = client
                 .complete(model, request)
                 .await

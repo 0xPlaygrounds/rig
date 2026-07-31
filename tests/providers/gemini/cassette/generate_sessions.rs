@@ -270,18 +270,17 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
             let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                additional_params: Some(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
-                    }
-                })),
-                ..CompletionRequest::from_prompt(
-                    "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
+            let request = CompletionRequest::builder(
+                "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
                      Think it through, then answer in one short sentence.",
-                )
-            };
+            )
+            .temperature(0.0)
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
+                }
+            }))
+            .build();
 
             let response = client
                 .complete(model, request)

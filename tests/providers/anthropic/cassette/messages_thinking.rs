@@ -66,21 +66,18 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
 
             // Replay the redacted thinking block back in a follow-up turn; the
             // API must accept the opaque data verbatim.
-            let second_request = CompletionRequest {
-                max_tokens: Some(4096),
-                additional_params: Some(thinking_params()),
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
+            let second_request =
+                CompletionRequest::builder("Thanks. Now reply with the single word DONE.")
+                    .messages(vec![
                         Message::user(redacted_thinking_prompt()),
                         Message::Assistant {
                             id: first_response.message_id.clone(),
                             content: first_response.choice.clone(),
                         },
-                    ],
-                    "Thanks. Now reply with the single word DONE.",
-                )
-            };
+                    ])
+                    .max_tokens(4096)
+                    .additional_params(thinking_params())
+                    .build();
 
             let second_response = model
                 .completion(second_request)

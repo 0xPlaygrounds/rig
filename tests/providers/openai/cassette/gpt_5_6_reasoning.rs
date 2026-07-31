@@ -267,16 +267,16 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = CompletionRequest {
-                    additional_params: Some(json!({
+                let request = CompletionRequest::builder(user_message.clone())
+                    .messages(history)
+                    .additional_params(json!({
                         "reasoning": {
                             "context": "all_turns",
                             "effort": "low",
                             "mode": "pro"
                         }
-                    })),
-                    ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
-                };
+                    }))
+                    .build();
                 let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                     .await
                     .unwrap_or_else(|error| {
@@ -358,16 +358,16 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let request = CompletionRequest {
-                    additional_params: Some(json!({
+                let request = CompletionRequest::builder(user_message.clone())
+                    .messages(history)
+                    .additional_params(json!({
                         "reasoning": {
                             "context": "all_turns",
                             "effort": "low",
                             "mode": "pro"
                         }
-                    })),
-                    ..CompletionRequest::with_history(None, history.collect(), user_message.clone())
-                };
+                    }))
+                    .build();
                 let mut stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
                     .await
                     .unwrap_or_else(|error| {
@@ -461,16 +461,15 @@ async fn streaming_reasoning_metadata() {
         |client| async move {
             let cfg = client.config(openai::GPT_5_6_SOL);
             let rt = client.http();
-            let request = CompletionRequest {
-                additional_params: Some(json!({
+            let request = CompletionRequest::builder(PROMPT)
+                .additional_params(json!({
                     "reasoning": {
                         "effort": "low",
                         "mode": "pro",
                         "context": "current_turn"
                     }
-                })),
-                ..CompletionRequest::from_prompt(PROMPT)
-            };
+                }))
+                .build();
             let mut stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
                 .await
                 .expect("GPT-5.6 reasoning stream should start");

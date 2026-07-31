@@ -49,19 +49,15 @@ async fn documents_are_prepended_before_history() {
         |client| async move {
             let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                max_tokens: Some(32),
-                documents: vec![ordering_document()],
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::system(SYSTEM_INSTRUCTION),
-                        Message::assistant("Acknowledged."),
-                    ],
-                    PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(PROMPT)
+                .messages([
+                    Message::system(SYSTEM_INSTRUCTION),
+                    Message::assistant("Acknowledged."),
+                ])
+                .document(ordering_document())
+                .temperature(0.0)
+                .max_tokens(32)
+                .build();
             let response = rig::bedrock::functions::complete(aws, model_id, request)
                 .await
                 .expect("Bedrock document ordering request should succeed");

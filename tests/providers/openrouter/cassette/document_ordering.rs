@@ -49,19 +49,15 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         |client| async move {
             let cfg = client.config(DEFAULT_MODEL);
             let rt = client.http();
-            let request = CompletionRequest {
-                documents: vec![ordering_document()],
-                temperature: Some(0.0),
-                max_tokens: Some(32),
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::system(SYSTEM_INSTRUCTION),
-                        Message::assistant("Acknowledged."),
-                    ],
-                    PROMPT,
-                )
-            };
+            let request = CompletionRequest::builder(PROMPT)
+                .messages(vec![
+                    Message::system(SYSTEM_INSTRUCTION),
+                    Message::assistant("Acknowledged."),
+                ])
+                .documents(vec![ordering_document()])
+                .temperature(0.0)
+                .max_tokens(32)
+                .build();
             let response = openrouter::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("OpenRouter document ordering request should succeed");

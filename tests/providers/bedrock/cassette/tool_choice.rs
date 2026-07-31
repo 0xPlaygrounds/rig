@@ -93,17 +93,16 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
         |client| async move {
             let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![
-                    rig::tool::portable_tool_definition(&Adder),
-                    rig::tool::portable_tool_definition(&Subtract),
-                ],
-                tool_choice: Some(specific_add_choice()),
-                ..CompletionRequest::from_prompt(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
             let response = rig::bedrock::functions::complete(aws, model_id, request)
                 .await
                 .expect("specific add raw completion should succeed");
@@ -149,17 +148,16 @@ async fn specific_add_raw_streaming_allows_only_add() {
         |client| async move {
             let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![
-                    rig::tool::portable_tool_definition(&Adder),
-                    rig::tool::portable_tool_definition(&Subtract),
-                ],
-                tool_choice: Some(specific_add_choice()),
-                ..CompletionRequest::from_prompt(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
             let stream = rig::bedrock::functions::open_stream(aws, model_id, request)
                 .await
                 .expect("stream should start");

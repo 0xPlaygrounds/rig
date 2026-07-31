@@ -65,18 +65,16 @@ async fn messages_preserve_mid_conversation_system_role() {
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let request = CompletionRequest {
-                max_tokens: Some(64),
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::user("Start a short language compliance check."),
-                        Message::system(SYSTEM_ROLE_INSTRUCTION),
-                        Message::assistant("Entendido."),
-                    ],
-                    "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
+            )
+            .messages(vec![
+                Message::user("Start a short language compliance check."),
+                Message::system(SYSTEM_ROLE_INSTRUCTION),
+                Message::assistant("Entendido."),
+            ])
+            .max_tokens(64)
+            .build();
             let response = model
                 .completion(request)
                 .await
@@ -123,18 +121,14 @@ async fn messages_preserve_system_role_after_server_tool_result() {
             let server_tool_assistant_message =
                 server_tool_assistant_message_from_response(first_response.choice);
 
-            let request = CompletionRequest {
-                max_tokens: Some(64),
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
+            let request = CompletionRequest::builder("What color is a clear daytime sky? Reply with one lowercase Spanish word.")
+                              .messages(vec![
                         server_tool_assistant_message,
                         Message::system(SERVER_TOOL_USE_SYSTEM_INSTRUCTION),
                         Message::assistant("Entendido."),
-                    ],
-                    "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
-                )
-            };
+                    ])
+                              .max_tokens(64)
+                              .build();
             let response = model
                 .completion(request)
                 .await
@@ -166,22 +160,20 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let request = CompletionRequest {
-                max_tokens: Some(64),
-                documents: vec![Document {
-                    id: "sky-note".to_string(),
-                    text: "A clear daytime sky is blue.".to_string(),
-                    additional_props: Default::default(),
-                }],
-                ..CompletionRequest::with_history(
-                    None,
-                    vec![
-                        Message::system(DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION),
-                        Message::assistant("Entendido."),
-                    ],
-                    "According to the document, what color is the clear daytime sky?",
-                )
-            };
+            let request = CompletionRequest::builder(
+                "According to the document, what color is the clear daytime sky?",
+            )
+            .messages(vec![
+                Message::system(DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION),
+                Message::assistant("Entendido."),
+            ])
+            .max_tokens(64)
+            .documents(vec![Document {
+                id: "sky-note".to_string(),
+                text: "A clear daytime sky is blue.".to_string(),
+                additional_props: Default::default(),
+            }])
+            .build();
             let response = model.completion(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );

@@ -753,18 +753,15 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
             let specific = xai::functions::complete(
                 &cfg,
                 &rt,
-                CompletionRequest {
-                    tools: vec![
+                CompletionRequest::builder("Call the orchard-label tool exactly once with an empty object and do not call any other tool.",)
+                    .tools(vec![
                         rig::tool::portable_tool_definition(&AlphaSignal),
                         rig::tool::portable_tool_definition(&BetaSignal),
-                    ],
-                    tool_choice: Some(ToolChoice::Specific {
+                    ])
+                    .tool_choice(ToolChoice::Specific {
                         function_names: vec![BetaSignal::NAME.to_string()],
-                    }),
-                    ..CompletionRequest::from_prompt(
-                        "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
-                    )
-                },
+                    })
+                    .build(),
             )
             .await?;
             let specific_calls = specific
