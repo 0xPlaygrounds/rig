@@ -196,6 +196,12 @@ struct ThinkingState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+    /// Anthropic `message_delta.stop_reason` (`"end_turn"`, `"tool_use"`,
+    /// `"max_tokens"`, `"stop_sequence"`). Surfaced so consumers can
+    /// distinguish a `max_tokens` truncation from a normal stop — the
+    /// streaming API otherwise drops it.
+    #[serde(default)]
+    pub stop_reason: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
@@ -283,6 +289,7 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut final_stop_reason: Option<String> = None;
 
             let mut text_content = String::new();
 
@@ -316,6 +323,7 @@ where
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
                                             final_usage = Some(usage);
+                                            final_stop_reason = delta.stop_reason.clone();
                                             break;
                                         }
                                     }
@@ -354,7 +362,8 @@ where
             sse_stream.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                stop_reason: final_stop_reason.clone(),
             }))
         }.instrument(span));
 
@@ -1619,6 +1628,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 
@@ -1764,6 +1774,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 
