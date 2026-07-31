@@ -207,11 +207,15 @@ impl Default for SearchParams {
     }
 }
 
+/// One row of a vector-search result: the score, the node's element id, and the
+/// node's properties. Neo4j returns properties as arbitrary JSON, which is what
+/// [`SearchHit::payload`] carries, so the node is decoded straight to
+/// [`serde_json::Value`].
 #[derive(Debug, Deserialize)]
-pub struct RowResultNode<T> {
+struct RowResultNode {
     score: f64,
     element_id: i64,
-    node: T,
+    node: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -231,11 +235,7 @@ impl Neo4jVectorIndex {
     ) -> Result<Vec<SearchHit>, VectorStoreError> {
         let query = self.build_vector_search_query(true, &req);
 
-        let rows = Neo4jClient::execute_and_collect::<RowResultNode<serde_json::Value>>(
-            &self.graph,
-            query,
-        )
-        .await?;
+        let rows = Neo4jClient::execute_and_collect::<RowResultNode>(&self.graph, query).await?;
 
         Ok(rows
             .into_iter()

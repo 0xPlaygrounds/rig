@@ -110,10 +110,10 @@ impl SurrealSearchFilter {
     }
 }
 
-impl TryFrom<CoreFilter<serde_json::Value>> for SurrealSearchFilter {
+impl TryFrom<CoreFilter> for SurrealSearchFilter {
     type Error = FilterError;
 
-    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter) -> Result<Self, Self::Error> {
         match value {
             CoreFilter::Eq(key, value) => Ok(Self::eq(key, Value::from_t(value))),
             CoreFilter::Gt(key, value) => Ok(Self::gt(key, Value::from_t(value))),

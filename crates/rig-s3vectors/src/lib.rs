@@ -35,7 +35,7 @@ pub struct CreateRecord {
     embedded_text: String,
 }
 
-// NOTE: Cannot be used with `Filter<serde_json::Value>` requests due to
+// NOTE: Cannot be used with `Filter` requests due to
 // aws_smithy_types::Document not impl'ing Serialize or Deserialize
 /// Converts a canonical JSON filter operand into a Smithy [`Document`].
 ///
@@ -69,7 +69,7 @@ pub struct S3SearchFilter(aws_smithy_types::Document);
 
 impl S3SearchFilter {
     /// Translates the canonical [`CoreFilter`] into this backend's filter type.
-    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+    pub fn from_filter(filter: CoreFilter) -> Self {
         match filter {
             CoreFilter::Eq(key, value) => Self::eq(key, json_to_document(value)),
             CoreFilter::Gt(key, value) => Self::gt(key, json_to_document(value)),

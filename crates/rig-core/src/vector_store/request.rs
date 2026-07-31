@@ -11,8 +11,9 @@ use crate::{OneOrMany, embeddings::Embedding};
 /// A pre-embedded vector search request.
 ///
 /// The query arrives already embedded (as one or more [`Embedding`]s); stores never
-/// embed text themselves. The type parameter `F` specifies the filter type
-/// (defaults to [`Filter<serde_json::Value>`]).
+/// embed text themselves. The type parameter `F` specifies the filter type and
+/// defaults to the portable [`Filter`]; backends substitute their own native
+/// filter records for operators the portable language does not model.
 ///
 /// Construct with [`VectorSearchRequest::new`] (the two required fields) and refine
 /// with the `with_*` methods:
@@ -27,7 +28,7 @@ use crate::{OneOrMany, embeddings::Embedding};
 /// # }
 /// ```
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
+pub struct VectorSearchRequest<F = Filter> {
     /// The pre-embedded query to search with.
     query: OneOrMany<Embedding>,
     /// Maximum number of results to return.
@@ -169,40 +170,39 @@ pub enum FilterError {
 ///
 /// This is the portable filter language every backend understands: build one with
 /// [`Filter::eq`] and friends, and the backend translates it with its own
-/// `from_filter` constructor. Backends additionally expose native filter types with
-/// richer operators, which [`VectorSearchRequest`] still accepts via its `F`
-/// parameter.
+/// `from_filter` constructor. Operands are [`serde_json::Value`], the one shape
+/// every backend can translate.
+///
+/// The portable language is deliberately small. Backends additionally expose
+/// native filter types with richer operators (array membership, negation,
+/// backend-native expressions), which [`VectorSearchRequest`] still accepts via
+/// its `F` parameter — reach for those directly when the portable operators are
+/// not enough.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Filter<V>
-where
-    V: std::fmt::Debug + Clone,
-{
-    Eq(String, V),
-    Gt(String, V),
-    Lt(String, V),
+pub enum Filter {
+    Eq(String, serde_json::Value),
+    Gt(String, serde_json::Value),
+    Lt(String, serde_json::Value),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
 }
 
-impl<V> Filter<V>
-where
-    V: std::fmt::Debug + Clone + Serialize + for<'de> Deserialize<'de>,
-{
+impl Filter {
     /// Select values where the entry at `key` is equal to `value`
     #[allow(clippy::should_implement_trait)]
-    pub fn eq(key: impl AsRef<str>, value: V) -> Self {
-        Self::Eq(key.as_ref().to_owned(), value)
+    pub fn eq(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Eq(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry at `key` is greater than `value`
-    pub fn gt(key: impl AsRef<str>, value: V) -> Self {
-        Self::Gt(key.as_ref().to_owned(), value)
+    pub fn gt(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Gt(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry at `key` is less than `value`
-    pub fn lt(key: impl AsRef<str>, value: V) -> Self {
-        Self::Lt(key.as_ref().to_owned(), value)
+    pub fn lt(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Lt(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry satisfies `self` *and* `rhs`
@@ -214,9 +214,7 @@ where
     pub fn or(self, rhs: Self) -> Self {
         Self::Or(self.into(), rhs.into())
     }
-}
 
-impl Filter<serde_json::Value> {
     /// Tests whether a JSON document satisfies this filter.
     ///
     /// Leaf filters (`Eq`/`Gt`/`Lt`) look their key up in `value` (expected to be
@@ -277,7 +275,7 @@ mod tests {
     use super::Filter;
     use serde_json::json;
 
-    type F = Filter<serde_json::Value>;
+    type F = Filter;
 
     #[test]
     fn eq_matches_field_within_multi_field_document() {
@@ -320,6 +318,39 @@ mod tests {
         assert!(F::gt("id", json!(9007199254740992_u64)).satisfies(&doc)); // > 2^53
         assert!(!F::gt("id", json!(9007199254740993_u64)).satisfies(&doc));
         assert!(F::lt("id", json!(9007199254740994_u64)).satisfies(&doc));
+    }
+
+    #[test]
+    fn serde_representation_is_stable() {
+        // `Filter` is serializable and may be persisted, so dropping the operand
+        // type parameter must not move the wire format. Variants stay lowercase
+        // and newtype-shaped, with the operand as raw JSON.
+        let filter = F::eq("category", json!("fruit")).and(F::gt("price", json!(5)));
+        let encoded = serde_json::to_value(&filter).expect("filter serializes");
+        assert_eq!(
+            encoded,
+            json!({
+                "and": [
+                    { "eq": ["category", "fruit"] },
+                    { "gt": ["price", 5] },
+                ]
+            })
+        );
+
+        let decoded: Filter = serde_json::from_value(encoded).expect("filter round-trips");
+        let doc = json!({ "category": "fruit", "price": 10 });
+        assert!(decoded.satisfies(&doc));
+    }
+
+    #[test]
+    fn operands_accept_any_json_convertible_value() {
+        // Operands are `impl Into<serde_json::Value>`, so plain Rust values work
+        // without a `json!` wrapper. `Value` itself still converts.
+        let doc = json!({ "category": "fruit", "price": 10, "fresh": true });
+        assert!(F::eq("category", "fruit").satisfies(&doc));
+        assert!(F::gt("price", 5).satisfies(&doc));
+        assert!(F::eq("fresh", true).satisfies(&doc));
+        assert!(F::eq("category", json!("fruit")).satisfies(&doc));
     }
 
     #[test]

@@ -187,10 +187,10 @@ impl ScyllaSearchFilter {
     }
 }
 
-impl TryFrom<CoreFilter<serde_json::Value>> for ScyllaSearchFilter {
+impl TryFrom<CoreFilter> for ScyllaSearchFilter {
     type Error = FilterError;
 
-    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter) -> Result<Self, Self::Error> {
         match value {
             CoreFilter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
             CoreFilter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),

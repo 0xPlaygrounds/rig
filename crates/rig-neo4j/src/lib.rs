@@ -119,7 +119,7 @@ pub struct Neo4jSearchFilter(String);
 
 impl Neo4jSearchFilter {
     /// Translates the canonical [`CoreFilter`] into this backend's filter type.
-    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Self {
+    pub fn from_filter(filter: CoreFilter) -> Self {
         match filter {
             CoreFilter::Eq(key, value) => Self::eq(key, value),
             CoreFilter::Gt(key, value) => Self::gt(key, value),

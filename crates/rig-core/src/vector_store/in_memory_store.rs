@@ -275,7 +275,7 @@ impl InMemoryVectorStore {
     }
 
     /// Tests whether a document satisfies the (optional) metadata filter.
-    fn satisfies_filter(doc: &Value, filter: Option<&Filter<serde_json::Value>>) -> bool {
+    fn satisfies_filter(doc: &Value, filter: Option<&Filter>) -> bool {
         match filter {
             None => true,
             Some(filter) => filter.satisfies(doc),
@@ -293,7 +293,7 @@ impl InMemoryVectorStore {
         doc: &Value,
         embeddings: &OneOrMany<Embedding>,
         queries: &OneOrMany<Embedding>,
-        filter: Option<&Filter<serde_json::Value>>,
+        filter: Option<&Filter>,
         threshold: Option<f64>,
     ) -> Option<OrderedFloat<f64>> {
         if !Self::satisfies_filter(doc, filter) {
@@ -336,7 +336,7 @@ impl InMemoryVectorStore {
         inner: &Inner,
         queries: &OneOrMany<Embedding>,
         n: usize,
-        filter: Option<&Filter<serde_json::Value>>,
+        filter: Option<&Filter>,
         threshold: Option<f64>,
     ) -> Result<Vec<SearchHit>, VectorStoreError> {
         let ranking = match &inner.index_strategy {
@@ -366,7 +366,7 @@ impl InMemoryVectorStore {
         inner: &'a Inner,
         queries: &OneOrMany<Embedding>,
         n: usize,
-        filter: Option<&Filter<serde_json::Value>>,
+        filter: Option<&Filter>,
         threshold: Option<f64>,
     ) -> EmbeddingRanking<'a> {
         // Sort documents by best embedding distance
@@ -403,7 +403,7 @@ impl InMemoryVectorStore {
         inner: &'a Inner,
         queries: &OneOrMany<Embedding>,
         n: usize,
-        filter: Option<&Filter<serde_json::Value>>,
+        filter: Option<&Filter>,
         threshold: Option<f64>,
     ) -> EmbeddingRanking<'a> {
         // If we don't have an LSH index yet, fall back to brute force

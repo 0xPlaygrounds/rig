@@ -127,20 +127,17 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// # }
 /// # let _ = example();
 /// ```
-pub struct MongoDbVectorIndex<C>
-where
-    C: Send + Sync,
-{
-    collection: mongodb::Collection<C>,
+pub struct MongoDbVectorIndex {
+    /// Every query and insert this index performs is expressed in BSON, so the
+    /// collection is held document-typed. [`MongoDbVectorIndex::new`] still
+    /// accepts a typed collection and converts it here.
+    collection: mongodb::Collection<bson::Document>,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
 }
 
-impl<C> MongoDbVectorIndex<C>
-where
-    C: Send + Sync,
-{
+impl MongoDbVectorIndex {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
     /// Used by the `top_n` and `top_n_ids` methods on [`MongoDbVectorIndex`].
     fn pipeline_search_stage(
@@ -193,7 +190,11 @@ where
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub async fn new(
+    ///
+    /// The collection may carry any document type: it is converted to a
+    /// BSON-document collection on the way in, since every query this index
+    /// issues is expressed in BSON regardless.
+    pub async fn new<C: Send + Sync>(
         collection: mongodb::Collection<C>,
         index_name: &str,
         search_params: SearchParams,
@@ -218,7 +219,7 @@ where
             ))?;
 
         Ok(Self {
-            collection,
+            collection: collection.clone_with_type::<bson::Document>(),
             index_name: index_name.to_string(),
             embedded_field,
             search_params,
@@ -405,9 +406,7 @@ where
             .flatten()
             .collect::<Vec<_>>();
 
-        let collection = self.collection.clone_with_type::<mongodb::bson::Document>();
-
-        collection
+        self.collection
             .insert_many(mongo_documents)
             .await
             .map_err(mongodb_to_rig_error)?;
@@ -530,8 +529,8 @@ impl MongoDbSearchFilter {
     }
 }
 
-impl From<CoreFilter<serde_json::Value>> for MongoDbSearchFilter {
-    fn from(value: CoreFilter<serde_json::Value>) -> Self {
+impl From<CoreFilter> for MongoDbSearchFilter {
+    fn from(value: CoreFilter) -> Self {
         fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
             to_bson(v).unwrap_or(Bson::Null)
         }

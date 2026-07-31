@@ -153,7 +153,7 @@ pub struct HelixDBVectorStore<C> {
     client: C,
 }
 
-pub type HelixDBFilter = Filter<serde_json::Value>;
+pub type HelixDBFilter = Filter;
 
 /// The result of a query. Only used internally as this is a representative type required for the relevant HelixDB query (`VectorSearch`).
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -294,11 +294,9 @@ where
                         .filter()
                         .clone()
                         .zip(serde_json::from_str(&x.json_payload).ok())
-                        .map(
-                            |(filter, payload): (Filter<serde_json::Value>, serde_json::Value)| {
-                                filter.satisfies(&payload)
-                            },
-                        )
+                        .map(|(filter, payload): (Filter, serde_json::Value)| {
+                            filter.satisfies(&payload)
+                        })
                         .unwrap_or(true)
             })
             .map(|x| {

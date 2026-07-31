@@ -116,7 +116,7 @@ pub struct Filter(String);
 
 impl Filter {
     /// Translates the canonical [`CoreFilter`] into this backend's filter type.
-    pub fn from_filter(filter: CoreFilter<serde_json::Value>) -> Result<Self, FilterError> {
+    pub fn from_filter(filter: CoreFilter) -> Result<Self, FilterError> {
         Ok(match filter {
             CoreFilter::Eq(key, value) => Self::eq(key, MilvusValue::try_from(value)?),
             CoreFilter::Gt(key, value) => Self::gt(key, MilvusValue::try_from(value)?),
@@ -222,9 +222,9 @@ impl Filter {
     }
 }
 
-impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
+impl TryFrom<CoreFilter> for Filter {
     type Error = FilterError;
-    fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter) -> Result<Self, Self::Error> {
         let value = match value {
             CoreFilter::Eq(k, val) => Filter::eq(k, val.try_into()?),
             CoreFilter::Gt(k, val) => Filter::gt(k, val.try_into()?),
