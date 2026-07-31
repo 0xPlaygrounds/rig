@@ -5,7 +5,7 @@
 //! tonic channel on first use. To skip the agent loop entirely, hand the same
 //! config to `functions::client_from_config` and call `functions::complete`.
 
-use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
+use rig_agent::agent::AgentBuilder;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
@@ -17,12 +17,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create agent with a single context prompt; the config reads
     // `GEMINI_API_KEY` from the environment, like `Client::from_env` did.
-    let agent = AgentBuilder::new(ProviderConfig::GeminiGrpc(
-        rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"),
-    ))
-    .preamble("Be creative and concise. Answer directly and clearly.")
-    .temperature(0.5)
-    .build();
+    let agent = AgentBuilder::new(rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"))
+        .preamble("Be creative and concise. Answer directly and clearly.")
+        .temperature(0.5)
+        .build();
 
     tracing::info!("Prompting the agent via gRPC...");
 

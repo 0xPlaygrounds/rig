@@ -12,7 +12,7 @@
 //    cargo run --release --example vectorize_vector_search
 
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::{
     Embed, providers::openai, vector_store::StoreRecord, vector_store::request::VectorSearchRequest,
@@ -31,9 +31,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embedding configuration is plain data plus a shared HTTP runtime.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // The store holds no embedding model: embedding happens outside the store,
     // and both records and queries arrive pre-embedded.
@@ -43,8 +40,8 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::var("CLOUDFLARE_API_TOKEN")?,
     );
 
-    let documents = embed_documents(
-        vec![
+    let documents = EmbeddingJob::new()
+        .documents(vec![
             Word {
                 id: "doc-1".to_string(),
                 definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
@@ -57,11 +54,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 id: "doc-3".to_string(),
                 definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
+        ])
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
     .await?;
 
     let records = documents

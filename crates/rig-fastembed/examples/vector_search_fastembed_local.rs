@@ -6,7 +6,7 @@ use fastembed::{
 use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::embed_documents,
+    embeddings::EmbeddingJob,
     vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
 use rig_fastembed::{EmbeddingModel, functions};
@@ -82,14 +82,19 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    // Create embeddings. `embed_documents` replaces the old
-    // `EmbeddingsBuilder`: it flattens each document's `#[embed]` fields,
-    // embeds them in batches, and re-associates the vectors with their
-    // document.
-    let embeddings = embed_documents(documents, rig_fastembed::MAX_DOCUMENTS, 1, |texts| async {
-        functions::embed(&embedding_model, texts)
-    })
-    .await?;
+    // Create embeddings. `EmbeddingJob` replaces the old `EmbeddingsBuilder`:
+    // it flattens each document's `#[embed]` fields, embeds them in batches,
+    // and re-associates the vectors with their document.
+    //
+    // The batch size and concurrency are set explicitly rather than taken from
+    // a provider descriptor: fastembed runs the model in-process, so its limit
+    // is a crate constant and the embedding calls are deliberately serialized.
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .max_documents(rig_fastembed::MAX_DOCUMENTS)
+        .concurrency(1)
+        .run(|texts| async { functions::embed(&embedding_model, texts) })
+        .await?;
 
     // Create vector store. The store never embeds text itself: queries arrive
     // pre-embedded.

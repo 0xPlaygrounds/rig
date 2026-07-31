@@ -8,14 +8,14 @@
 use rig_core::OneOrMany;
 use std::vec;
 
+use rig_agent::agent::AgentBuilder;
 use rig_agent::agent::hook::{CompletionCallAction, RequestPatch};
 use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
-use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use rig_bedrock::functions;
 use rig_bedrock::{aws_sdk_bedrockruntime, completion::AMAZON_NOVA_LITE};
 use rig_core::completion::Document;
-use rig_core::embeddings::batching::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::vector_store::VectorSearchRequest;
 use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
 use serde::Serialize;
@@ -114,13 +114,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let embedding_config =
         functions::EmbeddingConfig::new(AMAZON_TITAN_EMBED_TEXT_V2_0).with_ndims(256);
     let client = functions::client_from_config(&embedding_config.client_config()).await;
-    let max_documents = functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
-    let embeddings = embed_documents(
-        vec![
+    let embeddings = EmbeddingJob::new()
+        .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
@@ -145,20 +142,16 @@ async fn main() -> Result<(), anyhow::Error> {
                     "2. *linglingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| functions::embed(&client, &embedding_config.model, embedding_config.ndims, texts),
-    )
+        ])
+        .for_provider(&functions::DESCRIPTOR)
+        .run(|texts| functions::embed(&client, &embedding_config.model, embedding_config.ndims, texts))
     .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
     // The agent speaks to Bedrock through the same plain configuration.
-    let rag_agent = AgentBuilder::new(ProviderConfig::Bedrock(
-        rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
-    ))
+    let rag_agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

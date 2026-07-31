@@ -11,7 +11,7 @@ use std::env;
 
 use futures::{StreamExt, TryStreamExt};
 use rig_core::Embed;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -29,9 +29,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embedding configuration is plain data plus a shared HTTP runtime.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Initialize Neo4j client
     let neo4j_uri = env::var("NEO4J_URI")?;
@@ -41,8 +38,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
     // Embedding happens outside the store, in one batched call.
-    let embeddings = embed_documents(
-        vec![
+    let embeddings = EmbeddingJob::new()
+        .documents(vec![
             Word {
                 id: "doc0".to_string(),
                 definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
@@ -55,11 +52,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 id: "doc2".to_string(),
                 definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
+        ])
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
     .await?;
 
     futures::stream::iter(embeddings)

@@ -1,11 +1,11 @@
-//! `ExtractorBuilder<T>` is gone; extraction is the free function
-//! [`extract_with_options`] over plain data, with
-//! [`ExtractOptions::classic_extractor()`] reproducing the old builder's
-//! `submit`-tool protocol byte for byte.
+//! `ExtractorBuilder<T>` is gone; extraction runs over plain data. The fluent
+//! [`ExtractionRunner`] carries the same configuration, and `.classic()`
+//! reproduces the old builder's `submit`-tool protocol byte for byte. The
+//! extracted type is chosen at `.run::<T>()`, not on the runner.
 use std::sync::Arc;
 
 use rig_agent::agent::AgentConfig;
-use rig_agent::extract::{ExtractOptions, extract_with_options};
+use rig_agent::extract::ExtractionRunner;
 use rig_agent::provider::{ProviderConfig, Runtime};
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use schemars::JsonSchema;
@@ -29,15 +29,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // Bedrock authenticates through the AWS SDK's default credential chain,
     // so the provider is expressed as plain configuration (the config-level
     // equivalent of `Client::from_env`).
-    let person = extract_with_options::<Person>(
+    let person = ExtractionRunner::new(
         AgentConfig::new(),
         ProviderConfig::Bedrock(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE)),
         Arc::new(Runtime::new()),
         "Hello my name is John Doe! I am a software engineer.",
-        ExtractOptions::classic_extractor(),
     )
-    .await?
-    .value;
+    .classic()
+    .run::<Person>()
+    .await?;
 
     info!("AWS Bedrock: {}", serde_json::to_string_pretty(&person)?);
     Ok(())

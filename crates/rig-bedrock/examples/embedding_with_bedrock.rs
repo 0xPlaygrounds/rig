@@ -7,7 +7,7 @@
 //! chunk to `functions::embed`.
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use rig_bedrock::functions;
-use rig_core::embeddings::batching::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use tracing::info;
 
 #[derive(rig_derive::Embed, Debug)]
@@ -28,24 +28,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let cfg = functions::EmbeddingConfig::new(AMAZON_TITAN_EMBED_TEXT_V2_0).with_ndims(256);
     let client = functions::client_from_config(&cfg.client_config()).await;
 
-    let max_documents = functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-
-    let embeddings = embed_documents(
-        vec![
+    let embeddings = EmbeddingJob::new()
+        .documents(vec![
             Greetings {
                 message: "aa".to_string(),
             },
             Greetings {
                 message: "bb".to_string(),
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| functions::embed(&client, &cfg.model, cfg.ndims, texts),
-    )
-    .await?;
+        ])
+        .for_provider(&functions::DESCRIPTOR)
+        .run(|texts| functions::embed(&client, &cfg.model, cfg.ndims, texts))
+        .await?;
 
     info!("{:?}", embeddings);
 

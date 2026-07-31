@@ -65,11 +65,9 @@ async fn ask(
 async fn main() -> Result<()> {
     // Providers are plain configuration: no client object, just a
     // `ProviderConfig` arm wrapping `openai::functions::Config`.
-    let agent = AgentBuilder::new(ProviderConfig::OpenAi(openai::functions::Config::from_env(
-        openai::GPT_4O,
-    )?))
-    .preamble("You are a helpful assistant. Keep responses short.")
-    .build();
+    let agent = AgentBuilder::new(openai::functions::Config::from_env(openai::GPT_4O)?)
+        .preamble("You are a helpful assistant. Keep responses short.")
+        .build();
 
     // Sliding window: keep the last 20 messages, roll the rest into a summary.
     let sliding_memory = PolicyMemory::new(

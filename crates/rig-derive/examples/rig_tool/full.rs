@@ -28,9 +28,9 @@ fn string_processor(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let string_agent = AgentBuilder::new(ProviderConfig::OpenAi(
-        providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?,
-    ))
+    let string_agent = AgentBuilder::new(providers::openai::functions::Config::from_env(
+        providers::openai::GPT_4O,
+    )?)
     .preamble("You are an agent with tools access, always use the tools")
     .max_tokens(1024)
     .tool(StringProcessor)

@@ -84,9 +84,9 @@ fn sum_numbers(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let calculator_agent = AgentBuilder::new(ProviderConfig::OpenAi(
-        providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?,
-    ))
+    let calculator_agent = AgentBuilder::new(providers::openai::functions::Config::from_env(
+        providers::openai::GPT_4O,
+    )?)
     .preamble("You are an agent with tools access, always use the tools")
     .max_tokens(1024)
     .tool(Add)

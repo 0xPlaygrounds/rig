@@ -4,7 +4,6 @@
 //! below is what it did, spelled out.
 use futures::StreamExt;
 use rig_agent::agent::{AgentBuilder, PromptResponse, Text};
-use rig_agent::provider::ProviderConfig;
 use rig_agent::stream::AgentStreamItem;
 use rig_agent::streaming::StreamedAssistantContent;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
@@ -14,18 +13,16 @@ mod common;
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let agent = AgentBuilder::new(ProviderConfig::Bedrock(
-        rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
-    ))
-    .preamble(
-        "You are a calculator here to help the user perform arithmetic
+    let agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
+        .preamble(
+            "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.
             make your answer long, so we can test the streaming functionality,
             like 20 words",
-    )
-    .max_tokens(1024)
-    .tool(common::Adder)
-    .build();
+        )
+        .max_tokens(1024)
+        .tool(common::Adder)
+        .build();
 
     println!("Calculate 2 + 5");
     let mut stream = Box::pin(agent.runner("Calculate 2 + 5").stream_run());

@@ -7,7 +7,7 @@
 
 use rig_core::Embed;
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -43,9 +43,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // transport handed to every provider free function.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // setup Postgres
     let database_url = std::env::var("DATABASE_URL")?;
@@ -86,13 +83,11 @@ async fn main() -> Result<(), anyhow::Error> {
         }];
 
     // Embedding happens *outside* the store: it only ever sees precomputed vectors.
-    let documents = embed_documents(
-        words,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let documents = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     // delete documents from table to have a clean start (optional, not recommended for production)
     sqlx::query("TRUNCATE documents").execute(&pool).await?;

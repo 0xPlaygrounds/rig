@@ -1,5 +1,5 @@
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::{Embed, providers::openai, vector_store::request::VectorSearchRequest};
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
@@ -25,9 +25,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embedding configuration is plain data plus a shared HTTP runtime.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Create ScyllaDB vector store. Queries arrive pre-embedded, so the store
     // itself holds no embedding model.
@@ -67,13 +64,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Generate embeddings for the documents. Embedding happens *outside* the
     // store: it only ever sees precomputed vectors.
-    let embeddings = embed_documents(
-        words.clone(),
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(words.clone())
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     tracing::info!(
         "Inserting {} word definitions into ScyllaDB...",

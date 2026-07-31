@@ -12,7 +12,7 @@ use qdrant_client::{
     qdrant::{CreateCollectionBuilder, Distance, QueryPointsBuilder, VectorParamsBuilder},
 };
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{Embed, providers::openai, vector_store::StoreRecord};
@@ -49,14 +49,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
 
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
-
     // Embedding happens *outside* the store: the store only ever sees
     // precomputed vectors.
-    let documents = embed_documents(
-        vec![
+    let documents = EmbeddingJob::new()
+        .documents(vec![
             Word {
                 id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
                 definition: "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets".to_string(),
@@ -69,11 +65,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 id: "f9e17d59-32e5-440c-be02-b2759a654824".to_string(),
                 definition: "Definition of a *linglingdong*: A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
             },
-        ],
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
+        ])
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
     .await?;
 
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);

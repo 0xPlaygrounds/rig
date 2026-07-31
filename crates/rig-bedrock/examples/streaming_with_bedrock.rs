@@ -4,7 +4,6 @@
 //! below is what it did, spelled out.
 use futures::StreamExt;
 use rig_agent::agent::{AgentBuilder, PromptResponse, Text};
-use rig_agent::provider::ProviderConfig;
 use rig_agent::stream::AgentStreamItem;
 use rig_agent::streaming::StreamedAssistantContent;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
@@ -12,12 +11,10 @@ use rig_bedrock::completion::AMAZON_NOVA_LITE;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-    let agent = AgentBuilder::new(ProviderConfig::Bedrock(
-        rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),
-    ))
-    .preamble("Be precise and concise.")
-    .temperature(0.5)
-    .build();
+    let agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
+        .preamble("Be precise and concise.")
+        .temperature(0.5)
+        .build();
 
     // Stream the response and print chunks as they arrive
     let mut stream = Box::pin(

@@ -8,7 +8,7 @@
 
 use rig_core::Embed;
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -82,9 +82,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .ndims()
         .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     let documents = vec![
         Document {
@@ -101,13 +98,11 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    let embeddings = embed_documents(
-        documents,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     // Initialize SQLite vector store. Queries arrive pre-embedded, so the
     // store only needs the embedding dimensionality.

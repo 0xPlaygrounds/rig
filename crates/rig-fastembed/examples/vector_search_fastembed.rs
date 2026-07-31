@@ -1,7 +1,7 @@
 use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::embed_documents,
+    embeddings::EmbeddingJob,
     vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
 use rig_fastembed::{EmbeddingConfig, FastembedModel, functions};
@@ -23,11 +23,15 @@ async fn main() -> Result<(), anyhow::Error> {
     // says which weights to load, and `load()` hands back the runtime handle.
     let embedding_model = EmbeddingConfig::new(FastembedModel::AllMiniLML6V2Q).load()?;
 
-    // `embed_documents` replaces the old `EmbeddingsBuilder`: it flattens each
+    // `EmbeddingJob` replaces the old `EmbeddingsBuilder`: it flattens each
     // document's `#[embed]` fields, embeds them in batches, and re-associates
     // the vectors with their document.
-    let embeddings = embed_documents(
-        vec![
+    //
+    // The batch size and concurrency are explicit rather than descriptor-derived:
+    // fastembed runs the model in-process, so its limit is a crate constant and
+    // the embedding calls are deliberately serialized.
+    let embeddings = EmbeddingJob::new()
+        .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
                 word: "flurbo".to_string(),
@@ -52,12 +56,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ],
-        rig_fastembed::MAX_DOCUMENTS,
-        1,
-        |texts| async { functions::embed(&embedding_model, texts) },
-    )
-    .await?;
+        ])
+        .max_documents(rig_fastembed::MAX_DOCUMENTS)
+        .concurrency(1)
+        .run(|texts| async { functions::embed(&embedding_model, texts) })
+        .await?;
 
     // Create vector store with the embeddings. The store never embeds text
     // itself: queries arrive pre-embedded.

@@ -1,6 +1,6 @@
 use fixture::{as_record_batch, words};
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
@@ -19,18 +19,13 @@ async fn main() -> Result<(), anyhow::Error> {
         .ndims()
         .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     // Generate embeddings for the test data.
-    let embeddings = embed_documents(
-        words(),
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(words())
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     // Define search_params params that will be used by the vector store to perform the vector search.
     let search_params = SearchParams::default();

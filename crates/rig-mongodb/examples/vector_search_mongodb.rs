@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::env;
 
 use rig_core::Embed;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_mongodb::{MongoDbSearchFilter, MongoDbVectorIndex, SearchParams};
 
@@ -63,9 +63,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // client object, no model handle.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     let words = vec![
         Word {
@@ -82,13 +79,11 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     ];
 
-    let embeddings = embed_documents(
-        words,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let embeddings = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     let mongo_documents = embeddings
         .iter()

@@ -1,5 +1,5 @@
 use rig_core::OneOrMany;
-use rig_core::embeddings::{default_concurrency, embed_documents};
+use rig_core::embeddings::EmbeddingJob;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::{
     Embed,
@@ -31,9 +31,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Embedding configuration is plain data plus a shared HTTP runtime.
     let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
     let rt = HttpRuntime::new();
-    let max_documents = openai::functions::DESCRIPTOR
-        .max_embedding_documents
-        .unwrap_or(usize::MAX);
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969
     // The store holds no embedding model: embedding happens outside the store,
@@ -54,13 +51,11 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = embed_documents(
-        words,
-        max_documents,
-        default_concurrency(max_documents),
-        |texts| openai::functions::embed(&embed_cfg, &rt, texts),
-    )
-    .await?;
+    let documents = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
+        .await?;
 
     let records = documents
         .into_iter()
