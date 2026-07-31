@@ -60,11 +60,10 @@ pub fn create_request_body(
     // preferred a scalar preamble and *discarded* history system messages;
     // with one representation there is nothing left to prefer, so the
     // data-loss path is gone by construction.
-    let system_instruction = if history_system.is_empty() {
-        params.system_instruction.take()
-    } else {
-        Some(history_system.join("\n\n"))
-    };
+    // Canonical system messages are the only source. There is deliberately no
+    // input-side `additional_params.system_instruction` channel: a second way
+    // to say the same thing is what the `.or_else` data-loss bug grew out of.
+    let system_instruction = (!history_system.is_empty()).then(|| history_system.join("\n\n"));
 
     let mut tools = Vec::new();
     if !completion_request.tools.is_empty() {
@@ -349,7 +348,6 @@ pub mod interactions_api_types {
         pub response_mime_type: Option<String>,
         pub store: Option<bool>,
         pub stream: Option<bool>,
-        pub system_instruction: Option<String>,
         pub tools: Option<Vec<Tool>>,
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<Value>,
