@@ -2217,18 +2217,9 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
 
         // Convert system prompt to array format for cache_control support
-        let mut system = if let Some(preamble) = req.preamble {
-            if preamble.is_empty() {
-                vec![]
-            } else {
-                vec![SystemContent::Text {
-                    text: preamble,
-                    cache_control: None,
-                }]
-            }
-        } else {
-            vec![]
-        };
+        // System instructions arrive only as canonical `Message::System`
+        // entries now, already split out of the history above.
+        let mut system: Vec<SystemContent> = Vec::new();
         system.extend(history_system);
 
         apply_prompt_cache_control(
@@ -2793,8 +2784,11 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("System prompt".to_string()),
-            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("System prompt".to_string()),
+                message::Message::from("Hello"),
+            ])
+            .expect("non-empty"),
             documents: Vec::new(),
             tools,
             temperature: None,
@@ -2810,9 +2804,14 @@ mod tests {
         chat_history: Vec<message::Message>,
         preamble: Option<String>,
     ) -> CompletionRequest {
+        // The helper still takes a preamble for readability; it now lands as a
+        // leading canonical system message instead of a separate field.
+        let mut chat_history = chat_history;
+        if let Some(preamble) = preamble {
+            chat_history.insert(0, crate::message::Message::system(preamble));
+        }
         CompletionRequest {
             model: None,
-            preamble,
             chat_history: OneOrMany::many(chat_history).unwrap(),
             documents: Vec::new(),
             tools: Vec::new(),

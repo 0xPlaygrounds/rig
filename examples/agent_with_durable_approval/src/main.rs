@@ -183,14 +183,11 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("\n→ model call #{turn}");
-                let request = rig::completion::CompletionRequest {
-                    tools: tool_definitions.clone(),
-                    ..rig::completion::CompletionRequest::with_history(
-                        Some(preamble),
-                        history,
-                        prompt,
-                    )
-                };
+                let request = rig::completion::CompletionRequest::builder(prompt)
+                    .preamble(preamble)
+                    .messages(history)
+                    .tools(tool_definitions.clone())
+                    .build();
                 let response = openai::functions::complete(&cfg, &http, request).await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()

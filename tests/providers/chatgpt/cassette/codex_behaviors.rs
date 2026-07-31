@@ -75,11 +75,10 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette("codex_behaviors/store_false_and_prompt_cache_fields_roundtrip", |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
             let response = model
-                .completion(CompletionRequest::with_history(
-                    Some("Return only the requested marker."),
-                    Vec::new(),
-                    "Reply with exactly this marker: CODEX-STORE-FALSE",
-                ))
+                .completion(CompletionRequest::builder("Reply with exactly this marker: CODEX-STORE-FALSE")
+.preamble("Return only the requested marker.")
+.messages(Vec::new())
+.build())
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
 

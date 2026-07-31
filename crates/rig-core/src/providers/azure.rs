@@ -352,7 +352,6 @@ mod azure_tests {
             &cfg,
             &CompletionRequest {
                 model: Some("other-deployment".to_string()),
-                preamble: None,
                 chat_history: OneOrMany::one("Hello!".into()),
                 documents: vec![],
                 max_tokens: None,
@@ -394,8 +393,11 @@ mod azure_tests {
             &rt,
             CompletionRequest {
                 model: None,
-                preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: OneOrMany::one("Hello!".into()),
+                chat_history: OneOrMany::many(vec![
+                    crate::message::Message::system("You are a helpful assistant.".to_string()),
+                    "Hello!".into(),
+                ])
+                .expect("non-empty"),
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),
@@ -470,8 +472,11 @@ mod azure_tests {
             &rt,
             CompletionRequest {
                 model: None,
-                preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: OneOrMany::one("Hello!".into()),
+                chat_history: OneOrMany::many(vec![
+                    crate::message::Message::system("You are a helpful assistant.".to_string()),
+                    "Hello!".into(),
+                ])
+                .expect("non-empty"),
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),
@@ -1127,7 +1132,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

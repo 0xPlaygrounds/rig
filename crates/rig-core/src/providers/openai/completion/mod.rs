@@ -1575,7 +1575,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let CoreCompletionRequest {
             model: request_model,
-            preamble,
             chat_history: _,
             tools,
             temperature,
@@ -1589,8 +1588,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
-        let mut full_history: Vec<Message> =
-            preamble.map_or_else(Vec::new, |preamble| vec![Message::system(&preamble)]);
+        let mut full_history: Vec<Message> = Vec::new();
 
         full_history.extend(
             partial_history
@@ -1760,7 +1758,6 @@ mod tests {
 
         CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(message::Message::User {
                 content: OneOrMany::one(message::UserContent::ToolResult(tool_result)),
             }),
@@ -2015,7 +2012,6 @@ mod tests {
     fn test_openai_request_uses_request_model_override() {
         let request = crate::completion::CompletionRequest {
             model: Some("gpt-4.1".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2046,7 +2042,6 @@ mod tests {
     fn test_openai_request_uses_default_model_when_override_unset() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2078,7 +2073,6 @@ mod tests {
         let request = CoreCompletionRequest {
             documents: vec![test_document("doc1", "Document text.")],
             ..CoreCompletionRequest::with_history(
-                None,
                 vec![
                     crate::completion::Message::system("System prompt"),
                     crate::completion::Message::user("Earlier user turn"),
@@ -2130,7 +2124,6 @@ mod tests {
     fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::many(vec![
                 crate::completion::Message::system("System prompt"),
                 crate::completion::Message::assistant("Earlier assistant turn"),
@@ -2346,7 +2339,6 @@ mod tests {
     fn test_max_tokens_is_forwarded_to_request() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2377,7 +2369,6 @@ mod tests {
     fn test_max_tokens_omitted_when_none() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2408,7 +2399,6 @@ mod tests {
     fn request_conversion_errors_when_all_messages_are_filtered() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(message::Message::Assistant {
                 id: None,
                 content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
@@ -2439,7 +2429,6 @@ mod tests {
     fn request_conversion_omits_response_format_on_initial_tool_turn() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(message::Message::user(
                 "Hello, whats the weather in London?",
             )),
@@ -2497,7 +2486,6 @@ mod tests {
     fn request_conversion_restores_response_format_after_tool_result() {
         let request = CoreCompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 message::Message::user("Hello, whats the weather in London?"),
                 message::Message::Assistant {

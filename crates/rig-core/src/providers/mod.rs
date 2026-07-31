@@ -83,14 +83,13 @@
 //! let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
 //! let rt = HttpRuntime::new();
 //!
-//! let request = rig_core::completion::CompletionRequest::with_history(
-//!     Some(
-//!         "You are Gandalf the white and you will be conversing with other \
-//!         powerful beings to discuss the fate of Middle Earth.",
-//!     ),
-//!     Vec::new(),
-//!     "Discuss the fate of Middle Earth.",
-//! );
+//! let request =
+//!     rig_core::completion::CompletionRequest::builder("Discuss the fate of Middle Earth.")
+//!         .preamble(
+//!             "You are Gandalf the white and you will be conversing with other \
+//!             powerful beings to discuss the fate of Middle Earth.",
+//!         )
+//!         .build();
 //! let response = openai::functions::complete(&cfg, &rt, request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {

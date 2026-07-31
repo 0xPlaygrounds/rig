@@ -37,7 +37,6 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         &cfg,
         &rt,
         CompletionRequest::with_history(
-            None,
             vec![
                 Message::user("Remember the secret color is teal."),
                 assistant,

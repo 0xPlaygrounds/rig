@@ -56,16 +56,15 @@ pub fn create_request_body(
         Some(generation_config)
     };
 
-    let system_instruction = completion_request
-        .preamble
-        .or_else(|| {
-            if history_system.is_empty() {
-                None
-            } else {
-                Some(history_system.join("\n\n"))
-            }
-        })
-        .or(params.system_instruction.take());
+    // Every canonical system message, joined in order. The old `.or_else`
+    // preferred a scalar preamble and *discarded* history system messages;
+    // with one representation there is nothing left to prefer, so the
+    // data-loss path is gone by construction.
+    let system_instruction = if history_system.is_empty() {
+        params.system_instruction.take()
+    } else {
+        Some(history_system.join("\n\n"))
+    };
 
     let mut tools = Vec::new();
     if !completion_request.tools.is_empty() {
@@ -2283,8 +2282,8 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: Some("Be precise.".to_string()),
-            chat_history: OneOrMany::one(prompt),
+            chat_history: OneOrMany::many(vec![Message::system("Be precise.".to_string()), prompt])
+                .expect("non-empty"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2474,7 +2473,6 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::User {
                 content: OneOrMany::one(tool_result),
             }),

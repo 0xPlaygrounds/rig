@@ -49,7 +49,6 @@ async fn system_messages_are_lifted_into_instructions() {
     let rt = HttpRuntime::new();
 
     let request = CompletionRequest::with_history(
-        None,
         vec![Message::system("Always answer with the single word maple.")],
         "Reply with the exact word from the system message.",
     );

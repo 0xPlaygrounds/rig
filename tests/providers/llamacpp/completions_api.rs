@@ -39,11 +39,10 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     let response = openai::functions::complete(
         &cfg,
         &rt,
-        CompletionRequest::with_history(
-            Some(RAW_TEXT_RESPONSE_PREAMBLE),
-            Vec::new(),
-            RAW_TEXT_RESPONSE_PROMPT,
-        ),
+        CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+            .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
+            .messages(Vec::new())
+            .build(),
     )
     .await
     .expect("raw completions api request should succeed");

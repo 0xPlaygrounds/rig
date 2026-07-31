@@ -233,7 +233,6 @@ data: [DONE]"#;
             None,
             completion::CompletionRequest {
                 model: Some("gpt-5.4".to_string()),
-                preamble: Some("System one".to_string()),
                 chat_history,
                 documents: Vec::new(),
                 tools: Vec::new(),
@@ -252,6 +251,7 @@ data: [DONE]"#;
     fn test_conversion_lifts_leading_system_messages_into_instructions() {
         let request = chatgpt_conversion_request(
             OneOrMany::many(vec![
+                completion::Message::system("System one"),
                 completion::Message::system("System two"),
                 completion::Message::user("hi"),
             ])
@@ -269,6 +269,7 @@ data: [DONE]"#;
     fn test_conversion_lifts_mid_conversation_system_messages() {
         let request = chatgpt_conversion_request(
             OneOrMany::many(vec![
+                completion::Message::system("System one"),
                 completion::Message::user("hi"),
                 completion::Message::system("Mid-conversation instruction"),
                 completion::Message::user("again"),
@@ -293,8 +294,11 @@ data: [DONE]"#;
             completion::CompletionRequest {
                 record_telemetry_content: false,
                 model: None,
-                preamble: Some("Respond tersely.".to_string()),
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: OneOrMany::many(vec![
+                    crate::message::Message::system("Respond tersely.".to_string()),
+                    completion::Message::user("hello"),
+                ])
+                .expect("non-empty"),
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -319,7 +323,6 @@ data: [DONE]"#;
             None,
             completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(completion::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

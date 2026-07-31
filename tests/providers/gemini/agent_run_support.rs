@@ -54,7 +54,10 @@ impl GeminiAgent {
         CompletionRequest {
             tools: self.tools.clone(),
             tool_choice: self.tool_choice.clone(),
-            ..CompletionRequest::with_history(Some(&self.preamble), history, prompt)
+            ..CompletionRequest::builder(prompt)
+                .preamble(&self.preamble)
+                .messages(history)
+                .build()
         }
     }
 }

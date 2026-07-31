@@ -32,7 +32,7 @@ use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{
     ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, completion_span};
 
 /// Default Gemini API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
@@ -195,12 +195,12 @@ pub async fn open_stream(
     // `gcp.gemini` is the OTel `gen_ai.provider.name` value the deleted
     // `CompletionModel::stream` recorded; `DESCRIPTOR.name` ("gemini") is the
     // normalized-response provider field, a different vocabulary.
-    let span = CompletionSpanBuilder::new("gcp.gemini", &model, CompletionOperation::ChatStreaming)
-        .system_instructions(
-            request.preamble.as_deref(),
-            request.record_telemetry_content,
-        )
-        .build();
+    let span = completion_span(
+        "gcp.gemini",
+        &model,
+        CompletionOperation::ChatStreaming,
+        &request,
+    );
     let req = build_request(cfg, &request, true)?;
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         Box::pin(super::streaming::generate_content_stream(
@@ -584,7 +584,6 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -715,7 +714,6 @@ mod telemetry_tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),

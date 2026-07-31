@@ -25,7 +25,7 @@ use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{
     ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, completion_span};
 
 /// Default Anthropic API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -307,13 +307,12 @@ pub async fn open_stream(
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
-    let span =
-        CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
-            .system_instructions(
-                request.preamble.as_deref(),
-                request.record_telemetry_content,
-            )
-            .build();
+    let span = completion_span(
+        DESCRIPTOR.name,
+        &model,
+        CompletionOperation::ChatStreaming,
+        &request,
+    );
     let req = build_request(cfg, &request, true)?;
     Ok(super::streaming::stream_anthropic_sse(
         rt.sse_events(req, false),
@@ -561,7 +560,6 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),

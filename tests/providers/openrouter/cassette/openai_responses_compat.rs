@@ -18,11 +18,10 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
             .config(DEFAULT_OPENAI_COMPAT_MODEL)
             .with_system_instructions_as_messages();
         let rt = client.http();
-        let request = CompletionRequest::with_history(
-            Some("Return the requested text exactly, with no extra commentary."),
-            Vec::new(),
-            "Reply with exactly: openrouter responses service tier ok",
-        );
+        let request = CompletionRequest::builder("Reply with exactly: openrouter responses service tier ok")
+.preamble("Return the requested text exactly, with no extra commentary.")
+.messages(Vec::new())
+.build();
         let response = openai::responses_api::functions::complete(&cfg, &rt, request)
             .await
             .expect("OpenRouter Responses API completion should deserialize");

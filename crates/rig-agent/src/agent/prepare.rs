@@ -313,7 +313,6 @@ pub fn prepare_request(
 
     let request = CompletionRequest {
         model: model_override,
-        preamble: None,
         chat_history,
         documents,
         tools: tooldefs,

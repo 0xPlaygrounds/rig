@@ -49,11 +49,10 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
         |client| async move {
             let cfg = client.config(openai::GPT_4O);
             let rt = client.http();
-            let request = CompletionRequest::with_history(
-                Some(RAW_TEXT_RESPONSE_PREAMBLE),
-                Vec::new(),
-                RAW_TEXT_RESPONSE_PROMPT,
-            );
+            let request = CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+                .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
+                .messages(Vec::new())
+                .build();
             let response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("raw completions api request should succeed");
@@ -258,11 +257,10 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = CompletionRequest::with_history(
-                Some("Use the provided tool result and answer directly."),
-                vec![assistant_message, tool_result_message],
-                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-            );
+            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+.preamble("Use the provided tool result and answer directly.")
+.messages(vec![assistant_message, tool_result_message])
+.build();
 
             let second_turn = collect_raw_stream_observation(
                 openai::functions::open_stream(&cfg, &rt, followup_request)
@@ -319,7 +317,6 @@ async fn completions_api_pure_functions_replay_recorded_request() {
 
     let request = CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: OneOrMany::many(vec![
             Message::system("You are a helpful assistant."),
             Message::user("Hello world!"),

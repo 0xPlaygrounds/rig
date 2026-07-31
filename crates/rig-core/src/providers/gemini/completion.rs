@@ -50,7 +50,6 @@ pub(crate) fn create_request_body(
 
     let CompletionRequest {
         model: _,
-        preamble,
         chat_history: _,
         documents: _,
         tools: function_tools,
@@ -97,9 +96,6 @@ pub(crate) fn create_request_body(
     });
 
     let mut system_parts: Vec<Part> = Vec::new();
-    if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {
-        system_parts.push(preamble.into());
-    }
     for content in history_system {
         if !content.is_empty() {
             system_parts.push(content.into());
@@ -2218,7 +2214,6 @@ mod tests {
     fn test_resolve_request_model_uses_override() {
         let request = CompletionRequest {
             model: Some("gemini-2.5-flash".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2246,7 +2241,6 @@ mod tests {
     fn test_resolve_request_model_uses_default_when_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -3331,7 +3325,6 @@ mod tests {
         ];
 
         let documents_message = CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("placeholder")),
             documents,
             tools: vec![],
@@ -3347,8 +3340,8 @@ mod tests {
         .unwrap();
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
             chat_history: OneOrMany::many(vec![
+                Message::system("You are a helpful assistant".to_string()),
                 documents_message,
                 Message::user("What are my notes about?"),
             ])
@@ -3418,8 +3411,11 @@ mod tests {
         use crate::message::Message;
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::one(Message::user("Hello")),
+            chat_history: OneOrMany::many(vec![
+                Message::system("You are a helpful assistant".to_string()),
+                Message::user("Hello"),
+            ])
+            .expect("non-empty"),
             documents: vec![], // No documents
             tools: vec![],
             temperature: None,

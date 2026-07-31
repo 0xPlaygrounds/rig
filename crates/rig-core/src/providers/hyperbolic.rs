@@ -753,7 +753,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

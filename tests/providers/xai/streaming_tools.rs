@@ -143,11 +143,12 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 tool_call.call_id,
                 XAI_STATUS_TOOL_OUTPUT,
             );
-            let followup_request = CompletionRequest::with_history(
-                Some("Use the provided tool result and answer directly."),
-                vec![assistant_message, tool_result_message],
+            let followup_request = CompletionRequest::builder(
                 "Now reply in one short sentence using the provided tool result only.",
-            );
+            )
+            .preamble("Use the provided tool result and answer directly.")
+            .messages(vec![assistant_message, tool_result_message])
+            .build();
 
             let second_turn = collect_raw_stream_observation(
                 xai::functions::open_stream(&cfg, &rt, followup_request)

@@ -102,6 +102,8 @@ impl AgentBuilder {
             description: None,
             provider: provider.into(),
             runtime: None,
+            // Agent configuration, not request data: the agent's preamble is
+            // emitted as a canonical system message by `prepare_request`.
             preamble: None,
             static_context: vec![],
             temperature: None,

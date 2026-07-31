@@ -29,7 +29,7 @@ use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{
     ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, completion_span};
 
 /// Default OpenAI API base URL.
 pub const DEFAULT_BASE_URL: &str = super::super::functions::DEFAULT_BASE_URL;
@@ -259,13 +259,12 @@ pub async fn open_stream(
     request: CompletionRequest,
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
-    let span =
-        CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
-            .system_instructions(
-                request.preamble.as_deref(),
-                request.record_telemetry_content,
-            )
-            .build();
+    let span = completion_span(
+        DESCRIPTOR.name,
+        &model,
+        CompletionOperation::ChatStreaming,
+        &request,
+    );
     let req = build_request(cfg, &request, true)?;
     Ok(super::streaming::stream_from_event_source(
         rt.sse_events(req, false),
@@ -318,8 +317,11 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("Respond tersely.".to_string()),
-            chat_history: OneOrMany::one(Message::user("hello")),
+            chat_history: OneOrMany::many(vec![
+                Message::system("Respond tersely.".to_string()),
+                Message::user("hello"),
+            ])
+            .expect("non-empty"),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: Some(0.5),

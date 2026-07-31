@@ -161,11 +161,10 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 tool_call.call_id,
                 ALPHA_SIGNAL_OUTPUT,
             );
-            let followup_request = CompletionRequest::with_history(
-                Some("Use the provided tool result and answer directly."),
-                vec![assistant_message, tool_result_message],
-                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-            );
+            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+.preamble("Use the provided tool result and answer directly.")
+.messages(vec![assistant_message, tool_result_message])
+.build();
 
             let second_turn = collect_raw_stream_observation(
                 openrouter::functions::open_stream(&cfg, &rt, followup_request)

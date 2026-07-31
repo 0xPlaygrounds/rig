@@ -303,7 +303,6 @@ mod tests {
     fn request(prompt: &str) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user(prompt)),
             documents: Vec::new(),
             tools: Vec::new(),

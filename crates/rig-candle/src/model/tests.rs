@@ -244,7 +244,6 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: match OneOrMany::many(messages) {
             Ok(messages) => messages,
             Err(_) => OneOrMany::one(Message::user("hello")),

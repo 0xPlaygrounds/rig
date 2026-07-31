@@ -913,7 +913,6 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -1117,37 +1116,46 @@ mod tests {
         assert_eq!(value["speed"], 1.5);
     }
 
-    /// The two ways to express system instructions must produce the same
-    /// request. `CompletionRequest::builder(..).preamble(..)` canonicalizes
-    /// into a leading `Message::System`, while
-    /// `CompletionRequest::with_history(Some(..), ..)` populates the legacy
-    /// `preamble` field. Providers read both — this pins them to the same wire
-    /// bytes so the two forms cannot silently drift apart.
+    /// System instructions are canonical ordered `Message::System` entries.
+    /// This pins that the builder's `.preamble(..)` and an explicitly supplied
+    /// system message are the *same* thing, and that multiple system messages
+    /// keep their order on the wire.
     #[test]
-    fn system_instruction_forms_produce_identical_request_bodies() {
+    fn canonical_system_messages_reach_the_wire_in_order() {
         let cfg = Config::new("gpt-4o");
 
-        let legacy_field = crate::completion::CompletionRequest::with_history(
-            Some("You are terse."),
-            vec![crate::message::Message::user("earlier")],
-            "now",
-        );
-        let system_message = crate::completion::CompletionRequest::builder("now")
+        let via_preamble = crate::completion::CompletionRequest::builder("now")
             .preamble("You are terse.")
             .messages([crate::message::Message::user("earlier")])
             .build();
+        let via_message = crate::completion::CompletionRequest::builder("now")
+            .message(crate::message::Message::system("You are terse."))
+            .message(crate::message::Message::user("earlier"))
+            .build();
 
-        // The two requests are shaped differently by construction...
-        assert!(legacy_field.preamble.is_some());
-        assert!(system_message.preamble.is_none());
-
-        // ...but render to identical bytes.
-        let from_legacy = build_request_body(&cfg, &legacy_field, false).expect("legacy builds");
-        let from_message =
-            build_request_body(&cfg, &system_message, false).expect("system message builds");
+        let a = build_request_body(&cfg, &via_preamble, false).expect("builds");
+        let b = build_request_body(&cfg, &via_message, false).expect("builds");
         assert_eq!(
-            serde_json::from_slice::<serde_json::Value>(&from_legacy).expect("json"),
-            serde_json::from_slice::<serde_json::Value>(&from_message).expect("json"),
+            serde_json::from_slice::<serde_json::Value>(&a).expect("json"),
+            serde_json::from_slice::<serde_json::Value>(&b).expect("json"),
+            "`.preamble(..)` is sugar for a leading system message, nothing more",
         );
+
+        // Multiple system messages keep their relative order.
+        let ordered = crate::completion::CompletionRequest::builder("now")
+            .message(crate::message::Message::system("first"))
+            .message(crate::message::Message::system("second"))
+            .build();
+        let body = build_request_body(&cfg, &ordered, false).expect("builds");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let systems: Vec<&str> = value["messages"]
+            .as_array()
+            .expect("messages")
+            .iter()
+            .filter(|m| m["role"] == "system")
+            // Content is an array of typed parts, not a bare string.
+            .filter_map(|m| m["content"][0]["text"].as_str())
+            .collect();
+        assert_eq!(systems, ["first", "second"]);
     }
 }

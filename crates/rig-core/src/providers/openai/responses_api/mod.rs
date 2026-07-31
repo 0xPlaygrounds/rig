@@ -1168,16 +1168,15 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or(model);
-        let preamble = req.preamble.take();
         let mut instruction_parts = Vec::new();
         let mut input = {
             let mut partial_history = vec![];
             partial_history.extend(chat_history);
 
-            let mut full_history: Vec<InputItem> = preamble
-                .map(InputItem::system_message)
-                .into_iter()
-                .collect();
+            // System instructions arrive as canonical messages in the history;
+            // the placement lift below still sees them in the same position the
+            // scalar preamble used to occupy.
+            let mut full_history: Vec<InputItem> = Vec::new();
 
             for history_item in partial_history {
                 full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
@@ -2832,7 +2831,6 @@ mod tests {
     fn weather_tool_request() -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one(message::Message::user("what's the weather?")),
             documents: Vec::new(),
             tools: vec![weather_tool_definition()],
@@ -3002,8 +3000,11 @@ mod tests {
     fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: Some(preamble.to_string()),
-            chat_history: crate::OneOrMany::one(message::Message::user("Hello")),
+            chat_history: crate::OneOrMany::many(vec![
+                crate::message::Message::system(preamble.to_string()),
+                message::Message::user("Hello"),
+            ])
+            .expect("non-empty history"),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -3018,7 +3019,6 @@ mod tests {
     fn system_only_request(system_text: &str) -> completion::CompletionRequest {
         completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one(completion::Message::system(system_text)),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -3070,11 +3070,10 @@ mod tests {
 
     #[test]
     fn responses_request_lifts_system_messages_to_top_level_instructions_by_default() {
-        let request = crate::completion::CompletionRequest::with_history(
-            Some("System one"),
-            vec![completion::Message::system("System two")],
-            "Hello",
-        );
+        let request = crate::completion::CompletionRequest::builder("Hello")
+            .preamble("System one")
+            .messages(vec![completion::Message::system("System two")])
+            .build();
 
         let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request should convert");
@@ -3136,14 +3135,13 @@ mod tests {
         let cfg = functions::Config::new("gpt-4o-mini")
             .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
-        let request = crate::completion::CompletionRequest::with_history(
-            Some("System one"),
-            vec![
+        let request = crate::completion::CompletionRequest::builder("again")
+            .preamble("System one")
+            .messages(vec![
                 completion::Message::user("hi"),
                 completion::Message::system("Mid-conversation instruction"),
-            ],
-            "again",
-        );
+            ])
+            .build();
 
         let req =
             functions::build_typed_request(&cfg, &request, false).expect("request should convert");
@@ -3381,7 +3379,6 @@ mod tests {
     fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::many(vec![
                 completion::Message::system("System prompt"),
                 completion::Message::assistant("Earlier assistant turn"),
@@ -4164,8 +4161,8 @@ mod tests {
     fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         let request = crate::completion::CompletionRequest {
             model: None,
-            preamble: Some("You are concise.".to_string()),
             chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are concise.".to_string()),
                 completion::Message::User {
                     content: OneOrMany::one(message::UserContent::Text(Text::new(
                         "Think briefly, then answer.",
@@ -4689,7 +4686,6 @@ mod tests {
     fn url_pdf_in_full_completion_request_omits_filename() {
         let core_request = crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(url_pdf_message()),
             documents: Vec::new(),
             tools: Vec::new(),

@@ -10,11 +10,9 @@
 //! // Defaults to http://localhost:11434 with no auth; `with_base_url` /
 //! // `with_api_key` point at a remote or proxied Ollama instead.
 //! let cfg = ollama::functions::Config::from_env("qwen2.5:14b")?;
-//! let request = rig_core::completion::CompletionRequest::with_history(
-//!     Some("You are a comedian here to entertain the user using humour and jokes."),
-//!     Vec::new(),
-//!     "Entertain me!",
-//! );
+//! let request = rig_core::completion::CompletionRequest::builder("Entertain me!")
+//!     .preamble("You are a comedian here to entertain the user using humour and jokes.")
+//!     .build();
 //! let response = ollama::functions::complete(&cfg, &rt, request).await?;
 //! println!("{:?}", response.choice);
 //!
@@ -295,10 +293,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        let mut full_history: Vec<Message> = Vec::new();
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -987,7 +982,7 @@ pub mod functions {
     use crate::providers::descriptor::{
         ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
     };
-    use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+    use crate::telemetry::{CompletionOperation, completion_span};
 
     /// Default Ollama API base URL (local instance).
     pub const DEFAULT_BASE_URL: &str = super::OLLAMA_API_BASE_URL;
@@ -1151,13 +1146,12 @@ pub mod functions {
         use tracing_futures::Instrument;
 
         let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
-        let span =
-            CompletionSpanBuilder::new(DESCRIPTOR.name, &model, CompletionOperation::ChatStreaming)
-                .system_instructions(
-                    request.preamble.as_deref(),
-                    request.record_telemetry_content,
-                )
-                .build();
+        let span = completion_span(
+            DESCRIPTOR.name,
+            &model,
+            CompletionOperation::ChatStreaming,
+            &request,
+        );
         let req = build_request(cfg, &request, true)?;
         // Ollama's native stream is NDJSON, not SSE, so this path takes the
         // raw byte-stream transport edge rather than `HttpRuntime::sse_events`.
@@ -1416,7 +1410,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),
@@ -1992,10 +1985,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2058,10 +2056,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2124,10 +2127,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2190,10 +2198,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2256,10 +2269,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2291,10 +2309,13 @@ mod tests {
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -2347,7 +2368,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2382,7 +2402,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2421,7 +2440,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2461,7 +2479,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new(
                     "How old is Ollama?".to_string(),
@@ -2507,7 +2524,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2713,7 +2729,6 @@ mod telemetry_tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),

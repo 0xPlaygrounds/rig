@@ -837,7 +837,7 @@ mod tests {
         assert_eq!(requests.len(), 1, "one model call, exactly as max_turns(1)");
         let request = requests.first().expect("one recorded request");
         // `prepare_request` carries the preamble as the leading system
-        // message (`request.preamble` is always `None` on the sans-IO path).
+        // message (system instructions are canonical messages).
         let system = request.chat_history.first();
         let Message::System { content } = system else {
             panic!("the preamble must lead the history as a system message: {system:?}");
@@ -931,7 +931,10 @@ mod tests {
             second.chat_history.len(),
             "the retry must not append the failed attempt's exchange"
         );
-        assert_eq!(first.preamble, second.preamble);
+        // System instructions are canonical messages now, so comparing the
+        // histories above already covers them; assert the leading system
+        // message explicitly to keep the intent visible.
+        assert_eq!(first.chat_history.first(), second.chat_history.first());
         assert_eq!(first.tools.len(), second.tools.len());
     }
 }

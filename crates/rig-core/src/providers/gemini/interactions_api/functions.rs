@@ -33,7 +33,7 @@ use crate::http_runtime::HttpRuntime;
 use crate::providers::descriptor::{
     ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, completion_span};
 
 /// Default Gemini API base URL — the same host the `generateContent` face
 /// uses.
@@ -287,16 +287,12 @@ pub async fn open_stream(
     // `InteractionsCompletionModel::stream` recorded; `DESCRIPTOR.name`
     // ("gemini") is the normalized-response provider field, a different
     // vocabulary.
-    let span = CompletionSpanBuilder::new(
+    let span = completion_span(
         "gcp.gemini",
         &model,
         CompletionOperation::InteractionsStreaming,
-    )
-    .system_instructions(
-        request.preamble.as_deref(),
-        request.record_telemetry_content,
-    )
-    .build();
+        &request,
+    );
     let req = build_request(cfg, &request, true)?;
     Ok(super::streaming::interaction_completion_stream(
         rt.sse_events(req, false),
@@ -458,11 +454,40 @@ mod tests {
     use crate::OneOrMany;
     use crate::message::Message;
 
+    /// Regression for the formerly lossy two-channel case.
+    ///
+    /// This conversion used `.or_else`: a scalar preamble won and every system
+    /// message already in the history was **discarded**. Every other provider
+    /// appended both. With one canonical representation there is nothing left
+    /// to prefer, so both sources must now appear, joined in order.
+    #[test]
+    fn every_system_message_reaches_the_instruction_in_order() {
+        let cfg = Config::new("gemini-2.5-flash");
+        let request = CompletionRequest::builder("prompt")
+            .preamble("preamble")
+            .message(Message::system("history system"))
+            .build();
+
+        let body = build_request_body(&cfg, &request, false).expect("request builds");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        let instruction = value["system_instruction"]
+            .as_str()
+            .unwrap_or_else(|| panic!("system instruction missing: {value}"));
+
+        assert_eq!(
+            instruction, "preamble\n\nhistory system",
+            "the preamble must no longer swallow history system messages",
+        );
+    }
+
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("be brief".to_string()),
-            chat_history: OneOrMany::one(Message::user("hello")),
+            chat_history: OneOrMany::many(vec![
+                Message::system("be brief".to_string()),
+                Message::user("hello"),
+            ])
+            .expect("non-empty"),
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,

@@ -17,14 +17,10 @@
 //! let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
 //! let rt = HttpRuntime::new();
 //!
-//! let request = CompletionRequest {
-//!     temperature: Some(0.5),
-//!     ..CompletionRequest::with_history(
-//!         Some("You are a concise assistant."),
-//!         Vec::new(),
-//!         "Who are you?",
-//!     )
-//! };
+//! let request = CompletionRequest::builder("Who are you?")
+//!     .preamble("You are a concise assistant.")
+//!     .temperature(0.5)
+//!     .build();
 //!
 //! let response = openai::functions::complete(&cfg, &rt, request).await?;
 //! for item in response.choice {
@@ -376,11 +372,6 @@ impl AddAssign for Usage {
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Legacy preamble field preserved for backwards compatibility.
-    ///
-    /// New code should prefer a leading [`Message::System`]
-    /// in `chat_history` as the canonical representation of system instructions.
-    pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
     pub chat_history: OneOrMany<Message>,
@@ -439,7 +430,6 @@ impl CompletionRequest {
     ///
     /// // The preamble is canonicalized into a leading system message.
     /// assert_eq!(request.chat_history.len(), 2);
-    /// assert!(request.preamble.is_none());
     /// ```
     pub fn builder(prompt: impl Into<Message>) -> CompletionRequestBuilder {
         CompletionRequestBuilder::new(prompt)
@@ -448,11 +438,7 @@ impl CompletionRequest {
     /// A request for `prompt` with `preamble` and prior `history`: the
     /// canonical hand-built request shape (history first, prompt last, every
     /// other field defaulted for functional-update syntax).
-    pub fn with_history(
-        preamble: Option<&str>,
-        history: Vec<Message>,
-        prompt: impl Into<Message>,
-    ) -> Self {
+    pub fn with_history(history: Vec<Message>, prompt: impl Into<Message>) -> Self {
         let prompt = prompt.into();
         let chat_history = match OneOrMany::many(history) {
             Ok(mut messages) => {
@@ -463,7 +449,6 @@ impl CompletionRequest {
         };
         Self {
             model: None,
-            preamble: preamble.map(str::to_string),
             chat_history,
             documents: Vec::new(),
             tools: Vec::new(),
@@ -478,7 +463,7 @@ impl CompletionRequest {
 
     /// A request for a bare `prompt` with no preamble or history.
     pub fn from_prompt(prompt: impl Into<Message>) -> Self {
-        Self::with_history(None, Vec::new(), prompt)
+        Self::with_history(Vec::new(), prompt)
     }
 
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
@@ -648,6 +633,9 @@ impl CompletionRequestBuilder {
         Self {
             prompt: prompt.into(),
             request_model: None,
+            // Builder state, not request data: held until `build()` so
+            // `.preamble(..)` is last-writer-wins and `.without_preamble()`
+            // can clear it precisely.
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
@@ -856,7 +844,6 @@ impl CompletionRequestBuilder {
 
         CompletionRequest {
             model: self.request_model,
-            preamble: None,
             chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -887,10 +874,8 @@ mod builder_equivalence_tests {
         let built = CompletionRequest::builder("prompt").build();
         let explicit = CompletionRequest::from_prompt("prompt");
 
-        // `from_prompt` leaves the legacy preamble field `None` too, so with no
-        // preamble the two constructions agree field for field.
+        // With one representation the two constructions agree field for field.
         assert_eq!(built.chat_history, explicit.chat_history);
-        assert_eq!(built.preamble, explicit.preamble);
         assert_eq!(built.model, explicit.model);
         assert_eq!(built.documents, explicit.documents);
         assert_eq!(built.tools, explicit.tools);
@@ -912,8 +897,6 @@ mod builder_equivalence_tests {
         assert_eq!(messages.len(), 2);
         assert!(matches!(messages[0], Message::System { .. }));
         assert_eq!(messages[1], Message::from("prompt"));
-        // The legacy field stays empty: the system message is canonical.
-        assert!(request.preamble.is_none());
     }
 
     #[test]
@@ -940,7 +923,6 @@ mod builder_equivalence_tests {
             .build();
 
         assert_eq!(request.chat_history.len(), 1);
-        assert!(request.preamble.is_none());
     }
 
     #[test]
@@ -1220,7 +1202,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: vec![doc1, doc2],
             tools: Vec::new(),
@@ -1253,7 +1234,6 @@ mod tests {
     fn test_normalize_documents_without_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -1272,7 +1252,6 @@ mod tests {
     fn chat_history_with_documents_places_documents_after_leading_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -1306,7 +1285,6 @@ mod tests {
     fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("Leading system prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -1344,7 +1322,6 @@ mod tests {
     fn chat_history_with_documents_does_not_duplicate_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::user("Earlier user turn"),

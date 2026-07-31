@@ -27,12 +27,6 @@ impl VertexCompletionRequest {
 
     pub fn system_instruction(&self) -> Option<vertexai::model::Content> {
         let mut system_texts = Vec::new();
-        if let Some(preamble) = self.0.preamble.as_ref()
-            && !preamble.is_empty()
-        {
-            system_texts.push(preamble.clone());
-        }
-
         for message in self.0.chat_history.iter() {
             if let rig_core::completion::Message::System { content } = message
                 && !content.is_empty()
@@ -318,7 +312,6 @@ mod tests {
     fn minimal_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
             }),
@@ -467,11 +460,14 @@ mod tests {
     #[test]
     fn test_system_instruction_from_preamble() {
         // Test that preamble converts to system instruction
-        let request = CompletionRequest {
+        let mut request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
             ..minimal_request()
         };
+        request.chat_history.insert(
+            0,
+            rig_core::completion::Message::system("You are a helpful assistant."),
+        );
 
         let vertex_request = VertexCompletionRequest(request);
         let system_instruction = vertex_request.system_instruction();
@@ -490,7 +486,6 @@ mod tests {
     fn test_system_instruction_from_system_history_and_contents_skip_system() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System from history"),
                 Message::User {

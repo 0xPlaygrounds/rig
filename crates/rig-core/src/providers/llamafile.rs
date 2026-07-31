@@ -16,11 +16,9 @@
 //! let rt = rig_core::http_runtime::HttpRuntime::new();
 //!
 //! // Send a completion request with a preamble.
-//! let request = rig_core::completion::CompletionRequest::with_history(
-//!     Some("You are a helpful assistant."),
-//!     Vec::new(),
-//!     "Hello!",
-//! );
+//! let request = rig_core::completion::CompletionRequest::builder("Hello!")
+//!     .preamble("You are a helpful assistant.")
+//!     .build();
 //! let response = llamafile::functions::complete(&cfg, &rt, request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())
@@ -437,7 +435,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

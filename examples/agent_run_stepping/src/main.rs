@@ -118,16 +118,13 @@ async fn main() -> Result<()> {
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
                 // execution of the configured `Agent`. Its transport is an
                 // explicit raw model request and therefore has no agent hooks.
-                let request = rig::completion::CompletionRequest {
-                    tools: tool_definitions.clone(),
-                    ..rig::completion::CompletionRequest::with_history(
-                        Some(
-                            "You are a calculator. Always use the provided tools to compute results.",
-                        ),
-                        history,
-                        prompt,
+                let request = rig::completion::CompletionRequest::builder(prompt)
+                    .preamble(
+                        "You are a calculator. Always use the provided tools to compute results.",
                     )
-                };
+                    .messages(history)
+                    .tools(tool_definitions.clone())
+                    .build();
                 let response = openai::functions::complete(&cfg, &http, request).await?;
 
                 // The tools advertised to the provider for this turn. With

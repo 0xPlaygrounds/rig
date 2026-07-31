@@ -148,7 +148,10 @@ async fn send_cache_probe(
         tool_choice: Some(ToolChoice::None),
         temperature: Some(0.0),
         max_tokens: Some(16),
-        ..CompletionRequest::with_history(Some(&preamble), Vec::new(), prompt)
+        ..CompletionRequest::builder(prompt)
+.preamble(&preamble)
+.messages(Vec::new())
+.build()
     };
     model
         .completion(request)

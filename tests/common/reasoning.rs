@@ -77,8 +77,11 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<F>(
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -139,9 +142,13 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<F>(
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -190,8 +197,11 @@ pub(crate) async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtr
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -234,9 +244,13 @@ pub(crate) async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtr
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,

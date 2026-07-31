@@ -27,11 +27,11 @@ async fn websocket_session_roundtrip() -> Result<()> {
         .expect("config should build");
     let mut session = openai::responses_api::websocket::connect(cfg).await?;
 
-    let warmup_request = CompletionRequest::with_history(
-        Some("Be precise and concise."),
-        Vec::new(),
-        "You will answer a follow-up question about websocket mode.",
-    );
+    let warmup_request =
+        CompletionRequest::builder("You will answer a follow-up question about websocket mode.")
+            .preamble("Be precise and concise.")
+            .messages(Vec::new())
+            .build();
     let warmup_id = session.warmup(warmup_request).await?;
     anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 

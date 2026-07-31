@@ -12,7 +12,6 @@
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
-use rig::completion::CompletionRequest;
 use rig::executor::ToolExecutor;
 use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
@@ -150,14 +149,11 @@ async fn main() -> Result<()> {
     for round in 1..=MAX_ROUNDS {
         // This example intentionally operates below the Agent abstraction. Raw
         // model requests have no agent lifecycle or hooks.
-        let mut request = CompletionRequest {
-            tools: tool_definitions.clone(),
-            ..CompletionRequest::with_history(
-                Some(preamble),
-                history.clone(),
-                current_prompt.clone(),
-            )
-        };
+        let mut request = rig::completion::CompletionRequest::builder(current_prompt.clone())
+            .preamble(preamble)
+            .messages(history.clone())
+            .tools(tool_definitions.clone())
+            .build();
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
             request.tool_choice = Some(ToolChoice::Required);

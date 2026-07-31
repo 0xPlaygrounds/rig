@@ -1418,10 +1418,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        let mut full_history: Vec<Message> = Vec::new();
 
         let chat_history: Vec<Message> = chat_history
             .into_iter()
@@ -1564,7 +1561,6 @@ mod tests {
     fn test_openrouter_request_uses_request_model_override() {
         let request = CompletionRequest {
             model: Some("google/gemini-2.5-flash".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1589,7 +1585,6 @@ mod tests {
     fn openrouter_params_include_direct_request_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one(crate::message::Message::user(
                 "What is glarb-glarb?",
             )),
@@ -1625,7 +1620,6 @@ mod tests {
     fn test_openrouter_request_uses_default_model_when_override_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1696,7 +1690,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1748,7 +1741,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -3533,8 +3525,11 @@ mod tests {
     fn prompt_caching_completion_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            chat_history: crate::OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                crate::message::Message::user("Hello"),
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: None,

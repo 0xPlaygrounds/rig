@@ -144,7 +144,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(assistant),
             documents: vec![],
             tools: vec![],
@@ -179,7 +178,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(assistant),
             documents: vec![],
             tools: vec![],
@@ -202,7 +200,6 @@ mod tests {
     fn moonshot_specific_tool_choice_is_rejected() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
             documents: vec![],
             tools: vec![],
@@ -230,7 +227,6 @@ mod tests {
     fn moonshot_required_tool_choice_is_coerced() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
             documents: vec![],
             tools: vec![],
@@ -588,7 +584,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

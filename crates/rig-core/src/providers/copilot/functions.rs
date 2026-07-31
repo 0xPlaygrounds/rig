@@ -51,7 +51,7 @@ use crate::providers::descriptor::{
 };
 use crate::providers::openai;
 use crate::providers::openai::responses_api;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, completion_span};
 
 /// Default GitHub Copilot API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.githubcopilot.com";
@@ -446,16 +446,12 @@ pub async fn open_stream(
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
     let req = build_request(cfg, &request, true)?;
     if route_for_model(&cfg.model) == CompletionRoute::Responses {
-        let span = CompletionSpanBuilder::new(
+        let span = completion_span(
             DESCRIPTOR.name,
             &cfg.model,
             CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            request.preamble.as_deref(),
-            request.record_telemetry_content,
-        )
-        .build();
+            &request,
+        );
         return Ok(stream_copilot_responses_from_event_source(
             rt.sse_events(req, false),
             span,
@@ -722,7 +718,6 @@ mod tests {
     fn sample_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("hello")),
             documents: Vec::new(),
             tools: Vec::new(),

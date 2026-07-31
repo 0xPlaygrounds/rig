@@ -163,7 +163,6 @@ mod tests {
     #[test]
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
         let request = crate::completion::CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(message::Message::Assistant {
                 id: None,
                 content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),

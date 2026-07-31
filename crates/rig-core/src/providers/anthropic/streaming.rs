@@ -554,7 +554,6 @@ mod tests {
     fn streaming_request_keeps_documents_after_leading_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 RigMessage::system("System prompt"),
                 RigMessage::assistant("Earlier assistant turn"),
@@ -620,8 +619,11 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: Some("You are helpful".to_string()),
-            chat_history: OneOrMany::one(RigMessage::user("What's the weather?")),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are helpful".to_string()),
+                RigMessage::user("What's the weather?"),
+            ])
+            .expect("non-empty"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -681,7 +683,6 @@ mod tests {
     fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
@@ -725,7 +726,6 @@ mod tests {
         // otherwise). A `tool_choice` set with no tools must not reach the wire.
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(RigMessage::user("Hi")),
             documents: vec![],
             tools: vec![],

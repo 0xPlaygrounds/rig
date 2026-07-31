@@ -50,10 +50,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut input: Vec<Message> = req
-            .preamble
-            .as_ref()
-            .map_or_else(Vec::new, |p| vec![Message::system(p)]);
+        let mut input: Vec<Message> = Vec::new();
 
         let mut additional_params_payload = req.additional_params.unwrap_or(Value::Null);
 
@@ -232,7 +229,6 @@ mod tests {
     fn xai_direct_request_keeps_documents_after_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),

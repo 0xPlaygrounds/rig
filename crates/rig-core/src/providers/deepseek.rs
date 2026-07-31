@@ -451,8 +451,10 @@ mod tests {
 
     #[test]
     fn deepseek_request_flattens_message_content_to_strings() {
-        let request =
-            RigCompletionRequest::with_history(Some("You are helpful."), Vec::new(), "Hello!");
+        let request = RigCompletionRequest::builder("Hello!")
+            .preamble("You are helpful.")
+            .messages(Vec::new())
+            .build();
 
         let body = finalized_body(request);
 
@@ -1036,7 +1038,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

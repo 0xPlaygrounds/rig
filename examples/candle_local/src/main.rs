@@ -31,15 +31,11 @@ async fn main() -> anyhow::Result<()> {
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
-    let request = rig::completion::CompletionRequest {
-        temperature: Some(0.0),
-        max_tokens: Some(64),
-        ..rig::completion::CompletionRequest::with_history(
-            Some("You are a concise and helpful assistant."),
-            Vec::new(),
-            prompt,
-        )
-    };
+    let request = rig::completion::CompletionRequest::builder(prompt)
+        .preamble("You are a concise and helpful assistant.")
+        .temperature(0.0)
+        .max_tokens(64)
+        .build();
     let mut response = model.stream(request).await?;
     let mut final_response = None;
     while let Some(item) = response.next().await {

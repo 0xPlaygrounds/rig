@@ -34,7 +34,6 @@ mod tests {
     fn body_for_history(chat_history: OneOrMany<Message>) -> serde_json::Value {
         body_for(crate::completion::CompletionRequest {
             model: None,
-            preamble: None,
             chat_history,
             documents: vec![],
             max_tokens: None,
@@ -399,7 +398,6 @@ pub mod functions {
         fn sample_request() -> CompletionRequest {
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(crate::message::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),

@@ -7,7 +7,7 @@ use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::FinishReason;
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
@@ -97,19 +97,18 @@ pub(crate) async fn stream_converse(
 ) -> Result<StreamingCompletionResponse, CompletionError> {
     {
         let request_model = resolve_request_model(default_model, &completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        // Built before the request is moved into the AWS wrapper, so the span
+        // reads the canonical system messages off the request itself.
+        let span = completion_span(
+            "aws_bedrock",
+            &request_model,
+            CompletionOperation::ChatStreaming,
+            &completion_request,
+        );
         let request = AwsCompletionRequest {
             inner: completion_request,
             prompt_caching,
         };
-        let span = CompletionSpanBuilder::new(
-            "aws_bedrock",
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
 
         let mut converse_builder = client.converse_stream().model_id(request_model);
 

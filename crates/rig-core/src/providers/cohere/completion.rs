@@ -556,9 +556,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         let mut partial_history = vec![];
         partial_history.extend(req.chat_history);
 
-        let mut full_history: Vec<Message> = req.preamble.map_or_else(Vec::new, |preamble| {
-            vec![Message::System { content: preamble }]
-        });
+        let mut full_history: Vec<Message> = Vec::new();
 
         full_history.extend(
             partial_history

@@ -18,7 +18,7 @@ use aws_smithy_types::Blob;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::ProviderDescriptor;
 use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 
@@ -151,12 +151,12 @@ pub async fn complete_with_options(
 ) -> Result<completion::CompletionResponse, CompletionError> {
     let request_model = resolve_request_model(model, &completion_request);
 
-    let span = CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
+    let span = completion_span(
+        "aws_bedrock",
+        &request_model,
+        CompletionOperation::Chat,
+        &completion_request,
+    );
 
     let request = AwsCompletionRequest {
         inner: completion_request,

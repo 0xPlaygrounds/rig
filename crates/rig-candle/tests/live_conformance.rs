@@ -401,7 +401,6 @@ fn arithmetic_schema() -> Result<rig_core::schemars::Schema, TestError> {
 fn plain_request(prompt: &str, max_tokens: u64) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: OneOrMany::one(Message::user(prompt)),
         documents: Vec::new(),
         tools: Vec::new(),

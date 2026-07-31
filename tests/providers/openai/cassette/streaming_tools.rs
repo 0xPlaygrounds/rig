@@ -191,11 +191,10 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = CompletionRequest::with_history(
-                Some("Use the provided tool result and answer directly."),
-                vec![assistant_message, tool_result_message],
-                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-            );
+            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+.preamble("Use the provided tool result and answer directly.")
+.messages(vec![assistant_message, tool_result_message])
+.build();
 
             let second_turn = collect_raw_stream_observation(
                 openai::responses_api::functions::open_stream(&cfg, &rt, followup_request)
