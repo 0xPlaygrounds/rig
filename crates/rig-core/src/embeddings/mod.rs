@@ -12,7 +12,9 @@ pub mod embedding;
 pub mod tool;
 
 pub mod distance;
-pub use batching::{default_concurrency, embed_documents, embed_documents_with_usage};
+pub use batching::{
+    EmbeddingJob, default_concurrency, embed_documents, embed_documents_with_usage,
+};
 pub use embed::{Embed, EmbedError, TextEmbedder, to_texts};
 pub use embedding::*;
 pub use tool::ToolSchema;

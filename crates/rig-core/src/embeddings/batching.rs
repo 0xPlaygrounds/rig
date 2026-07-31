@@ -12,6 +12,12 @@
 //! that replaced the old `EmbeddingsBuilder`: hand it a `Vec` of [`Embed`]
 //! values and a closure that embeds one chunk of texts, and it flattens,
 //! chunks, parallelizes, and re-associates the embeddings for you.
+//!
+//! [`EmbeddingJob`] is the fluent face of the same thing: accumulate
+//! documents, take the batch size from a provider's descriptor with
+//! [`EmbeddingJob::for_provider`], and supply the provider closure only at
+//! [`EmbeddingJob::run`]. The job stores no model, config, or callback, so it
+//! is plain data right up to the terminal.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -272,6 +278,145 @@ where
     Ok((documents.into_iter().zip(groups).collect(), usage))
 }
 
+/// A fluent accumulator for a document-embedding run — the data-oriented
+/// successor to the old `EmbeddingsBuilder`.
+///
+/// It holds documents and batching knobs and nothing else: **no embedding
+/// model, config, runtime, or callback**. The provider is supplied only at the
+/// terminal ([`Self::run`] / [`Self::run_with_usage`]), so the job itself stays
+/// plain data you can build up, pass around, and reuse.
+///
+/// `D` is the caller's own document type (payload shape), not a behavior
+/// parameter.
+///
+/// ```no_run
+/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// use rig_core::{embeddings::EmbeddingJob, http_runtime::HttpRuntime, providers::openai};
+///
+/// let cfg = openai::functions::EmbeddingConfig::from_env("text-embedding-3-small")?;
+/// let rt = HttpRuntime::new();
+///
+/// let embedded = EmbeddingJob::new()
+///     .documents(["first".to_string(), "second".to_string()])
+///     .for_provider(&openai::functions::DESCRIPTOR)
+///     .run(|texts| openai::functions::embed(&cfg, &rt, texts))
+///     .await?;
+/// # let _ = embedded;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct EmbeddingJob<D> {
+    documents: Vec<D>,
+    max_documents: Option<usize>,
+    concurrency: Option<usize>,
+}
+
+impl<D> Default for EmbeddingJob<D> {
+    fn default() -> Self {
+        Self {
+            documents: Vec::new(),
+            max_documents: None,
+            concurrency: None,
+        }
+    }
+}
+
+impl<D> EmbeddingJob<D> {
+    /// An empty job.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Appends one document.
+    pub fn document(mut self, document: D) -> Self {
+        self.documents.push(document);
+        self
+    }
+
+    /// Appends documents, preserving order.
+    pub fn documents(mut self, documents: impl IntoIterator<Item = D>) -> Self {
+        self.documents.extend(documents);
+        self
+    }
+
+    /// Sets the maximum documents per wire request.
+    ///
+    /// Left unset, the whole job is sent as one batch.
+    pub fn max_documents(mut self, max_documents: usize) -> Self {
+        self.max_documents = Some(max_documents);
+        self
+    }
+
+    /// Sets how many batches are embedded concurrently.
+    ///
+    /// Left unset, this is [`default_concurrency`] of the effective batch size.
+    pub fn concurrency(mut self, concurrency: usize) -> Self {
+        self.concurrency = Some(concurrency);
+        self
+    }
+
+    /// Adopts the provider's declared batch limit from its capability sheet.
+    ///
+    /// A provider that declares no limit leaves the batch size unset (one
+    /// batch). Any explicit [`Self::max_documents`] set afterwards wins.
+    pub fn for_provider(
+        mut self,
+        descriptor: &crate::providers::descriptor::ProviderDescriptor,
+    ) -> Self {
+        self.max_documents = descriptor.max_embedding_documents;
+        self
+    }
+
+    /// The documents accumulated so far.
+    pub fn len(&self) -> usize {
+        self.documents.len()
+    }
+
+    /// Whether no documents have been added.
+    pub fn is_empty(&self) -> bool {
+        self.documents.is_empty()
+    }
+
+    /// The effective batch size and concurrency this job would run with.
+    fn resolved(&self) -> (usize, usize) {
+        let max_documents = self.max_documents.unwrap_or(usize::MAX);
+        let concurrency = self
+            .concurrency
+            .unwrap_or_else(|| default_concurrency(max_documents));
+        (max_documents, concurrency)
+    }
+}
+
+impl<D: Embed> EmbeddingJob<D> {
+    /// Embeds every document with `embed_batch`, returning each paired with its
+    /// embeddings in input order.
+    pub async fn run<F, Fut>(
+        self,
+        embed_batch: F,
+    ) -> Result<Vec<(D, OneOrMany<Embedding>)>, EmbeddingError>
+    where
+        F: Fn(Vec<String>) -> Fut,
+        Fut: Future<Output = Result<EmbeddingResponse, EmbeddingError>>,
+    {
+        let (max_documents, concurrency) = self.resolved();
+        embed_documents(self.documents, max_documents, concurrency, embed_batch).await
+    }
+
+    /// [`Self::run`], additionally returning token usage summed across chunks.
+    pub async fn run_with_usage<F, Fut>(
+        self,
+        embed_batch: F,
+    ) -> Result<(Vec<(D, OneOrMany<Embedding>)>, Usage), EmbeddingError>
+    where
+        F: Fn(Vec<String>) -> Fut,
+        Fut: Future<Output = Result<EmbeddingResponse, EmbeddingError>>,
+    {
+        let (max_documents, concurrency) = self.resolved();
+        embed_documents_with_usage(self.documents, max_documents, concurrency, embed_batch).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +426,120 @@ mod tests {
             document: document.to_string(),
             vec: vec![0.0],
         }
+    }
+
+    /// Records the batch sizes it was asked to embed, so a test can assert
+    /// how a job chunked its documents.
+    fn recording_embedder(
+        seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>>,
+    ) -> impl Fn(Vec<String>) -> std::future::Ready<Result<EmbeddingResponse, EmbeddingError>> {
+        move |texts: Vec<String>| {
+            seen.lock().expect("batch log").push(texts.len());
+            let embeddings = texts.iter().map(|t| embedding(t)).collect();
+            std::future::ready(Ok(EmbeddingResponse {
+                embeddings,
+                usage: Usage {
+                    input_tokens: texts.len() as u64,
+                    total_tokens: texts.len() as u64,
+                    ..Usage::new()
+                },
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn job_matches_the_free_function_and_preserves_input_order() {
+        let docs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+
+        let seen_job = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let via_job = EmbeddingJob::new()
+            .documents(docs.clone())
+            .max_documents(2)
+            .concurrency(1)
+            .run(recording_embedder(seen_job.clone()))
+            .await
+            .expect("job runs");
+
+        let seen_free = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let via_free = embed_documents(docs, 2, 1, recording_embedder(seen_free.clone()))
+            .await
+            .expect("free function runs");
+
+        let job_docs: Vec<&String> = via_job.iter().map(|(d, _)| d).collect();
+        let free_docs: Vec<&String> = via_free.iter().map(|(d, _)| d).collect();
+        assert_eq!(job_docs, free_docs);
+        assert_eq!(
+            job_docs,
+            [&"a".to_string(), &"b".to_string(), &"c".to_string()]
+        );
+        // Identical chunking, not just identical output.
+        assert_eq!(
+            *seen_job.lock().expect("job batches"),
+            *seen_free.lock().expect("free batches")
+        );
+    }
+
+    #[tokio::test]
+    async fn job_reports_the_same_usage_as_the_free_function() {
+        let docs = vec!["a".to_string(), "b".to_string()];
+
+        let (_, job_usage) = EmbeddingJob::new()
+            .documents(docs.clone())
+            .max_documents(1)
+            .run_with_usage(recording_embedder(Default::default()))
+            .await
+            .expect("job runs");
+        let (_, free_usage) = embed_documents_with_usage(
+            docs,
+            1,
+            default_concurrency(1),
+            recording_embedder(Default::default()),
+        )
+        .await
+        .expect("free function runs");
+
+        assert_eq!(job_usage.total_tokens, free_usage.total_tokens);
+        assert_eq!(job_usage.input_tokens, free_usage.input_tokens);
+    }
+
+    #[tokio::test]
+    async fn unset_batch_size_sends_one_batch_and_for_provider_adopts_the_limit() {
+        let docs: Vec<String> = (0..5).map(|i| i.to_string()).collect();
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        EmbeddingJob::new()
+            .documents(docs.clone())
+            .run(recording_embedder(seen.clone()))
+            .await
+            .expect("job runs");
+        assert_eq!(*seen.lock().expect("batches"), vec![5]);
+
+        // A descriptor that declares a limit chunks to it.
+        let descriptor = crate::providers::descriptor::ProviderDescriptor {
+            max_embedding_documents: Some(2),
+            ..crate::providers::openai::functions::DESCRIPTOR
+        };
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        EmbeddingJob::new()
+            .documents(docs)
+            .for_provider(&descriptor)
+            .concurrency(1)
+            .run(recording_embedder(seen.clone()))
+            .await
+            .expect("job runs");
+        assert_eq!(*seen.lock().expect("batches"), vec![2, 2, 1]);
+    }
+
+    #[test]
+    fn documents_accumulate_in_order_across_both_setters() {
+        let job = EmbeddingJob::new()
+            .document("a".to_string())
+            .documents(["b".to_string(), "c".to_string()])
+            .document("d".to_string());
+
+        assert_eq!(job.len(), 4);
+        assert!(!job.is_empty());
+        assert!(EmbeddingJob::<String>::new().is_empty());
     }
 
     #[test]
