@@ -345,7 +345,17 @@ impl SessionRunner {
     /// Drive the agent loop, streaming assistant content, tool activity, and
     /// a final response, with this request's hooks dispatched and its
     /// executor answering tool batches.
-    pub fn stream_run(self) -> impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> {
+    ///
+    /// The returned stream is [`Unpin`], so callers can `.next().await` it
+    /// behind a plain `&mut` without pinning it first:
+    ///
+    /// ```ignore
+    /// let mut stream = agent.runner(prompt).max_turns(3).stream_run();
+    /// while let Some(item) = stream.next().await { /* … */ }
+    /// ```
+    pub fn stream_run(
+        self,
+    ) -> impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin {
         let hooks = self.hooks.clone();
         let record_content = self.config.record_telemetry_content;
         let defer_result = !hooks.is_empty();
@@ -354,7 +364,10 @@ impl SessionRunner {
                 .record_content_telemetry(record_content)
                 .defer_result_telemetry(defer_result)
         });
-        self.stream().drive(hooks, executor)
+        // Pinned here rather than at every call site. `drive` yields an
+        // `async_stream` generator, which is `!Unpin`; boxing it once is what
+        // the deleted `StreamingResult` did too, so this is not new cost.
+        Box::pin(self.stream().drive(hooks, executor))
     }
 }
 

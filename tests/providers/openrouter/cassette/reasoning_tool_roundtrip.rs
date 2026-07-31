@@ -24,13 +24,11 @@ async fn streaming() {
             }))
             .build();
 
-        let stream = Box::pin(
-            agent
-                .runner(reasoning::TOOL_USER_PROMPT)
-                .history(Vec::<Message>::new())
-                .max_turns(3)
-                .stream_run(),
-        );
+        let stream = agent
+            .runner(reasoning::TOOL_USER_PROMPT)
+            .history(Vec::<Message>::new())
+            .max_turns(3)
+            .stream_run();
 
         let stats = reasoning::collect_stream_stats(stream, "openrouter").await;
         reasoning::assert_universal(&stats, &call_count, "openrouter");

@@ -99,12 +99,10 @@ async fn main() -> Result<()> {
         .tool(ProjectStatusTool)
         .build();
 
-    let mut stream = Box::pin(
-        agent
-            .runner("Check ticket RIG-usage-42 and summarize the result in one sentence.")
-            .max_turns(4)
-            .stream_run(),
-    );
+    let mut stream = agent
+        .runner("Check ticket RIG-usage-42 and summarize the result in one sentence.")
+        .max_turns(4)
+        .stream_run();
 
     let mut final_response = None;
     let mut printed_streamed_text = false;

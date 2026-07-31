@@ -252,7 +252,7 @@ async fn streaming_document_file_data_roundtrip_live() {
             assert_no_verifier_leaked_into_prompt(&stream_prompt);
             assert_openrouter_wire_file_data(stream_prompt.clone());
 
-            let mut stream = Box::pin(agent.runner(stream_prompt).stream_run());
+            let mut stream = agent.runner(stream_prompt).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("OpenRouter streaming should read PDF file_data document");

@@ -144,7 +144,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .name("Bob")
         .build();
 
-    let mut stream = Box::pin(calculator_agent.runner("Calculate 2 - 5").stream_run());
+    let mut stream = calculator_agent.runner("Calculate 2 - 5").stream_run();
 
     let res = drain_to_stdout(&mut stream).await?;
 

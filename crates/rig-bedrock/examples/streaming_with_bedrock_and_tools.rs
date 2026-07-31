@@ -25,7 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 + 5");
-    let mut stream = Box::pin(agent.runner("Calculate 2 + 5").stream_run());
+    let mut stream = agent.runner("Calculate 2 + 5").stream_run();
     let _ = drain_to_stdout(&mut stream).await?;
     Ok(())
 }

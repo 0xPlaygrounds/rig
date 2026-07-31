@@ -17,11 +17,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Stream the response and print chunks as they arrive
-    let mut stream = Box::pin(
-        agent
-            .runner("When and where and what type is the next solar eclipse?")
-            .stream_run(),
-    );
+    let mut stream = agent
+        .runner("When and where and what type is the next solar eclipse?")
+        .stream_run();
 
     let _ = drain_to_stdout(&mut stream).await?;
 

@@ -432,13 +432,11 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .additional_params(json!({"parallel_tool_calls": false}))
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(COMPLEX_SESSION_PROMPT)
-                    .history(Vec::<Message>::new())
-                    .max_turns(10)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner(COMPLEX_SESSION_PROMPT)
+                .history(Vec::<Message>::new())
+                .max_turns(10)
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             anyhow::ensure!(
@@ -542,12 +540,10 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(TWO_TOOL_STREAM_PROMPT)
-                    .max_turns(5)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(5)
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(

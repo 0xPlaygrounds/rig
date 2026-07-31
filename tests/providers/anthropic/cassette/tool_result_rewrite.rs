@@ -181,7 +181,7 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .add_hook(redact_ssn_from_result())
                 .build();
 
-            let mut stream = Box::pin(agent.runner(LOOKUP_PROMPT).max_turns(5).stream_run());
+            let mut stream = agent.runner(LOOKUP_PROMPT).max_turns(5).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming lookup should succeed");

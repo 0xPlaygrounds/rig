@@ -19,7 +19,7 @@ async fn streaming_smoke() {
             .additional_params(serde_json::json!({ "think": false }))
             .build();
 
-        let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");

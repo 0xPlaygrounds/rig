@@ -13,7 +13,7 @@ async fn streaming_prompt_smoke() {
             .preamble("You are a helpful assistant.")
             .build();
 
-        let mut stream = Box::pin(agent.runner("Tell me a joke").stream_run());
+        let mut stream = agent.runner("Tell me a joke").stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");

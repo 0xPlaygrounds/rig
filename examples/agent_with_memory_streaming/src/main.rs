@@ -26,7 +26,7 @@ async fn ask(
     // Load-before: a load failure is fatal, so the run never starts.
     let history = memory.load(conversation_id)?;
 
-    let mut stream = Box::pin(agent.runner(prompt).history(history).stream_run());
+    let mut stream = agent.runner(prompt).history(history).stream_run();
 
     let mut output = None;
     let mut committed: Vec<Message> = Vec::new();

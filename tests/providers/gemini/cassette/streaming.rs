@@ -35,7 +35,7 @@ async fn streaming_smoke() {
             )
             .build();
 
-        let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
         let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -68,11 +68,9 @@ async fn example_streaming_prompt() {
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner("When and where and what type is the next solar eclipse?")
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner("When and where and what type is the next solar eclipse?")
+                .stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");

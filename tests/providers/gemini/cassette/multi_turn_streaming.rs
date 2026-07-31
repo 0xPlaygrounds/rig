@@ -34,12 +34,10 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 .tool(Divide::new(divide_calls.clone()))
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(MULTI_TURN_STREAMING_PROMPT)
-                    .max_turns(10)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner(MULTI_TURN_STREAMING_PROMPT)
+                .max_turns(10)
+                .stream_run();
             let mut response = None;
             while let Some(item) = stream.next().await {
                 if let AgentStreamItem::Final(final_response) =

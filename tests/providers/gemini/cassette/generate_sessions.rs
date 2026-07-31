@@ -149,13 +149,11 @@ async fn sequential_tool_calls_ordering_streaming() {
                 .tool(Subtract)
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(SEQUENTIAL_TOOLS_PROMPT)
-                    .history(Vec::<Message>::new())
-                    .max_turns(6)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner(SEQUENTIAL_TOOLS_PROMPT)
+                .history(Vec::<Message>::new())
+                .max_turns(6)
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

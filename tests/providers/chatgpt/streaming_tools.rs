@@ -16,7 +16,7 @@ async fn streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
+    let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -38,7 +38,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = Box::pin(agent.runner("Calculate 2 - 5").stream_run());
+    let mut stream = agent.runner("Calculate 2 - 5").stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tools prompt should succeed");

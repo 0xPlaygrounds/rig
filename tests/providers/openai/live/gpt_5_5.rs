@@ -83,7 +83,7 @@ async fn responses_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -117,12 +117,10 @@ async fn responses_streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = Box::pin(
-        agent
-            .runner(STREAMING_TOOLS_PROMPT)
-            .max_turns(3)
-            .stream_run(),
-    );
+    let mut stream = agent
+        .runner(STREAMING_TOOLS_PROMPT)
+        .max_turns(3)
+        .stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -259,13 +257,11 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
         .additional_params(gpt_5_5_reasoning_params())
         .build();
 
-    let stream = Box::pin(
-        agent
-            .runner(reasoning::TOOL_USER_PROMPT)
-            .history(Vec::<Message>::new())
-            .max_turns(3)
-            .stream_run(),
-    );
+    let stream = agent
+        .runner(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
+        .max_turns(3)
+        .stream_run();
 
     let stats = reasoning::collect_stream_stats(stream, "openai").await;
     reasoning::assert_universal(&stats, &call_count, "openai");
@@ -293,7 +289,7 @@ async fn chat_completions_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = Box::pin(agent.runner(STREAMING_PROMPT).stream_run());
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming prompt should succeed");
@@ -327,7 +323,7 @@ async fn chat_completions_streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
+    let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming tool prompt should succeed");

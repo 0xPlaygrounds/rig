@@ -584,12 +584,20 @@ impl Agent {
     /// records, and the terminal [`AgentStreamItem::Final`].
     ///
     /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
+    ///
+    /// The returned stream is [`Unpin`], so it can be polled behind a plain
+    /// `&mut` without the caller pinning it first.
     pub fn stream_run(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> impl futures::Stream<Item = Result<crate::stream::AgentStreamItem, PromptError>> {
-        self.stream_prompt(prompt)
-            .drive(self.hooks.clone(), self.telemetry_aware_executor())
+    ) -> impl futures::Stream<Item = Result<crate::stream::AgentStreamItem, PromptError>> + Unpin
+    {
+        // See `SessionRunner::stream_run`: pinned once here instead of at
+        // every call site.
+        Box::pin(
+            self.stream_prompt(prompt)
+                .drive(self.hooks.clone(), self.telemetry_aware_executor()),
+        )
     }
 
     /// Resolve the provider-facing tool definitions registered on the agent.

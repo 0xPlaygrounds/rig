@@ -34,7 +34,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = Box::pin(agent.runner(STREAMING_TOOLS_PROMPT).stream_run());
+            let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -57,12 +57,10 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner(TWO_TOOL_STREAM_PROMPT)
-                    .max_turns(8)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(8)
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -121,11 +119,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
             .tool(OutOfOrderBetaSignal(order))
             .build();
 
-        let mut stream =Box::pin( agent
-            .runner(TWO_TOOL_STREAM_PROMPT)
-            .max_turns(8)
-            .tool_concurrency(2)
-            .stream_run());
+        let mut stream =agent .runner(TWO_TOOL_STREAM_PROMPT) .max_turns(8) .tool_concurrency(2) .stream_run();
         let observation = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             collect_concurrent_tool_observation(&mut stream),

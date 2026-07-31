@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     let agent = AgentBuilder::new(cfg).preamble(PREAMBLE).build();
 
     let history = sample_history();
-    let mut stream = Box::pin(agent.runner(PROMPT).history(&history).stream_run());
+    let mut stream = agent.runner(PROMPT).history(&history).stream_run();
     let response = collect_stream_final_response(&mut stream).await?;
     println!("{response}");
 

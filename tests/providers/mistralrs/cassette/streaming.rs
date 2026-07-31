@@ -14,11 +14,11 @@ async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
                 .build();
-            let mut stream =Box::pin( agent
+            let mut stream =agent
                 .runner(
                     "Think briefly, then answer with three short bullet points about token usage reporting.",
                 )
-                .stream_run());
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

@@ -242,11 +242,9 @@ async fn none_streaming_does_not_emit_tool_calls() {
             .tool_choice(ToolChoice::None)
             .build();
 
-        let mut stream = Box::pin(
-            agent
-                .runner("Calculate 20 + 22 directly in text. Do not call tools.")
-                .stream_run(),
-        );
+        let mut stream = agent
+            .runner("Calculate 20 + 22 directly in text. Do not call tools.")
+            .stream_run();
         let observation = collect_stream_observation(&mut stream).await;
 
         assert!(

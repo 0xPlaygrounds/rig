@@ -14,7 +14,7 @@ async fn parsed_reasoning_stream() {
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
         .build();
 
-    let mut stream = Box::pin(agent.runner("Entertain me!").stream_run());
+    let mut stream = agent.runner("Entertain me!").stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

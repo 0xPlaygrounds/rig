@@ -467,12 +467,10 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner("What is 21 + 21? Use the add tool.")
-                    .max_turns(2)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner("What is 21 + 21? Use the add tool.")
+                .max_turns(2)
+                .stream_run();
 
             let mut prompt_error = None;
             while let Some(item) = stream.next().await {
@@ -538,13 +536,11 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let mut stream = Box::pin(
-                agent
-                    .runner("What is 21 + 21? Use the add tool.")
-                    .add_hook(cancel_on_tool_call())
-                    .max_turns(2)
-                    .stream_run(),
-            );
+            let mut stream = agent
+                .runner("What is 21 + 21? Use the add tool.")
+                .add_hook(cancel_on_tool_call())
+                .max_turns(2)
+                .stream_run();
 
             let mut prompt_error = None;
             let mut saw_final = false;

@@ -181,13 +181,13 @@ async fn streaming_structured_output_with_tools() {
                 .default_max_turns(5)
                 .build();
 
-            let mut stream =Box::pin( agent
+            let mut stream =agent
                 .runner(
                     "What is the current weather in Tokyo? Use the get_weather tool, then return \
                      the city and a one-sentence summary of the conditions.",
                 )
                 .max_turns(5)
-                .stream_run());
+                .stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming agentic structured output should succeed");

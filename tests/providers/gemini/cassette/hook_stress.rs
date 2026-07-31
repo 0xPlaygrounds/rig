@@ -517,14 +517,14 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
                 .tool(subtract)
                 .build();
 
-            let mut stream =Box::pin( agent
+            let mut stream = agent
                 .runner(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .add_hook(recorder_entry)
                 .max_turns(6)
-                .stream_run());
+                .stream_run();
 
             // Ordered stream-item taxonomy tags, so we can assert lifecycle order.
             let mut events: Vec<&'static str> = Vec::new();

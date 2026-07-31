@@ -260,7 +260,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         last_result: last_result.clone(),
     };
 
-    let mut stream =Box::pin( agent
+    let mut stream =agent
         .runner(
             "Use the available tools to read test.txt now. \
              Call `read_file_head` first. If its tool result says UNAVAILABLE, immediately call `read_file_tail` instead. \
@@ -270,7 +270,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         )
         .max_turns(3)
         .add_hook(hook.entry())
-        .stream_run());
+        .stream_run();
 
     let final_response = stream_to_stdout(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();

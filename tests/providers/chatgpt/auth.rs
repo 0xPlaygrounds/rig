@@ -71,7 +71,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     );
 
     let agent = agent_builder.preamble(BASIC_PREAMBLE).build();
-    let mut stream = Box::pin(agent.runner(BASIC_PROMPT).stream_run());
+    let mut stream = agent.runner(BASIC_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("authorized streaming completion should succeed");
@@ -79,11 +79,9 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     assert_nonempty_response(&response);
 
     let cached_agent = authorized_agent(&auth_file, LIVE_MODEL).await.build();
-    let mut cached_stream = Box::pin(
-        cached_agent
-            .runner("Reply with the single word cached.")
-            .stream_run(),
-    );
+    let mut cached_stream = cached_agent
+        .runner("Reply with the single word cached.")
+        .stream_run();
     let cached_response = collect_stream_final_response(&mut cached_stream)
         .await
         .expect("cached streaming completion should succeed");
@@ -119,11 +117,9 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
     );
 
     let agent = agent_builder.build();
-    let mut stream = Box::pin(
-        agent
-            .runner("Reply with the single word refreshed.")
-            .stream_run(),
-    );
+    let mut stream = agent
+        .runner("Reply with the single word refreshed.")
+        .stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("refreshed streaming completion should succeed");
