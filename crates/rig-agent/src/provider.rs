@@ -238,10 +238,56 @@ macro_rules! define_provider_config {
                 ProviderConfig::Mock(script) => script.next_stream(&request),
             }
         }
+
+        // One `From` per provider config, so callers hand a config straight to
+        // `AgentBuilder::new` without naming the variant. Each provider owns a
+        // distinct `Config` type, so the impls cannot overlap; a provider that
+        // ever aliased another's config would fail to compile here, which is
+        // the right place to find out.
+        $(
+            impl From<rig_core::providers::$module::functions::Config> for ProviderConfig {
+                fn from(config: rig_core::providers::$module::functions::Config) -> Self {
+                    Self::$variant(config)
+                }
+            }
+        )*
     };
 }
 
 for_each_builtin_provider!(define_provider_config);
+
+impl From<rig_core::providers::openai::responses_api::functions::Config> for ProviderConfig {
+    fn from(config: rig_core::providers::openai::responses_api::functions::Config) -> Self {
+        Self::OpenAiResponses(config)
+    }
+}
+
+impl From<rig_core::providers::gemini::interactions_api::functions::Config> for ProviderConfig {
+    fn from(config: rig_core::providers::gemini::interactions_api::functions::Config) -> Self {
+        Self::GeminiInteractions(config)
+    }
+}
+
+#[cfg(feature = "bedrock")]
+impl From<rig_bedrock::functions::Config> for ProviderConfig {
+    fn from(config: rig_bedrock::functions::Config) -> Self {
+        Self::Bedrock(config)
+    }
+}
+
+#[cfg(feature = "gemini-grpc")]
+impl From<rig_gemini_grpc::functions::Config> for ProviderConfig {
+    fn from(config: rig_gemini_grpc::functions::Config) -> Self {
+        Self::GeminiGrpc(config)
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl From<MockScript> for ProviderConfig {
+    fn from(script: MockScript) -> Self {
+        Self::Mock(script)
+    }
+}
 
 /// List the models available to `provider`'s credentials.
 ///
@@ -886,6 +932,66 @@ impl MockScript {
         Ok(StreamingCompletionResponse::stream(Box::pin(
             futures::stream::iter(items.into_iter().map(Ok)),
         )))
+    }
+}
+
+#[cfg(test)]
+mod conversion_tests {
+    use super::*;
+
+    /// `From` must select the same variant an explicit wrap would, for each
+    /// distinct provider config type — including the two providers that expose
+    /// a second, incompatible API surface.
+    #[test]
+    fn from_config_selects_the_same_variant_as_explicit_wrapping() {
+        let openai = rig_core::providers::openai::functions::Config::new("gpt-4o");
+        assert!(matches!(
+            ProviderConfig::from(openai.clone()),
+            ProviderConfig::OpenAi(_)
+        ));
+        assert_eq!(
+            ProviderConfig::from(openai.clone()).model(),
+            ProviderConfig::OpenAi(openai).model()
+        );
+
+        let anthropic = rig_core::providers::anthropic::functions::Config::new("claude-sonnet-4-5");
+        assert!(matches!(
+            ProviderConfig::from(anthropic),
+            ProviderConfig::Anthropic(_)
+        ));
+
+        // The second surface on the same provider stays distinct: the chat
+        // config maps to `OpenAi`, the responses config to `OpenAiResponses`.
+        let responses =
+            rig_core::providers::openai::responses_api::functions::Config::new("gpt-4o");
+        assert!(matches!(
+            ProviderConfig::from(responses),
+            ProviderConfig::OpenAiResponses(_)
+        ));
+
+        let interactions = rig_core::providers::gemini::interactions_api::functions::Config::new(
+            "gemini-2.5-flash",
+        );
+        assert!(matches!(
+            ProviderConfig::from(interactions),
+            ProviderConfig::GeminiInteractions(_)
+        ));
+    }
+
+    /// The `impl Into<ProviderConfig>` seam must not change the built agent:
+    /// passing a bare config and passing the wrapped enum agree.
+    #[test]
+    fn agent_builder_accepts_a_bare_config_and_an_explicit_variant_alike() {
+        let cfg = rig_core::providers::openai::functions::Config::new("gpt-4o");
+
+        let from_bare = crate::AgentBuilder::new(cfg.clone()).build();
+        let from_variant = crate::AgentBuilder::new(ProviderConfig::OpenAi(cfg)).build();
+
+        assert_eq!(from_bare.provider.model(), from_variant.provider.model());
+        assert_eq!(
+            from_bare.provider.descriptor().name,
+            from_variant.provider.descriptor().name
+        );
     }
 }
 

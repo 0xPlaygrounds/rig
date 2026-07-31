@@ -79,12 +79,28 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
-    /// Create a new agent builder for the given provider configuration
-    pub fn new(provider: ProviderConfig) -> Self {
+    /// Create a new agent builder for the given provider configuration.
+    ///
+    /// Accepts either a [`ProviderConfig`] or any provider's
+    /// `functions::Config` directly, so the common path needs no enum
+    /// wrapping:
+    ///
+    /// ```no_run
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// use rig_agent::AgentBuilder;
+    /// use rig_core::providers::openai;
+    ///
+    /// let cfg = openai::functions::Config::from_env("gpt-4o")?;
+    /// let agent = AgentBuilder::new(cfg).preamble("Be terse.").build();
+    /// # let _ = agent;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(provider: impl Into<ProviderConfig>) -> Self {
         Self {
             name: None,
             description: None,
-            provider,
+            provider: provider.into(),
             runtime: None,
             preamble: None,
             static_context: vec![],
