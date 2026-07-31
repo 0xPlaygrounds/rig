@@ -6,7 +6,7 @@
 use crate::{
     http_client::{
         Backend, Result as StreamResult,
-        retry::{DEFAULT_RETRY, ExponentialBackoff, RetryPolicy},
+        retry::{DEFAULT_RETRY, ExponentialBackoff},
     },
     wasm_compat::WasmCompatSendStream,
 };
@@ -115,10 +115,10 @@ pin_project! {
 pin_project! {
     /// An SSE event source over any [`Backend`].
     #[project = GenericEventSourceProjection]
-    pub(crate) struct GenericEventSource<HttpClient, Retry = ExponentialBackoff> {
+    pub(crate) struct GenericEventSource<HttpClient> {
         client: HttpClient,
         req: Request<Vec<u8>>,
-        retry_policy: Retry,
+        backoff: ExponentialBackoff,
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
         #[pin]
@@ -138,7 +138,7 @@ where
         Self {
             client,
             req,
-            retry_policy: DEFAULT_RETRY,
+            backoff: DEFAULT_RETRY,
             last_event_id: None,
             allow_missing_content_type: false,
             state,
@@ -226,7 +226,7 @@ where
                         }
                         Poll::Ready(Err(err)) => {
                             // First connection attempt failed - start retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
+                            if let Some(delay_duration) = this.backoff.retry(&err, None) {
                                 // Transition: Connecting -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
@@ -271,7 +271,7 @@ where
                         Poll::Ready(Err(err)) => {
                             // Reconnection attempt failed - continue retry cycle
                             if let Some(delay_duration) =
-                                this.retry_policy.retry(&err, Some(*last_retry))
+                                this.backoff.retry(&err, Some(*last_retry))
                             {
                                 let (retry_num, _) = *last_retry;
                                 // Transition: Reconnecting -> WaitingToRetry
@@ -297,13 +297,13 @@ where
                                 *this.last_event_id = Some(event.id.clone());
                             }
                             if let Some(duration) = event.retry {
-                                this.retry_policy.set_reconnection_time(duration);
+                                this.backoff.set_reconnection_time(duration);
                             }
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
                             // Connection error while open - start fresh retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
+                            if let Some(delay_duration) = this.backoff.retry(&err, None) {
                                 // Transition: Open -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
