@@ -1116,4 +1116,38 @@ mod tests {
         assert_eq!(value["voice"], "alloy");
         assert_eq!(value["speed"], 1.5);
     }
+
+    /// The two ways to express system instructions must produce the same
+    /// request. `CompletionRequest::builder(..).preamble(..)` canonicalizes
+    /// into a leading `Message::System`, while
+    /// `CompletionRequest::with_history(Some(..), ..)` populates the legacy
+    /// `preamble` field. Providers read both — this pins them to the same wire
+    /// bytes so the two forms cannot silently drift apart.
+    #[test]
+    fn system_instruction_forms_produce_identical_request_bodies() {
+        let cfg = Config::new("gpt-4o");
+
+        let legacy_field = crate::completion::CompletionRequest::with_history(
+            Some("You are terse."),
+            vec![crate::message::Message::user("earlier")],
+            "now",
+        );
+        let system_message = crate::completion::CompletionRequest::builder("now")
+            .preamble("You are terse.")
+            .messages([crate::message::Message::user("earlier")])
+            .build();
+
+        // The two requests are shaped differently by construction...
+        assert!(legacy_field.preamble.is_some());
+        assert!(system_message.preamble.is_none());
+
+        // ...but render to identical bytes.
+        let from_legacy = build_request_body(&cfg, &legacy_field, false).expect("legacy builds");
+        let from_message =
+            build_request_body(&cfg, &system_message, false).expect("system message builds");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&from_legacy).expect("json"),
+            serde_json::from_slice::<serde_json::Value>(&from_message).expect("json"),
+        );
+    }
 }

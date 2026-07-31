@@ -308,18 +308,31 @@ let request = CompletionRequest::builder("Who are you?")
 let response = openai::functions::complete(&cfg, &rt, request).await?;
 ```
 
-**These two are not interchangeable when a preamble is involved.** The builder
-canonicalizes `preamble` into a leading `Message::System` and leaves the legacy
-`request.preamble` field `None` — exactly what the deleted builder did — while
-`CompletionRequest::with_history(Some(..), ..)` populates `request.preamble`
-instead. Many providers read that legacy field directly — at the time of
-writing: Anthropic, ChatGPT, Cohere, Copilot, Gemini (both the
-`generateContent` and Interactions faces), Ollama, OpenAI (including the
-Responses API), OpenRouter, and xAI — so swapping one form for the other can
-change the request you send. Migrate `with_history(None, ..)` and
-`from_prompt(..)` sites freely; leave preamble-carrying ones alone unless you
-have verified that provider's output. Grep `\.preamble` under
-`crates/rig-core/src/providers/` to check a specific one.
+**The two forms are interchangeable.** The builder canonicalizes `preamble`
+into a leading `Message::System` and leaves the legacy `request.preamble` field
+`None`, while `CompletionRequest::with_history(Some(..), ..)` populates that
+field instead — but every provider consumes both and renders them identically.
+The pattern is the same everywhere: the preamble is emitted first, then system
+messages lifted out of the history are appended.
+
+Verified provider by provider — Anthropic (`system` array + `history_system`),
+OpenAI chat and Responses, Gemini `generateContent`, Cohere, Ollama,
+OpenRouter, xAI, and Bedrock all agree. The equivalence is pinned by
+`system_instruction_forms_produce_identical_request_bodies` in
+`providers/openai/functions.rs`, and the recorded provider suites replay
+byte-identically across both forms.
+
+One caveat worth knowing if you set a preamble **and** put a `Message::System`
+in the history: Gemini's Interactions API takes the preamble and *discards* the
+history system messages (`gemini/interactions_api/mod.rs:59` uses `.or_else`,
+where every other provider appends both). Supplying system instructions through
+exactly one channel — which the builder enforces — avoids the question
+entirely.
+
+An earlier revision of this guide claimed these forms could not be swapped.
+That was wrong: it came from a grep that missed providers destructuring the
+field (`let CoreCompletionRequest { preamble, .. } = req`) and counted
+providers that touch `preamble` only when building a telemetry span.
 
 `additional_params` **merges** into whatever is already set;
 `additional_params_opt` replaces (and clears with `None`).
