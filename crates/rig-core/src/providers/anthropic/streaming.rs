@@ -196,6 +196,12 @@ struct ThinkingState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     pub usage: PartialUsage,
+    /// Anthropic `message_delta.stop_reason` (`"end_turn"`, `"tool_use"`,
+    /// `"max_tokens"`, `"stop_sequence"`). Surfaced so consumers can
+    /// distinguish a `max_tokens` truncation from a normal stop — the
+    /// streaming API otherwise drops it.
+    #[serde(default)]
+    pub stop_reason: Option<String>,
 }
 
 impl GetTokenUsage for StreamingCompletionResponse {
@@ -283,6 +289,7 @@ where
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut final_stop_reason: Option<String> = None;
 
             let mut text_content = String::new();
 
@@ -306,9 +313,20 @@ where
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
+                                            // Prefer `message_delta.usage.input_tokens` when the
+                                            // provider supplies it. Anthropic itself reports input
+                                            // usage on `message_start`, but Anthropic-compatible
+                                            // gateways (e.g. OpenRouter) send `input_tokens: 0`
+                                            // there and the real count on `message_delta`. Reading
+                                            // `message_start` alone silently yields a zero prompt
+                                            // count against those providers, which breaks any
+                                            // consumer that sizes its context from input tokens.
                                             let usage = PartialUsage {
                                                  output_tokens: usage.output_tokens,
-                                                 input_tokens: usize::try_from(input_tokens).ok(),
+                                                 input_tokens: usage
+                                                     .input_tokens
+                                                     .filter(|v| *v > 0)
+                                                     .or_else(|| usize::try_from(input_tokens).ok()),
                                                  cache_creation_input_tokens: usage.cache_creation_input_tokens,
                                                  cache_read_input_tokens: usage.cache_read_input_tokens
                                             };
@@ -316,6 +334,7 @@ where
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage);
                                             final_usage = Some(usage);
+                                            final_stop_reason = delta.stop_reason.clone();
                                             break;
                                         }
                                     }
@@ -354,7 +373,8 @@ where
             sse_stream.close();
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                stop_reason: final_stop_reason.clone(),
             }))
         }.instrument(span));
 
@@ -1619,6 +1639,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 
@@ -1764,6 +1785,7 @@ mod tests {
 
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                 usage: PartialUsage::default(),
+                stop_reason: None,
             }));
         };
 
