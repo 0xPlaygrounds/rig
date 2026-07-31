@@ -420,6 +420,33 @@ impl Agent {
         SessionRunner::from_agent(self, prompt)
     }
 
+    /// A fluent structured-extraction run over this agent's configuration.
+    ///
+    /// The returned [`ExtractionRunner`](crate::extract::ExtractionRunner) is
+    /// not generic: pick the extracted type at the terminal with
+    /// `.run::<T>()` or `.run_with_usage::<T>()`.
+    ///
+    /// ```no_run
+    /// # async fn run(agent: &rig_agent::Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// #[derive(serde::Deserialize, schemars::JsonSchema)]
+    /// struct Person {
+    ///     name: String,
+    /// }
+    ///
+    /// let person: Person = agent.extractor("Alice is 30.").classic().run().await?;
+    /// # let _ = person;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn extractor(&self, prompt: impl Into<Message>) -> crate::extract::ExtractionRunner {
+        crate::extract::ExtractionRunner::new(
+            self.config.clone(),
+            self.provider.clone(),
+            Arc::clone(&self.rt),
+            prompt,
+        )
+    }
+
     /// Send a prompt and return the accepted assistant text after full
     /// runtime orchestration (tools, hooks, retries, telemetry).
     ///

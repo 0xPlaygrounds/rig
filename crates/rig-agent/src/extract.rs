@@ -279,6 +279,201 @@ where
     .await
 }
 
+/// A fluent, non-generic front end for [`extract_with_options`].
+///
+/// The runner stores only concrete owned data — an [`AgentConfig`], a
+/// [`ProviderConfig`], the shared [`Runtime`] handle, the prompt, and
+/// [`ExtractOptions`]. It is **not** generic over the extracted type: the
+/// payload is chosen at the terminal ([`Self::run`] / [`Self::run_with_usage`]),
+/// so there is no `ExtractionRunner<T>` and no `PhantomData<T>`, and one
+/// configured runner can produce different shapes.
+///
+/// ```no_run
+/// # async fn run(agent: &rig_agent::Agent) -> Result<(), Box<dyn std::error::Error>> {
+/// #[derive(serde::Deserialize, schemars::JsonSchema)]
+/// struct Person {
+///     name: String,
+/// }
+///
+/// let person: Person = agent
+///     .extractor("Alice is 30.")
+///     .classic()
+///     .retries(2)
+///     .run()
+///     .await?;
+/// # let _ = person;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ExtractionRunner {
+    config: AgentConfig,
+    provider: ProviderConfig,
+    rt: Arc<Runtime>,
+    prompt: Message,
+    options: ExtractOptions,
+}
+
+impl ExtractionRunner {
+    /// Builds a runner from explicit parts.
+    pub fn new(
+        config: AgentConfig,
+        provider: ProviderConfig,
+        rt: Arc<Runtime>,
+        prompt: impl Into<Message>,
+    ) -> Self {
+        Self {
+            config,
+            provider,
+            rt,
+            prompt: prompt.into(),
+            options: ExtractOptions::new(),
+        }
+    }
+
+    /// Adopts the deleted `ExtractorBuilder<T>`'s exact configuration.
+    ///
+    /// History and the retry budget are preserved, so this composes in any
+    /// order with [`Self::history`] and [`Self::retries`].
+    pub fn classic(mut self) -> Self {
+        let history = std::mem::take(&mut self.options.history);
+        let retries = self.options.retries;
+        self.options = ExtractOptions::classic_extractor();
+        self.options.history = history;
+        self.options.retries = retries;
+        self
+    }
+
+    /// Sets the deserialization-failure retry budget (attempts = `retries + 1`).
+    pub fn retries(mut self, retries: usize) -> Self {
+        self.options.retries = retries;
+        self
+    }
+
+    /// Replaces the chat history preceding the prompt.
+    pub fn history(mut self, history: impl IntoIterator<Item = Message>) -> Self {
+        self.options.history = history.into_iter().collect();
+        self
+    }
+
+    /// Overrides the system prompt for this extraction.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.options.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Overrides the tool-choice policy.
+    pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
+        self.options.tool_choice = Some(tool_choice);
+        self
+    }
+
+    /// Overrides the model-call budget.
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.options.max_turns = Some(max_turns);
+        self
+    }
+
+    /// Names the synthetic output tool.
+    pub fn output_tool_name(mut self, name: impl Into<String>) -> Self {
+        self.options.output_tool_name = Some(name.into());
+        self
+    }
+
+    /// Describes the synthetic output tool.
+    pub fn output_tool_description(mut self, description: impl Into<String>) -> Self {
+        self.options.output_tool_description = Some(description.into());
+        self
+    }
+
+    /// Whether Tool output mode augments the preamble with calling
+    /// instructions.
+    pub fn augment_output_preamble(mut self, augment: bool) -> Self {
+        self.options.augment_output_preamble = Some(augment);
+        self
+    }
+
+    /// Treat a call to anything but the output tool as irrelevant content
+    /// rather than failing the run.
+    pub fn ignore_unhandled_invalid_tool_calls(mut self, ignore: bool) -> Self {
+        self.options.ignore_unhandled_invalid_tool_calls = ignore;
+        self
+    }
+
+    /// Retry by re-sending the identical request instead of appending
+    /// corrective feedback.
+    pub fn repeat_prompt_on_retry(mut self, repeat: bool) -> Self {
+        self.options.repeat_prompt_on_retry = repeat;
+        self
+    }
+
+    /// Appends a context document always provided to the model.
+    pub fn context(mut self, document: rig_core::completion::Document) -> Self {
+        self.config.static_context.push(document);
+        self
+    }
+
+    /// Appends context documents, in order.
+    pub fn contexts(
+        mut self,
+        documents: impl IntoIterator<Item = rig_core::completion::Document>,
+    ) -> Self {
+        self.config.static_context.extend(documents);
+        self
+    }
+
+    /// **Replaces** provider-specific request parameters, matching
+    /// [`AgentBuilder::additional_params`](crate::AgentBuilder::additional_params).
+    pub fn additional_params(mut self, params: serde_json::Value) -> Self {
+        self.config.additional_params = Some(params);
+        self
+    }
+
+    /// Sets the maximum output-token count.
+    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
+        self.config.max_tokens = Some(max_tokens);
+        self
+    }
+
+    /// Sets the sampling temperature.
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.config.temperature = Some(temperature);
+        self
+    }
+
+    /// The options this runner would extract with.
+    pub fn options(&self) -> &ExtractOptions {
+        &self.options
+    }
+
+    /// Runs the extraction, returning the deserialized value.
+    ///
+    /// The payload type is chosen here, not on the runner.
+    pub async fn run<T>(self) -> Result<T, ExtractError>
+    where
+        T: schemars::JsonSchema + serde::de::DeserializeOwned,
+    {
+        self.run_with_usage::<T>()
+            .await
+            .map(|outcome| outcome.value)
+    }
+
+    /// Runs the extraction, returning the value plus accumulated token usage.
+    pub async fn run_with_usage<T>(self) -> Result<ExtractionOutcome<T>, ExtractError>
+    where
+        T: schemars::JsonSchema + serde::de::DeserializeOwned,
+    {
+        extract_with_options(
+            self.config,
+            self.provider,
+            self.rt,
+            self.prompt,
+            self.options,
+        )
+        .await
+    }
+}
+
 /// [`extract`] in **Native** output mode, mirroring the classic
 /// `TypedPromptRequest`: the schema is passed as the provider's native
 /// structured-output constraint (no synthetic output tool), and the final text
@@ -463,6 +658,153 @@ mod tests {
             Usage::new(),
             "mock",
         )
+    }
+
+    /// `.classic()` on the runner must produce byte-identical requests to
+    /// passing `ExtractOptions::classic_extractor()` to the free function —
+    /// otherwise the fluent surface would silently diverge from recorded
+    /// cassettes.
+    #[tokio::test]
+    async fn runner_classic_matches_the_free_function_request() {
+        let via_runner_script = MockScript::from_responses(vec![submit_response("Ada")]);
+        let runner_probe = via_runner_script.clone();
+        let runner_value = ExtractionRunner::new(
+            AgentConfig::new().with_max_tokens(384),
+            ProviderConfig::Mock(via_runner_script),
+            Arc::new(Runtime::new()),
+            "Hello, my name is Ada.",
+        )
+        .classic()
+        .run::<Person>()
+        .await
+        .expect("runner extraction succeeds");
+
+        let via_free_script = MockScript::from_responses(vec![submit_response("Ada")]);
+        let free_probe = via_free_script.clone();
+        let free_value = extract_with_options::<Person>(
+            AgentConfig::new().with_max_tokens(384),
+            ProviderConfig::Mock(via_free_script),
+            Arc::new(Runtime::new()),
+            "Hello, my name is Ada.",
+            ExtractOptions::classic_extractor(),
+        )
+        .await
+        .expect("free extraction succeeds")
+        .value;
+
+        assert_eq!(runner_value, free_value);
+
+        let runner_requests = runner_probe.requests();
+        let free_requests = free_probe.requests();
+        assert_eq!(runner_requests.len(), free_requests.len());
+        let runner_request = runner_requests.first().expect("one request");
+        let free_request = free_requests.first().expect("one request");
+        assert_eq!(runner_request.chat_history, free_request.chat_history);
+        assert_eq!(runner_request.tools, free_request.tools);
+        assert_eq!(runner_request.tool_choice, free_request.tool_choice);
+        assert_eq!(runner_request.max_tokens, free_request.max_tokens);
+        assert_eq!(runner_request.temperature, free_request.temperature);
+        assert_eq!(
+            runner_request.additional_params,
+            free_request.additional_params
+        );
+    }
+
+    /// `.classic()` must not discard history or retries set around it, in
+    /// either order.
+    #[test]
+    fn classic_preserves_history_and_retries_in_any_order() {
+        let runner = || {
+            ExtractionRunner::new(
+                AgentConfig::new(),
+                ProviderConfig::Mock(MockScript::from_responses(vec![])),
+                Arc::new(Runtime::new()),
+                "prompt",
+            )
+        };
+
+        let before = runner()
+            .history([Message::from("earlier")])
+            .retries(3)
+            .classic();
+        let after = runner()
+            .classic()
+            .history([Message::from("earlier")])
+            .retries(3);
+
+        for configured in [before, after] {
+            let options = configured.options();
+            assert_eq!(options.retries, 3);
+            assert_eq!(options.history.len(), 1);
+            // …while still carrying the classic preset.
+            assert_eq!(
+                options.output_tool_name.as_deref(),
+                Some(CLASSIC_SUBMIT_TOOL_NAME)
+            );
+            assert_eq!(options.tool_choice, Some(ToolChoice::Required));
+            assert!(options.repeat_prompt_on_retry);
+        }
+    }
+
+    /// One runner value, cloned, extracting two *different* payload types —
+    /// only possible because the type is chosen at the terminal rather than
+    /// baked into the runner.
+    #[tokio::test]
+    async fn one_runner_serves_two_payload_types() {
+        #[derive(Debug, PartialEq, serde::Deserialize, schemars::JsonSchema)]
+        struct Name {
+            name: String,
+        }
+
+        let runner = ExtractionRunner::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(MockScript::from_responses(vec![
+                submit_response("Ada"),
+                submit_response("Ada"),
+            ])),
+            Arc::new(Runtime::new()),
+            "Hello, my name is Ada.",
+        )
+        .classic();
+
+        let as_person = runner.clone().run::<Person>().await.expect("Person");
+        let as_name = runner.run::<Name>().await.expect("Name");
+
+        assert_eq!(as_person.name, "Ada");
+        assert_eq!(as_name.name, "Ada");
+    }
+
+    /// Config-backed setters must reach the built request.
+    #[tokio::test]
+    async fn config_setters_reach_the_request_and_payload_is_chosen_at_the_terminal() {
+        let script = MockScript::from_responses(vec![submit_response("Ada")]);
+        let probe = script.clone();
+
+        let _person = ExtractionRunner::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(script),
+            Arc::new(Runtime::new()),
+            "Hello, my name is Ada.",
+        )
+        .classic()
+        .max_tokens(256)
+        .temperature(0.1)
+        .additional_params(serde_json::json!({ "custom": true }))
+        .run::<Person>()
+        .await
+        .expect("extraction succeeds");
+
+        let requests = probe.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(request.max_tokens, Some(256));
+        assert_eq!(request.temperature, Some(0.1));
+        assert_eq!(
+            request
+                .additional_params
+                .as_ref()
+                .and_then(|p| p.get("custom")),
+            Some(&serde_json::json!(true))
+        );
     }
 
     /// The deleted `Extractor<T>`'s exchange must stay expressible: one model
