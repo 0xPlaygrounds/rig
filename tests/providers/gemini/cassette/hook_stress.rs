@@ -163,14 +163,12 @@ impl TallyReader {
 
     fn entry(&self, tally: ToolCallTally) -> HookEntry {
         let tallies = self.tallies.clone();
-        HookEntry::new("tally-reader", move |event| {
+        HookEntry::sync("tally-reader", move |event| {
             if matches!(event, HookEvent::ModelTurnFinished { .. }) {
                 tallies.lock().expect("tallies").push(tally.get());
-                return Box::pin(async {
-                    HookDecision::ModelTurn(ModelTurnAction::continue_run())
-                });
+                return HookDecision::ModelTurn(ModelTurnAction::continue_run());
             }
-            Box::pin(async { HookDecision::Continue })
+            HookDecision::Continue
         })
     }
 }
@@ -178,21 +176,27 @@ impl TallyReader {
 /// `CompletionCall` hook that injects a run-state fact via `extra_context`,
 /// narrows `active_tools`, and pins temperature — one merged `RequestPatch`.
 fn inject_context_and_narrow_tools(
-    fact_id: &'static str,
-    fact_text: &'static str,
-    allow: &'static [&'static str],
+    fact_id: impl Into<String>,
+    fact_text: impl Into<String>,
+    allow: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> HookEntry {
+    let fact_id = fact_id.into();
+    let fact_text = fact_text.into();
+    let allow = allow
+        .into_iter()
+        .map(|name| name.as_ref().to_owned())
+        .collect::<Vec<_>>();
     HookEntry::sync("inject-context-narrow-tools", move |event| match event {
         HookEvent::BeforeModelCall { .. } => {
             let doc = Document {
-                id: fact_id.to_string(),
-                text: fact_text.to_string(),
+                id: fact_id.clone(),
+                text: fact_text.clone(),
                 additional_props: Default::default(),
             };
             HookDecision::CompletionCall(CompletionCallAction::patch(
                 RequestPatch::new()
                     .context(doc)
-                    .active_tools(allow.iter().copied())
+                    .active_tools(allow.clone())
                     .temperature(0.0),
             ))
         }
@@ -202,7 +206,8 @@ fn inject_context_and_narrow_tools(
 
 /// `ToolCall` hook that rewrites a named tool's arguments to a fixed object,
 /// regardless of what the model emitted (execution-args rewrite).
-fn force_args(tool_name: &'static str, args: serde_json::Value) -> HookEntry {
+fn force_args(tool_name: impl Into<String>, args: serde_json::Value) -> HookEntry {
+    let tool_name = tool_name.into();
     HookEntry::sync("force-args", move |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
             HookDecision::ToolCall(ToolCallAction::rewrite(args.clone()))
@@ -213,10 +218,12 @@ fn force_args(tool_name: &'static str, args: serde_json::Value) -> HookEntry {
 }
 
 /// `ToolResult` hook that redacts a named tool's output with a fixed marker.
-fn redact_result(tool_name: &'static str, marker: &'static str) -> HookEntry {
+fn redact_result(tool_name: impl Into<String>, marker: impl Into<String>) -> HookEntry {
+    let tool_name = tool_name.into();
+    let marker = marker.into();
     HookEntry::sync("redact-result", move |event| match event {
         HookEvent::ToolResult { call, .. } if call.function.name == tool_name => {
-            HookDecision::ToolResult(ToolResultAction::rewrite(marker))
+            HookDecision::ToolResult(ToolResultAction::rewrite(marker.clone()))
         }
         HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
         _ => HookDecision::Continue,
@@ -371,7 +378,7 @@ async fn request_patch_injects_context_and_narrows_active_tools_blocking() {
                 .add_hook(inject_context_and_narrow_tools(
                     VAULT_FACT_ID,
                     VAULT_FACT,
-                    &["add"],
+                    ["add"],
                 ))
                 .run()
                 .await
@@ -737,7 +744,7 @@ fn assert_hook_records() {
     let recorder = LifecycleRecorder::default();
     requires_entry(recorder.entry());
     requires_entry(TallyReader::default().entry(recorder.tally()));
-    requires_entry(inject_context_and_narrow_tools("", "", &[]));
+    requires_entry(inject_context_and_narrow_tools("", "", [] as [&str; 0]));
     requires_entry(force_args("add", serde_json::Value::Null));
     requires_entry(redact_result("add", ""));
 }

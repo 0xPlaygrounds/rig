@@ -110,10 +110,10 @@ impl Tool for TransferFunds {
 /// - `auto_approve`: tools allowed to run unconditionally (read-only / low risk).
 /// - `max_auto_transfer`: transfers at or below this amount are auto-approved;
 ///   above it they are denied (a real app would route those to a human instead).
-fn approval_policy(auto_approve: HashSet<&'static str>, max_auto_transfer: u64) -> HookEntry {
-    HookEntry::new("approval-policy", move |event| {
+fn approval_policy(auto_approve: HashSet<String>, max_auto_transfer: u64) -> HookEntry {
+    HookEntry::sync("approval-policy", move |event| {
         let HookEvent::ToolCall { call, .. } = event else {
-            return Box::pin(async { HookDecision::Continue });
+            return HookDecision::Continue;
         };
 
         let tool_name = call.function.name;
@@ -146,7 +146,7 @@ fn approval_policy(auto_approve: HashSet<&'static str>, max_auto_transfer: u64) 
             ))
         };
 
-        Box::pin(async move { HookDecision::ToolCall(action) })
+        HookDecision::ToolCall(action)
     })
 }
 
@@ -163,7 +163,7 @@ async fn main() -> Result<()> {
         .tool(TransferFunds)
         .build();
 
-    let policy = approval_policy(HashSet::from([SearchWeb::NAME]), 1000);
+    let policy = approval_policy(HashSet::from([SearchWeb::NAME.to_owned()]), 1000);
 
     let prompt = "Look up how much I should send, then transfer $5000 to account B-2.";
     println!("User: {prompt}\n");

@@ -17,15 +17,15 @@ use super::super::support::with_openai_cassette;
 /// state captured by the closure (formerly the run-scoped scratchpad).
 fn retry_once_on_marker() -> HookEntry {
     let attempts = Arc::new(AtomicUsize::new(0));
-    HookEntry::new("retry-once-on-marker", move |event| {
+    HookEntry::sync("retry-once-on-marker", move |event| {
         let HookEvent::ModelTurnFinished { content, .. } = event else {
-            return Box::pin(async { HookDecision::Continue });
+            return HookDecision::Continue;
         };
         let rejected = content.iter().any(|content| {
             matches!(content, AssistantContent::Text(text) if text.text.contains("RETRY:"))
         });
         if !rejected {
-            return Box::pin(async { HookDecision::ModelTurn(ModelTurnAction::continue_run()) });
+            return HookDecision::ModelTurn(ModelTurnAction::continue_run());
         }
 
         let attempt = attempts.fetch_add(1, Ordering::SeqCst) + 1;
@@ -36,7 +36,7 @@ fn retry_once_on_marker() -> HookEntry {
         } else {
             ModelTurnAction::stop("response retry limit exceeded")
         };
-        Box::pin(async move { HookDecision::ModelTurn(action) })
+        HookDecision::ModelTurn(action)
     })
 }
 

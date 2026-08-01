@@ -33,18 +33,15 @@ struct Document {
 ///
 /// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
 /// closure over owned `HookEvent`s that returns a `HookDecision`; the
-/// embedding config, the transport, the store, and the sample count are
-/// captured behind an `Arc` so the returned future stays
-/// `'static + Send + Sync`.
+/// embedding config, the transport, the store, and the sample count are owned
+/// by the hook record and borrowed by each inline invocation future.
 fn pdf_rag_hook(
     ecfg: ollama::functions::EmbeddingConfig,
     rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((ecfg, rt, store, samples));
-    HookEntry::new("pdf-rag", move |event| {
-        let state = state.clone();
+    HookEntry::with_state("pdf-rag", (ecfg, rt, store, samples), |state, event| {
         Box::pin(async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
@@ -52,7 +49,7 @@ fn pdf_rag_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (ecfg, rt, store, samples) = state.as_ref();
+            let (ecfg, rt, store, samples) = state;
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));

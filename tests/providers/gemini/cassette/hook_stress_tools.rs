@@ -156,12 +156,15 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
                 .runner("Use the add tool to add 2 and 2, then report the exact tool result.")
                 .max_turns(4)
                 // Redact -> wrap: the model sees "[SECRET]".
-                .add_hook(rewrite_tool_result("add", ResultRewrite::Replace("SECRET")))
+                .add_hook(rewrite_tool_result(
+                    "add",
+                    ResultRewrite::Replace("SECRET".to_owned()),
+                ))
                 .add_hook(rewrite_tool_result(
                     "add",
                     ResultRewrite::Wrap {
-                        prefix: "[",
-                        suffix: "]",
+                        prefix: "[".to_owned(),
+                        suffix: "]".to_owned(),
                     },
                 ))
                 .run()

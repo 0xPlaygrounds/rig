@@ -512,7 +512,8 @@ impl PortableTool for CountingSubtract {
 
 /// Add/replace one argument key on every `add` call, chaining into later
 /// entries (the classic `RewriteArgument` hook, as a record).
-fn rewrite_argument(key: &'static str, value: serde_json::Value) -> HookEntry {
+fn rewrite_argument(key: impl Into<String>, value: serde_json::Value) -> HookEntry {
+    let key = key.into();
     hook_entry("rewrite-argument", move |event| {
         let HookEvent::ToolCall { call, .. } = event else {
             return HookDecision::Continue;
@@ -524,7 +525,7 @@ fn rewrite_argument(key: &'static str, value: serde_json::Value) -> HookEntry {
         let Some(object) = arguments.as_object_mut() else {
             return HookDecision::ToolCall(ToolCallAction::run());
         };
-        object.insert(key.to_string(), value.clone());
+        object.insert(key.clone(), value.clone());
         HookDecision::ToolCall(ToolCallAction::rewrite(arguments))
     })
 }
@@ -541,13 +542,14 @@ fn observe_arguments(seen: Arc<Mutex<Vec<serde_json::Value>>>) -> HookEntry {
 }
 
 /// Replace every `add` result presentation (the classic `ReplaceResult` hook).
-fn replace_result(replacement: &'static str) -> HookEntry {
+fn replace_result(replacement: impl Into<String>) -> HookEntry {
+    let replacement = replacement.into();
     hook_entry("replace-result", move |event| {
         let HookEvent::ToolResult { call, .. } = event else {
             return HookDecision::Continue;
         };
         if call.function.name == CountingAdd::NAME {
-            HookDecision::ToolResult(ToolResultAction::rewrite(replacement))
+            HookDecision::ToolResult(ToolResultAction::rewrite(replacement.clone()))
         } else {
             HookDecision::ToolResult(ToolResultAction::keep())
         }
@@ -591,13 +593,14 @@ fn first_turn_patch(patch: RequestPatch) -> HookEntry {
 }
 
 /// Stop the run from the tool-result event (the classic `StopAfterResult`).
-fn stop_after_result(reason: &'static str) -> HookEntry {
+fn stop_after_result(reason: impl Into<String>) -> HookEntry {
+    let reason = reason.into();
     hook_entry("stop-after-result", move |event| {
         let HookEvent::ToolResult { call, .. } = event else {
             return HookDecision::Continue;
         };
         if call.function.name == CountingAdd::NAME {
-            HookDecision::ToolResult(ToolResultAction::stop(reason))
+            HookDecision::ToolResult(ToolResultAction::stop(reason.clone()))
         } else {
             HookDecision::ToolResult(ToolResultAction::keep())
         }
@@ -2695,7 +2698,8 @@ pub async fn hook_rewrites_and_request_patch_session(
         3,
     );
     let executor = ToolExecutor::new().register(portable_tool(CountingAdd(calls.clone())));
-    let rewrite = |key: &'static str, value: serde_json::Value| {
+    let rewrite = |key: &str, value: serde_json::Value| {
+        let key = key.to_owned();
         move |event: HookEvent| {
             let HookEvent::ToolCall { call, .. } = event else {
                 return HookDecision::Continue;
@@ -2707,7 +2711,7 @@ pub async fn hook_rewrites_and_request_patch_session(
             let Some(object) = arguments.as_object_mut() else {
                 return HookDecision::ToolCall(ToolCallAction::run());
             };
-            object.insert(key.to_string(), value.clone());
+            object.insert(key.clone(), value.clone());
             HookDecision::ToolCall(ToolCallAction::rewrite(arguments))
         }
     };

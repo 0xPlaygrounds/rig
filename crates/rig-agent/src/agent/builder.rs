@@ -328,9 +328,7 @@ mod tests {
 
     /// A no-op hook entry: registration must survive tool configuration.
     fn builder_hook() -> HookEntry {
-        HookEntry::new("builder-hook", |_| {
-            Box::pin(async { HookDecision::Continue })
-        })
+        HookEntry::sync("builder-hook", |_| HookDecision::Continue)
     }
 
     #[test]

@@ -15,7 +15,7 @@ use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette_result};
 
 #[derive(Clone)]
 struct SessionIdHook {
-    session_id: &'static str,
+    session_id: String,
     prompt_calls: Arc<AtomicUsize>,
     response_calls: Arc<AtomicUsize>,
     seen_prompt: Arc<Mutex<Option<String>>>,
@@ -84,7 +84,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
                 .build();
 
             let hook = SessionIdHook {
-                session_id: "abc123",
+                session_id: "abc123".to_owned(),
                 prompt_calls: Arc::new(AtomicUsize::new(0)),
                 response_calls: Arc::new(AtomicUsize::new(0)),
                 seen_prompt: Arc::new(Mutex::new(None)),

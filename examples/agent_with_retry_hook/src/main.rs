@@ -26,28 +26,29 @@ use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum RetryMode {
     Repeat,
-    Feedback(&'static str),
+    Feedback(String),
 }
 
 /// Rejects any tool-free model turn whose text contains `marker`, retrying up to
 /// `max_retries` times according to `mode`.
-fn retry_on_marker(marker: &'static str, max_retries: usize, mode: RetryMode) -> HookEntry {
+fn retry_on_marker(marker: impl Into<String>, max_retries: usize, mode: RetryMode) -> HookEntry {
     // The attempt counter lives with the hook record, not in a run-scoped
     // scratchpad: the closure captures it and every clone of the entry shares it.
     let attempts = Arc::new(AtomicUsize::new(0));
+    let marker = marker.into();
     HookEntry::sync("retry-on-marker", move |event| {
-        decide(&attempts, marker, max_retries, mode, event)
+        decide(&attempts, &marker, max_retries, &mode, event)
     })
 }
 
 fn decide(
     attempts: &AtomicUsize,
-    marker: &'static str,
+    marker: &str,
     max_retries: usize,
-    mode: RetryMode,
+    mode: &RetryMode,
     event: HookEvent,
 ) -> HookDecision {
     let HookEvent::ModelTurnFinished { turn, content, .. } = event else {
@@ -72,7 +73,7 @@ fn decide(
     match mode {
         RetryMode::Repeat => HookDecision::ModelTurn(ModelTurnAction::repeat()),
         RetryMode::Feedback(feedback) => {
-            HookDecision::ModelTurn(ModelTurnAction::retry_with_feedback(feedback))
+            HookDecision::ModelTurn(ModelTurnAction::retry_with_feedback(feedback.clone()))
         }
     }
 }
@@ -89,13 +90,20 @@ async fn main() -> Result<()> {
         )
         .build();
 
+    // These could just as easily come from a config file or database; the hook
+    // owns them and does not require leaked or string-literal references.
+    let retry_marker = ["RETRY", ":"].concat();
+    let feedback = format!(
+        "Replace the rejected response. Reply exactly `{}`.",
+        "ACCEPTED"
+    );
     let response = agent
         .runner("Begin the retry-hook demonstration.")
         .max_turns(2)
         .add_hook(retry_on_marker(
-            "RETRY:",
+            retry_marker,
             1,
-            RetryMode::Feedback("Replace the rejected response. Reply exactly `ACCEPTED`."),
+            RetryMode::Feedback(feedback),
         ))
         .run()
         .await?;

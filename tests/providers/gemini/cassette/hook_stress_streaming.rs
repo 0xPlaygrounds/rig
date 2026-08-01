@@ -141,7 +141,7 @@ async fn streaming_result_redaction_reaches_final_response() {
                 .runner("Use the add tool to add 5 and 5, then report the exact tool result.")
                 .add_hook(rewrite_tool_result(
                     "add",
-                    ResultRewrite::Replace("STREAM-REDACTED-Q3"),
+                    ResultRewrite::Replace("STREAM-REDACTED-Q3".to_owned()),
                 ))
                 .max_turns(4)
                 .stream_run();

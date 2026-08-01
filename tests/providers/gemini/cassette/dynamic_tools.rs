@@ -60,9 +60,8 @@ fn tool_retrieval_hook(
     samples: u64,
     always_exposed: Vec<String>,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_model, store, samples, always_exposed));
-    HookEntry::new("tool-retrieval", move |event| {
-        let state = state.clone();
+    let state = (embedding_model, store, samples, always_exposed);
+    HookEntry::with_state("tool-retrieval", state, |state, event| {
         Box::pin(async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
@@ -70,7 +69,7 @@ fn tool_retrieval_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_model, store, samples, always_exposed) = state.as_ref();
+            let (embedding_model, store, samples, always_exposed) = state;
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));

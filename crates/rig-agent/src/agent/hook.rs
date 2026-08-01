@@ -45,14 +45,14 @@
 //! use rig_agent::agent::ObservationAction;
 //! use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
 //!
-//! let logger = HookEntry::new("response-logger", |event| {
+//! let logger = HookEntry::sync("response-logger", |event| {
 //!     if let HookEvent::CompletionResponse { response, .. } = &event {
 //!         println!(
 //!             "message {:?}: {:?} ({:?})",
 //!             response.message_id, response.choice, response.usage
 //!         );
 //!     }
-//!     Box::pin(async { HookDecision::Observation(ObservationAction::continue_run()) })
+//!     HookDecision::Observation(ObservationAction::continue_run())
 //! });
 //! # let _ = logger;
 //! ```
@@ -74,15 +74,15 @@
 //!
 //! fn retry_on_marker(max_retries: usize) -> HookEntry {
 //!     let attempts = Arc::new(AtomicUsize::new(0));
-//!     HookEntry::new("retry-on-marker", move |event| {
+//!     HookEntry::sync("retry-on-marker", move |event| {
 //!         let HookEvent::ModelTurnFinished { content, .. } = &event else {
-//!             return Box::pin(async { HookDecision::Continue });
+//!             return HookDecision::Continue;
 //!         };
 //!         let rejected = content.iter().any(|content| {
 //!             matches!(content, AssistantContent::Text(text) if text.text.contains("RETRY"))
 //!         });
 //!         if !rejected {
-//!             return Box::pin(async { HookDecision::ModelTurn(ModelTurnAction::continue_run()) });
+//!             return HookDecision::ModelTurn(ModelTurnAction::continue_run());
 //!         }
 //!         let attempt = attempts.fetch_add(1, Ordering::Relaxed) + 1;
 //!         let action = if attempt <= max_retries {
@@ -90,7 +90,7 @@
 //!         } else {
 //!             ModelTurnAction::stop("response retry limit exceeded")
 //!         };
-//!         Box::pin(async move { HookDecision::ModelTurn(action) })
+//!         HookDecision::ModelTurn(action)
 //!     })
 //! }
 //! # let _hook = retry_on_marker(2);

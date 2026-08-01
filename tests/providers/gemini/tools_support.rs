@@ -419,10 +419,12 @@ impl ToolEventRecorder {
 }
 
 /// Hook that skips a named tool with a fixed reason instead of executing it.
-pub(crate) fn skip_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
+pub(crate) fn skip_tool_hook(tool_name: impl Into<String>, reason: impl Into<String>) -> HookEntry {
+    let tool_name = tool_name.into();
+    let reason = reason.into();
     HookEntry::sync("skip-tool", move |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
-            HookDecision::ToolCall(ToolCallAction::skip(reason))
+            HookDecision::ToolCall(ToolCallAction::skip(reason.clone()))
         }
         HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
         _ => HookDecision::Continue,
@@ -430,10 +432,15 @@ pub(crate) fn skip_tool_hook(tool_name: &'static str, reason: &'static str) -> H
 }
 
 /// Hook that terminates the run when a named tool is about to execute.
-pub(crate) fn terminate_on_tool_hook(tool_name: &'static str, reason: &'static str) -> HookEntry {
+pub(crate) fn terminate_on_tool_hook(
+    tool_name: impl Into<String>,
+    reason: impl Into<String>,
+) -> HookEntry {
+    let tool_name = tool_name.into();
+    let reason = reason.into();
     HookEntry::sync("terminate-on-tool", move |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
-            HookDecision::ToolCall(ToolCallAction::stop(reason))
+            HookDecision::ToolCall(ToolCallAction::stop(reason.clone()))
         }
         HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
         _ => HookDecision::Continue,

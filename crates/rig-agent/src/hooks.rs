@@ -182,17 +182,41 @@ pub enum HookDecision {
     Observation(ObservationAction),
 }
 
-// Helper supertrait so the callback dyn is nameable (mirrors
-// `PortableDynamicTool`'s `PortableDynamicCallback` pattern — WasmCompat
-// bounds are not auto traits, so a plain `dyn Fn` alias cannot carry them).
-trait HookCallback:
-    Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + WasmCompatSend + WasmCompatSync
-{
+// The callback object must own its captures because `HookEntry` stores it, but
+// an invocation future is awaited inline and may borrow that owned state.
+// Keeping those lifetimes separate avoids forcing runtime inputs to be
+// `'static` without putting a lifetime parameter on `HookEntry` or `Agent`.
+trait HookCallback: WasmCompatSend + WasmCompatSync {
+    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision>;
 }
 
-impl<F> HookCallback for F where
-    F: Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + WasmCompatSend + WasmCompatSync
+struct StaticFutureCallback<F>(F);
+
+impl<F> HookCallback for StaticFutureCallback<F>
+where
+    F: Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + WasmCompatSend + WasmCompatSync,
 {
+    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision> {
+        (self.0)(event)
+    }
+}
+
+struct StatefulCallback<S, F> {
+    state: S,
+    callback: F,
+}
+
+impl<S, F> HookCallback for StatefulCallback<S, F>
+where
+    S: WasmCompatSend + WasmCompatSync + 'static,
+    F: for<'call> Fn(&'call S, HookEvent) -> WasmBoxedFuture<'call, HookDecision>
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+{
+    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision> {
+        (self.callback)(&self.state, event)
+    }
 }
 
 /// One named hook callback record.
@@ -218,6 +242,9 @@ impl std::fmt::Debug for HookEntry {
 
 impl HookEntry {
     /// Create a named hook entry from an owned async callback.
+    ///
+    /// Use [`Self::with_state`] when the invocation future should borrow state
+    /// owned by the hook instead of cloning that state into every future.
     pub fn new<F>(name: impl Into<String>, callback: F) -> Self
     where
         F: Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision>
@@ -228,16 +255,61 @@ impl HookEntry {
         Self {
             name: name.into(),
             observes_deltas: false,
-            callback: Arc::new(callback),
+            callback: Arc::new(StaticFutureCallback(callback)),
+        }
+    }
+
+    /// Create a named async hook whose invocation future borrows owned state.
+    ///
+    /// `state` is moved into the hook record and remains safe to retain with
+    /// the agent. The future returned by `callback` may borrow that state only
+    /// until the inline hook dispatch completes; it does not need to be
+    /// `'static`. Put every value the callback needs in `state` rather than
+    /// borrowing from the stack that constructs the hook.
+    ///
+    /// Cloning the resulting [`HookEntry`] shares this state. Use internal
+    /// synchronization for mutable shared state, or construct separate entries
+    /// when each agent or run should have an independent copy.
+    ///
+    /// ```
+    /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
+    /// use rig_core::wasm_compat::WasmBoxedFuture;
+    ///
+    /// let marker = String::from("loaded at runtime");
+    /// let entry = HookEntry::with_state("marker", marker, |marker, event| {
+    ///     Box::pin(async move {
+    ///         match event {
+    ///             HookEvent::ModelTurnFinished { content, .. }
+    ///                 if content.iter().any(|item| format!("{item:?}").contains(marker)) =>
+    ///             {
+    ///                 HookDecision::Continue
+    ///             }
+    ///             _ => HookDecision::Continue,
+    ///         }
+    ///     }) as WasmBoxedFuture<'_, HookDecision>
+    /// });
+    /// # let _ = entry;
+    /// ```
+    pub fn with_state<S, F>(name: impl Into<String>, state: S, callback: F) -> Self
+    where
+        S: WasmCompatSend + WasmCompatSync + 'static,
+        F: for<'call> Fn(&'call S, HookEvent) -> WasmBoxedFuture<'call, HookDecision>
+            + WasmCompatSend
+            + WasmCompatSync
+            + 'static,
+    {
+        Self {
+            name: name.into(),
+            observes_deltas: false,
+            callback: Arc::new(StatefulCallback { state, callback }),
         }
     }
 
     /// Create a named hook entry from a **synchronous** callback.
     ///
     /// Most hooks inspect the event and answer immediately; they do not await
-    /// anything. This spares them the `Box::pin(async move { .. })` wrapper
-    /// [`Self::new`] requires, so the callback reads as what it is — a
-    /// function from event to decision:
+    /// anything, so the callback reads as what it is — a function from event
+    /// to decision:
     ///
     /// ```
     /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
@@ -254,16 +326,15 @@ impl HookEntry {
     ///
     /// Dispatch, fold semantics, ordering, and the
     /// [`observing_deltas`](Self::observing_deltas) opt-in are identical to
-    /// [`Self::new`] — this only changes how the callback is written. Reach for
-    /// [`Self::new`] when the hook genuinely awaits (embedding a retrieval
-    /// query, say).
+    /// [`Self::new`] — this only changes how the callback is written. For a
+    /// genuinely async hook, use [`Self::new`] when its future owns its inputs,
+    /// or [`Self::with_state`] when the future borrows state owned by the hook.
     pub fn sync<F>(name: impl Into<String>, callback: F) -> Self
     where
         F: Fn(HookEvent) -> HookDecision + WasmCompatSend + WasmCompatSync + 'static,
     {
         Self::new(name, move |event| {
-            let decision = callback(event);
-            Box::pin(async move { decision })
+            Box::pin(std::future::ready(callback(event))) as WasmBoxedFuture<'static, HookDecision>
         })
     }
 
@@ -287,7 +358,7 @@ impl HookEntry {
     }
 
     async fn dispatch(&self, event: HookEvent) -> HookDecision {
-        (self.callback)(event).await
+        self.callback.call(event).await
     }
 }
 
@@ -684,6 +755,93 @@ mod tests {
         )
     }
 
+    async fn yield_once() {
+        let mut yielded = false;
+        futures::future::poll_fn(move |context| {
+            if yielded {
+                std::task::Poll::Ready(())
+            } else {
+                yielded = true;
+                context.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn new_preserves_boxed_multi_branch_callbacks() {
+        let entry = HookEntry::new("boxed", |event| {
+            if matches!(event, HookEvent::BeforeModelCall { .. }) {
+                return Box::pin(async { HookDecision::Continue });
+            }
+            Box::pin(async {
+                HookDecision::Observation(ObservationAction::stop("unexpected event"))
+            })
+        });
+
+        assert_eq!(
+            entry
+                .dispatch(HookEvent::BeforeModelCall {
+                    turn: 1,
+                    prompt: Message::user("hello"),
+                    history: Vec::new(),
+                })
+                .await,
+            HookDecision::Continue
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_future_can_borrow_runtime_owned_state_across_await() {
+        struct State {
+            marker: String,
+            calls: AtomicUsize,
+        }
+
+        let marker = ["runtime", " marker"].concat();
+        let entry = HookEntry::with_state(
+            "borrowing-callback",
+            State {
+                marker,
+                calls: AtomicUsize::new(0),
+            },
+            |state, event| {
+                Box::pin(async move {
+                    yield_once().await;
+                    let call = state.calls.fetch_add(1, Ordering::SeqCst) + 1;
+                    match event {
+                        HookEvent::ModelTurnFinished { content, .. }
+                            if content.iter().any(|item| {
+                                matches!(item, AssistantContent::Text(text) if text.text.contains(&state.marker))
+                            }) =>
+                        {
+                            HookDecision::ModelTurn(ModelTurnAction::stop(format!(
+                                "{}:{call}", state.marker
+                            )))
+                        }
+                        _ => HookDecision::Continue,
+                    }
+                })
+            },
+        );
+
+        let cloned = entry.clone();
+        let event = || HookEvent::ModelTurnFinished {
+            turn: 1,
+            content: OneOrMany::one(AssistantContent::text("contains runtime marker")),
+            usage: Usage::new(),
+        };
+        assert_eq!(
+            entry.dispatch(event()).await,
+            HookDecision::ModelTurn(ModelTurnAction::stop("runtime marker:1"))
+        );
+        assert_eq!(
+            cloned.dispatch(event()).await,
+            HookDecision::ModelTurn(ModelTurnAction::stop("runtime marker:2"))
+        );
+    }
+
     #[tokio::test]
     async fn completion_call_merges_patches_in_order_and_stops_first() {
         let mut hooks = Hooks::new();
@@ -712,9 +870,9 @@ mod tests {
         hooks.add(entry("stop", |_| {
             HookDecision::CompletionCall(CompletionCallAction::stop("halt"))
         }));
-        hooks.add(HookEntry::new("late", move |_| {
+        hooks.add(HookEntry::sync("late", move |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { HookDecision::Continue })
+            HookDecision::Continue
         }));
         let stopped = hooks.dispatch_completion_call(1, &prompt, &[]).await;
         assert_eq!(stopped, CompletionCallAction::stop("halt"));
@@ -778,14 +936,14 @@ mod tests {
             HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 2})))
         }));
         let observed = seen.clone();
-        hooks.add(HookEntry::new("observer", move |event| {
+        hooks.add(HookEntry::sync("observer", move |event| {
             if let HookEvent::ToolCall { call, .. } = &event {
                 observed
                     .lock()
                     .expect("lock")
                     .push(call.function.arguments.clone());
             }
-            Box::pin(async { HookDecision::Continue })
+            HookDecision::Continue
         }));
         let (action, salvaged) = hooks
             .dispatch_tool_call(&tool_call(serde_json::json!({"a": 1})), "internal-1")
@@ -826,11 +984,11 @@ mod tests {
             HookDecision::ToolResult(ToolResultAction::rewrite("redacted"))
         }));
         let observed = seen.clone();
-        hooks.add(HookEntry::new("observer", move |event| {
+        hooks.add(HookEntry::sync("observer", move |event| {
             if let HookEvent::ToolResult { presentation, .. } = &event {
                 observed.lock().expect("lock").push(presentation.render());
             }
-            Box::pin(async { HookDecision::Continue })
+            HookDecision::Continue
         }));
         let call = tool_call(serde_json::json!({"a": 1}));
         let result = ToolResult::success(ToolOutput::text("raw"));
@@ -849,9 +1007,9 @@ mod tests {
         hooks.add(entry("stop", |_| {
             HookDecision::ToolResult(ToolResultAction::stop("leak"))
         }));
-        hooks.add(HookEntry::new("late", move |_| {
+        hooks.add(HookEntry::sync("late", move |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { HookDecision::ToolResult(ToolResultAction::rewrite("never")) })
+            HookDecision::ToolResult(ToolResultAction::rewrite("never"))
         }));
         let action = hooks
             .dispatch_tool_result(&call, "internal-1", &result)
@@ -866,10 +1024,9 @@ mod tests {
         log: Arc<Mutex<Vec<u32>>>,
         decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     ) -> HookEntry {
-        HookEntry::new(format!("entry-{label}"), move |event| {
+        HookEntry::sync(format!("entry-{label}"), move |event| {
             log.lock().expect("log").push(label);
-            let decision = decide(event);
-            Box::pin(async move { decision })
+            decide(event)
         })
     }
 
@@ -1021,22 +1178,22 @@ mod tests {
         assert!(!hooks.observes_deltas());
 
         let plain = plain_seen.clone();
-        hooks.add(HookEntry::new("plain", move |_| {
+        hooks.add(HookEntry::sync("plain", move |_| {
             plain.fetch_add(1, Ordering::SeqCst);
-            Box::pin(async { HookDecision::Continue })
+            HookDecision::Continue
         }));
         assert!(!hooks.observes_deltas());
 
         let observer = delta_seen.clone();
         hooks.add(
-            HookEntry::new("observer", move |event| {
+            HookEntry::sync("observer", move |event| {
                 if matches!(
                     event,
                     HookEvent::TextDelta { .. } | HookEvent::ToolCallDelta { .. }
                 ) {
                     observer.fetch_add(1, Ordering::SeqCst);
                 }
-                Box::pin(async { HookDecision::Continue })
+                HookDecision::Continue
             })
             .observing_deltas(),
         );
@@ -1066,9 +1223,9 @@ mod tests {
         let late = Arc::new(AtomicUsize::new(0));
         let counter = late.clone();
         hooks.add(
-            HookEntry::new("late", move |_| {
+            HookEntry::sync("late", move |_| {
                 counter.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async { HookDecision::Continue })
+                HookDecision::Continue
             })
             .observing_deltas(),
         );
@@ -1091,9 +1248,9 @@ mod tests {
         let counter = Arc::new(AtomicUsize::new(0));
         let seen = counter.clone();
         hooks.add(
-            HookEntry::new("late", move |_| {
+            HookEntry::sync("late", move |_| {
                 seen.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async { HookDecision::Continue })
+                HookDecision::Continue
             })
             .observing_deltas(),
         );

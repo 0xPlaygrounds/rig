@@ -81,14 +81,12 @@
 //!     store: InMemoryVectorStore,
 //!     samples: u64,
 //! ) -> HookEntry {
-//!     let state = Arc::new((embedder, rt, store, samples));
-//!     HookEntry::new("rag", move |event| {
-//!         let state = state.clone();
+//!     HookEntry::with_state("rag", (embedder, rt, store, samples), |state, event| {
 //!         Box::pin(async move {
 //!             let HookEvent::BeforeModelCall { prompt, history, .. } = event else {
 //!                 return HookDecision::Continue;
 //!             };
-//!             let (embedder, rt, store, samples) = state.as_ref();
+//!             let (embedder, rt, store, samples) = state;
 //!             // Search with the prompt's text, falling back to the latest
 //!             // textual history message.
 //!             let query = prompt.rag_text().or_else(|| {

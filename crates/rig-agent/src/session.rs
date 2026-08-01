@@ -3895,22 +3895,24 @@ mod classic_hook_tests {
     // ------------------------------------------------------------------
 
     /// Renames an invalid tool call to a known tool.
-    fn repair_invalid_to_hook(replacement: &'static str) -> HookEntry {
+    fn repair_invalid_to_hook(replacement: impl Into<String>) -> HookEntry {
+        let replacement = replacement.into();
         hook_entry("repair-invalid", move |event| {
             let HookEvent::InvalidToolCall(_) = event else {
                 return HookDecision::Continue;
             };
-            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement))
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement.clone()))
         })
     }
 
     /// Skips an invalid tool call (synthetic result, no execution).
-    fn skip_invalid_hook(reason: &'static str) -> HookEntry {
+    fn skip_invalid_hook(reason: impl Into<String>) -> HookEntry {
+        let reason = reason.into();
         hook_entry("skip-invalid", move |event| {
             let HookEvent::InvalidToolCall(_) = event else {
                 return HookDecision::Continue;
             };
-            HookDecision::InvalidToolCall(InvalidToolCallAction::skip(reason))
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip(reason.clone()))
         })
     }
 
@@ -4079,15 +4081,16 @@ mod classic_hook_tests {
     }
 
     fn capture_and_repair_invalid_hook(
-        replacement: &'static str,
+        replacement: impl Into<String>,
         args: Arc<Mutex<Vec<Option<String>>>>,
     ) -> HookEntry {
+        let replacement = replacement.into();
         hook_entry("capture-and-repair-invalid", move |event| {
             let HookEvent::InvalidToolCall(context) = event else {
                 return HookDecision::Continue;
             };
             args.lock().expect("invalid args").push(context.args);
-            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement))
+            HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement.clone()))
         })
     }
 
@@ -4242,12 +4245,13 @@ mod classic_hook_tests {
     // Valid tool-call / tool-result hook actions, chained rewrites
     // ------------------------------------------------------------------
 
-    fn skip_tool_call_hook(reason: &'static str) -> HookEntry {
+    fn skip_tool_call_hook(reason: impl Into<String>) -> HookEntry {
+        let reason = reason.into();
         hook_entry("skip-tool-call", move |event| {
             let HookEvent::ToolCall { .. } = event else {
                 return HookDecision::Continue;
             };
-            HookDecision::ToolCall(ToolCallAction::skip(reason))
+            HookDecision::ToolCall(ToolCallAction::skip(reason.clone()))
         })
     }
 
@@ -4260,12 +4264,13 @@ mod classic_hook_tests {
         })
     }
 
-    fn rewrite_tool_result_hook(replacement: &'static str) -> HookEntry {
+    fn rewrite_tool_result_hook(replacement: impl Into<String>) -> HookEntry {
+        let replacement = replacement.into();
         hook_entry("rewrite-tool-result", move |event| {
             let HookEvent::ToolResult { .. } = event else {
                 return HookDecision::Continue;
             };
-            HookDecision::ToolResult(ToolResultAction::rewrite(replacement))
+            HookDecision::ToolResult(ToolResultAction::rewrite(replacement.clone()))
         })
     }
 
@@ -4591,7 +4596,8 @@ mod classic_hook_tests {
     #[tokio::test]
     async fn chained_rewrites_compose_across_hooks() {
         /// Sets one key of the tool arguments, preserving the rest.
-        fn set_arg(key: &'static str, value: i64) -> HookEntry {
+        fn set_arg(key: impl Into<String>, value: i64) -> HookEntry {
+            let key = key.into();
             hook_entry("set-arg", move |event| {
                 let HookEvent::ToolCall { call, .. } = event else {
                     return HookDecision::Continue;
@@ -4600,13 +4606,14 @@ mod classic_hook_tests {
                 if !parsed.is_object() {
                     parsed = json!({});
                 }
-                parsed[key] = json!(value);
+                parsed[&key] = json!(value);
                 HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
             })
         }
 
         /// Wraps the tool result in `label(...)`.
-        fn wrap_result(label: &'static str) -> HookEntry {
+        fn wrap_result(label: impl Into<String>) -> HookEntry {
+            let label = label.into();
             hook_entry("wrap-result", move |event| {
                 let HookEvent::ToolResult { presentation, .. } = event else {
                     return HookDecision::Continue;
@@ -4781,13 +4788,15 @@ mod classic_hook_tests {
     }
 
     /// Injects one extra context document on every completion call.
-    fn extra_context_hook(id: &'static str, text: &'static str) -> HookEntry {
+    fn extra_context_hook(id: impl Into<String>, text: impl Into<String>) -> HookEntry {
+        let id = id.into();
+        let text = text.into();
         hook_entry("extra-context", move |event| {
             let HookEvent::BeforeModelCall { .. } = event else {
                 return HookDecision::Continue;
             };
             HookDecision::CompletionCall(CompletionCallAction::patch(
-                RequestPatch::new().context(hook_doc(id, text)),
+                RequestPatch::new().context(hook_doc(&id, &text)),
             ))
         })
     }
@@ -6309,9 +6318,9 @@ mod classic_hook_tests {
     /// A human reviewer's decision for a pending tool call.
     enum Decision {
         Approve,
-        Deny(&'static str),
+        Deny(String),
         Edit(serde_json::Value),
-        Abort(&'static str),
+        Abort(String),
     }
 
     /// Simulates a human reviewer by popping a scripted decision per
@@ -6375,7 +6384,7 @@ mod classic_hook_tests {
         let decisions = || {
             vec![
                 Decision::Approve,
-                Decision::Deny(denial),
+                Decision::Deny(denial.to_owned()),
                 Decision::Edit(json!({"x": 1, "y": 100})),
             ]
         };
@@ -6489,7 +6498,7 @@ mod classic_hook_tests {
             .build()
             .runner("do the sensitive thing")
             .max_turns(3)
-            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]).entry())
+            .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON.to_owned())]).entry())
             .run()
             .await
             .expect_err("an aborted tool call should terminate the blocking run");
@@ -6509,7 +6518,9 @@ mod classic_hook_tests {
                 .build()
                 .runner("do the sensitive thing")
                 .max_turns(3)
-                .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]).entry())
+                .add_hook(
+                    HumanApprovalHook::new([Decision::Abort(ABORT_REASON.to_owned())]).entry(),
+                )
                 .stream_run(),
         );
         let mut stream_error = None;
@@ -6534,7 +6545,7 @@ mod classic_hook_tests {
     /// tool is not re-evaluated ("sticky").
     #[derive(Clone)]
     struct PolicyHook {
-        auto_approve: std::collections::HashSet<&'static str>,
+        auto_approve: std::collections::HashSet<String>,
         /// Tool names the policy actually evaluated (cache misses), in order.
         evaluated: Arc<Mutex<Vec<String>>>,
         /// Sticky cache of prior decisions, keyed by tool name.
@@ -6542,9 +6553,13 @@ mod classic_hook_tests {
     }
 
     impl PolicyHook {
-        fn new(auto_approve: impl IntoIterator<Item = &'static str>) -> Self {
+        fn new<I, S>(auto_approve: I) -> Self
+        where
+            I: IntoIterator<Item = S>,
+            S: Into<String>,
+        {
             Self {
-                auto_approve: auto_approve.into_iter().collect(),
+                auto_approve: auto_approve.into_iter().map(Into::into).collect(),
                 evaluated: Arc::new(Mutex::new(Vec::new())),
                 cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
@@ -6644,10 +6659,10 @@ mod classic_hook_tests {
     // Model-turn retry: budgets, history shape, hook order, fail-closed
     // ------------------------------------------------------------------
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone)]
     enum TestRetryMode {
         Repeat,
-        Feedback(&'static str),
+        Feedback(String),
     }
 
     #[derive(Clone, Default)]
@@ -6677,10 +6692,11 @@ mod classic_hook_tests {
     /// A policy-owned retry budget: the framework only enforces `max_turns`, so
     /// the entry keeps its narrower limit in the state it captures.
     fn bounded_response_retry(
-        rejected_text: &'static str,
+        rejected_text: impl Into<String>,
         max_retries: usize,
         mode: TestRetryMode,
     ) -> HookEntry {
+        let rejected_text = rejected_text.into();
         let attempts = Arc::new(Mutex::new(0usize));
         hook_entry("bounded-response-retry", move |event| {
             let HookEvent::ModelTurnFinished { content, .. } = event else {
@@ -6704,9 +6720,11 @@ mod classic_hook_tests {
                 )));
             }
 
-            HookDecision::ModelTurn(match mode {
+            HookDecision::ModelTurn(match &mode {
                 TestRetryMode::Repeat => ModelTurnAction::repeat(),
-                TestRetryMode::Feedback(feedback) => ModelTurnAction::retry_with_feedback(feedback),
+                TestRetryMode::Feedback(feedback) => {
+                    ModelTurnAction::retry_with_feedback(feedback.clone())
+                }
             })
         })
     }
@@ -6783,7 +6801,7 @@ mod classic_hook_tests {
             .add_hook(bounded_response_retry(
                 "rejected",
                 1,
-                TestRetryMode::Feedback("try another approach"),
+                TestRetryMode::Feedback("try another approach".to_owned()),
             ))
             .build()
             .runner("question")
@@ -6831,7 +6849,7 @@ mod classic_hook_tests {
             .add_hook(bounded_response_retry(
                 "",
                 1,
-                TestRetryMode::Feedback("provide an answer"),
+                TestRetryMode::Feedback("provide an answer".to_owned()),
             ))
             .build()
             .runner("question")
@@ -6938,7 +6956,7 @@ mod classic_hook_tests {
         .add_hook(bounded_response_retry(
             "rejected",
             1,
-            TestRetryMode::Feedback("correct the answer"),
+            TestRetryMode::Feedback("correct the answer".to_owned()),
         ))
         .build()
         .runner("question")
@@ -6964,7 +6982,7 @@ mod classic_hook_tests {
             .add_hook(bounded_response_retry(
                 "rejected",
                 1,
-                TestRetryMode::Feedback("correct the answer"),
+                TestRetryMode::Feedback("correct the answer".to_owned()),
             ))
             .build()
             .runner("question")
@@ -7011,7 +7029,7 @@ mod classic_hook_tests {
                 .add_hook(bounded_response_retry(
                     "",
                     1,
-                    TestRetryMode::Feedback("provide an answer"),
+                    TestRetryMode::Feedback("provide an answer".to_owned()),
                 ))
                 .build()
                 .runner("question")
@@ -7311,33 +7329,34 @@ mod classic_hook_tests {
     /// A per-run retry entry that parks at `barrier` on the first rejected
     /// turn, so two concurrent runs are guaranteed to be mid-retry together.
     fn barrier_response_retry(barrier: Arc<Barrier>) -> HookEntry {
-        let attempts = Arc::new(Mutex::new(0usize));
-        HookEntry::new("barrier-response-retry", move |event| {
-            let barrier = barrier.clone();
-            let attempts = attempts.clone();
-            Box::pin(async move {
-                let HookEvent::ModelTurnFinished { content, .. } = event else {
-                    return HookDecision::Continue;
-                };
-                let rejected = content.iter().any(
+        HookEntry::with_state(
+            "barrier-response-retry",
+            (barrier, Mutex::new(0usize)),
+            |(barrier, attempts), event| {
+                Box::pin(async move {
+                    let HookEvent::ModelTurnFinished { content, .. } = event else {
+                        return HookDecision::Continue;
+                    };
+                    let rejected = content.iter().any(
                     |content| matches!(content, AssistantContent::Text(text) if text.text == "rejected"),
                 );
-                if !rejected {
-                    return HookDecision::Continue;
-                }
-                barrier.wait().await;
-                let attempt = {
-                    let mut attempts = attempts.lock().expect("retry attempts");
-                    *attempts += 1;
-                    *attempts
-                };
-                HookDecision::ModelTurn(if attempt > 1 {
-                    ModelTurnAction::stop("response retry limit (1) exceeded")
-                } else {
-                    ModelTurnAction::repeat()
+                    if !rejected {
+                        return HookDecision::Continue;
+                    }
+                    barrier.wait().await;
+                    let attempt = {
+                        let mut attempts = attempts.lock().expect("retry attempts");
+                        *attempts += 1;
+                        *attempts
+                    };
+                    HookDecision::ModelTurn(if attempt > 1 {
+                        ModelTurnAction::stop("response retry limit (1) exceeded")
+                    } else {
+                        ModelTurnAction::repeat()
+                    })
                 })
-            })
-        })
+            },
+        )
     }
 
     /// Two concurrent runs of one agent each get their own retry budget: the
@@ -8274,7 +8293,8 @@ mod classic_span_tests {
     }
 
     /// Rejects a `rejected` turn once, then accepts.
-    fn retry_once_on(rejected_text: &'static str) -> HookEntry {
+    fn retry_once_on(rejected_text: impl Into<String>) -> HookEntry {
+        let rejected_text = rejected_text.into();
         let attempts = Arc::new(Mutex::new(0usize));
         hook_entry("bounded-response-retry", move |event| {
             let HookEvent::ModelTurnFinished { content, .. } = event else {

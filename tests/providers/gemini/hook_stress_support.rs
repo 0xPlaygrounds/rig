@@ -271,12 +271,12 @@ impl TallyReader {
 /// The reader's hook record over `tally`.
 pub(crate) fn tally_reader(reader: &TallyReader, tally: ToolCallTally) -> HookEntry {
     let tallies = reader.tallies.clone();
-    HookEntry::new("tally-reader", move |event| {
+    HookEntry::sync("tally-reader", move |event| {
         if matches!(event, HookEvent::ModelTurnFinished { .. }) {
             tallies.lock().expect("tallies").push(tally.get());
-            return Box::pin(async { HookDecision::ModelTurn(ModelTurnAction::continue_run()) });
+            return HookDecision::ModelTurn(ModelTurnAction::continue_run());
         }
-        Box::pin(async { HookDecision::Continue })
+        HookDecision::Continue
     })
 }
 
@@ -324,17 +324,19 @@ pub(crate) fn fact_doc(id: &str, text: &str) -> Document {
 /// Sets one key of a named tool's arguments, preserving the rest — chains with
 /// other `set_arg`s so several hooks compose.
 pub(crate) fn set_arg(
-    tool: &'static str,
-    key: &'static str,
+    tool: impl Into<String>,
+    key: impl Into<String>,
     value: serde_json::Value,
 ) -> HookEntry {
+    let tool = tool.into();
+    let key = key.into();
     HookEntry::sync("set-arg", move |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == tool => {
             let mut parsed = call.function.arguments;
             if !parsed.is_object() {
                 parsed = json!({});
             }
-            parsed[key] = value.clone();
+            parsed[&key] = value.clone();
             HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
         }
         HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
@@ -346,25 +348,23 @@ pub(crate) fn set_arg(
 #[derive(Clone)]
 pub(crate) enum ResultRewrite {
     /// Replace the whole result with a fixed marker.
-    Replace(&'static str),
+    Replace(String),
     /// Wrap the (possibly already-rewritten) result — chains with a prior rewrite.
-    Wrap {
-        prefix: &'static str,
-        suffix: &'static str,
-    },
+    Wrap { prefix: String, suffix: String },
     /// Keep only the first `n` characters.
     Truncate(usize),
 }
 
 /// Rewrites a named tool's result. Chains with other `rewrite_tool_result`s:
 /// each entry sees the running presentation, not the raw output.
-pub(crate) fn rewrite_tool_result(tool: &'static str, rewrite: ResultRewrite) -> HookEntry {
+pub(crate) fn rewrite_tool_result(tool: impl Into<String>, rewrite: ResultRewrite) -> HookEntry {
+    let tool = tool.into();
     HookEntry::sync("rewrite-tool-result", move |event| match event {
         HookEvent::ToolResult {
             call, presentation, ..
         } if call.function.name == tool => {
             let new = match &rewrite {
-                ResultRewrite::Replace(marker) => (*marker).to_string(),
+                ResultRewrite::Replace(marker) => marker.clone(),
                 ResultRewrite::Wrap { prefix, suffix } => {
                     format!("{prefix}{}{suffix}", presentation.render())
                 }
@@ -378,10 +378,12 @@ pub(crate) fn rewrite_tool_result(tool: &'static str, rewrite: ResultRewrite) ->
 }
 
 /// Terminates the run when a named tool *produces a result* (post-execution).
-pub(crate) fn terminate_on_result(tool: &'static str, reason: &'static str) -> HookEntry {
+pub(crate) fn terminate_on_result(tool: impl Into<String>, reason: impl Into<String>) -> HookEntry {
+    let tool = tool.into();
+    let reason = reason.into();
     HookEntry::sync("terminate-on-result", move |event| match event {
         HookEvent::ToolResult { call, .. } if call.function.name == tool => {
-            HookDecision::ToolResult(ToolResultAction::stop(reason))
+            HookDecision::ToolResult(ToolResultAction::stop(reason.clone()))
         }
         HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
         _ => HookDecision::Continue,

@@ -32,18 +32,16 @@ struct WordDefinition {
 ///
 /// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
 /// closure that receives an owned `HookEvent` and returns a `HookDecision`.
-/// Anything the closure needs (here the embedding config, the transport, the
-/// store, and the sample count) is captured, shared through an `Arc` so the
-/// future stays `'static + Send + Sync`.
+/// Anything the callback needs is owned by the hook record. Each invocation
+/// future borrows that state only until its inline dispatch completes.
 fn rag_hook(
     embedding_config: openai::functions::EmbeddingConfig,
     rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_config, rt, store, samples));
-    HookEntry::new("rag", move |event| {
-        let state = state.clone();
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("rag", state, |state, event| {
         Box::pin(async move {
             // Only the pre-model-call event is interesting; everything else
             // falls through untouched.
@@ -53,7 +51,7 @@ fn rag_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_config, rt, store, samples) = state.as_ref();
+            let (embedding_config, rt, store, samples) = state;
 
             // Search with the prompt's text, falling back to the latest
             // textual history message.

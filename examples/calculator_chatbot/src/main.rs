@@ -23,7 +23,6 @@ use rig::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
 
 /// Selects which registered tools the model sees on each turn by similarity
 /// between the turn's query and the tools' embedded documentation
@@ -31,18 +30,16 @@ use std::sync::Arc;
 /// tool retrieval).
 ///
 /// A hook is an attach-and-forget record: a named [`HookEntry`] whose closure
-/// captures everything it needs — here the embedding config, the HTTP
-/// runtime, and the tool store, shared through an `Arc` so the callback is
-/// `'static`.
+/// owns everything it needs — here the embedding config, the HTTP runtime, and
+/// the tool store — while each inline invocation future borrows that state.
 fn tool_retrieval_hook(
     embedding_config: openai::functions::EmbeddingConfig,
     rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = Arc::new((embedding_config, rt, store, samples));
-    HookEntry::new("tool-retrieval", move |event| {
-        let state = state.clone();
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("tool-retrieval", state, |state, event| {
         Box::pin(async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
@@ -50,7 +47,7 @@ fn tool_retrieval_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_config, rt, store, samples) = state.as_ref();
+            let (embedding_config, rt, store, samples) = state;
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));

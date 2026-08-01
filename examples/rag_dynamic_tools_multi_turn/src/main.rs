@@ -109,17 +109,16 @@ impl Tool for Subtract {
 
 /// Selects which registered tools the model sees on each turn by similarity
 /// between the turn's query and the tools' embedded documentation. The
-/// embedding config, transport, store, and sample count are captured behind an
-/// `Arc` so the hook's future stays `'static + Send + Sync`.
+/// hook owns the embedding config, transport, store, and sample count; its
+/// invocation future borrows that state only until dispatch completes.
 fn tool_retrieval_hook(
     embedding_config: openai::functions::EmbeddingConfig,
     rt: HttpRuntime,
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    let state = std::sync::Arc::new((embedding_config, rt, store, samples));
-    HookEntry::new("tool-retrieval", move |event| {
-        let state = state.clone();
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("tool-retrieval", state, |state, event| {
         Box::pin(async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
@@ -127,7 +126,7 @@ fn tool_retrieval_hook(
             else {
                 return HookDecision::Continue;
             };
-            let (embedding_config, rt, store, samples) = state.as_ref();
+            let (embedding_config, rt, store, samples) = state;
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
