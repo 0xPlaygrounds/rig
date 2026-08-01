@@ -100,3 +100,4 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     )
     .await
 }
+use rig::prelude::*;

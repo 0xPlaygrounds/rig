@@ -1,6 +1,7 @@
 //! Gemini structured output smoke test.
 
 use rig::agent::OutputMode;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig_agent::test_utils::decode_structured_output;
@@ -89,15 +90,13 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
         MockHttpResponse::success(text_response("not valid JSON", "gemini-runtime-invalid")),
         MockHttpResponse::success(output_tool_response("final_result")),
     ]);
-    let provider = rig::provider::ProviderConfig::Gemini(
-        gemini::functions::Config::new(gemini::completion::GEMINI_2_5_FLASH)
-            .with_api_key("test-key"),
-    );
-    let rt = std::sync::Arc::new(rig::provider::Runtime::with_http(
-        rig::http_runtime::HttpRuntime::sequenced(http.clone()),
-    ));
-    let agent = rig::agent::AgentBuilder::new(provider)
-        .runtime(rt)
+    let client = gemini::Client::builder()
+        .api_key("test-key")
+        .http_runtime(rig::http_runtime::HttpRuntime::sequenced(http.clone()))
+        .build()
+        .expect("Gemini test client should build");
+    let agent = client
+        .agent(gemini::completion::GEMINI_2_5_FLASH)
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .default_max_turns(2)

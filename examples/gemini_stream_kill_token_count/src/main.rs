@@ -50,7 +50,7 @@ use std::time::Duration;
 
 use futures::{Stream, StreamExt};
 use rig::completion::{CompletionError, Usage};
-use rig::http_runtime::HttpRuntime;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
@@ -316,15 +316,15 @@ async fn run_scenario(
     http: &reqwest::Client,
     api_key: &str,
 ) -> anyhow::Result<Report> {
-    let cfg = gemini::functions::Config::from_env(MODEL)?;
-    let rt = HttpRuntime::new();
-
-    let request = rig::completion::CompletionRequest::builder(prompt)
+    let client = gemini::Client::from_env()?;
+    let stream = client
+        .completion_model(MODEL)
+        .completion_request(prompt)
         .temperature(0.7)
         .max_tokens(2000)
         .additional_params(no_thinking_params()?)
-        .build();
-    let stream = gemini::functions::open_stream(&cfg, &rt, request).await?;
+        .stream()
+        .await?;
 
     let disrupted = Disrupt::new(stream, mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

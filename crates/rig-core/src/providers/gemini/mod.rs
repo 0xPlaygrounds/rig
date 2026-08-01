@@ -26,6 +26,92 @@ pub mod model_listing;
 pub mod streaming;
 pub mod transcription;
 
+mod generate_content_client {
+    crate::providers::client::define_http_client! {
+        config = super::functions::Config,
+        default_base_url = super::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+mod interactions_client {
+    crate::providers::client::define_http_client! {
+        config = super::interactions_api::functions::Config,
+        default_base_url = super::interactions_api::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+pub use generate_content_client::{Client, ClientBuilder};
+pub use interactions_client::{
+    Client as InteractionsClient, ClientBuilder as InteractionsClientBuilder,
+};
+
+impl Client {
+    /// Materialize embedding configuration sharing this connection.
+    ///
+    /// Known Gemini models retain their documented default dimensionality so
+    /// requests built through the concrete client match the former fluent
+    /// embedding model API on the wire.
+    pub fn embedding_config(&self, model: impl Into<String>) -> functions::EmbeddingConfig {
+        let model = model.into();
+        let dimensions = embedding::model_default_ndims(&model);
+        let mut config = functions::EmbeddingConfig::new(model);
+        config.connection = self.connection_config().clone();
+        config.dimensions = dimensions;
+        config
+    }
+
+    /// Select the Interactions API while preserving this connection and runtime.
+    pub fn interactions_api(&self) -> InteractionsClient {
+        InteractionsClient::from_connection(self.connection_config().clone(), self.http_runtime())
+    }
+
+    /// Keep the `generateContent` API selected.
+    pub fn generate_content_api(&self) -> Self {
+        self.clone()
+    }
+
+    /// Materialize transcription configuration sharing this connection.
+    pub fn transcription_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+}
+
+impl InteractionsClient {
+    /// Materialize generateContent embedding configuration sharing this connection.
+    pub fn embedding_config(&self, model: impl Into<String>) -> functions::EmbeddingConfig {
+        self.generate_content_api().embedding_config(model)
+    }
+
+    /// Select `generateContent` while preserving this connection and runtime.
+    pub fn generate_content_api(&self) -> Client {
+        Client::from_connection(self.connection_config().clone(), self.http_runtime())
+    }
+
+    /// Keep the Interactions API selected.
+    pub fn interactions_api(&self) -> Self {
+        self.clone()
+    }
+
+    /// Materialize generateContent transcription configuration using this connection.
+    pub fn transcription_config(&self, model: impl Into<String>) -> functions::Config {
+        self.generate_content_api().config(model)
+    }
+
+    /// Materialize generateContent image configuration using this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.generate_content_api().config(model)
+    }
+}
+
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
 pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
@@ -149,5 +235,20 @@ mod tests {
             ApiResponse::Ok(response) => assert_eq!(response.message, "success"),
             ApiResponse::Err(err) => panic!("expected success, got error: {err:?}"),
         }
+    }
+
+    #[test]
+    fn concrete_clients_preserve_embedding_model_defaults() {
+        let client = Client::new("test-key");
+        let config = client.embedding_config(EMBEDDING_001);
+        assert_eq!(config.dimensions, Some(3072));
+        assert_eq!(config.connection, *client.connection_config());
+
+        let interactions_config = client.interactions_api().embedding_config(EMBEDDING_004);
+        assert_eq!(interactions_config.dimensions, Some(768));
+        assert_eq!(interactions_config.connection, *client.connection_config());
+
+        let unknown = client.embedding_config("custom-embedding-model");
+        assert_eq!(unknown.dimensions, None);
     }
 }

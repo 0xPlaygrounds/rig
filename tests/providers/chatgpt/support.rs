@@ -1,112 +1,35 @@
 use assert_fs::TempDir;
-use rig::AgentBuilder;
-use rig::completion::{CompletionError, CompletionRequest, CompletionResponse};
-use rig::http_runtime::HttpRuntime;
-use rig::provider::ProviderConfig;
 use rig::providers::chatgpt;
-use rig::streaming::StreamingCompletionResponse;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
 
-/// Connection details for a running ChatGPT cassette proxy.
-///
-/// Replaces the deleted `chatgpt::Client`: tests mint a plain
-/// [`chatgpt::functions::Config`] (or an [`AgentBuilder`]) per model, pointed
-/// at the cassette's base URL and carrying the recorded access token,
-/// account id and default instructions.
-pub(super) struct ChatGptCassette {
-    access_token: String,
-    account_id: String,
-    base_url: String,
-    default_instructions: String,
-}
-
-#[allow(dead_code)]
-impl ChatGptCassette {
-    /// Completion config for `model` aimed at the cassette proxy.
-    pub(crate) fn config(&self, model: impl Into<String>) -> chatgpt::functions::Config {
-        let mut cfg = chatgpt::functions::Config::new(model)
-            .with_access_token(self.access_token.clone())
-            .with_account_id(self.account_id.clone())
-            .with_base_url(self.base_url.clone());
-        cfg.default_instructions = Some(self.default_instructions.clone());
-        cfg
-    }
-
-    /// An [`AgentBuilder`] for `model` aimed at the cassette proxy.
-    pub(crate) fn agent(&self, model: impl Into<String>) -> AgentBuilder {
-        AgentBuilder::new(ProviderConfig::ChatGpt(self.config(model)))
-    }
-
-    /// A real-HTTP runtime — the cassette proxy is a live local server.
-    pub(crate) fn http(&self) -> HttpRuntime {
-        HttpRuntime::new()
-    }
-
-    /// Stand-in for the deleted `client.completion_model(model)`: a config
-    /// plus runtime pair exposing `completion`/`stream`.
-    pub(crate) fn completion_model(&self, model: impl Into<String>) -> ChatGptCassetteModel {
-        ChatGptCassetteModel {
-            cfg: self.config(model),
-            rt: self.http(),
-        }
-    }
-}
-
-/// The deleted `ChatGPTCompletionModel`, re-expressed as config + runtime.
-pub(super) struct ChatGptCassetteModel {
-    cfg: chatgpt::functions::Config,
-    rt: HttpRuntime,
-}
-
-#[allow(dead_code)]
-impl ChatGptCassetteModel {
-    pub(crate) fn with_strict_tools(mut self) -> Self {
-        self.cfg = self.cfg.with_strict_tools();
-        self
-    }
-
-    pub(crate) async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        chatgpt::functions::complete(&self.cfg, &self.rt, request).await
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        chatgpt::functions::open_stream(&self.cfg, &self.rt, request).await
-    }
-}
-
 async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
-) -> (ProviderCassette, ChatGptCassette) {
+) -> (ProviderCassette, chatgpt::Client) {
     let cassette =
         ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
-    let handle = ChatGptCassette {
-        access_token: cassette.api_key("CHATGPT_ACCESS_TOKEN"),
-        account_id: cassette.api_key("CHATGPT_ACCOUNT_ID"),
-        base_url: cassette.base_url(),
-        default_instructions: default_instructions.into(),
-    };
+    let client = chatgpt::Client::builder()
+        .access_token(cassette.api_key("CHATGPT_ACCESS_TOKEN"))
+        .account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
+        .base_url(cassette.base_url())
+        .default_instructions(default_instructions)
+        .build()
+        .expect("cassette client should build");
 
-    (cassette, handle)
+    (cassette, client)
 }
 
-async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, ChatGptCassette) {
+async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, chatgpt::Client) {
     chatgpt_cassette_with_default_instructions(spec, "").await
 }
 
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, ChatGptCassette, TempDir) {
+) -> (ProviderCassette, chatgpt::Client, TempDir) {
     let cassette =
         ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
     let temp = TempDir::new().expect("temp auth directory should be created");
@@ -137,19 +60,23 @@ async fn chatgpt_noninteractive_oauth_cassette(
         .await
         .expect("cached OAuth auth should not require device flow");
 
-    let handle = ChatGptCassette {
-        access_token: auth.access_token,
-        account_id: auth.account_id.unwrap_or_default(),
-        base_url: cassette.base_url(),
-        default_instructions: String::new(),
-    };
+    let mut builder = chatgpt::Client::builder()
+        .access_token(auth.access_token)
+        .base_url(cassette.base_url())
+        .default_instructions("");
+    if let Some(account_id) = auth.account_id {
+        builder = builder.account_id(account_id);
+    }
+    let client = builder
+        .build()
+        .expect("non-interactive OAuth cassette client should build");
 
-    (cassette, handle, temp)
+    (cassette, client, temp)
 }
 
 pub(super) async fn with_chatgpt_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(ChatGptCassette) -> Fut,
+    F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, handle) = chatgpt_cassette(spec).await;
@@ -162,7 +89,7 @@ pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
     default_instructions: impl Into<String>,
     test_body: F,
 ) where
-    F: FnOnce(ChatGptCassette) -> Fut,
+    F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, handle) =
@@ -175,7 +102,7 @@ pub(super) async fn with_chatgpt_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(ChatGptCassette) -> Fut,
+    F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, handle, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;

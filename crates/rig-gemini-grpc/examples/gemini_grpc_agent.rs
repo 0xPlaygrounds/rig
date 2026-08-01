@@ -1,23 +1,21 @@
 //! An agent talking to Gemini over gRPC.
 //!
-//! `rig_gemini_grpc::functions::Config` is plain data, so it drops straight
-//! into `ProviderConfig::GeminiGrpc`; the agent runtime builds and caches the
-//! tonic channel on first use. To skip the agent loop entirely, hand the same
-//! config to `functions::client_from_config` and call `functions::complete`.
+//! The concrete client retains the connected tonic channel for both fluent
+//! agents and low-level function calls.
 
-use rig_agent::agent::AgentBuilder;
+use rig_agent::client::AgentClientExt;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
         .init();
 
-    // Create agent with a single context prompt; the config reads
-    // `GEMINI_API_KEY` from the environment, like `Client::from_env` did.
-    let agent = AgentBuilder::new(rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"))
+    let client = rig_gemini_grpc::Client::from_env().await?;
+    let agent = client
+        .agent("gemini-2.5-flash")
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
         .build();

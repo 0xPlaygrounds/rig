@@ -55,24 +55,24 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-    pub base_url: String,
-    /// Credential location.
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Model identifier requests are built for.
     pub model: String,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
 }
+
+crate::providers::client::impl_http_connection_config!(Config);
 
 impl Config {
     /// Config for `model` reading `OPENROUTER_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL.to_string(),
+                ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
+            ),
             model: model.into(),
-            extra_headers: Vec::new(),
         }
     }
 
@@ -294,10 +294,9 @@ pub async fn list_models(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct EmbeddingConfig {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`], including `/api/v1`).
-    pub base_url: String,
-    /// Credential location.
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Embedding model identifier requests are built for.
     pub model: String,
     /// Requested embedding dimensions, sent verbatim as `dimensions`.
@@ -315,21 +314,22 @@ pub struct EmbeddingConfig {
     /// OpenRouter accepts it (the deleted default was
     /// `SUPPORTS_USER = true`).
     pub user: Option<String>,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
 }
+
+crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
 
 impl EmbeddingConfig {
     /// Config for `model` reading `OPENROUTER_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL.to_string(),
+                ApiKeyLocation::Env("OPENROUTER_API_KEY".to_string()),
+            ),
             model: model.into(),
             dimensions: None,
             encoding_format: None,
             user: None,
-            extra_headers: Vec::new(),
         }
     }
 

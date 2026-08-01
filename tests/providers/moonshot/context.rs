@@ -8,15 +8,13 @@ use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_inse
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn context_smoke() {
-    let cfg = moonshot::functions::Config::from_env(moonshot::MOONSHOT_CHAT)
-        .expect("moonshot config should build");
+    let client = moonshot::Client::from_env().expect("moonshot client should build");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(
-            AgentBuilder::new(ProviderConfig::Moonshot(cfg)),
-            |builder, doc| builder.context(doc),
-        )
+        .fold(client.agent(moonshot::MOONSHOT_CHAT), |builder, doc| {
+            builder.context(doc)
+        })
         .build();
 
     let response = agent

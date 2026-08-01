@@ -86,7 +86,8 @@ async fn responses_stream_preserves_tool_result_flow() {
     with_xai_cassette(
         "streaming_tools/responses_stream_preserves_tool_result_flow",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider_config(xai::completion::GROK_4))
+            let agent = env
+                .agent(xai::completion::GROK_4)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE)
                 .tool(StatusWordTool)
                 .build();

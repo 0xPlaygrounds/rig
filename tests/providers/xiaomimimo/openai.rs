@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn openai_compatible_completion_smoke() {
     let cfg = xiaomimimo::functions::Config::from_env(xiaomimimo::MIMO_V2_5_PRO)
         .expect("config should build");
-    let response = AgentBuilder::new(ProviderConfig::XiaomiMimo(cfg))
+    let response = AgentBuilder::new(cfg)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

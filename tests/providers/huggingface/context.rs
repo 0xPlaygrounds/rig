@@ -8,13 +8,12 @@ use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_inse
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn context_smoke() {
-    let cfg = huggingface::functions::Config::from_env("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
-        .expect("config should build");
+    let client = huggingface::Client::from_env().expect("client should build");
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
         .fold(
-            AgentBuilder::new(ProviderConfig::HuggingFace(cfg)),
+            client.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
             |builder, doc| builder.context(doc),
         )
         .build();

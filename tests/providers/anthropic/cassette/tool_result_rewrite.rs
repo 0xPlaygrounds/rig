@@ -8,6 +8,7 @@
 //! the model's answer never contains it — and the blocking and streaming tests
 //! assert the same behavior, since both drivers share the same tool seam.
 
+use rig::prelude::*;
 use std::sync::{Arc, Mutex};
 
 use rig::agent::ToolResultAction;

@@ -13,7 +13,8 @@ async fn tools_smoke() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
              After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

@@ -17,7 +17,8 @@ use rig::providers::xai;
 async fn streaming() {
     with_xai_cassette("reasoning_tool_roundtrip/streaming", |env| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = AgentBuilder::new(env.provider_config(xai::GROK_3_MINI))
+        let agent = env
+            .agent(xai::GROK_3_MINI)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -39,7 +40,8 @@ async fn streaming() {
 async fn nonstreaming() {
     with_xai_cassette("reasoning_tool_roundtrip/nonstreaming", |env| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = AgentBuilder::new(env.provider_config(xai::GROK_3_MINI))
+        let agent = env
+            .agent(xai::GROK_3_MINI)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))

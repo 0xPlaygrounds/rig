@@ -169,11 +169,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Providers are data: an embedding config, a completion config, and a
-    // shared HTTP transport.
-    let embedding_config =
-        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
-    let rt = HttpRuntime::new();
+    let client = openai::Client::from_env()?;
+    let embedding_config = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = client.http();
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
@@ -195,8 +193,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create an agent that carries every candidate tool but advertises only
     // the retrieved one per prompt (sample rate 1).
-    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-    let calculator_rag = AgentBuilder::new(cfg)
+    let calculator_rag = client
+        .agent(openai::GPT_4)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
         .tool(Add)
         .tool(Subtract)

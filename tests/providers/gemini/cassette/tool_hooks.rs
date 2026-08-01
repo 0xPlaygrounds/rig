@@ -170,3 +170,4 @@ fn assert_hook_records() {
     requires_entry(skip_tool_hook("add", ""));
     requires_entry(terminate_on_tool_hook("add", ""));
 }
+use rig::prelude::*;

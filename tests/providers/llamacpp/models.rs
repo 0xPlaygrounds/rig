@@ -8,7 +8,7 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn list_models_smoke() {
-    let cfg = support::config(support::model_name());
+    let cfg = support::completions_client().config(support::model_name());
     let rt = HttpRuntime::new();
     let models = match openai::functions::list_models(&cfg, &rt).await {
         Ok(models) => models,

@@ -43,29 +43,28 @@ Each PR will be taken on a case-by-case basis.
 ### Provider implementation checklist
 
 When adding or changing a provider, use this checklist to keep the provider
-integration consistent with Rig's generic client architecture and contributor
+integration consistent with Rig's data-oriented architecture and contributor
 expectations:
 
-- New OpenAI-chat-compatible providers MUST drive completions through
-  `openai::completion::GenericCompletionModel<Ext>` by implementing
-  `OpenAICompatibleProvider` on the provider extension (see `minimax`, `zai`,
-  `groq`, or `deepseek` for the template). Wire-dialect differences belong in
-  the trait's hooks (`completion_path`, `prepare_request`,
-  `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
-  struct, or `TryFrom<message::Message>` conversion. The same applies to
-  Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
-- `Client` and `ClientBuilder` public aliases use the correct generic types;
-  the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
-- Provider extension and builder types are defined and wired through the
-  `Provider` implementation.
-- `Capabilities` declares each supported capability with `Capable<T>` and each
-  unsupported capability with `Nothing`.
-- `ProviderBuilder` sets the correct base URL, API-key type, and provider
-  extension construction behavior.
-- `ProviderClient::{from_env, from_val}` use the correct environment variable
-  and input type.
-- API-key marker/auth types are explicit, insert the intended headers, and keep
-  credential-bearing debug output redacted.
+- Define serializable operation configs and a `ProviderDescriptor`; implement
+  request-body/request construction, response parsing, completion, and
+  streaming as straight-line free functions in the provider's `functions`
+  module. Keep provider wire quirks there instead of adding model traits or a
+  parallel abstraction.
+- Completion-capable providers represented by `ProviderConfig` expose concrete,
+  monomorphic `Client` and `ClientBuilder` types. They share one structural
+  connection record with all operation configs, store `HttpRuntime` directly,
+  and implement the minimal bridge in `rig-agent::client`.
+- Builders own their data, validate required values at `build()`, and use an
+  explicit error type. `Client::from_env` reads the documented provider
+  variables, while `client.config(model)` recomputes model-derived defaults.
+- Providers with multiple incompatible API surfaces expose explicit named
+  selectors/config factories. Do not choose a surface with an invisible model
+  heuristic.
+- Non-HTTP providers retain caller-supplied live handles and seed `Runtime` so
+  direct calls, agents, and bound requests reuse the same transport.
+- API-key locations and authentication behavior are explicit, insert the
+  intended headers, and keep credential-bearing debug output redacted.
 - Model constants are added where they are useful and are current with the
   provider's real API.
 - Requests convert from Rig request types such as `CompletionRequest` without

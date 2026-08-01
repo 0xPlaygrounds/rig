@@ -10,7 +10,9 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn streaming_smoke() {
-    let agent = AgentBuilder::new(super::live(DEFAULT_MODEL))
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
+        .agent(DEFAULT_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
@@ -25,7 +27,9 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn example_streaming_prompt() {
-    let agent = AgentBuilder::new(super::live(DEFAULT_MODEL))
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
+        .agent(DEFAULT_MODEL)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

@@ -105,11 +105,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Providers are data: one embedding config, one completion config, and a
-    // shared HTTP transport.
-    let embedding_config =
-        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
-    let rt = HttpRuntime::new();
+    let client = openai::Client::from_env()?;
+    let embedding_config = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = client.http();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding config.
     let embeddings = EmbeddingJob::new()
@@ -146,8 +144,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let rag_agent = AgentBuilder::new(cfg)
+    let rag_agent = client
+        .agent(openai::GPT_4O)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

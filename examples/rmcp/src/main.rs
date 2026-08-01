@@ -293,8 +293,9 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect();
 
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(cfg)
+    let client = openai::Client::from_env()?;
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
         .dynamic_tools(mcp_tools)
         .build();

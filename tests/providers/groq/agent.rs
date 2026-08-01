@@ -9,7 +9,9 @@ use super::AGENT_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn completion_smoke() {
-    let agent = AgentBuilder::new(super::live(AGENT_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(AGENT_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build();
 

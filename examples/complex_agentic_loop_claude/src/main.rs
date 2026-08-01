@@ -122,14 +122,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Anthropic provider selection is plain data: one config value, cloned
-    // into each agent built below. `from_env` reads `ANTHROPIC_API_KEY`.
-    let claude = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
+    let claude = anthropic::Client::from_env()?;
 
     // Embedding config for our vector store — OpenAI's embedding model here.
-    let rt = HttpRuntime::new();
-    let embedding_config =
-        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let openai = openai::Client::from_env()?;
+    let rt = openai.http();
+    let embedding_config = openai.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -182,7 +180,8 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     // Create specialized research agent that will be used as a tool
-    let research_agent = AgentBuilder::new(claude.clone())
+    let research_agent = claude
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
             Your role is to provide detailed, accurate information about climate change, renewable energy,
@@ -193,7 +192,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a data analysis agent that will be used as a tool
-    let analysis_agent = AgentBuilder::new(claude.clone())
+    let analysis_agent = claude
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
             When given data or statistics, you analyze trends, identify patterns, and draw meaningful conclusions.
@@ -204,7 +204,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a recommendation agent that will be used as a tool
-    let recommendation_agent = AgentBuilder::new(claude.clone())
+    let recommendation_agent = claude
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
             Based on research findings and analysis, you provide actionable recommendations for individuals,
@@ -216,7 +217,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create the main orchestrator agent that will use all the tools
-    let orchestrator_agent = AgentBuilder::new(claude.clone())
+    let orchestrator_agent = claude
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
             and find practical solutions. You have access to several specialized tools:

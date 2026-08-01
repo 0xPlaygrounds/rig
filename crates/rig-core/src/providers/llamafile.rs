@@ -28,6 +28,29 @@
 /// The default model identifier reported by llamafile.
 pub const LLAMA_CPP: &str = "LLaMA_CPP";
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = false,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
+impl Client {
+    /// Build an unauthenticated client for a llamafile server URL.
+    pub fn from_url(
+        base_url: impl Into<String>,
+    ) -> Result<Self, crate::providers::ClientBuildError> {
+        let base_url = base_url.into();
+        let base_url = base_url.trim_end_matches('/');
+        let api_base_url = if base_url.ends_with("/v1") {
+            base_url.to_string()
+        } else {
+            format!("{base_url}/v1")
+        };
+        Self::builder().base_url(api_base_url).build()
+    }
+}
+
 pub mod functions {
     //! Llamafile chat completions as config + pure functions.
     //!
@@ -80,24 +103,24 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct Config {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location.
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Model identifier requests are built for.
         pub model: String,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(Config);
 
     impl Config {
         /// Config for `model` with no credential (llamafile serves an unauthenticated local endpoint).
         pub fn new(model: impl Into<String>) -> Self {
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::None,
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
                 model: model.into(),
-                extra_headers: Vec::new(),
             }
         }
 
@@ -244,28 +267,27 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct EmbeddingConfig {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`], including `/v1`).
-        pub base_url: String,
-        /// Credential location (none by default — llamafile serves an
-        /// unauthenticated local endpoint).
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Embedding model identifier requests are built for.
         pub model: String,
         /// Requested embedding dimensions, sent verbatim as `dimensions`.
         pub dimensions: Option<usize>,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
 
     impl EmbeddingConfig {
         /// Embedding config for `model` against the default local endpoint.
         pub fn new(model: impl Into<String>) -> Self {
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::None,
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
                 model: model.into(),
                 dimensions: None,
-                extra_headers: Vec::new(),
             }
         }
 

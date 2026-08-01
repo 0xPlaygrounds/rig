@@ -113,3 +113,4 @@ async fn prompt_typed_and_output_schema() {
     )
     .await;
 }
+use rig::prelude::*;

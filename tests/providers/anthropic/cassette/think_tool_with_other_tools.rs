@@ -1,5 +1,6 @@
 //! Migrated from `examples/anthropic_think_tool_with_other_tools.rs`.
 
+use rig::prelude::*;
 use std::iter::Peekable;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

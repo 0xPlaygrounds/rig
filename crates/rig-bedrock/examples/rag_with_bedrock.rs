@@ -8,8 +8,8 @@
 use rig_core::OneOrMany;
 use std::vec;
 
-use rig_agent::agent::AgentBuilder;
 use rig_agent::agent::hook::{CompletionCallAction, RequestPatch};
+use rig_agent::client::AgentClientExt;
 use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
 use rig_bedrock::functions;
@@ -109,11 +109,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Bedrock authenticates through the AWS SDK's default credential chain,
-    // so both faces are plain configuration.
-    let embedding_config =
-        functions::EmbeddingConfig::new(AMAZON_TITAN_EMBED_TEXT_V2_0).with_ndims(256);
-    let client = functions::client_from_config(&embedding_config.client_config()).await;
+    let client = rig_bedrock::Client::builder()
+        .default_region()
+        .build()
+        .await;
+    let embedding_config = client
+        .embedding_config(AMAZON_TITAN_EMBED_TEXT_V2_0)
+        .with_ndims(256);
+    let aws_client = client.get_inner().await;
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingJob::new()
@@ -144,20 +147,20 @@ async fn main() -> Result<(), anyhow::Error> {
             },
         ])
         .for_provider(&functions::DESCRIPTOR)
-        .run(|texts| functions::embed(&client, &embedding_config.model, embedding_config.ndims, texts))
+        .run(|texts| functions::embed(&aws_client, &embedding_config.model, embedding_config.ndims, texts))
     .await?;
 
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    // The agent speaks to Bedrock through the same plain configuration.
-    let rag_agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE),)
+    let rag_agent = client
+        .agent(AMAZON_NOVA_LITE)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
         .add_hook(rag_hook(
-            client.clone(),
+            aws_client.clone(),
             embedding_config,
             vector_store,
             1,

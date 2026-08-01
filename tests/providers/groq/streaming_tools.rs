@@ -69,7 +69,9 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let agent = AgentBuilder::new(super::live(STREAMING_TOOLS_MULTI_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(STREAMING_TOOLS_MULTI_MODEL)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal)
@@ -91,7 +93,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let agent = AgentBuilder::new(super::live(STREAMING_TOOLS_ORDERED_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(STREAMING_TOOLS_ORDERED_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .build();

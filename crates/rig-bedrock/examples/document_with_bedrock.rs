@@ -4,7 +4,7 @@ use rig_core::{
 };
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_agent::agent::AgentBuilder;
+use rig_agent::client::AgentClientExt;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use tracing::info;
 
@@ -19,7 +19,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
+    let client = rig_bedrock::Client::from_env();
+    let agent = client
+        .agent(AMAZON_NOVA_LITE)
         .preamble("Describe this document")
         .temperature(0.5)
         .build();

@@ -107,10 +107,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Providers are data: one embedding config, one completion config, and a
-    // shared HTTP transport.
-    let embedding_config = ollama::functions::EmbeddingConfig::new("nomic-embed-text");
-    let rt = HttpRuntime::new();
+    let client = ollama::Client::from_env()?;
+    let embedding_config = client.embedding_config("nomic-embed-text");
+    let rt = client.http();
 
     // Generate embeddings for the definitions of all the documents using the specified embedding config.
     let embeddings = EmbeddingJob::new()
@@ -147,8 +146,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store with the embeddings
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    let cfg = ollama::functions::Config::new("qwen2.5:14b");
-    let rag_agent = AgentBuilder::new(cfg)
+    let rag_agent = client
+        .agent("qwen2.5:14b")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

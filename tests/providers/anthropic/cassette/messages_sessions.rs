@@ -12,6 +12,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::stream::AgentStreamItem;
 use rig::tool::Tool;

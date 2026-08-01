@@ -32,17 +32,19 @@ struct AgentConfig<'a> {
 struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents>>);
 
 fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let cfg = anthropic::functions::Config::from_env(CLAUDE_SONNET_4_6)?;
-    let agent = AgentBuilder::new(cfg).name(name).preamble(preamble).build();
+    let client = anthropic::Client::from_env()?;
+    let agent = client
+        .agent(CLAUDE_SONNET_4_6)
+        .name(name)
+        .preamble(preamble)
+        .build();
 
     Ok(Agents::Anthropic(agent))
 }
 
 fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    // `ProviderConfig::OpenAi` is the chat-completions face; the Responses API
-    // is the separate `ProviderConfig::OpenAiResponses` arm.
-    let cfg = openai::functions::Config::from_env(GPT_4O)?;
-    let agent = AgentBuilder::new(cfg).name(name).preamble(preamble).build();
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(GPT_4O).name(name).preamble(preamble).build();
 
     Ok(Agents::OpenAI(agent))
 }

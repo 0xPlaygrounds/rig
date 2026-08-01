@@ -161,7 +161,7 @@ async fn permission_control_prompt_example() -> Result<()> {
         |env| async move {
             let _cleanup = FileCleanup::new("prompt")?;
 
-            let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+            let agent = env.agent(deepseek::DEEPSEEK_V4_FLASH)
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),
@@ -212,7 +212,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         |env| async move {
             let _cleanup = FileCleanup::new("streaming")?;
 
-            let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+            let agent = env.agent(deepseek::DEEPSEEK_V4_FLASH)
                 .preamble("You are a helpful assistant that can read files using different methods.")
                 .tool(ReadFileHead {
                     path: _cleanup.path.clone(),

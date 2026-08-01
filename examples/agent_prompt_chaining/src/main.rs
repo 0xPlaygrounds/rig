@@ -1,10 +1,6 @@
 //! Demonstrates prompt chaining with two agents in sequence.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one agent produce a value that the next agent transforms.
-//!
-//! Both agents are built from the same plain-data provider config
-//! (`openai::functions::Config`, which names the model) wrapped in
-//! [`ProviderConfig`] — the config is just cloned per agent.
 
 use anyhow::Result;
 use rig::prelude::*;
@@ -16,23 +12,19 @@ const RNG_PREAMBLE: &str =
 const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
-fn build_rng_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(cfg.clone())
-        .preamble(RNG_PREAMBLE)
-        .build()
+fn build_rng_agent(client: &openai::Client) -> rig::agent::Agent {
+    client.agent(openai::GPT_4).preamble(RNG_PREAMBLE).build()
 }
 
-fn build_adder_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(cfg.clone())
-        .preamble(ADDER_PREAMBLE)
-        .build()
+fn build_adder_agent(client: &openai::Client) -> rig::agent::Agent {
+    client.agent(openai::GPT_4).preamble(ADDER_PREAMBLE).build()
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-    let seed = build_rng_agent(&cfg).prompt(INPUT_PROMPT).await?;
-    let response = build_adder_agent(&cfg).prompt(seed.trim()).await?;
+    let client = openai::Client::from_env()?;
+    let seed = build_rng_agent(&client).prompt(INPUT_PROMPT).await?;
+    let response = build_adder_agent(&client).prompt(seed.trim()).await?;
 
     println!("First agent returned: {}", seed.trim());
     println!("Second agent returned: {}", response.trim());

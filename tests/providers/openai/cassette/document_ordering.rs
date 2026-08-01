@@ -1,7 +1,8 @@
 //! Focused OpenAI cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
+use rig::prelude::*;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -46,18 +47,15 @@ async fn responses_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_cassette(
         "document_ordering/responses_keeps_documents_after_system_before_history",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(PROMPT)
-                .messages(vec![
-                    Message::system(SYSTEM_INSTRUCTION),
-                    Message::assistant("Acknowledged."),
-                ])
-                .documents(vec![ordering_document()])
+            let response = client
+                .completion_model(openai::GPT_4O)
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
+                .document(ordering_document())
                 .temperature(0.0)
                 .max_tokens(32)
-                .build();
-            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
+                .send()
                 .await
                 .expect("OpenAI Responses document ordering request should succeed");
 
@@ -79,18 +77,15 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     super::super::support::with_openai_completions_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(PROMPT)
-                .messages(vec![
-                    Message::system(SYSTEM_INSTRUCTION),
-                    Message::assistant("Acknowledged."),
-                ])
-                .documents(vec![ordering_document()])
+            let response = client
+                .completion_model(openai::GPT_4O)
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
+                .document(ordering_document())
                 .temperature(0.0)
                 .max_tokens(32)
-                .build();
-            let response = openai::functions::complete(&cfg, &rt, request)
+                .send()
                 .await
                 .expect("OpenAI Chat Completions document ordering request should succeed");
 

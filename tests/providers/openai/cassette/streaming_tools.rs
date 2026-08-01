@@ -3,6 +3,7 @@
 use rig::OneOrMany;
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
 

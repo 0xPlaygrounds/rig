@@ -17,7 +17,7 @@ async fn loaders_smoke() {
             .into_iter();
 
         let agent = examples
-            .fold(AgentBuilder::new(env.provider_config(xai::GROK_4)), |builder, (path, content)| {
+            .fold(env.agent(xai::GROK_4), |builder, (path, content)| {
                 let file_name = path
                     .file_name()
                     .and_then(|name| name.to_str())

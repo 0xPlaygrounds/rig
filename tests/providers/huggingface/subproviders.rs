@@ -22,7 +22,7 @@ async fn tool_prompt_across_subproviders() {
         let cfg = huggingface::functions::Config::new(model)
             .with_api_key(&api_key)
             .with_sub_provider(subprovider);
-        let agent = AgentBuilder::new(ProviderConfig::HuggingFace(cfg))
+        let agent = AgentBuilder::new(cfg)
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \
                  Use the provided tools to answer the user's question.",

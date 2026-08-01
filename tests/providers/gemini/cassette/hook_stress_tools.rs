@@ -324,3 +324,4 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
     )
     .await;
 }
+use rig::prelude::*;

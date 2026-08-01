@@ -62,7 +62,8 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
             };
             let stream = client
-                .stream(model, request)
+                .completion_model(model)
+                .stream(request)
                 .await
                 .expect("stream should start");
 
@@ -156,3 +157,4 @@ async fn example_streaming_with_tools() {
     )
     .await;
 }
+use rig::prelude::*;

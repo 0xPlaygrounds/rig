@@ -25,16 +25,16 @@ pub(crate) async fn aws_client() -> aws_sdk_bedrockruntime::Client {
     rig::bedrock::functions::client_from_config(&Config::new(BEDROCK_COMPLETION_MODEL)).await
 }
 
-/// A `ProviderConfig` for `model` using the SDK's default credential chain
-/// and region resolution — the `Client::from_env` equivalent for the
-/// non-generic agent path.
-pub(crate) fn bedrock_config(model: &str) -> rig::provider::ProviderConfig {
-    rig::provider::ProviderConfig::Bedrock(rig::bedrock::functions::Config::new(model))
+/// A concrete client using the AWS SDK's default credential and region chains.
+pub(crate) fn client() -> rig::bedrock::Client {
+    rig::bedrock::Client::from_env()
 }
 
 /// An `AgentBuilder` for `model` over the default-credential Bedrock config.
 pub(crate) fn agent(model: &str) -> rig::agent::AgentBuilder {
-    rig::agent::AgentBuilder::new(bedrock_config(model))
+    use rig::prelude::*;
+
+    client().agent(model)
 }
 
 mod adaptive_thinking;

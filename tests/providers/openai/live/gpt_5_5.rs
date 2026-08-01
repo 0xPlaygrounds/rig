@@ -1,15 +1,12 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
-use std::sync::Arc;
-
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::AgentBuilder;
-use rig::agent::AgentConfig;
 use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::extract::{ExtractOptions, extract_with_options};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
-use rig::provider::{ProviderConfig, Runtime};
+use rig::prelude::*;
+use rig::provider::ProviderConfig;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -37,22 +34,21 @@ struct Gpt55Event {
 
 /// Responses-API provider config for `model`, built from the environment.
 fn responses_provider(model: &str) -> ProviderConfig {
-    ProviderConfig::OpenAiResponses(
-        openai::responses_api::functions::Config::from_env(model).expect("config should build"),
-    )
-}
-
-/// Chat-Completions provider config for `model`, built from the environment.
-fn completions_provider(model: &str) -> ProviderConfig {
-    ProviderConfig::OpenAi(openai::functions::Config::from_env(model).expect("config should build"))
+    openai::Client::from_env()
+        .expect("client should build")
+        .provider_config(model)
 }
 
 fn responses_agent(model: &str) -> AgentBuilder {
-    AgentBuilder::new(responses_provider(model))
+    openai::Client::from_env()
+        .expect("client should build")
+        .agent(model)
 }
 
 fn completions_agent(model: &str) -> AgentBuilder {
-    AgentBuilder::new(completions_provider(model))
+    openai::CompletionsClient::from_env()
+        .expect("client should build")
+        .agent(model)
 }
 
 fn gpt_5_5_reasoning_params() -> serde_json::Value {
@@ -157,15 +153,13 @@ async fn responses_structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_extractor_smoke() {
-    let response = extract_with_options::<SmokePerson>(
-        AgentConfig::new(),
-        responses_provider(openai::GPT_5_5),
-        Arc::new(Runtime::new()),
-        EXTRACTOR_TEXT,
-        ExtractOptions::classic_extractor(),
-    )
-    .await
-    .expect("extractor request should succeed");
+    let agent = responses_agent(openai::GPT_5_5).build();
+    let response = agent
+        .extractor(EXTRACTOR_TEXT)
+        .classic()
+        .run_with_usage::<SmokePerson>()
+        .await
+        .expect("extractor request should succeed");
 
     assert_nonempty_response(
         response
@@ -351,15 +345,13 @@ async fn chat_completions_structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_extractor_smoke() {
-    let response = extract_with_options::<SmokePerson>(
-        AgentConfig::new(),
-        completions_provider(openai::GPT_5_5),
-        Arc::new(Runtime::new()),
-        EXTRACTOR_TEXT,
-        ExtractOptions::classic_extractor(),
-    )
-    .await
-    .expect("chat completions extractor request should succeed");
+    let agent = completions_agent(openai::GPT_5_5).build();
+    let response = agent
+        .extractor(EXTRACTOR_TEXT)
+        .classic()
+        .run_with_usage::<SmokePerson>()
+        .await
+        .expect("chat completions extractor request should succeed");
 
     assert_nonempty_response(
         response

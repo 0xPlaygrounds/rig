@@ -23,7 +23,7 @@ async fn codex_models_route_through_responses() {
         "routing/codex_models_route_through_responses",
         |client| async move {
             let response = client
-                .agent(live_responses_model())
+                .agent(&live_responses_model())
                 .preamble(BASIC_PREAMBLE)
                 .build()
                 .prompt("In one short sentence, explain what refactoring is.")
@@ -35,3 +35,4 @@ async fn codex_models_route_through_responses() {
     )
     .await;
 }
+use rig::prelude::*;

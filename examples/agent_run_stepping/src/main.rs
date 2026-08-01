@@ -26,8 +26,8 @@ use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{InvalidToolCallAction, ToolCallAction};
 use rig::executor::ToolExecutor;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
-use rig::http_runtime::HttpRuntime;
 use rig::message::UserContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
@@ -93,12 +93,10 @@ fn tool_logger_hook() -> HookEntry {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // One piece of plain data serves both halves: `openai::functions::Config`
-    // names the model, and the hand-driven half pairs it with an `HttpRuntime`
-    // to call the provider's free `complete` function directly.
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let http = HttpRuntime::new();
-    let agent = rig::agent::AgentBuilder::new(cfg.clone())
+    let client = openai::CompletionsClient::from_env()?;
+    let model = client.completion_model(openai::GPT_4O);
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
@@ -118,14 +116,15 @@ async fn main() -> Result<()> {
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
                 // execution of the configured `Agent`. Its transport is an
                 // explicit raw model request and therefore has no agent hooks.
-                let request = rig::completion::CompletionRequest::builder(prompt)
+                let response = model
+                    .completion_request(prompt)
                     .preamble(
                         "You are a calculator. Always use the provided tools to compute results.",
                     )
                     .messages(history)
                     .tools(tool_definitions.clone())
-                    .build();
-                let response = openai::functions::complete(&cfg, &http, request).await?;
+                    .send()
+                    .await?;
 
                 // The tools advertised to the provider for this turn. With
                 // static tools these are the agent's registered tools; agents

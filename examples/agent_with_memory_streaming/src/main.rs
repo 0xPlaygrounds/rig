@@ -56,8 +56,9 @@ async fn ask(
 async fn main() -> Result<()> {
     let memory = InMemoryConversationMemory::new();
 
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let agent = AgentBuilder::new(cfg)
+    let client = openai::Client::from_env()?;
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant with persistent memory.")
         .build();
 

@@ -6,8 +6,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionRequest, Message};
+use rig::completion::Message;
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::tool::Tool;
 
@@ -23,15 +24,14 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
             let model = client
-                .completion_model(chatgpt::GPT_5_4)
-                .with_strict_tools();
-            let request = CompletionRequest::builder("Use the add tool to add 7 and 5.")
-                .preamble(TOOLS_PREAMBLE)
-                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
-                .build();
-
+                .config(chatgpt::GPT_5_4)
+                .with_strict_tools()
+                .bind_completion(client.runtime());
             let response = model
-                .completion(request)
+                .completion_request("Use the add tool to add 7 and 5.")
+                .preamble(TOOLS_PREAMBLE)
+                .tool(rig::tool::portable_tool_definition(&Adder))
+                .send()
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -75,10 +75,10 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette("codex_behaviors/store_false_and_prompt_cache_fields_roundtrip", |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
             let response = model
-                .completion(CompletionRequest::builder("Reply with exactly this marker: CODEX-STORE-FALSE")
-.preamble("Return only the requested marker.")
-.messages(Vec::new())
-.build())
+                .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
+                .preamble("Return only the requested marker.")
+                .messages(Vec::new())
+                .send()
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
 

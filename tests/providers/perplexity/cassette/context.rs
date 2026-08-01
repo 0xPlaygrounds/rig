@@ -13,10 +13,9 @@ async fn context_smoke() {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(
-                AgentBuilder::new(ProviderConfig::Perplexity(env.config(perplexity::SONAR))),
-                |builder, doc| builder.context(doc),
-            )
+            .fold(env.agent(perplexity::SONAR), |builder, doc| {
+                builder.context(doc)
+            })
             .preamble(
                 "Use the provided context documents as the authoritative source. Answer concisely.",
             )

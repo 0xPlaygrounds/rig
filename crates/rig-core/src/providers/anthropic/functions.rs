@@ -55,14 +55,11 @@ pub const DEFAULT_MAX_TOKENS_FALLBACK: u64 = 2_048;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-    pub base_url: String,
-    /// Credential location; sent as the `x-api-key` header.
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Model identifier requests are built for.
     pub model: String,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
     /// Value of the required `anthropic-version` header.
     pub anthropic_version: String,
     /// Beta feature flags, joined into an `anthropic-beta` header when
@@ -89,6 +86,8 @@ pub struct Config {
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
+crate::providers::client::impl_http_connection_config!(Config);
+
 impl Config {
     /// Config for `model` reading `ANTHROPIC_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
@@ -99,10 +98,11 @@ impl Config {
         let default_max_tokens =
             Some(default_max_tokens_for_model(&model).unwrap_or(DEFAULT_MAX_TOKENS_FALLBACK));
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("ANTHROPIC_API_KEY".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL.to_string(),
+                ApiKeyLocation::Env("ANTHROPIC_API_KEY".to_string()),
+            ),
             model,
-            extra_headers: Vec::new(),
             anthropic_version: ANTHROPIC_VERSION_LATEST.to_string(),
             anthropic_betas: Vec::new(),
             default_max_tokens,

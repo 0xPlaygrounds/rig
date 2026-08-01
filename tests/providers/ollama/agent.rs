@@ -8,11 +8,11 @@ use crate::support::assert_nonempty_response;
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn completion_smoke() {
-    let agent = AgentBuilder::new(ProviderConfig::Ollama(ollama::functions::Config::new(
-        "qwen3:4b",
-    )))
-    .preamble("You are a comedian here to entertain the user using humour and jokes.")
-    .build();
+    let client = ollama::Client::from_env().expect("client should build");
+    let agent = client
+        .agent("qwen3:4b")
+        .preamble("You are a comedian here to entertain the user using humour and jokes.")
+        .build();
 
     let response = agent
         .prompt("Entertain me!")

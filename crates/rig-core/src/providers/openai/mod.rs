@@ -37,6 +37,111 @@ pub mod functions;
 pub mod model_listing;
 pub mod responses_api;
 
+mod responses_client {
+    crate::providers::client::define_http_client! {
+        config = super::responses_api::functions::Config,
+        default_base_url = super::responses_api::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+mod completions_client {
+    crate::providers::client::define_http_client! {
+        config = super::functions::Config,
+        default_base_url = super::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+pub use completions_client::{
+    Client as CompletionsClient, ClientBuilder as CompletionsClientBuilder,
+};
+pub use responses_client::{Client, ClientBuilder};
+
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+crate::providers::client::impl_http_embedding_config_factory!(
+    CompletionsClient,
+    functions::EmbeddingConfig
+);
+
+impl Client {
+    /// Materialize canonical Responses API configuration for `model`.
+    pub fn responses_config(&self, model: impl Into<String>) -> responses_api::functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize Chat Completions configuration for `model`.
+    pub fn completions_config(&self, model: impl Into<String>) -> functions::Config {
+        self.completions_api().config(model)
+    }
+
+    /// Select the Chat Completions API while preserving this connection and runtime.
+    pub fn completions_api(&self) -> CompletionsClient {
+        CompletionsClient::from_connection(self.connection_config().clone(), self.http_runtime())
+    }
+
+    /// Select the canonical Responses API.
+    pub fn responses_api(&self) -> Self {
+        self.clone()
+    }
+
+    /// Materialize transcription configuration sharing this connection.
+    pub fn transcription_config(&self, model: impl Into<String>) -> functions::Config {
+        self.completions_config(model)
+    }
+
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.completions_config(model)
+    }
+
+    /// Materialize audio-generation configuration sharing this connection.
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.completions_config(model)
+    }
+}
+
+impl CompletionsClient {
+    /// Materialize Chat Completions configuration for `model`.
+    pub fn completions_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize Responses API configuration for `model`.
+    pub fn responses_config(&self, model: impl Into<String>) -> responses_api::functions::Config {
+        self.responses_api().config(model)
+    }
+
+    /// Select the canonical Responses API while preserving this connection and runtime.
+    pub fn responses_api(&self) -> Client {
+        Client::from_connection(self.connection_config().clone(), self.http_runtime())
+    }
+
+    /// Keep the Chat Completions API selected.
+    pub fn completions_api(&self) -> Self {
+        self.clone()
+    }
+
+    /// Materialize transcription configuration sharing this connection.
+    pub fn transcription_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize audio-generation configuration sharing this connection.
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+}
+
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;

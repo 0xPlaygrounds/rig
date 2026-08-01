@@ -190,3 +190,4 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     )
     .await;
 }
+use rig::prelude::*;

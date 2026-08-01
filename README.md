@@ -78,12 +78,12 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 Rig separates portable provider/backend contracts from agent orchestration:
 
-- `rig-core` contains provider-neutral messages, completion models, portable tools,
+- `rig-core` contains provider-neutral messages, completion request/response data, portable tools,
   the in-process conversation store, the shared vector-store data types (pre-embedded search
   requests and hits; each store crate exposes its own concrete methods), and
   built-in provider mappings.
-- `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  contextual tools, extraction, and the serializable `AgentRun` state machine. It
+- `rig-agent` contains the classic builder, concrete client bridges, hook records,
+  tool execution, extraction, and the serializable `AgentRun` state machine. It
   remains enabled by default.
 
 The root `rig` facade re-exports both at their familiar paths, so most code
@@ -127,12 +127,12 @@ use rig::providers::openai;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // A provider is plain data: the config names the model and carries
-    // credentials/base URL. There is no client type and no trait to import.
-    let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+    // The concrete client owns reusable connection data and transport.
+    let client = openai::Client::from_env()?;
 
     // Create agent with a single context prompt
-    let comedian_agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+    let comedian_agent = client
+        .agent(openai::GPT_5_2)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

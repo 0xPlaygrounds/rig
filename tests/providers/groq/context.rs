@@ -13,7 +13,9 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            AgentBuilder::new(super::live(CONTEXT_MODEL)),
+            rig::providers::groq::Client::from_env()
+                .expect("client should build")
+                .agent(CONTEXT_MODEL),
             |builder, doc| builder.context(doc),
         )
         .build();

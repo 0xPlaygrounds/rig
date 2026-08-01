@@ -10,8 +10,9 @@ use rig::providers::cohere;
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn streaming_tools_smoke() {
-    let cfg = cohere::functions::Config::from_env(cohere::COMMAND_R).expect("config should build");
-    let agent = AgentBuilder::new(ProviderConfig::Cohere(cfg))
+    let client = cohere::Client::from_env().expect("client should build");
+    let agent = client
+        .agent(cohere::COMMAND_R)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)

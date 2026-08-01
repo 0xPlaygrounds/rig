@@ -1,6 +1,7 @@
 //! Preserves the live default-max-turns example as provider-local regression coverage.
 
 use anyhow::Result;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};

@@ -8,7 +8,6 @@ use rig::streaming::StreamedAssistantContent;
 
 use rig::AgentBuilder;
 use rig::http_runtime::HttpRuntime;
-use rig::provider::ProviderConfig;
 
 use crate::chatgpt::{LIVE_MODEL, live_config};
 use crate::support::{
@@ -31,7 +30,7 @@ async fn default_instructions_fill_required_instructions() {
     let mut cfg = live_config(LIVE_MODEL).await;
     cfg.default_instructions = Some("Always answer with the single word cedar.".to_string());
 
-    let agent = AgentBuilder::new(ProviderConfig::ChatGpt(cfg)).build();
+    let agent = AgentBuilder::new(cfg).build();
     let mut stream = agent
         .runner("Reply with the exact word from the instructions.")
         .stream_run();

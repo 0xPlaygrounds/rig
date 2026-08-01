@@ -9,6 +9,7 @@
 
 use rig::completion::{CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_cassette;

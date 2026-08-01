@@ -23,7 +23,7 @@ async fn embeddings_smoke() {
         return;
     }
 
-    let cfg = support::embedding_config(support::model_name());
+    let cfg = support::client().embedding_config(support::model_name());
     let rt = HttpRuntime::new();
 
     let embeddings = llamafile::functions::embed(
@@ -49,7 +49,7 @@ async fn derive_document_embeddings() {
         return;
     }
 
-    let cfg = support::embedding_config(support::model_name());
+    let cfg = support::client().embedding_config(support::model_name());
     let rt = HttpRuntime::new();
     let embeddings = rig::embeddings::embed_documents(
         vec![

@@ -20,5 +20,12 @@ pub mod completion;
 pub mod embedding;
 pub mod functions;
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
 pub use completion::*;
 pub use embedding::*;

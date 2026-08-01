@@ -139,18 +139,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
 /// deleting an expensively recorded interaction.
 ///
 /// Entries must be removed — not grown — as the blocking work lands.
-const DEFERRED_CASSETTE_SCENARIOS: &[(&str, &str)] = &[
-    // R7: the Gemini Interactions API lost its only entry point when
-    // `gemini::InteractionsClient` was deleted with the classic client layer,
-    // so the interactions case in `cassette/document_ordering.rs` is commented
-    // out. Unlike a whole disabled module (whose source file `syn` still walks,
-    // keeping its scenarios registered), a commented-out test inside a compiled
-    // file is invisible to the scanner — hence this entry.
-    (
-        "gemini",
-        "document_ordering/interactions_keeps_documents_after_system_before_history",
-    ),
-];
+const DEFERRED_CASSETTE_SCENARIOS: &[(&str, &str)] = &[];
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {

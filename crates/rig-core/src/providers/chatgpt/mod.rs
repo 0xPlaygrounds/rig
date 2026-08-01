@@ -19,6 +19,192 @@
 pub mod auth;
 pub mod functions;
 
+#[allow(dead_code)]
+mod base_client {
+    crate::providers::client::define_http_client! {
+        config = super::functions::Config,
+        default_base_url = super::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+/// Concrete ChatGPT client preserving account and request defaults.
+#[derive(Clone, Debug)]
+pub struct Client {
+    base: base_client::Client,
+    account_id: Option<String>,
+    default_instructions: Option<String>,
+    originator: String,
+    user_agent: String,
+}
+
+/// Monomorphic ChatGPT client builder.
+#[derive(Clone, Debug)]
+pub struct ClientBuilder {
+    base: base_client::ClientBuilder,
+    account_id: Option<String>,
+    default_instructions: Option<String>,
+    originator: String,
+    user_agent: String,
+}
+
+impl Client {
+    /// Build from an explicit `CHATGPT_ACCESS_TOKEN` environment credential.
+    pub fn from_env() -> Result<Self, crate::providers::ConfigError> {
+        let config = functions::Config::from_env(String::new())?;
+        Ok(Self::from_config_projection(config))
+    }
+
+    /// Build using the full ChatGPT environment/OAuth credential resolution.
+    pub async fn from_env_with_oauth() -> Result<Self, functions::ConfigFromEnvError> {
+        let config = functions::config_from_env(String::new()).await?;
+        Ok(Self::from_config_projection(config))
+    }
+
+    fn from_config_projection(config: functions::Config) -> Self {
+        let base = base_client::Client::from_connection(
+            config.connection,
+            crate::http_runtime::HttpRuntime::new(),
+        );
+        Self {
+            base,
+            account_id: config.account_id,
+            default_instructions: config.default_instructions,
+            originator: config.originator,
+            user_agent: config.user_agent,
+        }
+    }
+
+    /// Start a concrete client builder.
+    pub fn builder() -> ClientBuilder {
+        let defaults = functions::Config::new(String::new());
+        ClientBuilder {
+            base: base_client::Client::builder(),
+            account_id: None,
+            default_instructions: defaults.default_instructions,
+            originator: defaults.originator,
+            user_agent: defaults.user_agent,
+        }
+    }
+
+    /// Build with an explicit ChatGPT access token.
+    pub fn new(access_token: impl Into<String>) -> Self {
+        let defaults = functions::Config::new(String::new());
+        Self {
+            base: base_client::Client::new(access_token),
+            account_id: None,
+            default_instructions: defaults.default_instructions,
+            originator: defaults.originator,
+            user_agent: defaults.user_agent,
+        }
+    }
+
+    /// Materialize plain ChatGPT configuration for `model`.
+    pub fn config(&self, model: impl Into<String>) -> functions::Config {
+        let mut config = self.base.config(model);
+        config.account_id = self.account_id.clone();
+        config.default_instructions = self.default_instructions.clone();
+        config.originator = self.originator.clone();
+        config.user_agent = self.user_agent.clone();
+        config
+    }
+
+    /// Canonical HTTP connection data.
+    pub fn connection_config(&self) -> &crate::providers::HttpConnectionConfig {
+        self.base.connection_config()
+    }
+
+    /// Shared HTTP runtime.
+    pub fn http_runtime(&self) -> crate::http_runtime::HttpRuntime {
+        self.base.http_runtime()
+    }
+
+    /// Compatibility alias for [`Self::http_runtime`].
+    pub fn http(&self) -> crate::http_runtime::HttpRuntime {
+        self.http_runtime()
+    }
+}
+
+impl ClientBuilder {
+    /// Set an inline ChatGPT access token.
+    pub fn access_token(self, token: impl Into<String>) -> Self {
+        Self {
+            base: self.base.api_key(token),
+            ..self
+        }
+    }
+
+    /// Compatibility alias for [`Self::access_token`].
+    pub fn api_key(self, token: impl Into<String>) -> Self {
+        self.access_token(token)
+    }
+
+    /// Attach a ChatGPT account id.
+    pub fn account_id(mut self, account_id: impl Into<String>) -> Self {
+        self.account_id = Some(account_id.into());
+        self
+    }
+
+    /// Override the backend base URL.
+    pub fn base_url(self, base_url: impl Into<String>) -> Self {
+        Self {
+            base: self.base.base_url(base_url),
+            ..self
+        }
+    }
+
+    /// Override default instructions applied to every request.
+    pub fn default_instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.default_instructions = Some(instructions.into());
+        self
+    }
+
+    /// Clear default instructions.
+    pub fn without_default_instructions(mut self) -> Self {
+        self.default_instructions = None;
+        self
+    }
+
+    /// Override the required originator header.
+    pub fn originator(mut self, originator: impl Into<String>) -> Self {
+        self.originator = originator.into();
+        self
+    }
+
+    /// Override the user-agent header.
+    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = user_agent.into();
+        self
+    }
+
+    /// Append a connection-wide header.
+    pub fn extra_header(self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            base: self.base.extra_header(name, value),
+            ..self
+        }
+    }
+
+    /// Reuse an existing HTTP runtime.
+    pub fn http_runtime(self, http: crate::http_runtime::HttpRuntime) -> Self {
+        Self {
+            base: self.base.http_runtime(http),
+            ..self
+        }
+    }
+
+    /// Validate and build the client.
+    pub fn build(self) -> Result<Client, crate::providers::ClientBuildError> {
+        Ok(Client {
+            base: self.base.build()?,
+            account_id: self.account_id,
+            default_instructions: self.default_instructions,
+            originator: self.originator,
+            user_agent: self.user_agent,
+        })
+    }
+}
+
 use crate::completion::{self, CompletionError};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,

@@ -168,3 +168,4 @@ async fn audio_analysis_prompt() {
     })
     .await;
 }
+use rig::prelude::*;

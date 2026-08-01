@@ -1,5 +1,6 @@
 //! DeepSeek reasoning roundtrip tests.
 
+use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
@@ -15,7 +16,7 @@ fn thinking_params() -> serde_json::Value {
 async fn streaming() {
     with_deepseek_cassette("reasoning_roundtrip/streaming", |env| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            env.provider(deepseek::DEEPSEEK_V4_FLASH),
+            env.provider_config(deepseek::DEEPSEEK_V4_FLASH),
             Some(thinking_params()),
         ))
         .await;
@@ -27,7 +28,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_deepseek_cassette("reasoning_roundtrip/nonstreaming", |env| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            env.provider(deepseek::DEEPSEEK_V4_FLASH),
+            env.provider_config(deepseek::DEEPSEEK_V4_FLASH),
             Some(thinking_params()),
         ))
         .await;

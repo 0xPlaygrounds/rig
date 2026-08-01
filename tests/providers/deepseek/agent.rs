@@ -9,7 +9,8 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 async fn completion_smoke() {
     with_deepseek_cassette("agent/completion_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+        let agent = env
+            .agent(deepseek::DEEPSEEK_V4_FLASH)
             .preamble(BASIC_PREAMBLE)
             .build();
 

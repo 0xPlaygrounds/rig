@@ -9,8 +9,9 @@ use rig::providers::ollama;
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn example_streaming_with_tools() {
-    let cfg = ollama::functions::Config::from_env("llama3.2").expect("config should build");
-    let agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
+    let client = ollama::Client::from_env().expect("client should build");
+    let agent = client
+        .agent("llama3.2")
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question.",

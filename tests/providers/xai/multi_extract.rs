@@ -1,12 +1,9 @@
 //! xAI live coverage for batch multi-extract pipelines.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
+use rig::extract::ExtractOptions;
+use rig::prelude::*;
 use rig::providers::xai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -93,9 +90,8 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 async fn batch_multi_extract_chain() -> Result<()> {
     with_xai_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
-        |env| async move {
-            let provider = env.provider_config(xai::GROK_3_MINI);
-            let rt = Arc::new(Runtime::new());
+        |client| async move {
+            let agent = client.agent(xai::GROK_3_MINI).build();
             let names_options =
                 classic_extractor_with_extra_preamble("Extract names from the given text.")
                     .with_retries(2);
@@ -115,40 +111,38 @@ async fn batch_multi_extract_chain() -> Result<()> {
             ];
             let responses: Vec<CombinedExtract> = futures::stream::iter(inputs)
                 .map(|text| {
-                    let provider = provider.clone();
-                    let rt = Arc::clone(&rt);
+                    let agent = agent.clone();
                     let names_options = names_options.clone();
                     let topics_options = topics_options.clone();
                     let sentiment_options = sentiment_options.clone();
                     async move {
                         let (names, topics, sentiment) = futures::try_join!(
-                            extract_with_options::<Names>(
-                                AgentConfig::new(),
-                                provider.clone(),
-                                Arc::clone(&rt),
-                                text,
-                                names_options,
-                            ),
-                            extract_with_options::<Topics>(
-                                AgentConfig::new(),
-                                provider.clone(),
-                                Arc::clone(&rt),
-                                text,
-                                topics_options,
-                            ),
-                            extract_with_options::<Sentiment>(
-                                AgentConfig::new(),
-                                provider.clone(),
-                                Arc::clone(&rt),
-                                text,
-                                sentiment_options,
-                            ),
+                            agent
+                                .extractor(text)
+                                .classic()
+                                .retries(names_options.retries)
+                                .preamble(names_options.preamble.expect("preamble should exist"))
+                                .run::<Names>(),
+                            agent
+                                .extractor(text)
+                                .classic()
+                                .retries(topics_options.retries)
+                                .preamble(topics_options.preamble.expect("preamble should exist"))
+                                .run::<Topics>(),
+                            agent
+                                .extractor(text)
+                                .classic()
+                                .retries(sentiment_options.retries)
+                                .preamble(
+                                    sentiment_options.preamble.expect("preamble should exist"),
+                                )
+                                .run::<Sentiment>(),
                         )?;
                         anyhow::Ok(CombinedExtract {
-                            names: names.value.names,
-                            topics: topics.value.topics,
-                            sentiment: sentiment.value.sentiment,
-                            confidence: sentiment.value.confidence,
+                            names: names.names,
+                            topics: topics.topics,
+                            sentiment: sentiment.sentiment,
+                            confidence: sentiment.confidence,
                         })
                     }
                 })

@@ -44,3 +44,4 @@ async fn example_streaming_prompt() {
     })
     .await;
 }
+use rig::prelude::*;

@@ -369,6 +369,26 @@ mod tests {
     }
 }
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+
+impl Client {
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize audio-generation configuration sharing this connection.
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+}
+
 pub mod functions {
     //! Hyperbolic chat completions as config + pure functions.
     //!
@@ -416,24 +436,24 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct Config {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location.
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Model identifier requests are built for.
         pub model: String,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(Config);
 
     impl Config {
         /// Config for `model` reading `HYPERBOLIC_API_KEY` from the environment.
         pub fn new(model: impl Into<String>) -> Self {
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::Env("HYPERBOLIC_API_KEY".to_string()),
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::Env("HYPERBOLIC_API_KEY".to_string()),
+                ),
                 model: model.into(),
-                extra_headers: Vec::new(),
             }
         }
 

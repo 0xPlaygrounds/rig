@@ -8,6 +8,7 @@
 
 use rig::OneOrMany;
 use rig::message::{DocumentMediaType, Message, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;

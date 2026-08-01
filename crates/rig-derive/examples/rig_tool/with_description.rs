@@ -39,13 +39,12 @@ fn calculator(
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().pretty().init();
 
-    let calculator_agent = AgentBuilder::new(providers::openai::functions::Config::from_env(
-        providers::openai::GPT_4O,
-    )?)
-    .preamble("You are an agent with tools access, always use the tools")
-    .max_tokens(1024)
-    .tool(Calculator)
-    .build();
+    let calculator_agent = providers::openai::Client::from_env()?
+        .agent(providers::openai::GPT_4O)
+        .preamble("You are an agent with tools access, always use the tools")
+        .max_tokens(1024)
+        .tool(Calculator)
+        .build();
 
     println!("Tool definition:");
     println!(

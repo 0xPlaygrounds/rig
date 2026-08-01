@@ -13,22 +13,24 @@ rig-core = "0.36.0"
 
 You can also run `cargo add rig-bedrock rig-core` to add the most recent versions of the dependencies to your project.
 
-## The `functions` face
+## Concrete client and data APIs
 
-The crate has no client type and no model traits: everything goes through
-`rig_bedrock::functions` — a plain-data `Config` (or `EmbeddingConfig` /
-`ImageConfig`) describing how to build an AWS client, plus free functions
-taking that client explicitly.
+`rig_bedrock::Client` is a concrete, monomorphic connection handle. It owns
+reusable AWS connection settings (and can retain a caller-built SDK client)
+while materializing plain `Config`, `EmbeddingConfig`, and `ImageConfig`
+records. The low-level `rig_bedrock::functions` API remains public and takes
+the live AWS SDK client explicitly.
 
 ```rust,ignore
-use rig_bedrock::{completion::AMAZON_NOVA_LITE, functions};
+use rig_bedrock::{Client, completion::AMAZON_NOVA_LITE, functions};
 use rig_core::completion::CompletionRequest;
 
-let cfg = functions::Config::new(AMAZON_NOVA_LITE);
-let client = functions::client_from_config(&cfg).await;
+let client = Client::from_env();
+let cfg = client.config(AMAZON_NOVA_LITE);
+let aws = client.get_inner().await;
 
 let response = functions::complete(
-    &client,
+    &aws,
     &cfg.model,
     CompletionRequest::from_prompt("Describe the solar system"),
 )
@@ -39,16 +41,18 @@ Streaming is `functions::open_stream`, embeddings are `functions::embed` /
 `functions::embed_batches`, and image generation is
 `functions::generate_image`.
 
-For agents, hand the same config to `rig-agent` (feature `bedrock`):
+With `rig-agent`'s `bedrock` feature, the same client provides the fluent agent
+bridge through the prelude:
 
 ```rust,ignore
-use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
+use rig_agent::prelude::*;
+use rig_bedrock::{Client, completion::AMAZON_NOVA_LITE};
 
-let agent = AgentBuilder::new(ProviderConfig::Bedrock(
-    rig_bedrock::functions::Config::new(rig_bedrock::completion::AMAZON_NOVA_LITE),
-))
-.preamble("Be precise and concise.")
-.build();
+let client = Client::from_env();
+let agent = client
+    .agent(AMAZON_NOVA_LITE)
+    .preamble("Be precise and concise.")
+    .build();
 ```
 
 See the [`/examples`](./examples) folder for usage examples.

@@ -18,10 +18,9 @@ async fn context_smoke() {
         let agent = XAI_CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(
-                AgentBuilder::new(env.provider_config(xai::completion::GROK_4)),
-                |builder, doc| builder.context(doc),
-            )
+            .fold(env.agent(xai::completion::GROK_4), |builder, doc| {
+                builder.context(doc)
+            })
             .preamble(
                 "Use only the provided context snippets. \
                  One snippet explicitly defines glarb-glarb. \

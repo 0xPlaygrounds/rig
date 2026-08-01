@@ -481,7 +481,8 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
         |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
+            let agent = env
+                .agent(SESSION_MODEL)
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -530,7 +531,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
         |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, optional, echo) = complex_tools(&log);
-            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
+            let agent = env
+                .agent(SESSION_MODEL)
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
                 .tool(manifest)
@@ -595,7 +597,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
+            let agent = env
+                .agent(SESSION_MODEL)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -642,7 +645,8 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(SESSION_MODEL))
+            let agent = env
+                .agent(SESSION_MODEL)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)

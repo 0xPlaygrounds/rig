@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::support::with_openai_completions_cassette_result;

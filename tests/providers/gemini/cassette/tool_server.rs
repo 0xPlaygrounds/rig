@@ -16,7 +16,7 @@ use super::super::tools_support::{CountingAdd, CountingSubtract, FORCE_TOOLS_PRE
 use crate::support::assert_mentions_expected_number;
 
 fn calculator_agent(
-    client: &super::super::support::GeminiCassette,
+    client: &gemini::Client,
     add: CountingAdd,
     subtract: Option<CountingSubtract>,
 ) -> rig::agent::Agent {
@@ -160,3 +160,4 @@ async fn shared_tool_server_handle_updates_all_agents() {
     )
     .await;
 }
+use rig::prelude::*;

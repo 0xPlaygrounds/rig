@@ -1,6 +1,7 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
@@ -91,14 +92,13 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let provider = rig::provider::ProviderConfig::OpenAiResponses(
-        openai::responses_api::functions::Config::new(openai::GPT_4O).with_api_key("test-key"),
-    );
-    let rt = std::sync::Arc::new(rig::provider::Runtime::with_http(
-        rig::http_runtime::HttpRuntime::recording(http.clone()),
-    ));
-    let agent = rig::agent::AgentBuilder::new(provider)
-        .runtime(rt)
+    let client = openai::Client::builder()
+        .api_key("test-key")
+        .http_runtime(rig::http_runtime::HttpRuntime::recording(http.clone()))
+        .build()
+        .expect("OpenAI test client should build");
+    let agent = client
+        .agent(openai::GPT_4O)
         .output_schema::<SmokeStructuredOutput>()
         .output_mode(OutputMode::Tool)
         .build();

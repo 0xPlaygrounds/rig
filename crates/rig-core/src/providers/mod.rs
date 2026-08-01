@@ -33,11 +33,15 @@
 //! provider supports them) over the shared
 //! [`HttpRuntime`](crate::http_runtime::HttpRuntime).
 //!
-//! There is no client type and no capability trait: a provider supports a
-//! capability exactly when its `functions` module exposes the corresponding
-//! function, and the descriptor records the wire-level knobs
-//! (`supports_tools`, `max_embedding_documents`, …) that request building
-//! consults.
+//! Completion-capable bundled providers also expose a concrete, monomorphic
+//! `Client` and `ClientBuilder`. A client owns reusable connection data plus an
+//! [`HttpRuntime`](crate::http_runtime::HttpRuntime), and materializes the same
+//! plain operation configs through methods such as `config(model)` and
+//! `embedding_config(model)`. It is an ergonomic connection handle, not a
+//! generic model or capability object. A provider supports a capability exactly
+//! when its `functions` module exposes the corresponding function, and the
+//! descriptor records the wire-level knobs (`supports_tools`,
+//! `max_embedding_documents`, …) that request building consults.
 //!
 //! Every `Config` has `new(model)` for explicit construction and
 //! `from_env(model)` for the provider's conventional environment variables.
@@ -49,6 +53,9 @@
 //! - a `functions` module with a serde `Config` (`new` + `from_env`), a
 //!   `DESCRIPTOR`, pure `build_request`/`parse_response`, and async wrappers
 //!   over [`HttpRuntime`](crate::http_runtime::HttpRuntime);
+//! - for completion-capable bundled providers, concrete `Client` and
+//!   `ClientBuilder` connection handles that materialize those configs without
+//!   provider, model, capability, or transport type parameters;
 //! - for OpenAI-chat-compatible APIs: a `build_body` composed from
 //!   `openai::functions::compatible_typed_request` and
 //!   `compatible_body_value`, with the provider's own
@@ -99,8 +106,10 @@
 //! # Ok(())
 //! # }
 //! ```
+pub mod client;
 pub mod descriptor;
 
+pub use client::{ClientBuildError, HttpConnectionConfig};
 pub use descriptor::{
     ApiKeyError, ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
     required_env_var,

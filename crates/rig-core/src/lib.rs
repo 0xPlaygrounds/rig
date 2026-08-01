@@ -52,7 +52,7 @@
 //! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 //!
 //! # Core concepts
-//! ## Completion and embedding models
+//! ## Completion and embedding data
 //! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
 //! each provider (e.g. OpenAI, Cohere) has a `functions` module holding a plain
 //! `Config` (model id, credentials, base URL, provider-specific knobs) plus free

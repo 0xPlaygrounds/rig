@@ -2,6 +2,7 @@
 
 use axum::http;
 use rig::completion::{CompletionError, CompletionRequest};
+use rig::prelude::*;
 use rig::providers::chatgpt;
 
 use super::super::support::with_chatgpt_cassette;
@@ -23,7 +24,7 @@ async fn nonstreaming_unauthorized_preserves_status_and_body() {
 }
 
 async fn assert_nonstreaming_http_error(
-    client: super::super::support::ChatGptCassette,
+    client: chatgpt::Client,
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {

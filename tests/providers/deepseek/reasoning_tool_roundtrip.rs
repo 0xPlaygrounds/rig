@@ -20,7 +20,8 @@ fn thinking_params() -> serde_json::Value {
 async fn streaming() {
     with_deepseek_cassette("reasoning_tool_roundtrip/streaming", |env| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+        let agent = env
+            .agent(deepseek::DEEPSEEK_V4_FLASH)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
@@ -51,7 +52,8 @@ async fn streaming() {
 async fn nonstreaming() {
     with_deepseek_cassette("reasoning_tool_roundtrip/nonstreaming", |env| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
-        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+        let agent = env
+            .agent(deepseek::DEEPSEEK_V4_FLASH)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))

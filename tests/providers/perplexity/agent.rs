@@ -8,8 +8,9 @@ use crate::support::assert_nonempty_response;
 #[tokio::test]
 #[ignore = "requires PERPLEXITY_API_KEY"]
 async fn completion_smoke() {
-    let cfg = perplexity::functions::Config::from_env(SONAR).expect("config should build");
-    let agent = AgentBuilder::new(ProviderConfig::Perplexity(cfg))
+    let client = perplexity::Client::from_env().expect("client should build");
+    let agent = client
+        .agent(SONAR)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .additional_params(serde_json::json!({

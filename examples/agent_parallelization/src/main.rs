@@ -1,17 +1,8 @@
 //! Fan one statement out to three structured "scorers" concurrently.
 //!
-//! The extractor builder is gone: a scorer is now just the plain data one
-//! [`extract_with_options`] call needs — an [`AgentConfig`] carrying the role
-//! preamble plus the classic extractor protocol from
-//! [`ExtractOptions::classic_extractor()`], aimed at a [`ProviderConfig`] built
-//! from `openai::functions::Config::from_env(MODEL)`. The parallelization
-//! itself is unchanged.
-//!
 //! Requires `OPENAI_API_KEY`.
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
+use rig::agent::Agent;
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 
 use rig::providers::openai;
@@ -26,36 +17,29 @@ struct DocumentScore {
 
 /// One scorer: the classic extraction protocol with the role instructions
 /// appended to the extraction preamble (what `ExtractorBuilder::preamble` did).
-fn scorer(role: &str) -> ExtractOptions {
+fn scorer(role: &str) -> String {
     let classic = ExtractOptions::classic_extractor();
     let preamble = classic.preamble.clone().unwrap_or_default();
-    classic.with_preamble(format!(
-        "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{role}"
-    ))
+    format!("{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{role}")
 }
 
 async fn score(
-    provider: &ProviderConfig,
-    rt: &Arc<Runtime>,
-    options: ExtractOptions,
+    agent: &Agent,
+    preamble: String,
     statement: &str,
 ) -> Result<DocumentScore, anyhow::Error> {
-    let outcome = extract_with_options::<DocumentScore>(
-        AgentConfig::new(),
-        provider.clone(),
-        rt.clone(),
-        statement,
-        options,
-    )
-    .await?;
-    Ok(outcome.value)
+    Ok(agent
+        .extractor(statement)
+        .classic()
+        .preamble(preamble)
+        .run()
+        .await?)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // The provider is plain data: a config that names the model.
-    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4)?);
-    let rt = Arc::new(Runtime::new());
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(openai::GPT_4).build();
 
     let manipulation_scorer = scorer(
         "
@@ -81,9 +65,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // `parallel!` op provided.
     let statement = "I hate swimming. The water always gets in my eyes.";
     let (manip_score, dep_score, int_score) = futures::join!(
-        score(&provider, &rt, manipulation_scorer, statement),
-        score(&provider, &rt, depression_scorer, statement),
-        score(&provider, &rt, intelligent_scorer, statement),
+        score(&agent, manipulation_scorer, statement),
+        score(&agent, depression_scorer, statement),
+        score(&agent, intelligent_scorer, statement),
     );
 
     let response = match (manip_score, dep_score, int_score) {

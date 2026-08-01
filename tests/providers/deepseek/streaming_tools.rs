@@ -31,7 +31,8 @@ async fn streaming_chat_with_tools() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_with_tools",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(DEEPSEEK_V4_FLASH))
+            let agent = env
+                .agent(DEEPSEEK_V4_FLASH)
                 .preamble(
                     "You are a calculator here to help the user perform arithmetic operations.",
                 )
@@ -156,7 +157,8 @@ async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(DEEPSEEK_V4_FLASH))
+            let agent = env
+                .agent(DEEPSEEK_V4_FLASH)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -186,7 +188,8 @@ async fn streaming_chat_emits_tool_call_before_later_text() {
     with_deepseek_cassette(
         "streaming_tools/streaming_chat_emits_tool_call_before_later_text",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(DEEPSEEK_V4_FLASH))
+            let agent = env
+                .agent(DEEPSEEK_V4_FLASH)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .additional_params(non_thinking_params())

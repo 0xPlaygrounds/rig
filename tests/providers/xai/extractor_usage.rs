@@ -1,35 +1,32 @@
 //! Integration tests for xAI extractor usage tracking.
 
-use std::sync::Arc;
-
 use anyhow::Result;
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome, extract_with_options};
+use rig::agent::Agent;
+use rig::extract::{ExtractError, ExtractOptions, ExtractionOutcome};
 use rig::message::Message;
-use rig::provider::Runtime;
-use rig::providers::xai;
+use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::support::{XaiCassetteEnv, with_xai_cassette_result};
+use super::support::with_xai_cassette_result;
 
-/// Run a classic-extractor-shaped extraction against `env`.
 async fn classic_extract<T>(
-    env: &XaiCassetteEnv,
+    agent: &Agent,
     prompt: impl Into<Message>,
     options: ExtractOptions,
 ) -> Result<ExtractionOutcome<T>, ExtractError>
 where
     T: schemars::JsonSchema + serde::de::DeserializeOwned,
 {
-    extract_with_options(
-        AgentConfig::new(),
-        env.provider_config(xai::GROK_3_MINI),
-        Arc::new(Runtime::new()),
-        prompt,
-        options,
-    )
-    .await
+    let mut runner = agent
+        .extractor(prompt)
+        .classic()
+        .history(options.history)
+        .retries(options.retries);
+    if let Some(preamble) = options.preamble {
+        runner = runner.preamble(preamble);
+    }
+    runner.run_with_usage::<T>().await
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
@@ -65,9 +62,10 @@ fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> 
 async fn extract_backward_compatibility() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_backward_compatibility",
-        |env| async move {
+        |client| async move {
+            let agent = client.agent(rig::providers::xai::GROK_3_MINI).build();
             let person = classic_extract::<Person>(
-                &env,
+                &agent,
                 "John Doe is a 30 year old software engineer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -88,9 +86,10 @@ async fn extract_backward_compatibility() -> Result<()> {
 async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_usage_returns_data_and_usage",
-        |env| async move {
+        |client| async move {
+            let agent = client.agent(rig::providers::xai::GROK_3_MINI).build();
             let response = classic_extract::<Person>(
-                &env,
+                &agent,
                 "Jane Smith is a 45 year old data scientist.",
                 ExtractOptions::classic_extractor(),
             )
@@ -113,13 +112,14 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_with_chat_history_with_usage_works",
-        |env| async move {
+        |client| async move {
+            let agent = client.agent(rig::providers::xai::GROK_3_MINI).build();
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
             )];
 
             let response = classic_extract::<Address>(
-                &env,
+                &agent,
                 "The address is 123 Main St in Springfield, IL 62701.",
                 ExtractOptions::classic_extractor().with_history(chat_history),
             )
@@ -142,13 +142,16 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
 async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
-        |env| async move {
+        |client| async move {
+            let agent = client.agent(rig::providers::xai::GROK_3_MINI).build();
             let text = "Bob Johnson is a 55 year old retired teacher.";
-            let person = classic_extract::<Person>(&env, text, ExtractOptions::classic_extractor())
-                .await?
-                .value;
+            let person =
+                classic_extract::<Person>(&agent, text, ExtractOptions::classic_extractor())
+                    .await?
+                    .value;
             let response =
-                classic_extract::<Person>(&env, text, ExtractOptions::classic_extractor()).await?;
+                classic_extract::<Person>(&agent, text, ExtractOptions::classic_extractor())
+                    .await?;
 
             anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
             anyhow::ensure!(response.value.name.as_deref() == Some("Bob Johnson"));
@@ -168,9 +171,10 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
 async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     with_xai_cassette_result(
         "extractor_usage/usage_tracking_works_for_different_schemas",
-        |env| async move {
+        |client| async move {
+            let agent = client.agent(rig::providers::xai::GROK_3_MINI).build();
             let person_response = classic_extract::<Person>(
-                &env,
+                &agent,
                 "Alice is a 25 year old developer.",
                 ExtractOptions::classic_extractor(),
             )
@@ -178,7 +182,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             anyhow::ensure!(person_response.usage.total_tokens > 0);
 
             let address_response = classic_extract::<Address>(
-                &env,
+                &agent,
                 "456 Oak Avenue, Cambridge, MA 02139",
                 ExtractOptions::classic_extractor(),
             )

@@ -303,3 +303,4 @@ fn count_user_tool_results(chat_history: &[Message]) -> usize {
         .filter(|content| matches!(content, UserContent::ToolResult(_)))
         .count()
 }
+use rig::prelude::*;

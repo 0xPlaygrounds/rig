@@ -92,7 +92,8 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 ..CompletionRequest::from_prompt("Reply with exactly: final metadata ok")
             };
             let mut stream = client
-                .stream(model, request)
+                .completion_model(model)
+                .stream(request)
                 .await
                 .expect("stream should start");
 
@@ -148,7 +149,8 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 )
             };
             let mut stream = client
-                .stream(model, request)
+                .completion_model(model)
+                .stream(request)
                 .await
                 .expect("stream should start");
 
@@ -199,3 +201,4 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     )
     .await;
 }
+use rig::prelude::*;

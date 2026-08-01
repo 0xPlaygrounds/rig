@@ -53,7 +53,8 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             .build();
 
             let response = client
-                .complete(model, request)
+                .completion_model(model)
+                .completion(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 
@@ -134,3 +135,4 @@ async fn structured_output_nested_arrays_and_optional_fields() {
     )
     .await;
 }
+use rig::prelude::*;

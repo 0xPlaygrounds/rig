@@ -2,12 +2,10 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::{ProviderConfig, Runtime};
+use rig::extract::ExtractOptions;
+use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::support::assert_nonempty_response;
 
@@ -27,26 +25,6 @@ fn classic_options_with_preamble(extra: &str) -> ExtractOptions {
     options.with_preamble(format!(
         "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
     ))
-}
-
-/// One classic-extractor exchange through the free-function surface.
-async fn classic_extract<T>(
-    provider: ProviderConfig,
-    text: &str,
-    options: ExtractOptions,
-) -> Result<T>
-where
-    T: schemars::JsonSchema + serde::de::DeserializeOwned,
-{
-    Ok(extract_with_options::<T>(
-        AgentConfig::new(),
-        provider,
-        Arc::new(Runtime::new()),
-        text,
-        options,
-    )
-    .await?
-    .value)
 }
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
@@ -73,7 +51,7 @@ async fn batch_multi_extract_chain() -> Result<()> {
     }
 
     let model = support::model_name();
-    let provider = support::provider(model);
+    let agent = support::client().agent(&model).build();
     let names_options = classic_options_with_preamble("Extract names from the given text.");
     let topics_options = classic_options_with_preamble("Extract topics from the given text.");
     let sentiment_options = classic_options_with_preamble(
@@ -88,15 +66,45 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<String> = futures::stream::iter(inputs)
         .map(|text| {
-            let provider = &provider;
+            let agent = &agent;
             let names_options = &names_options;
             let topics_options = &topics_options;
             let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    classic_extract::<Names>(provider.clone(), text, names_options.clone()),
-                    classic_extract::<Topics>(provider.clone(), text, topics_options.clone()),
-                    classic_extract::<Sentiment>(provider.clone(), text, sentiment_options.clone()),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(names_options.retries)
+                        .preamble(
+                            names_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Names>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(topics_options.retries)
+                        .preamble(
+                            topics_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Topics>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(sentiment_options.retries)
+                        .preamble(
+                            sentiment_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist"),
+                        )
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",

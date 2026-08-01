@@ -13,7 +13,8 @@ async fn completion_smoke() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(BASIC_PREAMBLE)
         .build();
 

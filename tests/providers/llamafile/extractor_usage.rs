@@ -1,34 +1,32 @@
 //! Integration tests for Llamafile extractor usage tracking.
 
 use anyhow::Result;
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, ExtractionOutcome, extract_with_options};
+use rig::agent::Agent;
+use rig::extract::{ExtractOptions, ExtractionOutcome};
 use rig::message::Message;
-use rig::provider::{ProviderConfig, Runtime};
+use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use super::support;
 
-/// The classic `Extractor<T>` exchange, expressed through the free-function
-/// extraction surface that replaced it.
 async fn classic_extract<T>(
-    provider: ProviderConfig,
+    agent: &Agent,
     text: &str,
     options: ExtractOptions,
 ) -> Result<ExtractionOutcome<T>>
 where
     T: schemars::JsonSchema + serde::de::DeserializeOwned,
 {
-    Ok(extract_with_options::<T>(
-        AgentConfig::new(),
-        provider,
-        Arc::new(Runtime::new()),
-        text,
-        options,
-    )
-    .await?)
+    let mut runner = agent
+        .extractor(text)
+        .classic()
+        .history(options.history)
+        .retries(options.retries);
+    if let Some(preamble) = options.preamble {
+        runner = runner.preamble(preamble);
+    }
+    Ok(runner.run_with_usage::<T>().await?)
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
@@ -68,8 +66,9 @@ async fn extract_backward_compatibility() -> Result<()> {
     }
 
     let model = support::model_name();
+    let agent = support::client().agent(&model).build();
     let person = classic_extract::<Person>(
-        support::provider(model.clone()),
+        &agent,
         "John Doe is a 30 year old software engineer.",
         ExtractOptions::classic_extractor(),
     )
@@ -91,8 +90,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
     }
 
     let model = support::model_name();
+    let agent = support::client().agent(&model).build();
     let response: ExtractionOutcome<Person> = classic_extract(
-        support::provider(model.clone()),
+        &agent,
         "Jane Smith is a 45 year old data scientist.",
         ExtractOptions::classic_extractor(),
     )
@@ -116,12 +116,13 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     }
 
     let model = support::model_name();
+    let agent = support::client().agent(&model).build();
     let chat_history = vec![Message::user(
         "I'm looking at a property that might be interesting.",
     )];
 
     let response: ExtractionOutcome<Address> = classic_extract(
-        support::provider(model.clone()),
+        &agent,
         "The address is 123 Main St in Springfield, IL 62701.",
         ExtractOptions::classic_extractor().with_history(chat_history),
     )
@@ -145,20 +146,13 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
     }
 
     let model = support::model_name();
+    let agent = support::client().agent(&model).build();
     let text = "Bob Johnson is a 55 year old retired teacher.";
-    let person = classic_extract::<Person>(
-        support::provider(model.clone()),
-        text,
-        ExtractOptions::classic_extractor(),
-    )
-    .await?
-    .value;
-    let response: ExtractionOutcome<Person> = classic_extract(
-        support::provider(model.clone()),
-        text,
-        ExtractOptions::classic_extractor(),
-    )
-    .await?;
+    let person = classic_extract::<Person>(&agent, text, ExtractOptions::classic_extractor())
+        .await?
+        .value;
+    let response: ExtractionOutcome<Person> =
+        classic_extract(&agent, text, ExtractOptions::classic_extractor()).await?;
 
     anyhow::ensure!(person.name.as_deref() == Some("Bob Johnson"));
     anyhow::ensure!(response.value.name.as_deref() == Some("Bob Johnson"));
@@ -179,9 +173,10 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     }
 
     let model = support::model_name();
+    let agent = support::client().agent(&model).build();
 
     let person_response = classic_extract::<Person>(
-        support::provider(model.clone()),
+        &agent,
         "Alice is a 25 year old developer.",
         ExtractOptions::classic_extractor(),
     )
@@ -189,7 +184,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
     anyhow::ensure!(person_response.usage.total_tokens > 0);
 
     let address_response = classic_extract::<Address>(
-        support::provider(model.clone()),
+        &agent,
         "456 Oak Avenue, Cambridge, MA 02139",
         ExtractOptions::classic_extractor(),
     )

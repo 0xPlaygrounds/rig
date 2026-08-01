@@ -28,7 +28,8 @@ async fn streaming_tools_smoke() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -49,7 +50,8 @@ async fn example_streaming_with_tools() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",
@@ -74,7 +76,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
         return;
     }
 
-    let cfg = support::config(support::model_name());
+    let cfg = support::client().config(support::model_name());
     let rt = HttpRuntime::new();
     let request = CompletionRequest {
         tools: vec![zero_arg_tool_definition("ping")],
@@ -95,7 +97,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
         return;
     }
 
-    let cfg = support::config(support::model_name());
+    let cfg = support::client().config(support::model_name());
     let rt = HttpRuntime::new();
     let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
@@ -125,7 +127,8 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal)
@@ -151,7 +154,8 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .build();
@@ -176,7 +180,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         return;
     }
 
-    let cfg = support::config(support::model_name());
+    let cfg = support::client().config(support::model_name());
     let rt = HttpRuntime::new();
     let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)

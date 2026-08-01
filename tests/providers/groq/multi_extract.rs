@@ -2,12 +2,11 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::{ProviderConfig, Runtime};
+use rig::extract::ExtractOptions;
+use rig::prelude::*;
+use rig::providers::groq;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::support::assert_nonempty_response;
 
@@ -25,27 +24,6 @@ fn classic_options(extra: &str) -> ExtractOptions {
     options.with_preamble(format!(
         "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
     ))
-}
-
-/// One classic-`Extractor<T>::extract` exchange through the free-function
-/// extraction surface that replaced it.
-async fn classic_extract_value<T>(
-    provider: ProviderConfig,
-    text: &str,
-    options: ExtractOptions,
-) -> anyhow::Result<T>
-where
-    T: schemars::JsonSchema + serde::de::DeserializeOwned,
-{
-    Ok(extract_with_options::<T>(
-        AgentConfig::new(),
-        provider,
-        Arc::new(Runtime::new()),
-        text,
-        options,
-    )
-    .await?
-    .value)
 }
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
@@ -67,9 +45,10 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let names_provider = super::live(MULTI_EXTRACT_NAMES_MODEL);
-    let topics_provider = super::live(MULTI_EXTRACT_TOPICS_MODEL);
-    let sentiment_provider = super::live(MULTI_EXTRACT_SENTIMENT_MODEL);
+    let client = groq::Client::from_env()?;
+    let names_agent = client.agent(MULTI_EXTRACT_NAMES_MODEL).build();
+    let topics_agent = client.agent(MULTI_EXTRACT_TOPICS_MODEL).build();
+    let sentiment_agent = client.agent(MULTI_EXTRACT_SENTIMENT_MODEL).build();
     let names_options = classic_options("Extract names from the given text.").with_retries(2);
     let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
     let sentiment_options =
@@ -82,29 +61,47 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<String> = futures::stream::iter(inputs)
         .map(|text| {
-            let names_provider = &names_provider;
-            let topics_provider = &topics_provider;
-            let sentiment_provider = &sentiment_provider;
+            let names_agent = &names_agent;
+            let topics_agent = &topics_agent;
+            let sentiment_agent = &sentiment_agent;
             let names_options = &names_options;
             let topics_options = &topics_options;
             let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    classic_extract_value::<Names>(
-                        names_provider.clone(),
-                        text,
-                        names_options.clone()
-                    ),
-                    classic_extract_value::<Topics>(
-                        topics_provider.clone(),
-                        text,
-                        topics_options.clone()
-                    ),
-                    classic_extract_value::<Sentiment>(
-                        sentiment_provider.clone(),
-                        text,
-                        sentiment_options.clone(),
-                    ),
+                    names_agent
+                        .extractor(text)
+                        .classic()
+                        .retries(names_options.retries)
+                        .preamble(
+                            names_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Names>(),
+                    topics_agent
+                        .extractor(text)
+                        .classic()
+                        .retries(topics_options.retries)
+                        .preamble(
+                            topics_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Topics>(),
+                    sentiment_agent
+                        .extractor(text)
+                        .classic()
+                        .retries(sentiment_options.retries)
+                        .preamble(
+                            sentiment_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist"),
+                        )
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",

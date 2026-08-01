@@ -1,18 +1,8 @@
-//! Generator/evaluator loop. The generator is an [`Agent`]; the evaluator is
-//! structured extraction, which is a free function now — the extractor builder
-//! is gone, so the evaluator's instructions are appended to the classic
-//! extraction preamble instead.
-//!
-//! Both stages share one piece of plain data: an
-//! `openai::functions::Config` (which names the model), wrapped in
-//! [`ProviderConfig`] for the agent and passed straight to the extraction call.
+//! Generator/evaluator loop. The generator is an [`Agent`], and the evaluator
+//! uses the same agent's non-generic fluent extraction runner.
 //! Requires `OPENAI_API_KEY`.
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
-use rig::provider::Runtime;
 
 use rig::providers::openai;
 
@@ -37,11 +27,9 @@ All operations should be O(1).
 ";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Providers are plain data: one config names the model, and it is shared
-    // (cloned) by both the generator agent and the evaluator extraction.
-    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-
-    let generator_agent = AgentBuilder::new(cfg.clone())
+    let client = openai::Client::from_env()?;
+    let generator_agent = client
+        .agent(openai::GPT_4)
         .preamble(
             "
             Your goal is to complete the task based on <user input>. If there are feedback
@@ -74,26 +62,22 @@ async fn main() -> Result<(), anyhow::Error> {
         ";
     let classic = ExtractOptions::classic_extractor();
     let extraction_preamble = classic.preamble.clone().unwrap_or_default();
-    let evaluator_options = classic.with_preamble(format!(
+    let evaluator_preamble = format!(
         "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{EVALUATOR_ROLE}"
-    ));
-    let evaluator_provider = ProviderConfig::OpenAi(cfg);
-    let rt = Arc::new(Runtime::new());
+    );
+    let evaluator_agent = client.agent(openai::GPT_4).build();
 
     let mut memories: Vec<String> = Vec::new();
     let mut response = generator_agent.prompt(TASK).await?;
     memories.push(response.clone());
 
     loop {
-        let eval_result = extract_with_options::<Evaluation>(
-            AgentConfig::new(),
-            evaluator_provider.clone(),
-            rt.clone(),
-            format!("{TASK}\n\n{response}"),
-            evaluator_options.clone(),
-        )
-        .await?
-        .value;
+        let eval_result: Evaluation = evaluator_agent
+            .extractor(format!("{TASK}\n\n{response}"))
+            .classic()
+            .preamble(evaluator_preamble.clone())
+            .run()
+            .await?;
         if eval_result.evaluation_status == EvalStatus::Pass {
             break;
         } else {

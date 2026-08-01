@@ -22,6 +22,20 @@ pub mod functions;
 pub mod model_listing;
 pub mod transcription;
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
+impl Client {
+    /// Materialize transcription configuration sharing this connection.
+    pub fn transcription_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+}
+
 pub use completion::*;
 pub use embedding::*;
 pub use transcription::*;

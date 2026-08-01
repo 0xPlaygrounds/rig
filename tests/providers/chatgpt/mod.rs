@@ -24,6 +24,7 @@ mod streaming;
 mod streaming_tools;
 
 use rig::AgentBuilder;
+use rig::client::AgentClientExt;
 use rig::provider::ProviderConfig;
 use rig::providers::chatgpt;
 use serde::Deserialize;
@@ -74,8 +75,14 @@ pub(crate) async fn live_provider(model: impl Into<String>) -> ProviderConfig {
     ProviderConfig::ChatGpt(live_config(model).await)
 }
 
-pub(crate) async fn live_agent(model: impl Into<String>) -> AgentBuilder {
-    AgentBuilder::new(live_provider(model).await)
+pub(crate) async fn live_client() -> chatgpt::Client {
+    chatgpt::Client::from_env_with_oauth()
+        .await
+        .expect("ChatGPT credentials should resolve")
+}
+
+pub(crate) async fn live_agent(model: &str) -> AgentBuilder {
+    live_client().await.agent(model)
 }
 
 fn has_usable_oauth_cache() -> bool {

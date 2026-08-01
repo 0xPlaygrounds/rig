@@ -1,6 +1,6 @@
 use rig::{
     prelude::*,
-    providers::{azure, openai::GPT_5_MINI},
+    providers::{azure::Client, openai::GPT_5_MINI},
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -16,8 +16,9 @@ async fn test_azure_structured_output() -> anyhow::Result<()> {
         age: u32,
     }
 
-    let cfg = azure::functions::Config::from_env(GPT_5_MINI)?;
-    let agent = AgentBuilder::new(ProviderConfig::Azure(cfg))
+    let client = Client::from_env()?;
+    let agent = client
+        .agent(GPT_5_MINI)
         .preamble("You are a helpful assistant that extracts personal details.")
         .max_tokens(100)
         .output_schema::<Person>()

@@ -9,6 +9,7 @@
 //! wire. The blocking and streaming tests assert the same, since both drivers
 //! resolve the override through the shared request builder.
 
+use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

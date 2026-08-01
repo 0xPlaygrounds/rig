@@ -11,25 +11,38 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 
 ## The construction story
 
-There is no client type and no capability trait. A provider is plain data — a
-`<provider>::functions::Config` that names the model — plus free functions that
-take `(&Config, &HttpRuntime, request)`:
+Normal applications use a concrete, monomorphic provider client. It owns
+reusable connection data and transport; selecting a model materializes plain
+provider configuration behind the fluent facade:
 
 ```rust
 use rig::prelude::*;
 use rig::providers::openai;
 
-let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-let rt = HttpRuntime::new();
-
-// Direct provider call.
-let models = openai::functions::list_models(&cfg, &rt).await?;
-
-// Or the same config, wrapped for the agent runtime.
-let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+let client = openai::Client::from_env()?;
+let agent = client
+    .agent(openai::GPT_5_2)
     .preamble("You are a helpful assistant.")
     .build();
 let answer = agent.prompt("Entertain me!").await?;
+
+let response = client
+    .completion_model(openai::GPT_5_2)
+    .completion_request("Summarize the answer")
+    .temperature(0.2)
+    .send()
+    .await?;
+```
+
+The data-oriented layer remains public for request conversion, exact-wire
+tests, and custom execution. Use a provider `functions::Config`,
+`CompletionRequest::builder`, `HttpRuntime`, and the provider's free functions:
+
+```rust
+let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_5_2)?;
+let rt = HttpRuntime::new();
+let request = CompletionRequest::builder("Who are you?").temperature(0.2).build();
+let response = openai::responses_api::functions::complete(&cfg, &rt, request).await?;
 ```
 
 Embeddings follow the same shape — an `EmbeddingConfig` plus `functions::embed`.
@@ -66,7 +79,9 @@ let query = openai::functions::embed(&ecfg, &rt, vec!["…".to_string()])
 let hits = store.top_n(VectorSearchRequest::new(OneOrMany::one(query), 1)).await?;
 ```
 
-Non-chat modalities are free functions on the same configs:
+Non-chat modalities are free functions on plain configs. Completion-capable
+clients expose config factories such as `embedding_config(model)` so every
+operation shares the same connection data:
 `functions::{transcribe, generate_image, generate_audio, rerank}`. A custom HTTP
 stack goes through `HttpRuntime::from_reqwest(client)`, and for agents through
 `Runtime::with_http(..)` passed to `AgentBuilder::runtime(Arc::new(..))`.
@@ -109,7 +124,7 @@ stack goes through `HttpRuntime::from_reqwest(client)`, and for agents through
 | `gemini_nanobanana_image_generation` | See source. |
 | `gemini_stream_kill_token_count` | Live Gemini example: obtaining a token-count estimate when a streaming |
 | `gemini_video_understanding` | Demonstrates Gemini video understanding with provider-specific request parameters. |
-| `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit raw `CompletionModel` request. |
+| `manual_tool_calls` | Demonstrates manual tool-call handling with an explicit bound completion request. |
 | `multi_agent` | See source. |
 | `multi_extract` | Demonstrates fan-out structured extraction with `try_parallel!`. |
 | `multi_turn_agent_extended` | See source. |
@@ -122,13 +137,13 @@ stack goes through `HttpRuntime::from_reqwest(client)`, and for agents through
 | `rag_dynamic_tools` | Dynamic tool selection as a hook recipe: every candidate tool is registered, tool docs are embedded into a store, and a hook narrows `RequestPatch::active_tools` per prompt. |
 | `rag_ollama` | Passive RAG entirely locally: Ollama embedding + completion configs, an in-memory store, and a retrieval hook. |
 | `rag` | Passive RAG as a hook: documents embedded with `embed_documents`, retrieved per model call, injected as per-turn context. |
-| `reasoning_loop` | A reasoning agent: extract the chain of thought with `extract_with_options`, then execute it with a tool-carrying agent. |
+| `reasoning_loop` | A reasoning agent: extract the chain of thought with `Agent::extractor`, then execute it with a tool-carrying agent. |
 | `request_hook` | Demonstrates observing prompt/response/tool lifecycle events by stacking several attach-and-forget `HookEntry` records with `add_hook` (delta events additionally require `.observing_deltas()`). |
 | `reqwest_middleware` | Demonstrates driving an agent over a caller-supplied `reqwest::Client` through `HttpRuntime::from_reqwest` and `Runtime::with_http`. |
 | `rmcp_example` | An example of how you can use `rmcp` with Rig to create an MCP friendly agent. |
 | `sentiment_classifier` | Demonstrates the smallest structured extraction for classification. |
 | `transcription` | Transcribes one audio file with every transcription provider via `functions::transcribe` (no `TranscriptionModel`). |
-| `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a run-scoped scratchpad ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |
+| `tool_result_outcomes` | Demonstrates structured disk (`Other`/`EIO`) and network (`Network`/`ENETUNREACH`) tool failures, a host-owned run ledger, and ordered recorder/policy hooks that terminate fatal failures while returning recoverable feedback to the model. Run `cargo run -p tool_result_outcomes -- --help` for credential-free usage. |
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embedding configs (`with_input_type`). |
 | `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding config. |
 | `vector_search` | Demonstrates embedding documents with `embed_documents` and querying a pre-embedded in-memory vector store. |

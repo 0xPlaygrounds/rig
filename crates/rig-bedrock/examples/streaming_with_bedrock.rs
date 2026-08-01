@@ -3,7 +3,8 @@
 //! The `stream_to_stdout` helper was example sugar and is gone; the drain loop
 //! below is what it did, spelled out.
 use futures::StreamExt;
-use rig_agent::agent::{AgentBuilder, PromptResponse, Text};
+use rig_agent::agent::{PromptResponse, Text};
+use rig_agent::client::AgentClientExt;
 use rig_agent::stream::AgentStreamItem;
 use rig_agent::streaming::StreamedAssistantContent;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
@@ -11,7 +12,9 @@ use rig_bedrock::completion::AMAZON_NOVA_LITE;
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create streaming agent with a single context prompt
-    let agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
+    let client = rig_bedrock::Client::from_env();
+    let agent = client
+        .agent(AMAZON_NOVA_LITE)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();

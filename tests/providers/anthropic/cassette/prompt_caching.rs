@@ -2,8 +2,7 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionRequest,
-    CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
+    AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -33,8 +32,9 @@ async fn manual_prompt_caching_reuses_tool_cache() {
         "prompt_caching/manual_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching();
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools();
 
             let first = send_cache_probe(
@@ -66,8 +66,9 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
         "prompt_caching/streaming_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching();
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
             let first = send_streaming_cache_probe(
@@ -104,9 +105,10 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
         "prompt_caching/prompt_and_automatic_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
                 .with_prompt_caching()
-                .with_automatic_caching();
+                .with_automatic_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
             let first = send_cache_probe(
@@ -138,23 +140,19 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
 }
 
 async fn send_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: CompletionHandle,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> RigCompletionResponse {
-    let request = CompletionRequest {
-        tools,
-        tool_choice: Some(ToolChoice::None),
-        temperature: Some(0.0),
-        max_tokens: Some(16),
-        ..CompletionRequest::builder(prompt)
-.preamble(&preamble)
-.messages(Vec::new())
-.build()
-    };
     model
-        .completion(request)
+        .completion_request(prompt)
+        .preamble(preamble)
+        .tools(tools)
+        .tool_choice(ToolChoice::None)
+        .temperature(0.0)
+        .max_tokens(16)
+        .send()
         .await
         .expect("prompt-cached Anthropic request should succeed")
 }
@@ -165,22 +163,21 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: CompletionHandle,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
 ) -> StreamingCacheProbeResponse {
-    let request = CompletionRequest::builder(prompt)
-                      .preamble(&preamble)
-                      .tools()
-                      .additional_params(json!({
+    let mut stream = model
+        .completion_request(prompt)
+        .preamble(preamble)
+        .tools(tools)
+        .additional_params(json!({
             "tool_choice": { "type": "none" }
         }))
-                      .temperature(0.0)
-                      .max_tokens(16)
-                      .build();
-    let mut stream = model
-        .stream(request)
+        .temperature(0.0)
+        .max_tokens(16)
+        .stream()
         .await
         .expect("streaming prompt-cached Anthropic request should start");
     let mut text = String::new();

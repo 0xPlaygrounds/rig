@@ -19,11 +19,11 @@ fn load_example_contexts() -> Result<impl Iterator<Item = (std::path::PathBuf, S
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O)?);
+    let client = openai::Client::from_env()?;
     let files = load_example_contexts()?;
 
     let agent = files
-        .fold(AgentBuilder::new(provider), |builder, (path, content)| {
+        .fold(client.agent(openai::GPT_4O), |builder, (path, content)| {
             let context = format!("Rust example {path:?}:\n{content}");
             builder.context(&context)
         })

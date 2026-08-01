@@ -10,11 +10,11 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // The provider is plain data: a config that names the model.
-    let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
+    let client = anthropic::Client::from_env()?;
 
     // Create a tool-using agent over that config
-    let agent = AgentBuilder::new(cfg)
+    let agent = client
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.

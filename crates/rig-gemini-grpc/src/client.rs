@@ -24,6 +24,7 @@ const RIG_GRPC_CLIENT_IDENTIFIER: &str = "rig-grpc/0.1.0";
 
 #[derive(Clone)]
 pub struct Client {
+    connection: crate::functions::ConnectionConfig,
     api_key: String,
     channel: Channel,
 }
@@ -70,13 +71,28 @@ impl Client {
 
         let channel = endpoint.connect().await?;
 
-        Ok(Self { api_key, channel })
+        Ok(Self {
+            connection: crate::functions::ConnectionConfig {
+                endpoint: None,
+                api_key: rig_core::providers::ApiKeyLocation::Inline(api_key.clone()),
+            },
+            api_key,
+            channel,
+        })
     }
 
     /// Assemble a client from an already-resolved API key and connected
     /// channel (used by [`crate::functions::client_from_config`]).
-    pub(crate) fn from_parts(api_key: String, channel: Channel) -> Self {
-        Self { api_key, channel }
+    pub(crate) fn from_parts(
+        connection: crate::functions::ConnectionConfig,
+        api_key: String,
+        channel: Channel,
+    ) -> Self {
+        Self {
+            connection,
+            api_key,
+            channel,
+        }
     }
 
     /// Get a gRPC client with API key interceptor
@@ -105,5 +121,25 @@ impl Client {
     /// [`Config`](crate::functions::Config).
     pub async fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Self::new(std::env::var("GEMINI_API_KEY")?).await
+    }
+
+    /// Materialize completion configuration for `model`.
+    pub fn config(&self, model: impl Into<String>) -> crate::functions::Config {
+        crate::functions::Config {
+            connection: self.connection.clone(),
+            model: model.into(),
+        }
+    }
+
+    /// Materialize embedding configuration sharing this channel connection.
+    pub fn embedding_config(&self, model: impl Into<String>) -> crate::functions::EmbeddingConfig {
+        let mut config = crate::functions::EmbeddingConfig::new(model);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Canonical channel-construction data.
+    pub fn connection_config(&self) -> &crate::functions::ConnectionConfig {
+        &self.connection
     }
 }

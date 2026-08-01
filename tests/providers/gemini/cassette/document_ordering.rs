@@ -1,7 +1,7 @@
 //! Focused Gemini cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;
@@ -46,18 +46,15 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     super::super::support::with_gemini_cassette(
         "document_ordering/generate_content_keeps_documents_after_system_before_history",
         |client| async move {
-            let model = gemini::completion::GEMINI_2_5_FLASH;
-            let request = CompletionRequest::builder(PROMPT)
-                .messages(vec![
-                    Message::system(SYSTEM_INSTRUCTION),
-                    Message::assistant("Acknowledged."),
-                ])
+            let response = client
+                .completion_model(gemini::completion::GEMINI_2_5_FLASH)
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
+                .document(ordering_document())
                 .temperature(0.0)
                 .max_tokens(32)
-                .documents(vec![ordering_document()])
-                .build();
-            let response = client
-                .complete(model, request)
+                .send()
                 .await
                 .expect("Gemini document ordering request should succeed");
 
@@ -74,47 +71,35 @@ async fn generate_content_keeps_documents_after_system_before_history() {
     );
 }
 
-// TODO(R7): the Gemini Interactions API has no `functions` face yet
-// (`gemini::InteractionsClient` was deleted with the classic client layer),
-// so this ordering assertion has no way to issue the request. Restore once
-// `gemini::interactions_api` grows a config + free-function surface.
-// #[tokio::test]
-// #[ignore = "Gemini Interactions API has no functions face yet (R7)"]
-// async fn interactions_keeps_documents_after_system_before_history() {
-//     super::super::support::with_gemini_interactions_cassette(
-//         "document_ordering/interactions_keeps_documents_after_system_before_history",
-//         |client| async move {
-//             let model = "gemini-3-flash-preview";
-//             let request = CompletionRequest {
-//                 temperature: Some(0.0),
-//                 max_tokens: Some(512),
-//                 documents: vec![ordering_document()],
-//                 ..CompletionRequest::with_history(
-//                     None,
-//                     vec![
-//                         Message::system(SYSTEM_INSTRUCTION),
-//                         Message::assistant("Acknowledged."),
-//                     ],
-//                     PROMPT,
-//                 )
-//             };
-//             let response = client
-//                 .complete(model, request)
-//                 .await
-//                 .expect("Gemini interactions document ordering request should succeed");
-//
-//             assert_contains_any_case_insensitive(
-//                 &assistant_text(&response.choice),
-//                 &[DOCUMENT_ANSWER],
-//             );
-//         },
-//     )
-//     .await;
-//
-//     assert_interactions_request_order(
-//         "document_ordering/interactions_keeps_documents_after_system_before_history",
-//     );
-// }
+#[tokio::test]
+async fn interactions_keeps_documents_after_system_before_history() {
+    super::super::support::with_gemini_interactions_cassette(
+        "document_ordering/interactions_keeps_documents_after_system_before_history",
+        |client| async move {
+            let response = client
+                .completion_model("gemini-3-flash-preview")
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
+                .document(ordering_document())
+                .temperature(0.0)
+                .max_tokens(512)
+                .send()
+                .await
+                .expect("Gemini interactions document ordering request should succeed");
+
+            assert_contains_any_case_insensitive(
+                &assistant_text(&response.choice),
+                &[DOCUMENT_ANSWER],
+            );
+        },
+    )
+    .await;
+
+    assert_interactions_request_order(
+        "document_ordering/interactions_keeps_documents_after_system_before_history",
+    );
+}
 
 fn recorded_request_body(scenario: &str) -> Value {
     let cassette_path = crate::cassettes::cassette_path("gemini", scenario);
@@ -200,3 +185,4 @@ fn assert_interactions_request_order(scenario: &str) {
         "expected final input turn to remain prompt: {body:#}"
     );
 }
+use rig::prelude::*;

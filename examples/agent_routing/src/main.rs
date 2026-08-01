@@ -1,10 +1,6 @@
 //! Demonstrates routing one prompt into different follow-up prompts.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a classifier agent choose which second prompt should run.
-//!
-//! Both agents come from the same plain-data provider config
-//! (`openai::functions::Config`, which names the model) wrapped in
-//! [`ProviderConfig`].
 
 use anyhow::{Result, bail};
 use rig::prelude::*;
@@ -16,14 +12,15 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-fn build_router_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(cfg.clone())
+fn build_router_agent(client: &openai::Client) -> rig::agent::Agent {
+    client
+        .agent(openai::GPT_4)
         .preamble(ROUTER_PREAMBLE)
         .build()
 }
 
-fn build_response_agent(cfg: &openai::functions::Config) -> rig::agent::Agent {
-    AgentBuilder::new(cfg.clone()).build()
+fn build_response_agent(client: &openai::Client) -> rig::agent::Agent {
+    client.agent(openai::GPT_4).build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {
@@ -37,10 +34,10 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-    let category = build_router_agent(&cfg).prompt(INPUT_PROMPT).await?;
+    let client = openai::Client::from_env()?;
+    let category = build_router_agent(&client).prompt(INPUT_PROMPT).await?;
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(&cfg).prompt(follow_up).await?;
+    let response = build_response_agent(&client).prompt(follow_up).await?;
 
     println!("Classifier chose: {}", category.trim());
     println!("Follow-up prompt: {follow_up}");

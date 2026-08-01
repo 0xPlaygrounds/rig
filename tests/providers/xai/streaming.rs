@@ -10,7 +10,8 @@ use rig::providers::xai;
 #[tokio::test]
 async fn streaming_smoke() {
     with_xai_cassette("streaming/streaming_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider_config(xai::completion::GROK_3_MINI))
+        let agent = env
+            .agent(xai::completion::GROK_3_MINI)
             .preamble(STREAMING_PREAMBLE)
             .build();
 

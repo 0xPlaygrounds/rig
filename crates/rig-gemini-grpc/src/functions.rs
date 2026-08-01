@@ -31,12 +31,20 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("gemini-grp
 /// Plain-data Gemini gRPC provider configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct Config {
-    /// gRPC endpoint URL (`None` uses [`DEFAULT_ENDPOINT`] with the exact
-    /// TLS setup of [`Client::new`]).
+pub struct ConnectionConfig {
+    /// gRPC endpoint URL (`None` uses [`DEFAULT_ENDPOINT`]).
     pub endpoint: Option<String>,
     /// Credential location.
     pub api_key: ApiKeyLocation,
+}
+
+/// Plain-data Gemini gRPC completion configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Config {
+    /// Reusable channel-construction data.
+    #[serde(flatten)]
+    pub connection: ConnectionConfig,
     /// Model identifier requests are built for.
     pub model: String,
 }
@@ -45,22 +53,38 @@ impl Config {
     /// Config for `model` reading `GEMINI_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            endpoint: None,
-            api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            connection: ConnectionConfig {
+                endpoint: None,
+                api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            },
             model: model.into(),
         }
     }
 
     /// Config for `model` with an explicit API key.
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
-        self.api_key = ApiKeyLocation::Inline(key.into());
+        self.connection.api_key = ApiKeyLocation::Inline(key.into());
         self
     }
 
     /// Override the gRPC endpoint URL.
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
-        self.endpoint = Some(endpoint.into());
+        self.connection.endpoint = Some(endpoint.into());
         self
+    }
+}
+
+impl std::ops::Deref for Config {
+    type Target = ConnectionConfig;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+impl std::ops::DerefMut for Config {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
     }
 }
 
@@ -73,18 +97,25 @@ impl Config {
 pub async fn client_from_config(
     cfg: &Config,
 ) -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
-    let api_key = cfg
+    client_from_connection(&cfg.connection).await
+}
+
+/// Build a connected client from reusable channel-construction data.
+pub async fn client_from_connection(
+    connection: &ConnectionConfig,
+) -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
+    let api_key = connection
         .api_key
         .resolve()?
         .ok_or("Gemini gRPC requires an API key (ApiKeyLocation::None is not supported)")?;
 
-    match &cfg.endpoint {
+    match &connection.endpoint {
         None => Client::new(api_key).await,
         Some(endpoint) => {
             let endpoint = Endpoint::from_shared(endpoint.clone())?
                 .tls_config(ClientTlsConfig::new().with_webpki_roots())?;
             let channel = endpoint.connect().await?;
-            Ok(Client::from_parts(api_key, channel))
+            Ok(Client::from_parts(connection.clone(), api_key, channel))
         }
     }
 }
@@ -133,10 +164,9 @@ pub async fn open_stream(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct EmbeddingConfig {
-    /// gRPC endpoint URL (`None` uses [`DEFAULT_ENDPOINT`]).
-    pub endpoint: Option<String>,
-    /// Credential location.
-    pub api_key: ApiKeyLocation,
+    /// Reusable channel-construction data.
+    #[serde(flatten)]
+    pub connection: ConnectionConfig,
     /// Embedding model identifier requests are built for.
     pub model: String,
     /// Requested `output_dimensionality` (`None` sends none; the classic
@@ -148,8 +178,10 @@ impl EmbeddingConfig {
     /// Config for `model` reading `GEMINI_API_KEY` from the environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            endpoint: None,
-            api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            connection: ConnectionConfig {
+                endpoint: None,
+                api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
+            },
             model: model.into(),
             ndims: None,
         }
@@ -157,13 +189,13 @@ impl EmbeddingConfig {
 
     /// Config for `model` with an explicit API key.
     pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
-        self.api_key = ApiKeyLocation::Inline(key.into());
+        self.connection.api_key = ApiKeyLocation::Inline(key.into());
         self
     }
 
     /// Override the gRPC endpoint URL.
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
-        self.endpoint = Some(endpoint.into());
+        self.connection.endpoint = Some(endpoint.into());
         self
     }
 
@@ -177,10 +209,23 @@ impl EmbeddingConfig {
     /// sharing a host runtime's cached [`client_from_config`] machinery.
     pub fn client_config(&self) -> Config {
         Config {
-            endpoint: self.endpoint.clone(),
-            api_key: self.api_key.clone(),
+            connection: self.connection.clone(),
             model: self.model.clone(),
         }
+    }
+}
+
+impl std::ops::Deref for EmbeddingConfig {
+    type Target = ConnectionConfig;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+impl std::ops::DerefMut for EmbeddingConfig {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
     }
 }
 

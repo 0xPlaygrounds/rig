@@ -9,7 +9,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completion_smoke() {
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(BASIC_PREAMBLE)
         .build();
 

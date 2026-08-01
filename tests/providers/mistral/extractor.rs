@@ -1,10 +1,7 @@
 //! Mistral extractor smoke test.
 
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
+use rig::prelude::*;
+use rig::providers::mistral;
 
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
@@ -13,15 +10,15 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extractor_smoke() {
-    let response = extract_with_options::<SmokePerson>(
-        AgentConfig::new(),
-        super::live(DEFAULT_MODEL),
-        Arc::new(Runtime::new()),
-        EXTRACTOR_TEXT,
-        ExtractOptions::classic_extractor(),
-    )
-    .await
-    .expect("extractor request should succeed");
+    let response = mistral::Client::from_env()
+        .expect("Mistral client should build from env")
+        .agent(DEFAULT_MODEL)
+        .build()
+        .extractor(EXTRACTOR_TEXT)
+        .classic()
+        .run_with_usage::<SmokePerson>()
+        .await
+        .expect("extractor request should succeed");
 
     let first_name = response
         .value

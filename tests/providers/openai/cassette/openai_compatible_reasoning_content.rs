@@ -16,7 +16,6 @@ use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::AgentBuilder;
 use rig::completion::Message;
-use rig::provider::ProviderConfig;
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -69,7 +68,7 @@ where
     let cfg = openai::responses_api::functions::Config::new("llama-cpp-reasoning-model")
         .with_api_key("dummy-openai-compatible-key")
         .with_base_url(cassette.base_url());
-    let builder = AgentBuilder::new(ProviderConfig::OpenAiResponses(cfg));
+    let builder = AgentBuilder::new(cfg);
 
     let result = AssertUnwindSafe(test_body(builder)).catch_unwind().await;
     cassette.finish_after_test(result).await;

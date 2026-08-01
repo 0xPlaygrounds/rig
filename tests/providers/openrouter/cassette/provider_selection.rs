@@ -60,3 +60,4 @@ async fn provider_selection_scenarios() {
     )
     .await;
 }
+use rig::prelude::*;

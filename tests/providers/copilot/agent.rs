@@ -69,3 +69,4 @@ async fn all_models_completion_smoke() {
         println!("  - {entry}");
     }
 }
+use rig::prelude::*;

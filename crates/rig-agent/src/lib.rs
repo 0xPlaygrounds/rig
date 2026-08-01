@@ -64,6 +64,7 @@ pub mod core {
 
 pub mod agent;
 pub mod agent_api;
+pub mod client;
 pub mod completion;
 pub mod executor;
 pub mod integrations;

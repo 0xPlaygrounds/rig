@@ -11,7 +11,9 @@ use super::STREAMING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_smoke() {
-    let agent = AgentBuilder::new(super::live(STREAMING_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(STREAMING_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 

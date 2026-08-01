@@ -494,6 +494,252 @@ mod azure_tests {
     }
 }
 
+/// Reusable Azure OpenAI connection data.
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct ConnectionConfig {
+    /// Azure resource endpoint.
+    pub endpoint: String,
+    /// Azure API version.
+    pub api_version: String,
+    /// Credential location.
+    pub api_key: crate::providers::ApiKeyLocation,
+    /// Credential presentation on the wire.
+    #[serde(default)]
+    pub auth_scheme: functions::AuthScheme,
+    /// Headers attached to every request.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+impl std::fmt::Debug for ConnectionConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let common = crate::providers::HttpConnectionConfig {
+            base_url: self.endpoint.clone(),
+            api_key: self.api_key.clone(),
+            extra_headers: self.extra_headers.clone(),
+        };
+        f.debug_struct("AzureConnectionConfig")
+            .field("http_connection", &common)
+            .field("api_version", &self.api_version)
+            .field("auth_scheme", &self.auth_scheme)
+            .finish()
+    }
+}
+
+/// Concrete Azure OpenAI client.
+#[derive(Clone, Debug)]
+pub struct Client {
+    connection: ConnectionConfig,
+    http: crate::http_runtime::HttpRuntime,
+}
+
+/// Monomorphic Azure OpenAI client builder.
+#[derive(Clone)]
+pub struct ClientBuilder {
+    endpoint: Option<String>,
+    api_version: String,
+    api_key: Option<crate::providers::ApiKeyLocation>,
+    auth_scheme: functions::AuthScheme,
+    extra_headers: Vec<(String, String)>,
+    http: crate::http_runtime::HttpRuntime,
+}
+
+impl std::fmt::Debug for ClientBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientBuilder")
+            .field("endpoint", &self.endpoint)
+            .field("api_version", &self.api_version)
+            .field("api_key", &self.api_key)
+            .field("auth_scheme", &self.auth_scheme)
+            .field(
+                "extra_headers",
+                &crate::providers::client::redacted_headers(&self.extra_headers),
+            )
+            .field("http", &self.http)
+            .finish()
+    }
+}
+
+impl Client {
+    /// Build from `AZURE_ENDPOINT`, `AZURE_API_VERSION`, and Azure credentials.
+    pub fn from_env() -> Result<Self, crate::providers::ConfigError> {
+        let config = functions::Config::from_env(String::new())?;
+        Ok(Self {
+            connection: config.connection,
+            http: crate::http_runtime::HttpRuntime::new(),
+        })
+    }
+
+    /// Start a client builder.
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder {
+            endpoint: None,
+            api_version: functions::DEFAULT_API_VERSION.to_string(),
+            api_key: None,
+            auth_scheme: functions::AuthScheme::ApiKeyHeader,
+            extra_headers: Vec::new(),
+            http: crate::http_runtime::HttpRuntime::new(),
+        }
+    }
+
+    /// Materialize plain completion configuration for `deployment`.
+    pub fn config(&self, deployment: impl Into<String>) -> functions::Config {
+        let mut config = functions::Config::new(&self.connection.endpoint, deployment);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Materialize embedding configuration sharing this connection.
+    pub fn embedding_config(&self, deployment: impl Into<String>) -> functions::EmbeddingConfig {
+        let mut config = functions::EmbeddingConfig::new(&self.connection.endpoint, deployment);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Materialize transcription configuration sharing this connection.
+    pub fn transcription_config(&self, deployment: impl Into<String>) -> functions::Config {
+        self.config(deployment)
+    }
+
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, deployment: impl Into<String>) -> functions::Config {
+        self.config(deployment)
+    }
+
+    /// Materialize audio-generation configuration sharing this connection.
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_config(&self, deployment: impl Into<String>) -> functions::Config {
+        self.config(deployment)
+    }
+
+    /// Canonical connection data.
+    pub fn connection_config(&self) -> &ConnectionConfig {
+        &self.connection
+    }
+
+    /// Shared HTTP runtime.
+    pub fn http_runtime(&self) -> crate::http_runtime::HttpRuntime {
+        self.http.clone()
+    }
+
+    /// Compatibility alias for [`Self::http_runtime`].
+    pub fn http(&self) -> crate::http_runtime::HttpRuntime {
+        self.http_runtime()
+    }
+}
+
+impl ClientBuilder {
+    /// Set the Azure resource endpoint.
+    pub fn azure_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.endpoint = Some(endpoint.into());
+        self
+    }
+
+    /// Alias for [`Self::azure_endpoint`].
+    pub fn endpoint(self, endpoint: impl Into<String>) -> Self {
+        self.azure_endpoint(endpoint)
+    }
+
+    /// Set the Azure API version.
+    pub fn api_version(mut self, api_version: impl Into<String>) -> Self {
+        self.api_version = api_version.into();
+        self
+    }
+
+    /// Set an Azure API key.
+    pub fn api_key(mut self, key: impl Into<String>) -> Self {
+        self.api_key = Some(crate::providers::ApiKeyLocation::Inline(key.into()));
+        self.auth_scheme = functions::AuthScheme::ApiKeyHeader;
+        self
+    }
+
+    /// Set a bearer token.
+    pub fn token(mut self, token: impl Into<String>) -> Self {
+        self.api_key = Some(crate::providers::ApiKeyLocation::Inline(token.into()));
+        self.auth_scheme = functions::AuthScheme::Bearer;
+        self
+    }
+
+    /// Set a deferred or inline credential location and its wire scheme.
+    pub fn credential(
+        mut self,
+        api_key: crate::providers::ApiKeyLocation,
+        auth_scheme: functions::AuthScheme,
+    ) -> Self {
+        self.api_key = Some(api_key);
+        self.auth_scheme = auth_scheme;
+        self
+    }
+
+    /// Append a connection-wide header.
+    pub fn extra_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.extra_headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Reuse an existing HTTP runtime.
+    pub fn http_runtime(mut self, http: crate::http_runtime::HttpRuntime) -> Self {
+        self.http = http;
+        self
+    }
+
+    /// Validate and build the client.
+    pub fn build(self) -> Result<Client, crate::providers::ClientBuildError> {
+        let endpoint = self
+            .endpoint
+            .ok_or(crate::providers::ClientBuildError::MissingEndpoint)?;
+        let api_key = self
+            .api_key
+            .ok_or(crate::providers::ClientBuildError::MissingApiKey)?;
+        Ok(Client {
+            connection: ConnectionConfig {
+                endpoint,
+                api_version: self.api_version,
+                api_key,
+                auth_scheme: self.auth_scheme,
+                extra_headers: self.extra_headers,
+            },
+            http: self.http,
+        })
+    }
+}
+
+#[cfg(test)]
+mod client_tests {
+    use super::Client;
+
+    #[test]
+    fn builder_debug_redacts_credentials_and_sensitive_headers() {
+        let builder = Client::builder()
+            .endpoint("https://example.openai.azure.com")
+            .api_key("inline-secret")
+            .extra_header("Authorization", "Bearer header-secret")
+            .extra_header("proxy-authorization", "proxy-secret")
+            .extra_header("x-api-key", "x-secret")
+            .extra_header("api-key", "api-secret")
+            .extra_header("x-goog-api-key", "google-secret")
+            .extra_header("cf-access-client-secret", "vendor-secret")
+            .extra_header("x-request-id", "request-id-value");
+
+        let debug = format!("{builder:?}");
+        for secret in [
+            "inline-secret",
+            "header-secret",
+            "proxy-secret",
+            "x-secret",
+            "api-secret",
+            "google-secret",
+            "vendor-secret",
+            "request-id-value",
+        ] {
+            assert!(!debug.contains(secret));
+        }
+        assert!(debug.contains("cf-access-client-secret"));
+        assert!(debug.contains("x-request-id"));
+    }
+}
+
 pub mod functions {
     //! Azure OpenAI chat completions as config + pure functions.
     //!
@@ -590,19 +836,25 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct Config {
-        /// Resource endpoint, e.g. `https://my-resource.openai.azure.com`.
-        pub endpoint: String,
-        /// API version query parameter (defaults to [`DEFAULT_API_VERSION`]).
-        pub api_version: String,
-        /// Credential location.
-        pub api_key: ApiKeyLocation,
-        /// How the credential is presented (`api-key` header by default).
-        #[serde(default)]
-        pub auth_scheme: AuthScheme,
+        /// Reusable Azure connection data.
+        #[serde(flatten)]
+        pub connection: super::ConnectionConfig,
         /// Deployment identifier requests are built for (routed through the URL).
         pub model: String,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl std::ops::Deref for Config {
+        type Target = super::ConnectionConfig;
+
+        fn deref(&self) -> &Self::Target {
+            &self.connection
+        }
+    }
+
+    impl std::ops::DerefMut for Config {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.connection
+        }
     }
 
     impl Config {
@@ -610,12 +862,14 @@ pub mod functions {
         /// environment.
         pub fn new(endpoint: impl Into<String>, model: impl Into<String>) -> Self {
             Self {
-                endpoint: endpoint.into(),
-                api_version: DEFAULT_API_VERSION.to_string(),
-                api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
-                auth_scheme: AuthScheme::ApiKeyHeader,
+                connection: super::ConnectionConfig {
+                    endpoint: endpoint.into(),
+                    api_version: DEFAULT_API_VERSION.to_string(),
+                    api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
+                    auth_scheme: AuthScheme::ApiKeyHeader,
+                    extra_headers: Vec::new(),
+                },
                 model: model.into(),
-                extra_headers: Vec::new(),
             }
         }
 
@@ -941,23 +1195,29 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, serde::Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct EmbeddingConfig {
-        /// Resource endpoint, e.g. `https://my-resource.openai.azure.com`.
-        pub endpoint: String,
-        /// API version query parameter (defaults to [`DEFAULT_API_VERSION`]).
-        pub api_version: String,
-        /// Credential location.
-        pub api_key: crate::providers::descriptor::ApiKeyLocation,
-        /// How the credential is presented (`api-key` header by default).
-        #[serde(default)]
-        pub auth_scheme: AuthScheme,
+        /// Reusable Azure connection data.
+        #[serde(flatten)]
+        pub connection: super::ConnectionConfig,
         /// Embedding deployment identifier (routed through the URL).
         pub model: String,
         /// Requested embedding dimensions, sent verbatim as `dimensions`
         /// when set (models that reject the field, like
         /// `text-embedding-ada-002`, should leave it unset).
         pub dimensions: Option<usize>,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
+    }
+
+    impl std::ops::Deref for EmbeddingConfig {
+        type Target = super::ConnectionConfig;
+
+        fn deref(&self) -> &Self::Target {
+            &self.connection
+        }
+    }
+
+    impl std::ops::DerefMut for EmbeddingConfig {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.connection
+        }
     }
 
     impl EmbeddingConfig {
@@ -965,13 +1225,15 @@ pub mod functions {
         /// `AZURE_API_KEY` from the environment.
         pub fn new(endpoint: impl Into<String>, model: impl Into<String>) -> Self {
             Self {
-                endpoint: endpoint.into(),
-                api_version: DEFAULT_API_VERSION.to_string(),
-                api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
-                auth_scheme: AuthScheme::ApiKeyHeader,
+                connection: super::ConnectionConfig {
+                    endpoint: endpoint.into(),
+                    api_version: DEFAULT_API_VERSION.to_string(),
+                    api_key: ApiKeyLocation::Env("AZURE_API_KEY".to_string()),
+                    auth_scheme: AuthScheme::ApiKeyHeader,
+                    extra_headers: Vec::new(),
+                },
                 model: model.into(),
                 dimensions: None,
-                extra_headers: Vec::new(),
             }
         }
 

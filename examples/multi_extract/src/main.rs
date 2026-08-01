@@ -2,13 +2,11 @@
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see one batch of text split into names, topics, and sentiment in parallel.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::{ProviderConfig, Runtime};
+use rig::agent::Agent;
+use rig::extract::ExtractOptions;
+use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -39,17 +37,8 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // `client.extractor::<T>(model)` is gone: an extraction is a call to
-    // `extract_with_options`, so the per-extractor "configuration" is just the
-    // data it will be handed — the preamble on an `AgentConfig`, the retry
-    // budget on `ExtractOptions`.
-    let provider =
-        ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O_MINI)?);
-    let rt = Arc::new(Runtime::new());
-
-    let names_config = AgentConfig::new();
-    let topics_config = AgentConfig::new();
-    let sentiment_config = AgentConfig::new();
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(openai::GPT_4O_MINI).build();
 
     // `.preamble(extra)` on the old builder appended to the extractor preamble;
     // spelling that out keeps the extraction protocol intact.
@@ -63,19 +52,15 @@ async fn main() -> Result<()> {
     // old `try_parallel!` + `try_batch_call(4, ..)` pipeline provided.
     let responses: Vec<String> = futures::stream::iter(sample_inputs())
         .map(|text| {
-            let provider = &provider;
-            let rt = &rt;
-            let names_config = &names_config;
-            let topics_config = &topics_config;
-            let sentiment_config = &sentiment_config;
+            let agent = &agent;
             let names_options = &names_options;
             let topics_options = &topics_options;
             let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    extract::<Names>(names_config, provider, rt, text, names_options),
-                    extract::<Topics>(topics_config, provider, rt, text, topics_options),
-                    extract::<Sentiment>(sentiment_config, provider, rt, text, sentiment_options),
+                    extract::<Names>(agent, text, names_options),
+                    extract::<Topics>(agent, text, topics_options),
+                    extract::<Sentiment>(agent, text, sentiment_options),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
@@ -108,24 +93,15 @@ fn extractor_options(extra_instructions: &str) -> ExtractOptions {
     ))
 }
 
-/// One extraction, borrowing the shared plain-data configuration.
-async fn extract<T>(
-    config: &AgentConfig,
-    provider: &ProviderConfig,
-    rt: &Arc<Runtime>,
-    text: &str,
-    options: &ExtractOptions,
-) -> Result<T>
+async fn extract<T>(agent: &Agent, text: &str, options: &ExtractOptions) -> Result<T>
 where
     T: schemars::JsonSchema + serde::de::DeserializeOwned,
 {
-    let outcome = extract_with_options::<T>(
-        config.clone(),
-        provider.clone(),
-        rt.clone(),
-        text,
-        options.clone(),
-    )
-    .await?;
-    Ok(outcome.value)
+    Ok(agent
+        .extractor(text)
+        .classic()
+        .retries(options.retries)
+        .preamble(options.preamble.clone().unwrap_or_default())
+        .run::<T>()
+        .await?)
 }

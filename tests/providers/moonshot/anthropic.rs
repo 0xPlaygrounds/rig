@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn anthropic_compatible_completion_smoke() {
     let cfg = moonshot::functions::anthropic_config_from_env(moonshot::KIMI_K2_5)
         .expect("moonshot anthropic config should build");
-    let response = AgentBuilder::new(ProviderConfig::Anthropic(cfg))
+    let response = AgentBuilder::new(cfg)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

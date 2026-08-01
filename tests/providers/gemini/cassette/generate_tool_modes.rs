@@ -29,7 +29,8 @@ async fn required_maps_to_any_and_forces_function_call() {
                 .build();
 
             let response = client
-                .complete(model, request)
+                .completion_model(model)
+                .completion(request)
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -55,3 +56,4 @@ async fn required_maps_to_any_and_forces_function_call() {
     )
     .await;
 }
+use rig::prelude::*;

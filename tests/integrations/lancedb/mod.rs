@@ -12,10 +12,9 @@ use serde_json::json;
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
-use rig::provider::ProviderConfig;
+use rig::prelude::*;
 use rig::{
-    AgentBuilder, embeddings::embed_documents, http_runtime::HttpRuntime, providers::openai,
-    vector_store::request::VectorSearchRequest,
+    embeddings::embed_documents, providers::openai, vector_store::request::VectorSearchRequest,
 };
 
 const ADA_002_NDIMS: usize = 1536;
@@ -112,11 +111,13 @@ async fn vector_search_test() {
             ));
     });
 
-    // Configure the (mocked) OpenAI embeddings face.
-    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
-        .with_api_key("TEST")
-        .with_base_url(server.base_url());
-    let rt = HttpRuntime::new();
+    let client = openai::CompletionsClient::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+    let cfg = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = client.http_runtime();
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -330,11 +331,13 @@ async fn agent_with_retrieved_context_test() {
             }));
     });
 
-    // Configure the (mocked) OpenAI embeddings face.
-    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
-        .with_api_key("TEST")
-        .with_base_url(server.base_url());
-    let rt = HttpRuntime::new();
+    let client = openai::CompletionsClient::builder()
+        .api_key("TEST")
+        .base_url(server.base_url())
+        .build()
+        .unwrap();
+    let cfg = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = client.http_runtime();
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store")
@@ -418,11 +421,7 @@ async fn agent_with_retrieved_context_test() {
     assert!(!hits.is_empty());
 
     // Build RAG agent with the retrieved context.
-    let mut agent_builder = AgentBuilder::new(ProviderConfig::OpenAi(
-        openai::functions::Config::new(openai::GPT_4O)
-            .with_api_key("TEST")
-            .with_base_url(server.base_url()),
-    ));
+    let mut agent_builder = client.agent(openai::GPT_4O);
     for hit in &hits {
         agent_builder = agent_builder.context(&hit.payload.to_string());
     }

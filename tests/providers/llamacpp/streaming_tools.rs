@@ -12,7 +12,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn streaming_tools_smoke() {
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -29,7 +30,8 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn example_streaming_with_tools() {
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
              Use the tools provided to answer the user's question and answer in a full sentence.",

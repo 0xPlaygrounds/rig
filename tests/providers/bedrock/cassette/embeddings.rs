@@ -10,8 +10,9 @@ const EMBEDDING_INPUT: &str = "Rust cassette replay keeps Bedrock tests determin
 #[tokio::test]
 async fn embeddings_smoke() {
     with_bedrock_cassette("embeddings/embeddings_smoke", |client| async move {
+        let aws = client.get_inner().await;
         let embeddings = rig::bedrock::functions::embed(
-            client.aws_client(),
+            &aws,
             bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,
             Some(256),
             vec![EMBEDDING_INPUT.to_string()],
@@ -34,8 +35,9 @@ async fn embeddings_smoke() {
 #[tokio::test]
 async fn embeddings_batch_smoke() {
     with_bedrock_cassette("embeddings/embeddings_batch_smoke", |client| async move {
+        let aws = client.get_inner().await;
         let embeddings = rig::bedrock::functions::embed(
-            client.aws_client(),
+            &aws,
             bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0,
             Some(256),
             EMBEDDING_INPUTS.into_iter().map(str::to_string).collect(),

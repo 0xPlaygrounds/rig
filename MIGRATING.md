@@ -594,92 +594,57 @@ let cfg = anthropic::functions::Config::new(CLAUDE_SONNET_4_6)
 
 Defaults are unchanged (all off), so existing request bodies are identical.
 
-### Custom OpenAI-compatible providers: the trait stack is inverted
+### Custom OpenAI-compatible providers: use the public data path
 
-If you implemented `providers::openai::completion::OpenAICompatibleProvider`
-for your own extension type, the five hook methods and the capability consts
-are gone. The trait is now a four-item lookup shim, and *your dialect lives in
-your own free functions*:
+`OpenAICompatibleProvider` and `AnthropicCompatibleProvider` are removed. The
+closed `ProviderConfig` enum does not currently accept third-party providers,
+so there is no truthful migration from a custom extension into the bundled
+agent facade in this release.
+
+For a wire-compatible OpenAI endpoint, configure the public OpenAI data API
+with the endpoint and credentials you own. Its public `build_request_body`,
+`build_request`, `parse_response`, `complete`, and `open_stream` functions are
+the supported sans-IO/execution seam:
 
 ```rust
-// before
-impl OpenAICompatibleProvider for MyExt {
-    const PROVIDER_NAME: &'static str = "mine";
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-    type StreamingUsage = openai::Usage;
-    type Response = openai::CompletionResponse;
-    fn finalize_request_body(&self, body: &mut Value) -> Result<(), CompletionError> { … }
-}
-
-// after — the quirk is straight-line code you own
-pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("mine");
-pub const STREAM_DIALECT: ChatCompletionsDialect =
-    ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
-
-pub fn build_body(
-    model: &str,
-    request: &CompletionRequest,
-    options: CompletionModelOptions,
-    stream: bool,
-) -> Result<Vec<u8>, CompletionError> {
-    let typed = compatible_typed_request(model, request, &DESCRIPTOR, options)?;
-    let mut body = compatible_body_value(&typed, &DESCRIPTOR, stream)?;
-    /* your former finalize_request_body body, here */
-    Ok(serde_json::to_vec(&body)?)
-}
+let cfg = openai::functions::Config::new("my-model")
+    .with_api_key(api_key)
+    .with_base_url("https://provider.example/v1");
+let request = CompletionRequest::builder("Hello").build();
+let body = openai::functions::build_request_body(&cfg, &request, false)?;
 ```
 
-Mapping of the deleted items:
-
-| deleted | replacement |
-| --- | --- |
-| `PROVIDER_NAME` | `ProviderDescriptor::name` |
-| `SUPPORTS_TOOLS` | `ProviderDescriptor::supports_tools` |
-| `SUPPORTS_RESPONSE_FORMAT` | `ProviderDescriptor::supports_response_format` |
-| `STREAM_INCLUDE_USAGE` | `ProviderDescriptor::stream_include_usage` |
-| `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` | `ProviderDescriptor::emits_complete_single_chunk_tool_calls` |
-| `type StreamingUsage` | `ChatCompletionsDialect::usage` (a `ChatCompletionsUsageDialect` arm) |
-| `build_completion_request` | call `compatible_typed_request` (or your own conversion) inside `build_body` |
-| `prepare_request` | straight-line code on the typed request inside `build_body` |
-| `finalize_request_body(_with_options)` | straight-line code on the serialized body inside `build_body` |
-| `decorate_streaming_tool_call` | a `ChatCompletionsDialect` flag plus a free function in your module |
-| `completion_path` | still a trait method; the body forwards to your free function |
-
-`AnthropicCompatibleProvider` shrank the same way: `PROVIDER_NAME` and
-`default_max_tokens` are now the two fields of one plain-data
-`anthropic::completion::AnthropicDialect`, supplied by a single
-`const DIALECT`. On the data-oriented path there is nothing to supply at all —
-`anthropic::functions::Config` already stores the resolved
-`default_max_tokens` as a field.
+If your provider has a different wire dialect, own its config, conversion,
+HTTP request, and parsing functions in your crate. Rig's internal
+`compatible_typed_request`, `compatible_body_value`, and
+`compatible_open_stream` helpers are intentionally not public APIs. Adding a
+data-driven third-party-provider arm is a separate design problem; do not copy
+those private helpers from this migration guide.
 
 ### `openai::send_compatible_streaming_request` is gone
 
 Chat-completions stream parsing no longer goes through a profile trait. The
 public `send_compatible_streaming_request` free function, the
 `CompatibleStreamProfile` trait, and `OpenAICompatibleProfile` are deleted.
-Streaming is now: open the transport-edge event stream, then drive the shared
-sans-IO state machine with a dialect.
+Bundled providers expose streaming through their public `functions::open_stream`
+entry point:
 
 ```rust
-// after (what every provider's `functions::open_stream` does)
-let req = build_request(cfg, &request, true)?;
-Ok(compatible_open_stream(rt, req, STREAM_DIALECT))
+let stream = openai::functions::open_stream(&cfg, &runtime, request).await?;
 ```
 
-If you drove the shared machinery yourself, box your own event source with
-`http_client::sse::boxed_event_source(client, req, allow_missing_content_type)`.
-Provider stream drivers are no longer generic over `HttpClientExt`; they take
-`http_client::sse::BoxedEventSource`.
+The shared dialect state machine and boxed event-source adapter are internal;
+external custom dialects must own their streaming parser.
 
 ### `Agent<M>` is now `Agent`
 
 Every classic runtime type lost its `M: CompletionModel` parameter:
 `Agent<M>` → `Agent`, `AgentBuilder<M>` → `AgentBuilder`,
 `AgentRunner<M>` → `AgentRunner`, `PromptRequest<S, M>` → `PromptRequest<S>`,
-`StreamingPromptRequest<M>` → `StreamingPromptRequest`,
-`Extractor<M, T>` → `Extractor<T>`, `ExtractorBuilder<M, T>` →
-`ExtractorBuilder<T>`, and the `StreamingPrompt<M>`/`StreamingChat<M>` traits
-are now plain `StreamingPrompt`/`StreamingChat`.
+`StreamingPromptRequest<M>` → `StreamingPromptRequest`, and the old
+`Extractor<M, T>`/`ExtractorBuilder<M, T>` pair is replaced by a concrete
+`ExtractionRunner` that selects `T` only on `.run::<T>()` or
+`.run_with_usage::<T>()`.
 
 If you only ever wrote `client.agent(model)…`, delete the type annotations
 and you are done — construction, the builder surface, hooks, memory, and the
@@ -735,13 +700,14 @@ agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
 clients bridge only credentials that are already cached (non-interactively);
 interactive OAuth flows still work through the classic clients themselves.
 
-### Prompting is inherent methods; extraction is a free function (R4)
+### Prompting is inherent; extraction has a concrete fluent runner
 
 The `Prompt`, `Chat`, `TypedPrompt`, `StreamingPrompt`, and `StreamingChat`
 traits are gone, along with the `PromptRequest`/`TypedPromptRequest`
-typestate, `Extractor`/`ExtractorBuilder`, `stream_to_stdout`, and
-`client.extractor::<T>()`. `Agent` carries the same operations as inherent
-methods, so most call sites only lose an import:
+typestate, generic `Extractor`/`ExtractorBuilder`, `stream_to_stdout`, and
+`client.extractor::<T>()`. `Agent` carries prompting as inherent methods and
+starts structured extraction with the non-generic `agent.extractor(prompt)`;
+the low-level `extract_with_options` function remains available:
 
 ```rust
 // before
@@ -756,6 +722,7 @@ let answer = agent.prompt("hi").await?;
 | `agent.prompt(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run().await?.output` |
 | `agent.prompt(p).extended_details().await?` | `agent.run(p).await?` (or `agent.runner(p)….run().await?`) |
 | `agent.prompt_typed::<T>(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run_typed::<T>().await?` |
+| `client.extractor::<T>(m).build().extract(p).await?` | `client.agent(m).build().extractor(p).run::<T>().await?` |
 | `stream_to_stdout(&mut stream).await?` | drain the stream yourself (it was example sugar) |
 | `ChatBotBuilder::new().agent(a)` | `ChatBotBuilder::new(a)` |
 
@@ -967,12 +934,13 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
   Provider-specific streaming-final aliases (deepseek, groq, mistral,
   openrouter, gemini, copilot) are removed with nothing to replace them.
 
-### `CompletionRequestBuilder` is gone
+### Completion requests are plain data with an optional bound facade
 
-`CompletionRequestBuilder` and `model.completion_request(...)` were removed.
-`CompletionRequest` is plain data: build it with the
-`CompletionRequest::with_history` / `CompletionRequest::from_prompt`
-constructors plus struct-update syntax for everything else.
+The generic model-bound request builder is gone. `CompletionRequest` remains
+plain data and `CompletionRequest::builder(prompt)` returns the concrete,
+non-generic `CompletionRequestBuilder`. In the root `rig` facade, a concrete
+provider client can additionally bind that same builder to its config and
+runtime for `.send()` or `.stream()`.
 
 ```rust
 // before
@@ -982,16 +950,21 @@ let request = model
     .temperature(0.5)
     .build();
 
-// after
-let request = CompletionRequest {
-    temperature: Some(0.5),
-    ..CompletionRequest::with_history(
-        Some("You are a concise assistant."),
-        Vec::new(),          // prior history
-        "Who are you?",
-    )
-};
-let response = model.completion(request).await?;
+// after: fluent bound execution
+let response = client
+    .completion_model(openai::GPT_5_2)
+    .completion_request("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .send()
+    .await?;
+
+// low-level data escape hatch
+let request = CompletionRequest::builder("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .build();
+let response = openai::responses_api::functions::complete(&cfg, &runtime, request).await?;
 ```
 
 ### Modalities are free functions
@@ -1000,9 +973,10 @@ Embedding, transcription, image-generation, audio-generation, and rerank calls
 are extracted to per-provider free functions over plain configs: each provider
 exposes a `functions` module (e.g.
 `rig::providers::openai::functions::EmbeddingConfig` with free
-`embed`/`embed_batches` in `rig::provider`). The classic
-`EmbeddingsBuilder`/`EmbeddingModel` client surface still works and now routes
-through the same functions.
+`embed`/`embed_batches` in `rig::provider`). The old generic
+`EmbeddingsBuilder`/`EmbeddingModel` client surface is removed. When a restored
+completion client also supports embeddings, use `client.embedding_config(model)`
+to preserve its connection data, then call the free embedding functions.
 
 ### Vector stores: the shared traits are deleted
 
@@ -1083,19 +1057,20 @@ from the tool's `name`, `description`, and `schema_as_json_value()`.
 
 ### 2. Client construction needs traits in scope
 
-Provider clients no longer carry inherent `.agent()` / `.extractor()` methods.
-There is one canonical `CompletionClient` (in `rig-core`, providing
-`completion_model`); the classic constructors live on a new `AgentClientExt`.
+Provider clients are concrete, monomorphic connection handles. Agent and bound
+completion construction are extension methods from the root facade; extraction
+starts from the resulting `Agent`.
 
 ```rust
-use rig::prelude::*;                  // brings both into scope
+use rig::prelude::*; // brings AgentClientExt and CompletionClientExt into scope
 
 let agent     = client.agent(model).build();          // AgentClientExt
-let extractor = client.extractor::<T>(model).build(); // AgentClientExt
-let m         = client.completion_model(model);       // CompletionClient
+let extractor = agent.extractor(prompt);              // concrete runner; T is terminal
+let m         = client.completion_model(model);       // CompletionClientExt
 ```
 
-Or import explicitly: `use rig::client::{CompletionClient, AgentClientExt};`
+Or import explicitly:
+`use rig::client::{AgentClientExt, CompletionClientExt, ToProviderConfig};`
 
 ### 3. The portable tool contract is `PortableTool`
 

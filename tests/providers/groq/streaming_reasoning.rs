@@ -9,7 +9,9 @@ use super::STREAMING_REASONING_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn parsed_reasoning_stream() {
-    let agent = AgentBuilder::new(super::live(STREAMING_REASONING_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(STREAMING_REASONING_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .additional_params(serde_json::json!({ "reasoning_format": "parsed" }))
         .build();

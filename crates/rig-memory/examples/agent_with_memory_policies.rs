@@ -63,9 +63,9 @@ async fn ask(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Providers are plain configuration: no client object, just a
-    // `ProviderConfig` arm wrapping `openai::functions::Config`.
-    let agent = AgentBuilder::new(openai::functions::Config::from_env(openai::GPT_4O)?)
+    let client = openai::Client::from_env()?;
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant. Keep responses short.")
         .build();
 

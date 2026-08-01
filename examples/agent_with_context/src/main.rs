@@ -1,9 +1,6 @@
 //! Demonstrates adding small context documents directly to an agent.
 //! Requires `COHERE_API_KEY`.
 //! Run it to see the model answer from the supplied in-memory facts.
-//!
-//! The provider is plain data: `cohere::functions::Config` names the model and
-//! is wrapped in [`ProviderConfig`] for [`AgentBuilder`].
 
 use anyhow::Result;
 use rig::prelude::*;
@@ -19,13 +16,11 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let provider = ProviderConfig::Cohere(cohere::functions::Config::from_env(COMMAND_R)?);
+    let client = cohere::Client::from_env()?;
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(AgentBuilder::new(provider), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(client.agent(COMMAND_R), |builder, doc| builder.context(doc))
         .build();
 
     let response = agent.prompt(CONTEXT_PROMPT).await?;

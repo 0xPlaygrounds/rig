@@ -1,13 +1,11 @@
 //! Cassette/credential plumbing for the Copilot suites.
 //!
-//! Replaces the deleted `copilot::Client`: tests mint a plain
-//! [`copilot::functions::Config`] (or an [`AgentBuilder`]) per model, pointed
-//! at the cassette's base URL and API key.
+//! Cassette helpers return the public concrete [`copilot::Client`], pointed at
+//! the cassette proxy with its replay credential.
 
 use assert_fs::TempDir;
 use futures::FutureExt;
 use rig::AgentBuilder;
-use rig::http_runtime::HttpRuntime;
 use rig::provider::ProviderConfig;
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{AuthSource, Authenticator, DeviceCodePrompter};
@@ -55,47 +53,6 @@ fn env_base_url() -> Option<String> {
 
 fn cassette_base_url() -> String {
     env_base_url().unwrap_or_else(|| "https://api.githubcopilot.com".to_string())
-}
-
-/// Connection details for a running Copilot cassette proxy.
-pub(super) struct CopilotCassette {
-    api_key: String,
-    base_url: String,
-}
-
-#[allow(dead_code)]
-impl CopilotCassette {
-    /// Completion config for `model` aimed at the cassette proxy.
-    pub(crate) fn config(&self, model: impl Into<String>) -> copilot::functions::Config {
-        copilot::functions::Config::new(model)
-            .with_api_key(self.api_key.clone())
-            .with_base_url(self.base_url.clone())
-    }
-
-    /// Embedding config for `model` aimed at the cassette proxy.
-    pub(crate) fn embedding_config(
-        &self,
-        model: impl Into<String>,
-    ) -> copilot::functions::EmbeddingConfig {
-        copilot::functions::EmbeddingConfig::new(model)
-            .with_api_key(self.api_key.clone())
-            .with_base_url(self.base_url.clone())
-    }
-
-    /// The Copilot [`ProviderConfig`] for `model`.
-    pub(crate) fn provider_config(&self, model: impl Into<String>) -> ProviderConfig {
-        ProviderConfig::Copilot(self.config(model))
-    }
-
-    /// An [`AgentBuilder`] for `model` aimed at the cassette proxy.
-    pub(crate) fn agent(&self, model: impl Into<String>) -> AgentBuilder {
-        AgentBuilder::new(self.provider_config(model))
-    }
-
-    /// A real-HTTP runtime — the cassette proxy is a live local server.
-    pub(crate) fn http(&self) -> HttpRuntime {
-        HttpRuntime::new()
-    }
 }
 
 /// An [`Authenticator`] over `source`, optionally rooted at `token_dir`.
@@ -148,22 +105,23 @@ pub(crate) async fn live_agent(model: impl Into<String>) -> AgentBuilder {
     AgentBuilder::new(ProviderConfig::Copilot(live_config(model).await))
 }
 
-async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, CopilotCassette) {
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, copilot::Client) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start("copilot", spec, &cassette_base_url).await;
-    let handle = CopilotCassette {
-        api_key: cassette.api_key("GITHUB_COPILOT_API_KEY"),
-        base_url: cassette.base_url(),
-    };
+    let client = copilot::Client::builder()
+        .api_key(cassette.api_key("GITHUB_COPILOT_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("cassette client should build");
 
-    (cassette, handle)
+    (cassette, client)
 }
 
 /// A cassette whose credential is resolved through the non-interactive OAuth
 /// path (a pre-seeded, unexpired `api-key.json`, device flow disabled).
 async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, CopilotCassette, TempDir) {
+) -> (ProviderCassette, copilot::Client, TempDir) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start("copilot", spec, &cassette_base_url).await;
     let temp = TempDir::new().expect("temp token directory should be created");
@@ -183,17 +141,18 @@ async fn copilot_noninteractive_oauth_cassette(
         .await
         .expect("cached OAuth auth should not require device flow");
 
-    let handle = CopilotCassette {
-        api_key: auth.api_key,
-        base_url: cassette.base_url(),
-    };
+    let client = copilot::Client::builder()
+        .api_key(auth.api_key)
+        .base_url(cassette.base_url())
+        .build()
+        .expect("non-interactive OAuth cassette client should build");
 
-    (cassette, handle, temp)
+    (cassette, client, temp)
 }
 
 pub(super) async fn with_copilot_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(CopilotCassette) -> Fut,
+    F: FnOnce(copilot::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, handle) = copilot_cassette(spec).await;
@@ -206,7 +165,7 @@ pub(super) async fn with_copilot_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(CopilotCassette) -> Fut,
+    F: FnOnce(copilot::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, handle) = copilot_cassette(spec).await;
@@ -218,7 +177,7 @@ pub(super) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(CopilotCassette) -> Fut,
+    F: FnOnce(copilot::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, handle, _temp) = copilot_noninteractive_oauth_cassette(spec).await;

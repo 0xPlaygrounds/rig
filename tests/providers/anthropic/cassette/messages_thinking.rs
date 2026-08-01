@@ -11,6 +11,7 @@
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, ReasoningContent};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamedAssistantContent;
 

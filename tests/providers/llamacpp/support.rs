@@ -1,10 +1,3 @@
-//! Shared helpers for llama.cpp live tests.
-//!
-//! Providers are data now: there is no client to build, so these helpers hand
-//! back an `openai::functions::Config` (llama.cpp speaks the OpenAI-compatible
-//! wire format) or the `ProviderConfig` arm wrapping it.
-
-use rig::provider::ProviderConfig;
 use rig::providers::openai;
 
 const DEFAULT_API_BASE_URL: &str = "http://localhost:8080/v1";
@@ -23,14 +16,17 @@ pub(super) fn model_name() -> String {
     std::env::var("LLAMACPP_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string())
 }
 
-/// Connection data plus the model under test.
-pub(super) fn config(model: impl Into<String>) -> openai::functions::Config {
-    openai::functions::Config::new(model)
-        .with_api_key(api_key())
-        .with_base_url(api_base_url())
+pub(super) fn client() -> openai::Client {
+    let api_key = api_key();
+    let base_url = api_base_url();
+
+    openai::Client::builder()
+        .api_key(&api_key)
+        .base_url(&base_url)
+        .build()
+        .expect("llama.cpp OpenAI-compatible client should build")
 }
 
-/// The `ProviderConfig` arm for llama.cpp's OpenAI-compatible endpoint.
-pub(super) fn provider(model: impl Into<String>) -> ProviderConfig {
-    ProviderConfig::OpenAi(config(model))
+pub(super) fn completions_client() -> openai::CompletionsClient {
+    client().completions_api()
 }

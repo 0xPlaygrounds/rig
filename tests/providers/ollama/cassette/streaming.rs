@@ -14,7 +14,8 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+        let agent = env
+            .agent(MODEL)
             .preamble(STREAMING_PREAMBLE)
             .additional_params(serde_json::json!({ "think": false }))
             .build();

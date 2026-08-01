@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
+use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::stream::AgentStreamItem;
 use rig::tool::Tool;

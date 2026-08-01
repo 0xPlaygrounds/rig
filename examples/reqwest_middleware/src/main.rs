@@ -1,21 +1,18 @@
 //! Demonstrates driving an agent over a caller-supplied HTTP stack.
 //! Requires `ANTHROPIC_API_KEY`.
 //!
-//! Transport is no longer a type parameter or a provider-client builder
-//! option. The provider is plain data (`anthropic::functions::Config`), and
-//! the live HTTP handle lives in [`HttpRuntime`]: build your own
+//! Transport is no longer a type parameter. The concrete provider client
+//! builder accepts a live [`HttpRuntime`]: build your own
 //! `reqwest::Client` — timeouts, connection pool, default headers, proxy,
-//! TLS — hand it to [`HttpRuntime::from_reqwest`], wrap it in a
-//! [`Runtime`] with [`Runtime::with_http`], and pass that to
-//! `AgentBuilder::runtime`. The same `HttpRuntime` also goes straight into
-//! any provider free function (`anthropic::functions::complete(&cfg, &rt, …)`).
+//! TLS — hand it to [`HttpRuntime::from_reqwest`], then build agents from the
+//! resulting client. The same runtime is available through `client.http()` for
+//! low-level provider free functions.
 //!
 //! Note: `reqwest_middleware::ClientWithMiddleware` (this example's former
 //! subject) is not currently one of `HttpRuntime`'s transport arms, so
 //! retry/tracing middleware has to be expressed on the `reqwest::Client`
 //! itself or around the call site.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -35,10 +32,13 @@ fn build_http_client() -> Result<reqwest::Client> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let http = HttpRuntime::from_reqwest(build_http_client()?);
-    let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
+    let client = anthropic::Client::builder()
+        .api_key(std::env::var("ANTHROPIC_API_KEY")?)
+        .http_runtime(http)
+        .build()?;
 
-    let agent = AgentBuilder::new(cfg)
-        .runtime(Arc::new(Runtime::with_http(http)))
+    let agent = client
+        .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant.")
         .build();
 

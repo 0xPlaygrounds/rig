@@ -959,6 +959,13 @@ pub struct ImageUrl {
 
 // ---------- Data-oriented face ----------
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = false,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
 /// Ollama native `/api/chat` as config + pure functions.
 ///
 /// The data-oriented face of the Ollama provider: a serde `Config`, a
@@ -1015,24 +1022,24 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct Config {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location ([`ApiKeyLocation::None`] by default).
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Model identifier requests are built for.
         pub model: String,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(Config);
 
     impl Config {
         /// Config for `model` against a local unauthenticated Ollama.
         pub fn new(model: impl Into<String>) -> Self {
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::None,
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
                 model: model.into(),
-                extra_headers: Vec::new(),
             }
         }
 
@@ -1192,10 +1199,9 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct EmbeddingConfig {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location ([`ApiKeyLocation::None`] by default).
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Embedding model identifier requests are built for.
         pub model: String,
         /// Dimensionality of the vectors this model returns.
@@ -1212,9 +1218,9 @@ pub mod functions {
         /// [`model_dimensions_from_identifier`](super::model_dimensions_from_identifier),
         /// the same lookup the classic `make` used for a known model.
         pub ndims: Option<usize>,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
 
     impl EmbeddingConfig {
         /// Config for `model` against a local unauthenticated Ollama.
@@ -1222,11 +1228,12 @@ pub mod functions {
             let model = model.into();
             let ndims = super::model_dimensions_from_identifier(&model);
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::None,
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
                 model,
                 ndims,
-                extra_headers: Vec::new(),
             }
         }
 

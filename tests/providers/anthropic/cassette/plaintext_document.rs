@@ -3,6 +3,7 @@
 use rig::OneOrMany;
 use rig::completion::CompletionRequest;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
 use rig::telemetry::ProviderResponseExt;

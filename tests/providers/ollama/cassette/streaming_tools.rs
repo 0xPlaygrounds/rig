@@ -15,7 +15,8 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_ollama_cassette("streaming_tools/streaming_tools_smoke", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+        let agent = env
+            .agent(MODEL)
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

@@ -71,7 +71,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
+    let agent = rig::providers::mistral::Client::from_env().expect("client should build").agent(TOOL_MODEL)
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
              After calling the tool, respond with ONLY minified JSON matching this schema: \

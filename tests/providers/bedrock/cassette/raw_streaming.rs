@@ -1,8 +1,8 @@
 //! AWS Bedrock raw streaming cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::completion::CompletionRequest;
 use rig::message::ToolChoice;
+use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -17,14 +17,13 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                tools: vec![zero_arg_tool_definition("ping")],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-            };
-            let stream = rig::bedrock::functions::open_stream(aws, model_id, request)
+            let stream = client
+                .completion_model(model_id)
+                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .tool(zero_arg_tool_definition("ping"))
+                .tool_choice(ToolChoice::Required)
+                .stream()
                 .await
                 .expect("stream should start");
 
@@ -39,15 +38,14 @@ async fn raw_stream_text_response_smoke() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_text_response_smoke",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
-                .preamble("Reply with exactly the requested text.")
-                .temperature(0.0)
-                .build();
-
             let observation = collect_raw_stream_observation(
-                rig::bedrock::functions::open_stream(aws, model_id, request)
+                client
+                    .completion_model(model_id)
+                    .completion_request(RAW_TEXT_RESPONSE_PROMPT)
+                    .preamble("Reply with exactly the requested text.")
+                    .temperature(0.0)
+                    .stream()
                     .await
                     .expect("raw Bedrock stream should start"),
             )
@@ -69,18 +67,17 @@ async fn raw_stream_emits_tool_call_before_text() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_emits_tool_call_before_text",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
-                .tool_choice(ToolChoice::Specific {
-                    function_names: vec!["lookup_harbor_label".to_string()],
-                })
-                .build();
-
             let observation = collect_raw_stream_observation(
-                rig::bedrock::functions::open_stream(aws, model_id, request)
+                client
+                    .completion_model(model_id)
+                    .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+                    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                    .tool(rig::tool::portable_tool_definition(&AlphaSignal))
+                    .tool_choice(ToolChoice::Specific {
+                        function_names: vec!["lookup_harbor_label".to_string()],
+                    })
+                    .stream()
                     .await
                     .expect("raw Bedrock stream should start"),
             )

@@ -17,14 +17,12 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        // Two providers, two plain config values — the agents differ only in
-        // which `ProviderConfig` arm they were built from.
-        let gpt_4_cfg = openai::functions::Config::from_env(openai::GPT_4)?;
-        let coral_cfg = cohere::functions::Config::from_env(cohere::COMMAND_R)?;
+        let openai = openai::Client::from_env()?;
+        let cohere = cohere::Client::from_env()?;
 
         Ok(Self {
-            gpt_4: AgentBuilder::new(gpt_4_cfg).preamble(position_a).build(),
-            coral: AgentBuilder::new(coral_cfg).preamble(position_b).build(),
+            gpt_4: openai.agent(openai::GPT_4).preamble(position_a).build(),
+            coral: cohere.agent(cohere::COMMAND_R).preamble(position_b).build(),
         })
     }
 

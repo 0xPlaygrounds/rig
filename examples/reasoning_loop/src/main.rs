@@ -1,15 +1,9 @@
 //! A reasoning agent: extract the chain of thought, then execute it.
 //!
-//! Two abstractions this example used are gone. The `Prompt` trait no longer
-//! exists, so `ReasoningAgent::prompt` is an ordinary inherent method. And
-//! `Extractor<T>` is no longer a type you can store — the "extractor" is the
-//! plain data one [`extract_with_options`] call takes.
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
+//! `ReasoningAgent::prompt` is an ordinary inherent method. Structured
+//! extraction uses the non-generic [`Agent::extractor`] runner.
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
-use rig::provider::{ProviderConfig, Runtime};
 use rig::{
     agent::Agent,
     completion::{CompletionError, PromptError},
@@ -32,10 +26,8 @@ struct ChainOfThoughtSteps {
 }
 
 struct ReasoningAgent {
-    /// Where and how to run the chain-of-thought extraction.
-    chain_of_thought_provider: ProviderConfig,
-    chain_of_thought_options: ExtractOptions,
-    rt: Arc<Runtime>,
+    chain_of_thought_agent: Agent,
+    chain_of_thought_preamble: String,
     executor: Agent,
 }
 
@@ -44,19 +36,17 @@ impl ReasoningAgent {
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();
         let chat_history = vec![prompt.clone()];
-        let extracted = extract_with_options::<ChainOfThoughtSteps>(
-            AgentConfig::new(),
-            self.chain_of_thought_provider.clone(),
-            self.rt.clone(),
-            prompt,
-            self.chain_of_thought_options.clone(),
-        )
-        .await
-        .map(|outcome| outcome.value)
-        .map_err(|e| {
-            tracing::error!("Extraction error: {:?}", e);
-            CompletionError::ProviderError("".into())
-        })?;
+        let extracted = self
+            .chain_of_thought_agent
+            .extractor(prompt)
+            .classic()
+            .preamble(self.chain_of_thought_preamble.clone())
+            .run::<ChainOfThoughtSteps>()
+            .await
+            .map_err(|e| {
+                tracing::error!("Extraction error: {:?}", e);
+                CompletionError::ProviderError("".into())
+            })?;
         if extracted.steps.is_empty() {
             return Ok("No reasoning steps provided.".into());
         }
@@ -85,12 +75,12 @@ impl ReasoningAgent {
 
 /// The classic extraction protocol, with the chain-of-thought instructions
 /// appended to its preamble (what `ExtractorBuilder::preamble` did).
-fn chain_of_thought_options() -> ExtractOptions {
+fn chain_of_thought_preamble() -> String {
     let classic = ExtractOptions::classic_extractor();
     let preamble = classic.preamble.clone().unwrap_or_default();
-    classic.with_preamble(format!(
+    format!(
         "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{CHAIN_OF_THOUGHT_PROMPT}"
-    ))
+    )
 }
 
 #[tokio::main]
@@ -100,14 +90,15 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // The provider is plain data: one config, cloned into both roles.
-    let cfg = anthropic::functions::Config::from_env(anthropic::completion::CLAUDE_SONNET_4_6)?;
+    let client = anthropic::Client::from_env()?;
     let agent = ReasoningAgent {
-        chain_of_thought_provider: ProviderConfig::Anthropic(cfg.clone()),
-        chain_of_thought_options: chain_of_thought_options(),
-        rt: Arc::new(Runtime::new()),
+        chain_of_thought_agent: client
+            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+            .build(),
+        chain_of_thought_preamble: chain_of_thought_preamble(),
 
-        executor: AgentBuilder::new(cfg)
+        executor: client
+            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
                 Follow these instructions closely.

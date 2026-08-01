@@ -1,8 +1,8 @@
 //! Focused OpenRouter cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
-use rig::providers::openrouter;
+use rig::completion::{AssistantContent, Document, Message};
+use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -47,18 +47,15 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
     with_openrouter_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
-            let cfg = client.config(DEFAULT_MODEL);
-            let rt = client.http();
-            let request = CompletionRequest::builder(PROMPT)
-                .messages(vec![
-                    Message::system(SYSTEM_INSTRUCTION),
-                    Message::assistant("Acknowledged."),
-                ])
-                .documents(vec![ordering_document()])
+            let response = client
+                .completion_model(DEFAULT_MODEL)
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
+                .document(ordering_document())
                 .temperature(0.0)
                 .max_tokens(32)
-                .build();
-            let response = openrouter::functions::complete(&cfg, &rt, request)
+                .send()
                 .await
                 .expect("OpenRouter document ordering request should succeed");
 

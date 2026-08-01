@@ -469,3 +469,4 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
     )
     .await;
 }
+use rig::prelude::*;

@@ -3,7 +3,6 @@ use lancedb::index::vector::IvfPqIndexBuilder;
 use rig_agent::prelude::*;
 use rig_core::OneOrMany;
 use rig_core::embeddings::EmbeddingJob;
-use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
@@ -13,14 +12,13 @@ mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Embeddings come from a free function over plain configuration plus a
-    // shared HTTP runtime — there is no client or model object.
-    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let client = openai::CompletionsClient::from_env()?;
+    let embed_cfg = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
     // The config knows its model's native width; no need to restate it.
     let embedding_dims = embed_cfg
         .ndims()
         .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
-    let rt = HttpRuntime::new();
+    let rt = client.http_runtime();
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
@@ -86,10 +84,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), top_k as u64);
     let hits = vector_store_index.top_n(req).await?;
 
-    // Build RAG agent with the retrieved context. The agent is configured
-    // from plain provider data — `openai::functions::Config` wrapped in a
-    // `ProviderConfig` arm — rather than from a client handle.
-    let mut agent_builder = AgentBuilder::new(openai::functions::Config::from_env(openai::GPT_4O)?)
+    let mut agent_builder = client
+        .agent(openai::GPT_4O)
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.");
     for hit in &hits {

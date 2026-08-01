@@ -3,7 +3,8 @@
 //! The `stream_to_stdout` helper was example sugar and is gone; the drain loop
 //! below is what it did, spelled out.
 use futures::StreamExt;
-use rig_agent::agent::{AgentBuilder, PromptResponse, Text};
+use rig_agent::agent::{PromptResponse, Text};
+use rig_agent::client::AgentClientExt;
 use rig_agent::stream::AgentStreamItem;
 use rig_agent::streaming::StreamedAssistantContent;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
@@ -13,7 +14,9 @@ mod common;
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
     // Create agent with a single context prompt and two tools
-    let agent = AgentBuilder::new(rig_bedrock::functions::Config::new(AMAZON_NOVA_LITE))
+    let client = rig_bedrock::Client::from_env();
+    let agent = client
+        .agent(AMAZON_NOVA_LITE)
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

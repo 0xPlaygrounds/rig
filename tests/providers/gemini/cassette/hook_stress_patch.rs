@@ -172,3 +172,4 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
     )
     .await;
 }
+use rig::prelude::*;

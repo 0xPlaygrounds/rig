@@ -2,14 +2,11 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::{ProviderConfig, Runtime};
+use rig::extract::ExtractOptions;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
-use crate::chatgpt::{LIVE_MODEL, live_provider};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::support::assert_nonempty_response;
 
 /// `ExtractorBuilder::preamble(extra)` appended the extra instructions to the
@@ -24,27 +21,6 @@ fn classic_options(extra: &str) -> ExtractOptions {
     options.with_preamble(format!(
         "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
     ))
-}
-
-/// One classic-`Extractor<T>::extract` exchange through the free-function
-/// extraction surface that replaced it.
-async fn classic_extract_value<T>(
-    provider: ProviderConfig,
-    text: &str,
-    options: ExtractOptions,
-) -> anyhow::Result<T>
-where
-    T: schemars::JsonSchema + serde::de::DeserializeOwned,
-{
-    Ok(extract_with_options::<T>(
-        AgentConfig::new(),
-        provider,
-        Arc::new(Runtime::new()),
-        text,
-        options,
-    )
-    .await?
-    .value)
 }
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
@@ -66,7 +42,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let provider = live_provider(LIVE_MODEL).await;
+    let agent = live_agent(LIVE_MODEL).await.build();
     let names_options = classic_options("Extract names from the given text.").with_retries(2);
     let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
     let sentiment_options =
@@ -79,19 +55,45 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<String> = futures::stream::iter(inputs)
         .map(|text| {
-            let provider = &provider;
+            let agent = &agent;
             let names_options = &names_options;
             let topics_options = &topics_options;
             let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    classic_extract_value::<Names>(provider.clone(), text, names_options.clone()),
-                    classic_extract_value::<Topics>(provider.clone(), text, topics_options.clone()),
-                    classic_extract_value::<Sentiment>(
-                        provider.clone(),
-                        text,
-                        sentiment_options.clone(),
-                    ),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(names_options.retries)
+                        .preamble(
+                            names_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Names>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(topics_options.retries)
+                        .preamble(
+                            topics_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Topics>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(sentiment_options.retries)
+                        .preamble(
+                            sentiment_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist"),
+                        )
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",

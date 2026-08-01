@@ -189,7 +189,7 @@ async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_5_5)
             .expect("config should build");
-        let agent = rig::AgentBuilder::new(rig::provider::ProviderConfig::OpenAiResponses(cfg))
+        let agent = rig::AgentBuilder::new(cfg)
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();
@@ -227,7 +227,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let cfg = openai::functions::Config::from_env(openai::GPT_5_5)
             .expect("config should build");
-        let agent = rig::AgentBuilder::new(rig::provider::ProviderConfig::OpenAi(cfg))
+        let agent = rig::AgentBuilder::new(cfg)
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

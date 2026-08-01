@@ -10,6 +10,7 @@
 
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, ToolChoice};
+use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::tool::Tool;
 

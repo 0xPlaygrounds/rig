@@ -81,7 +81,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         return Ok(());
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
 
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_bedrockruntime::config::Credentials;
@@ -13,9 +12,7 @@ use aws_smithy_runtime_api::client::runtime_components::RuntimeComponents;
 use aws_smithy_runtime_api::http::StatusCode;
 use aws_smithy_types::body::SdkBody;
 use futures::FutureExt;
-use rig::agent::AgentBuilder;
-use rig::bedrock::functions::Config;
-use rig::provider::{ProviderConfig, Runtime};
+use rig::bedrock::Client;
 
 use crate::cassettes::{
     CassetteMode, CassetteSpec, DirectHttpRequest, DirectHttpResponse, DirectRecorder,
@@ -25,51 +22,12 @@ use crate::cassettes::{
 const BEDROCK_REAL_BASE_URL: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
 const BEDROCK_REGION: &str = "us-east-1";
 
-/// The per-test Bedrock handle: the cassette-wired AWS SDK client (which the
-/// `rig::bedrock::functions::*` free functions take directly) plus a provider
-/// [`Runtime`] whose Bedrock cache is seeded with that same client, so
-/// `ProviderConfig::Bedrock` agents replay through the recording/replaying
-/// transport.
-pub(super) struct BedrockHarness {
-    aws_client: aws_sdk_bedrockruntime::Client,
-    runtime: Arc<Runtime>,
-}
-
-impl BedrockHarness {
-    fn new(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
-        Self {
-            aws_client,
-            runtime: Arc::new(Runtime::new()),
-        }
-    }
-
-    /// The cassette-wired AWS client, for the model-level
-    /// `rig::bedrock::functions::{complete, open_stream, embed}` entry points.
-    pub fn aws_client(&self) -> &aws_sdk_bedrockruntime::Client {
-        &self.aws_client
-    }
-
-    /// An [`AgentBuilder`] over `cfg`, with this harness's AWS client seeded
-    /// into the runtime cache for exactly that config.
-    pub async fn agent_from_config(&self, cfg: Config) -> AgentBuilder {
-        self.runtime
-            .seed_bedrock_client(cfg.clone(), self.aws_client.clone())
-            .await;
-        AgentBuilder::new(ProviderConfig::Bedrock(cfg)).runtime(self.runtime.clone())
-    }
-
-    /// An [`AgentBuilder`] for `model` with default Bedrock configuration.
-    pub async fn agent(&self, model: &str) -> AgentBuilder {
-        self.agent_from_config(Config::new(model)).await
-    }
-}
-
-async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BedrockHarness) {
+async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
     let (cassette, aws_client) = match CassetteMode::current() {
         CassetteMode::Replay => replay_bedrock_cassette(spec).await,
         CassetteMode::Record => record_bedrock_cassette(spec).await,
     };
-    (cassette, BedrockHarness::new(aws_client))
+    (cassette, Client::from(aws_client))
 }
 
 async fn replay_bedrock_cassette(
@@ -240,7 +198,7 @@ impl HttpConnector for RecordingBedrockConnector {
 
 pub(super) async fn with_bedrock_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(BedrockHarness) -> Fut,
+    F: FnOnce(Client) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, harness) = bedrock_cassette(spec).await;

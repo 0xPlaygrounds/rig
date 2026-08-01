@@ -10,7 +10,8 @@ use super::super::support::with_perplexity_cassette;
 #[tokio::test]
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Perplexity(env.config(perplexity::SONAR)))
+        let agent = env
+            .agent(perplexity::SONAR)
             .preamble(BASIC_PREAMBLE)
             .temperature(0.2)
             .build();
@@ -30,14 +31,14 @@ async fn completion_with_perplexity_options() {
     with_perplexity_cassette(
         "agent/completion_with_perplexity_options",
         |env| async move {
-            let agent =
-                AgentBuilder::new(ProviderConfig::Perplexity(env.config(perplexity::SONAR)))
-                    .preamble("Answer briefly and include the date or time context if relevant.")
-                    .additional_params(serde_json::json!({
-                        "return_related_questions": true,
-                        "search_context_size": "low"
-                    }))
-                    .build();
+            let agent = env
+                .agent(perplexity::SONAR)
+                .preamble("Answer briefly and include the date or time context if relevant.")
+                .additional_params(serde_json::json!({
+                    "return_related_questions": true,
+                    "search_context_size": "low"
+                }))
+                .build();
 
             let response = agent
                 .prompt("Name one notable recent development in Rust programming language tooling.")

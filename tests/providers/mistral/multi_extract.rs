@@ -1,12 +1,10 @@
 //! Mistral live coverage for batch multi-extract pipelines.
 
-use std::sync::Arc;
-
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
+use rig::extract::ExtractOptions;
+use rig::prelude::*;
+use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -90,8 +88,7 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let provider = super::live(DEFAULT_MODEL);
-    let rt = Arc::new(Runtime::new());
+    let agent = mistral::Client::from_env()?.agent(DEFAULT_MODEL).build();
     let names_options =
         classic_extractor_with_extra_preamble("Extract names from the given text.").with_retries(2);
     let topics_options =
@@ -110,40 +107,36 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<CombinedExtract> = futures::stream::iter(inputs)
         .map(|text| {
-            let provider = provider.clone();
-            let rt = Arc::clone(&rt);
+            let agent = agent.clone();
             let names_options = names_options.clone();
             let topics_options = topics_options.clone();
             let sentiment_options = sentiment_options.clone();
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    extract_with_options::<Names>(
-                        AgentConfig::new(),
-                        provider.clone(),
-                        Arc::clone(&rt),
-                        text,
-                        names_options,
-                    ),
-                    extract_with_options::<Topics>(
-                        AgentConfig::new(),
-                        provider.clone(),
-                        Arc::clone(&rt),
-                        text,
-                        topics_options,
-                    ),
-                    extract_with_options::<Sentiment>(
-                        AgentConfig::new(),
-                        provider.clone(),
-                        Arc::clone(&rt),
-                        text,
-                        sentiment_options,
-                    ),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(names_options.retries)
+                        .preamble(names_options.preamble.expect("preamble should exist"))
+                        .run::<Names>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(topics_options.retries)
+                        .preamble(topics_options.preamble.expect("preamble should exist"))
+                        .run::<Topics>(),
+                    agent
+                        .extractor(text)
+                        .classic()
+                        .retries(sentiment_options.retries)
+                        .preamble(sentiment_options.preamble.expect("preamble should exist"))
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(CombinedExtract {
-                    names: names.value.names,
-                    topics: topics.value.topics,
-                    sentiment: sentiment.value.sentiment,
-                    confidence: sentiment.value.confidence,
+                    names: names.names,
+                    topics: topics.topics,
+                    sentiment: sentiment.sentiment,
+                    confidence: sentiment.confidence,
                 })
             }
         })

@@ -18,6 +18,13 @@ pub mod embeddings;
 pub mod functions;
 pub mod streaming;
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
 pub use embeddings::{ApiErrorResponse, ApiResponse};
 
 // ================================================================

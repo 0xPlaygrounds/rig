@@ -17,7 +17,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(AgentBuilder::new(super::live(LOADERS_MODEL)), |builder, (path, content)| {
+        .fold(rig::providers::groq::Client::from_env().expect("client should build").agent(LOADERS_MODEL), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

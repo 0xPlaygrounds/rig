@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, CompletionRequest};
+use rig::completion::CompletionRequest;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -41,9 +41,9 @@ async fn basic_interaction_returns_id() {
                 ..Default::default()
             };
             let request = CompletionRequest::builder("Give me two fun facts about hummingbirds.")
-                              .preamble("Be concise.")
-                              .additional_params(serde_json::to_value(params).expect("params should serialize"),)
-                              .build();
+                .preamble("Be concise.")
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
             let response = model
                 .completion(request)
                 .await
@@ -69,13 +69,17 @@ async fn followup_with_previous_interaction_id() {
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
             let initial = model
-                .completion(CompletionRequest::builder("Give me one short fact about hummingbirds.")
-                                .additional_params(serde_json::to_value(AdditionalParameters {
-                            store: Some(true),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),)
-                                .build())
+                .completion(
+                    CompletionRequest::builder("Give me one short fact about hummingbirds.")
+                        .additional_params(
+                            serde_json::to_value(AdditionalParameters {
+                                store: Some(true),
+                                ..Default::default()
+                            })
+                            .expect("params should serialize"),
+                        )
+                        .build(),
+                )
                 .await
                 .expect("initial completion should succeed");
             let interaction_id = initial
@@ -85,13 +89,17 @@ async fn followup_with_previous_interaction_id() {
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
-                .completion(CompletionRequest::builder("Now answer with a short analogy.")
-                                .additional_params(serde_json::to_value(AdditionalParameters {
-                            previous_interaction_id: Some(interaction_id),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),)
-                                .build())
+                .completion(
+                    CompletionRequest::builder("Now answer with a short analogy.")
+                        .additional_params(
+                            serde_json::to_value(AdditionalParameters {
+                                previous_interaction_id: Some(interaction_id),
+                                ..Default::default()
+                            })
+                            .expect("params should serialize"),
+                        )
+                        .build(),
+                )
                 .await
                 .expect("followup completion should succeed");
 
@@ -108,13 +116,17 @@ async fn google_search_tool_interaction() {
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
             let response = model
-                .completion(CompletionRequest::builder("Who won the Euro 2024 tournament?")
-                                .additional_params(serde_json::to_value(AdditionalParameters {
-                            tools: Some(vec![Tool::GoogleSearch]),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),)
-                                .build())
+                .completion(
+                    CompletionRequest::builder("Who won the Euro 2024 tournament?")
+                        .additional_params(
+                            serde_json::to_value(AdditionalParameters {
+                                tools: Some(vec![Tool::GoogleSearch]),
+                                ..Default::default()
+                            })
+                            .expect("params should serialize"),
+                        )
+                        .build(),
+                )
                 .await
                 .expect("search completion should succeed");
 
@@ -158,15 +170,19 @@ async fn tool_result_roundtrip() {
             };
 
             let initial = model
-                .completion(CompletionRequest::builder("Use the add tool to sum 7 and 11.")
-                                .tools(vec![tool])
-                                .tool_choice(ToolChoice::Required)
-                                .additional_params(serde_json::to_value(AdditionalParameters {
-                            store: Some(true),
-                            ..Default::default()
-                        })
-                        .expect("params should serialize"),)
-                                .build())
+                .completion(
+                    CompletionRequest::builder("Use the add tool to sum 7 and 11.")
+                        .tools(vec![tool])
+                        .tool_choice(ToolChoice::Required)
+                        .additional_params(
+                            serde_json::to_value(AdditionalParameters {
+                                store: Some(true),
+                                ..Default::default()
+                            })
+                            .expect("params should serialize"),
+                        )
+                        .build(),
+                )
                 .await
                 .expect("tool call completion should succeed");
 
@@ -182,7 +198,8 @@ async fn tool_result_roundtrip() {
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
-                .completion(CompletionRequest::builder(Message::from(
+                .completion(
+                    CompletionRequest::builder(Message::from(
                         UserContent::tool_result_with_call_id(
                             tool_call.function.name,
                             call_id,
@@ -191,12 +208,15 @@ async fn tool_result_roundtrip() {
                             )),
                         ),
                     ))
-                                .additional_params(serde_json::to_value(AdditionalParameters {
+                    .additional_params(
+                        serde_json::to_value(AdditionalParameters {
                             previous_interaction_id: Some(interaction_id),
                             ..Default::default()
                         })
-                        .expect("params should serialize"),)
-                                .build())
+                        .expect("params should serialize"),
+                    )
+                    .build(),
+                )
                 .await
                 .expect("tool result followup should succeed");
 

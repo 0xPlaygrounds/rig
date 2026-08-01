@@ -9,7 +9,7 @@ use super::TOOLS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn tools_smoke() {
-    let agent = AgentBuilder::new(super::live(TOOLS_MODEL))
+    let agent = rig::providers::groq::Client::from_env().expect("client should build").agent(TOOLS_MODEL)
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
              After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",

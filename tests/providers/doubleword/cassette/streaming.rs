@@ -9,7 +9,8 @@ use rig::prelude::*;
 #[tokio::test]
 async fn streaming_smoke() {
     with_doubleword_cassette("streaming/streaming_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider(DEFAULT_MODEL))
+        let agent = env
+            .agent(DEFAULT_MODEL)
             .preamble(STREAMING_PREAMBLE)
             .build();
         let mut stream = agent.runner(STREAMING_PROMPT).stream_run();

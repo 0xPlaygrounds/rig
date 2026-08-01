@@ -6,8 +6,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionRequest, Message};
+use rig::completion::Message;
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::ResponseStatus;
 use rig::tool::Tool;
@@ -23,14 +24,15 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
-            let cfg = client.config(openai::GPT_4O).with_strict_tools();
-            let rt = client.http();
-            let request = CompletionRequest::builder("Use the add tool to add 7 and 5.")
+            let model = client
+                .config(openai::GPT_4O)
+                .with_strict_tools()
+                .bind_completion(client.runtime());
+            let response = model
+                .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE)
-                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
-                .build();
-
-            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
+                .tool(rig::tool::portable_tool_definition(&Adder))
+                .send()
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -74,16 +76,14 @@ async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(
-                "Write a story of at least 150 words about a lighthouse keeper.",
-            )
-            .preamble("You are a storyteller.")
-            .max_tokens(16)
-            .build();
-
-            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
+            let response = client
+                .completion_model(openai::GPT_4O)
+                .completion_request(
+                    "Write a story of at least 150 words about a lighthouse keeper.",
+                )
+                .preamble("You are a storyteller.")
+                .max_tokens(16)
+                .send()
                 .await
                 .expect("an incomplete response should still convert, not error");
 
@@ -148,9 +148,11 @@ async fn system_messages_as_input_items_mid_conversation() {
             // `with_system_instructions_as_messages`, the preamble and the
             // mid-conversation system message are sent as `system` input
             // items instead of the top-level `instructions` field.
-            let agent = client
-                .with_system_instructions_as_messages()
-                .agent(openai::GPT_4O)
+            let config = client
+                .config(openai::GPT_4O)
+                .with_system_instructions_as_messages();
+            let agent = AgentBuilder::new(config)
+                .runtime(client.runtime())
                 .preamble("You are a concise assistant.")
                 .build();
             let mut history = vec![

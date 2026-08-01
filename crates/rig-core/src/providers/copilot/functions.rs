@@ -13,9 +13,9 @@
 //!
 //! # Credentials
 //!
-//! [`Config::api_key`] carries an **already-resolved Copilot chat token** (or
-//! a long-lived Copilot API key), because a plain [`ApiKeyLocation`] cannot
-//! express a stateful, refreshing credential.
+//! [`Config::connection`] carries an **already-resolved Copilot chat token**
+//! (or a long-lived Copilot API key) in its `api_key` field, because a plain
+//! [`ApiKeyLocation`] cannot express a stateful, refreshing credential.
 //!
 //! Resolution is therefore a construction-time step, not a request-time one:
 //!
@@ -73,13 +73,9 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`]). When left at the
-    /// default, a `proxy-ep=` segment inside the resolved token overrides it,
-    /// exactly like the classic client.
-    pub base_url: String,
-    /// Credential location; must resolve to a Copilot chat token or API key
-    /// (see the module docs for how OAuth logins are resolved into one).
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Model identifier requests are built for.
     pub model: String,
     /// Request strict function tool schemas (classic `with_strict_tools`).
@@ -91,22 +87,23 @@ pub struct Config {
     /// (classic `with_intent` / `with_panel_intent` / `with_edits_intent`).
     #[serde(default)]
     pub intent: CopilotIntent,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
 }
+
+crate::providers::client::impl_http_connection_config!(Config);
 
 impl Config {
     /// Config for `model` reading `GITHUB_COPILOT_API_KEY` from the
     /// environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("GITHUB_COPILOT_API_KEY".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL.to_string(),
+                ApiKeyLocation::Env("GITHUB_COPILOT_API_KEY".to_string()),
+            ),
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
             intent: CopilotIntent::Panel,
-            extra_headers: Vec::new(),
         }
     }
 
@@ -484,37 +481,35 @@ pub async fn complete(
 ///
 /// A sibling of [`Config`]: embeddings target their own model identifier
 /// and an optional requested dimension count. Credentials follow the same
-/// contract as [`Config::api_key`] — an already-resolved Copilot chat token
-/// or API key (see the module docs).
+/// contract as [`Config::connection`] — its `api_key` field contains an
+/// already-resolved Copilot chat token or API key (see the module docs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct EmbeddingConfig {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`]). When left at the
-    /// default, a `proxy-ep=` segment inside the resolved token overrides
-    /// it, exactly like the classic client.
-    pub base_url: String,
-    /// Credential location; must resolve to a Copilot chat token or API key.
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Embedding model identifier requests are built for.
     pub model: String,
     /// Requested embedding dimensions, sent verbatim as `dimensions` when
     /// set (models that reject the field, like `text-embedding-ada-002`,
     /// should leave it unset).
     pub dimensions: Option<usize>,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
 }
+
+crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
 
 impl EmbeddingConfig {
     /// Config for `model` reading `GITHUB_COPILOT_API_KEY` from the
     /// environment.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("GITHUB_COPILOT_API_KEY".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL.to_string(),
+                ApiKeyLocation::Env("GITHUB_COPILOT_API_KEY".to_string()),
+            ),
             model: model.into(),
             dimensions: None,
-            extra_headers: Vec::new(),
         }
     }
 

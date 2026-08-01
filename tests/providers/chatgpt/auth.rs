@@ -2,7 +2,6 @@
 
 use assert_fs::TempDir;
 use rig::AgentBuilder;
-use rig::provider::ProviderConfig;
 use rig::providers::chatgpt;
 use serde_json::json;
 use std::fs;
@@ -33,7 +32,7 @@ async fn authorized_agent(path: &Path, model: &str) -> AgentBuilder {
         chatgpt::functions::config_from_auth(model, &oauth_authenticator_with_auth_file(path))
             .await
             .expect("authorization should succeed");
-    AgentBuilder::new(ProviderConfig::ChatGpt(cfg))
+    AgentBuilder::new(cfg)
 }
 
 fn seed_refresh_auth_file(path: &Path) {

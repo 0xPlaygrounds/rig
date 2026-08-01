@@ -1,9 +1,10 @@
 //! AWS Bedrock tool-choice cassette coverage ported from Gemini tests.
 
 use rig::bedrock;
-use rig::completion::{AssistantContent, CompletionRequest, Message};
+use rig::completion::{AssistantContent, Message};
 
 use rig::message::ToolChoice;
+use rig::prelude::*;
 use rig::tool::Tool;
 
 use super::super::support::with_bedrock_cassette;
@@ -52,16 +53,14 @@ async fn required_forces_function_call() {
     with_bedrock_cassette(
         "tool_choice/required_forces_function_call",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest {
-                temperature: Some(0.0),
-                tools: vec![rig::tool::portable_tool_definition(&Adder)],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::from_prompt("Use the add tool to calculate 20 + 22.")
-            };
-
-            let response = rig::bedrock::functions::complete(aws, model_id, request)
+            let response = client
+                .completion_model(model_id)
+                .completion_request("Use the add tool to calculate 20 + 22.")
+                .temperature(0.0)
+                .tool(rig::tool::portable_tool_definition(&Adder))
+                .tool_choice(ToolChoice::Required)
+                .send()
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -91,19 +90,19 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest::builder(
-                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-            )
-            .temperature(0.0)
-            .tools(vec![
-                rig::tool::portable_tool_definition(&Adder),
-                rig::tool::portable_tool_definition(&Subtract),
-            ])
-            .tool_choice(specific_add_choice())
-            .build();
-            let response = rig::bedrock::functions::complete(aws, model_id, request)
+            let response = client
+                .completion_model(model_id)
+                .completion_request(
+                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+                )
+                .temperature(0.0)
+                .tools([
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
+                .tool_choice(specific_add_choice())
+                .send()
                 .await
                 .expect("specific add raw completion should succeed");
 
@@ -146,19 +145,19 @@ async fn specific_add_raw_streaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest::builder(
-                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-            )
-            .temperature(0.0)
-            .tools(vec![
-                rig::tool::portable_tool_definition(&Adder),
-                rig::tool::portable_tool_definition(&Subtract),
-            ])
-            .tool_choice(specific_add_choice())
-            .build();
-            let stream = rig::bedrock::functions::open_stream(aws, model_id, request)
+            let stream = client
+                .completion_model(model_id)
+                .completion_request(
+                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+                )
+                .temperature(0.0)
+                .tools([
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
+                .tool_choice(specific_add_choice())
+                .stream()
                 .await
                 .expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
@@ -205,7 +204,6 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
         |client| async move {
             let agent = client
                 .agent(bedrock::completion::AMAZON_NOVA_LITE)
-                .await
                 .preamble("You are a deterministic calculator test. Answer directly in text.")
                 .temperature(0.0)
                 .tool(Adder)
@@ -234,7 +232,6 @@ async fn none_streaming_does_not_emit_tool_calls() {
     with_bedrock_cassette("tool_choice/none_streaming_no_tools", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .await
             .preamble("You are a deterministic calculator test. Answer directly in text.")
             .temperature(0.0)
             .tool(Adder)

@@ -21,7 +21,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(AgentBuilder::new(support::provider(support::model_name())), |builder, (path, content)| {
+        .fold(support::client().agent(&support::model_name()), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

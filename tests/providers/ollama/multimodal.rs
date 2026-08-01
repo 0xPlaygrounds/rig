@@ -14,8 +14,9 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires a local Ollama server with a multimodal model"]
 async fn multimodal_image_prompt() {
-    let cfg = ollama::functions::Config::from_env("llava").expect("config should build");
-    let agent = AgentBuilder::new(ProviderConfig::Ollama(cfg))
+    let client = ollama::Client::from_env().expect("client should build");
+    let agent = client
+        .agent("llava")
         .preamble("Describe this image and include anything notable about it.")
         .temperature(0.5)
         .build();

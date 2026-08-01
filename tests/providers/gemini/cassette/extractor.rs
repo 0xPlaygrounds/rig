@@ -1,10 +1,6 @@
 //! Gemini extractor coverage, including the migrated example path.
 
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
+use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -22,13 +18,8 @@ struct Person {
     job: Option<String>,
 }
 
-/// The classic `ExtractorBuilder::additional_params` knob is an
-/// [`AgentConfig`] field now.
-fn config_with_additional_params(params: AdditionalParameters) -> AgentConfig {
-    let mut config = AgentConfig::new();
-    config.additional_params =
-        Some(serde_json::to_value(params).expect("Gemini additional params should serialize"));
-    config
+fn serialize_params(params: AdditionalParameters) -> serde_json::Value {
+    serde_json::to_value(params).expect("Gemini additional params should serialize")
 }
 
 #[tokio::test]
@@ -37,15 +28,15 @@ async fn extractor_smoke() {
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let response = extract_with_options::<SmokePerson>(
-            config_with_additional_params(additional_params),
-            client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
-            Arc::new(Runtime::new()),
-            EXTRACTOR_TEXT,
-            ExtractOptions::classic_extractor(),
-        )
-        .await
-        .expect("extractor request should succeed");
+        let response = client
+            .agent(gemini::completion::GEMINI_2_5_FLASH)
+            .additional_params(serialize_params(additional_params))
+            .build()
+            .extractor(EXTRACTOR_TEXT)
+            .classic()
+            .run_with_usage::<SmokePerson>()
+            .await
+            .expect("extractor request should succeed");
 
         validate_extraction_fields(
             "gemini_extractor_smoke",
@@ -85,16 +76,15 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let person = extract_with_options::<Person>(
-                config_with_additional_params(params),
-                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
-                Arc::new(Runtime::new()),
-                "Hello my name is John Doe! I am a software engineer.",
-                ExtractOptions::classic_extractor(),
-            )
-            .await
-            .expect("extract should succeed")
-            .value;
+            let person = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .additional_params(serialize_params(params))
+                .build()
+                .extractor("Hello my name is John Doe! I am a software engineer.")
+                .classic()
+                .run::<Person>()
+                .await
+                .expect("extract should succeed");
 
             assert_eq!(person.first_name.as_deref(), Some("John"));
             assert_eq!(person.last_name.as_deref(), Some("Doe"));

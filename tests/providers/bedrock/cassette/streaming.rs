@@ -7,13 +7,13 @@ use crate::support::{
     collect_stream_final_response,
 };
 use rig::bedrock;
+use rig::prelude::*;
 
 #[tokio::test]
 async fn streaming_smoke() {
     with_bedrock_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .await
             .preamble(STREAMING_PREAMBLE)
             .build();
 
@@ -32,7 +32,6 @@ async fn streaming_tools_smoke() {
     with_bedrock_cassette("streaming/streaming_tools_smoke", |client| async move {
         let agent = client
             .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .await
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .max_tokens(1024)
             .tool(Subtract)

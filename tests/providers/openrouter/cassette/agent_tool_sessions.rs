@@ -745,3 +745,4 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
     )
     .await
 }
+use rig::prelude::*;

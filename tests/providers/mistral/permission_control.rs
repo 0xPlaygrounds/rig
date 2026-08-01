@@ -144,7 +144,9 @@ impl PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
+        .agent(TOOL_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -179,7 +181,9 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = AgentBuilder::new(super::live(TOOL_MODEL))
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
+        .agent(TOOL_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)

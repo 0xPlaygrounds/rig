@@ -10,7 +10,8 @@ use rig::prelude::*;
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_doubleword_cassette("streaming_tools/streaming_tools_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider(TOOL_MODEL))
+        let agent = env
+            .agent(TOOL_MODEL)
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

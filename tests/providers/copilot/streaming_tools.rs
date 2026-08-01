@@ -202,3 +202,4 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         assert_raw_stream_text_contains(&second_turn, &[ALPHA_SIGNAL_OUTPUT]);
     }).await;
 }
+use rig::prelude::*;

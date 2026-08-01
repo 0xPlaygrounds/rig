@@ -29,7 +29,7 @@ use crate::support::assert_mentions_expected_number;
 /// Build an in-memory store over the embeddable tool schemas, keyed by
 /// tool name.
 async fn build_tool_store(
-    client: &super::super::support::GeminiCassette,
+    client: &gemini::Client,
     schemas: Vec<ToolSchema>,
 ) -> InMemoryVectorStore {
     let cfg = client.embedding_config(gemini::embedding::EMBEDDING_001);

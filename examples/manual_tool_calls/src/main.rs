@@ -3,8 +3,7 @@
 //!
 //! Unlike `agent.prompt(...)`, this example never lets Rig execute tools automatically.
 //! It:
-//! 1. sends a low-level completion request through the provider's free
-//!    `complete` function (config + `HttpRuntime`, no model type),
+//! 1. sends a bound completion request (still below the agent loop),
 //! 2. collects one or more `ToolCall`s from the model output,
 //! 3. executes them locally with a `ToolExecutor` of portable tool records,
 //! 4. feeds the tool results back to the model, and
@@ -13,8 +12,8 @@
 use anyhow::{Result, bail};
 use rig::OneOrMany;
 use rig::executor::ToolExecutor;
-use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
@@ -126,10 +125,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    // Below the Agent abstraction the provider is just a config plus a
-    // transport: `openai::functions::complete(&cfg, &rt, request)`.
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O_MINI)?;
-    let rt = HttpRuntime::new();
+    let model = openai::CompletionsClient::from_env()?.completion_model(openai::GPT_4O_MINI);
     let preamble = "You are a calculator. Never do arithmetic from memory. \
                     Use the provided tools for every intermediate step. \
                     You may emit one or multiple tool calls in a single turn. \
@@ -149,17 +145,17 @@ async fn main() -> Result<()> {
     for round in 1..=MAX_ROUNDS {
         // This example intentionally operates below the Agent abstraction. Raw
         // model requests have no agent lifecycle or hooks.
-        let mut request = rig::completion::CompletionRequest::builder(current_prompt.clone())
+        let mut request = model
+            .completion_request(current_prompt.clone())
             .preamble(preamble)
             .messages(history.clone())
-            .tools(tool_definitions.clone())
-            .build();
+            .tools(tool_definitions.clone());
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
-            request.tool_choice = Some(ToolChoice::Required);
+            request = request.tool_choice(ToolChoice::Required);
         }
 
-        let response = openai::functions::complete(&cfg, &rt, request).await?;
+        let response = request.send().await?;
         let tool_calls = collect_tool_calls(&response.choice);
 
         history.push(current_prompt.clone());

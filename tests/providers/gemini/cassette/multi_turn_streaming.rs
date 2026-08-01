@@ -205,3 +205,4 @@ impl Tool for Divide {
         Ok(args.x / args.y)
     }
 }
+use rig::prelude::*;

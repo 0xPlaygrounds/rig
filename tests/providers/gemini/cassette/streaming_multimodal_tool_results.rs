@@ -175,3 +175,4 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     })
     .await;
 }
+use rig::prelude::*;

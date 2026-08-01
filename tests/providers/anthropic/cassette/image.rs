@@ -4,6 +4,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
+use rig::prelude::*;
 use rig::providers::anthropic;
 use tokio::fs;
 

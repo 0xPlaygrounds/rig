@@ -741,3 +741,4 @@ fn assert_hook_records() {
     requires_entry(force_args("add", serde_json::Value::Null));
     requires_entry(redact_result("add", ""));
 }
+use rig::prelude::*;

@@ -12,7 +12,8 @@ use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_
 #[tokio::test]
 async fn tools_roundtrip() {
     with_llamafile_cassette("tools/tools_roundtrip", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Llamafile(env.config(CASSETTE_CHAT_MODEL)))
+        let agent = env
+            .agent(CASSETTE_CHAT_MODEL)
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

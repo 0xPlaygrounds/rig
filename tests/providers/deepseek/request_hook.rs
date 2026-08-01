@@ -79,7 +79,8 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     with_deepseek_cassette_result(
         "request_hook/request_hook_records_prompt_and_response",
         |env| async move {
-            let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+            let agent = env
+                .agent(deepseek::DEEPSEEK_V4_FLASH)
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();
 

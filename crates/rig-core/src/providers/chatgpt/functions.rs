@@ -73,17 +73,13 @@ pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Config {
-    /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-    pub base_url: String,
-    /// Bearer access token location (the client's `CHATGPT_ACCESS_TOKEN`
-    /// path). OAuth token files are not representable here.
-    pub api_key: ApiKeyLocation,
+    /// Reusable HTTP connection data, including the bearer access token.
+    #[serde(flatten)]
+    pub connection: crate::providers::HttpConnectionConfig,
     /// Optional `ChatGPT-Account-Id` header value.
     pub account_id: Option<String>,
     /// Model identifier requests are built for.
     pub model: String,
-    /// Extra headers attached to every request.
-    pub extra_headers: Vec<(String, String)>,
     /// Default instructions merged into every request's `instructions`.
     pub default_instructions: Option<String>,
     /// Value of the required `originator` header.
@@ -100,6 +96,8 @@ pub struct Config {
     pub strict_tools: bool,
 }
 
+crate::providers::client::impl_http_connection_config!(Config);
+
 impl Config {
     /// Config for `model` reading `CHATGPT_ACCESS_TOKEN` from the
     /// environment.
@@ -109,11 +107,12 @@ impl Config {
     /// instructions (so both faces produce identical request bytes).
     pub fn new(model: impl Into<String>) -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Env("CHATGPT_ACCESS_TOKEN".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL,
+                ApiKeyLocation::Env("CHATGPT_ACCESS_TOKEN".to_string()),
+            ),
             account_id: None,
             model: model.into(),
-            extra_headers: Vec::new(),
             default_instructions: Some(
                 std::env::var("CHATGPT_DEFAULT_INSTRUCTIONS")
                     .ok()
@@ -414,11 +413,12 @@ mod tests {
 
     fn sample_config() -> Config {
         Config {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            api_key: ApiKeyLocation::Inline("token".to_string()),
+            connection: crate::providers::HttpConnectionConfig::new(
+                DEFAULT_BASE_URL,
+                ApiKeyLocation::Inline("token".to_string()),
+            ),
             account_id: Some("acct_1".to_string()),
             model: "gpt-5.3-codex".to_string(),
-            extra_headers: Vec::new(),
             default_instructions: Some(super::super::DEFAULT_INSTRUCTIONS.to_string()),
             originator: "rig".to_string(),
             user_agent: "rig-test".to_string(),

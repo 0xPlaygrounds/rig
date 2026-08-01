@@ -1,14 +1,11 @@
 //! Dedicated Claude Opus 4.7 live smoke tests.
 
-use std::sync::Arc;
+use rig::prelude::*;
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::agent::AgentConfig;
 use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::extract::{ExtractOptions, extract_with_options};
 use rig::message::{DocumentSourceKind, ImageMediaType};
-use rig::provider::Runtime;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
 use rig_agent::test_utils::validate_extraction_fields;
 
@@ -145,15 +142,13 @@ async fn messages_extractor_smoke() {
     super::super::support::with_anthropic_cassette(
         "opus_4_7/messages_extractor_smoke",
         |client| async move {
-            let response = extract_with_options::<SmokePerson>(
-                AgentConfig::new(),
-                client.provider_config(CLAUDE_OPUS_4_7),
-                Arc::new(Runtime::new()),
-                EXTRACTOR_TEXT,
-                ExtractOptions::classic_extractor(),
-            )
-            .await
-            .expect("extractor request should succeed");
+            let agent = client.agent(CLAUDE_OPUS_4_7).build();
+            let response = agent
+                .extractor(EXTRACTOR_TEXT)
+                .classic()
+                .run_with_usage::<SmokePerson>()
+                .await
+                .expect("extractor request should succeed");
 
             validate_extraction_fields(
                 "anthropic_opus_4_7_extractor_smoke",

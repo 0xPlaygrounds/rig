@@ -47,7 +47,7 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(live_responses_model())
+                .agent(&live_responses_model())
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -67,3 +67,4 @@ async fn nonstreaming() {
     )
     .await;
 }
+use rig::prelude::*;

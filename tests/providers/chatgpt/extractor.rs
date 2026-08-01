@@ -1,25 +1,19 @@
 //! ChatGPT extractor smoke test.
 
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
-use std::sync::Arc;
-
-use crate::chatgpt::{LIVE_MODEL, live_provider};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extractor_smoke() {
-    let response = extract_with_options::<SmokePerson>(
-        AgentConfig::new(),
-        live_provider(LIVE_MODEL).await,
-        Arc::new(Runtime::new()),
-        EXTRACTOR_TEXT,
-        ExtractOptions::classic_extractor(),
-    )
-    .await
-    .expect("extractor request should succeed");
+    let response = live_agent(LIVE_MODEL)
+        .await
+        .build()
+        .extractor(EXTRACTOR_TEXT)
+        .classic()
+        .run_with_usage::<SmokePerson>()
+        .await
+        .expect("extractor request should succeed");
 
     let first_name = response
         .value

@@ -29,7 +29,8 @@ fn think_params() -> serde_json::Value {
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     with_ollama_cassette("reasoning_tool_roundtrip/nonstreaming", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+        let agent = env
+            .agent(MODEL)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(think_params())
@@ -67,7 +68,8 @@ async fn nonstreaming() {
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     with_ollama_cassette("reasoning_tool_roundtrip/streaming", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Ollama(env.config(MODEL)))
+        let agent = env
+            .agent(MODEL)
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(think_params())

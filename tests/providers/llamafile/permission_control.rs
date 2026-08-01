@@ -169,7 +169,8 @@ async fn permission_control_prompt_example() -> Result<()> {
 
     let _cleanup = FileCleanup::new()?;
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -244,7 +245,8 @@ async fn permission_control_streaming_example() -> Result<()> {
 
     let _cleanup = FileCleanup::new()?;
 
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)

@@ -21,3 +21,4 @@ async fn cached_oauth_allows_noninteractive_completion() {
     )
     .await;
 }
+use rig::prelude::*;

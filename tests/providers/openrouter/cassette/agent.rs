@@ -18,3 +18,4 @@ async fn completion_smoke() {
     })
     .await;
 }
+use rig::prelude::*;

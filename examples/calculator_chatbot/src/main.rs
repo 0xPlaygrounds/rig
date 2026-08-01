@@ -238,9 +238,9 @@ impl Tool for Divide {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let rt = HttpRuntime::new();
-    let embedding_config =
-        openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let client = openai::Client::from_env()?;
+    let rt = client.http();
+    let embedding_config = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
 
     // Embed the tools' documentation and index it by tool name.
     let schemas = vec![
@@ -269,10 +269,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Create a RAG agent that carries every calculator tool and re-selects
     // which ones to advertise on each turn through the retrieval hook.
-    let calculator_rag = AgentBuilder::new(
-        openai::functions::Config::from_env(openai::GPT_4)?,
-    )
-    .preamble(
+    let calculator_rag = client.agent(openai::GPT_4).preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.
             1. Consider the user's request carefully and identify the core elements of the request.

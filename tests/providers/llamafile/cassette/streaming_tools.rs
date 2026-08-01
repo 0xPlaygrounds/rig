@@ -15,7 +15,8 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_tools_smoke() {
     with_llamafile_cassette("streaming_tools/streaming_tools_smoke", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Llamafile(env.config(CASSETTE_CHAT_MODEL)))
+        let agent = env
+            .agent(CASSETTE_CHAT_MODEL)
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

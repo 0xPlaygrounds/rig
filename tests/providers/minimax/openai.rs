@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn openai_compatible_completion_smoke() {
     let cfg =
         minimax::functions::Config::from_env(minimax::MINIMAX_M2_7).expect("config should build");
-    let response = AgentBuilder::new(ProviderConfig::Minimax(cfg))
+    let response = AgentBuilder::new(cfg)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

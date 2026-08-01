@@ -13,7 +13,8 @@ use crate::support::{
 #[tokio::test]
 async fn streaming_smoke() {
     with_llamafile_cassette("streaming/streaming_smoke", |env| async move {
-        let agent = AgentBuilder::new(ProviderConfig::Llamafile(env.config(CASSETTE_CHAT_MODEL)))
+        let agent = env
+            .agent(CASSETTE_CHAT_MODEL)
             .preamble(STREAMING_PREAMBLE)
             .build();
 

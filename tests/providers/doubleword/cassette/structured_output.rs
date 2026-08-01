@@ -12,7 +12,8 @@ async fn structured_output_smoke() {
     with_doubleword_cassette(
         "structured_output/structured_output_smoke",
         |env| async move {
-            let response: SmokeStructuredOutput = AgentBuilder::new(env.provider(DEFAULT_MODEL))
+            let response: SmokeStructuredOutput = env
+                .agent(DEFAULT_MODEL)
                 .build()
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await

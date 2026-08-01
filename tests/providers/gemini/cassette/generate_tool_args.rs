@@ -205,7 +205,8 @@ async fn nested_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 client
-                    .stream(model, request)
+                    .completion_model(model)
+                    .stream(request)
                     .await
                     .expect("nested-args streaming request should start"),
             )
@@ -257,7 +258,8 @@ async fn unicode_arguments_streaming() {
 
             let observation = collect_raw_stream_observation(
                 client
-                    .stream(model, request)
+                    .completion_model(model)
+                    .stream(request)
                     .await
                     .expect("unicode-args streaming request should start"),
             )
@@ -324,7 +326,8 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
             .build();
 
             let response = client
-                .complete(model, request)
+                .completion_model(model)
+                .completion(request)
                 .await
                 .expect("optional-arg completion should succeed");
 
@@ -358,3 +361,4 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
     )
     .await;
 }
+use rig::prelude::*;

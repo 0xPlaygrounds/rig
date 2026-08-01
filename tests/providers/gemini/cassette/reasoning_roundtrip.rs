@@ -37,3 +37,4 @@ async fn nonstreaming() {
     })
     .await;
 }
+use rig::prelude::*;

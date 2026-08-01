@@ -35,9 +35,9 @@
 //! # }
 //! ```
 //!
-//! To drive an agent loop, hand the same [`functions::Config`] to
-//! `rig_agent::provider::ProviderConfig::GeminiGrpc` (rig-agent's
-//! `gemini-grpc` feature); the agent runtime caches the channel for you.
+//! With the root `rig` crate's `gemini-grpc` feature and `rig::prelude::*`,
+//! this same live client supports `client.agent(model)` and the bound direct
+//! completion facade. Both paths seed the runtime with this connected channel.
 //!
 //! [`completion`], [`embedding`] and [`streaming`] hold the wire conversions
 //! and model-identifier constants the free functions are built from.

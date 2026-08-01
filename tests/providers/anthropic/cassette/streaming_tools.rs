@@ -3,6 +3,7 @@
 use futures::StreamExt;
 use rig::completion::PromptError;
 use rig::message::{Message, UserContent};
+use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::stream::AgentStreamItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};

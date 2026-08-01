@@ -8,8 +8,9 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires MIRA_API_KEY"]
 async fn completion_smoke() {
-    let cfg = mira::functions::Config::from_env(openai::GPT_4O).expect("config should build");
-    let agent = AgentBuilder::new(ProviderConfig::Mira(cfg))
+    let client = mira::Client::from_env().expect("client should build");
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble(BASIC_PREAMBLE)
         .build();
 

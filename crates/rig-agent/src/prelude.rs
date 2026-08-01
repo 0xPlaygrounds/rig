@@ -1,10 +1,15 @@
 //! Common imports for building and driving agents.
 //!
-//! Providers are configured as plain data — `<provider>::functions::Config` —
-//! and selected through [`ProviderConfig`];
-//! there is no client type and no capability trait to import.
+//! Provider operation data remains available as
+//! `<provider>::functions::Config` and [`ProviderConfig`]. Concrete,
+//! monomorphic provider clients add fluent agent and bound-completion methods
+//! through the extension traits exported here.
 
 pub use crate::agent::{Agent, AgentBuilder, PromptResponse, SessionRunner};
+pub use crate::client::{
+    AgentClientExt, BindCompletionExt, BoundCompletionRequest, CompletionClientExt,
+    CompletionHandle, ToProviderConfig,
+};
 pub use crate::completion::{CompletionError, Message, PromptError, StructuredOutputError};
 pub use crate::provider::{EmbedderConfig, ProviderConfig, Runtime};
 pub use crate::stream::{AgentStream, AgentStreamItem};

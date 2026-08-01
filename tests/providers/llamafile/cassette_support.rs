@@ -26,43 +26,22 @@ fn record_upstream() -> String {
         .unwrap_or_else(|_| "http://localhost:11434".to_string())
 }
 
-/// Connection data for a running llamafile cassette server.
-///
-/// Providers are data now: the cassette hands the test its base URL and each
-/// test mints a `functions::Config` for the model it exercises. The classic
-/// `llamafile::Client::from_url` appended `/v1` itself, so the recorded paths
-/// are `/v1/...`; that suffix is applied here to keep the wire URLs identical.
-pub(super) struct LlamafileCassetteEnv {
-    base_url: String,
-}
-
-impl LlamafileCassetteEnv {
-    pub(super) fn config(&self, model: &str) -> llamafile::functions::Config {
-        llamafile::functions::Config::new(model).with_base_url(&self.base_url)
-    }
-
-    pub(super) fn embedding_config(&self, model: &str) -> llamafile::functions::EmbeddingConfig {
-        llamafile::functions::EmbeddingConfig::new(model).with_base_url(&self.base_url)
-    }
-}
-
 async fn llamafile_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, LlamafileCassetteEnv) {
+) -> (ProviderCassette, llamafile::Client) {
     let cassette = ProviderCassette::start("llamafile", spec, &record_upstream()).await;
-    let env = LlamafileCassetteEnv {
-        base_url: format!("{}/v1", cassette.base_url().trim_end_matches('/')),
-    };
+    let client = llamafile::Client::from_url(cassette.base_url())
+        .expect("Llamafile cassette client should build");
 
-    (cassette, env)
+    (cassette, client)
 }
 
 pub(super) async fn with_llamafile_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(LlamafileCassetteEnv) -> Fut,
+    F: FnOnce(llamafile::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, env) = llamafile_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(env)).catch_unwind().await;
+    let (cassette, client) = llamafile_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

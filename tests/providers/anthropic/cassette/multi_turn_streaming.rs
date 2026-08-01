@@ -1,5 +1,6 @@
 //! Migrated from `examples/multi_turn_streaming.rs`.
 
+use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 

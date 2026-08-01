@@ -308,3 +308,4 @@ async fn blocking_and_streaming_produce_same_final_answer() {
     )
     .await;
 }
+use rig::prelude::*;

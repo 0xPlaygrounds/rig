@@ -17,7 +17,7 @@ async fn context_smoke() {
         .iter()
         .copied()
         .fold(
-            AgentBuilder::new(support::provider(support::model_name())),
+            support::client().agent(&support::model_name()),
             |builder, doc| builder.context(doc),
         )
         .build();

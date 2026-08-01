@@ -9,8 +9,7 @@ use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relev
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn loaders_smoke() {
-    let cfg = huggingface::functions::Config::from_env("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
-        .expect("config should build");
+    let client = huggingface::Client::from_env().expect("client should build");
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()
@@ -19,7 +18,7 @@ async fn loaders_smoke() {
 
     let agent = examples
         .fold(
-            AgentBuilder::new(ProviderConfig::HuggingFace(cfg)),
+            client.agent("deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"),
             |builder, (path, content)| {
                 builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
             },

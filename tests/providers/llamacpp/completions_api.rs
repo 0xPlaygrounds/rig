@@ -15,7 +15,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completions_api_agent_prompt() {
-    let agent = AgentBuilder::new(support::provider(support::model_name()))
+    let agent = support::completions_client()
+        .agent(&support::model_name())
         .preamble("You are a helpful assistant.")
         .build();
 
@@ -34,7 +35,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     // payload, and this test runs live-only (no cassette to re-read the wire
     // body from), so the previous raw-vs-normalized comparison now asserts the
     // exact expected content directly on the normalized text.
-    let cfg = support::config(support::model_name());
+    let cfg = support::completions_client().config(support::model_name());
     let rt = HttpRuntime::new();
     let response = openai::functions::complete(
         &cfg,

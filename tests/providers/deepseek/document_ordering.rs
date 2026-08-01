@@ -1,8 +1,8 @@
 //! Focused DeepSeek cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionRequest, Document, Message};
-use rig::http_runtime::HttpRuntime;
+use rig::completion::{AssistantContent, Document, Message};
+use rig::prelude::*;
 use rig::providers::deepseek;
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,21 +47,18 @@ fn assistant_text(choice: &OneOrMany<AssistantContent>) -> String {
 async fn chat_completions_keeps_documents_after_system_before_history() {
     with_deepseek_cassette(
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
-        |env| async move {
-            let model_cfg = env.config(deepseek::DEEPSEEK_V4_FLASH);
-            let rt = HttpRuntime::new();
-            let request = CompletionRequest::builder(PROMPT)
-                .messages([
-                    Message::system(SYSTEM_INSTRUCTION),
-                    Message::assistant("Acknowledged."),
-                ])
+        |client| async move {
+            let response = client
+                .completion_model(deepseek::DEEPSEEK_V4_FLASH)
+                .completion_request(PROMPT)
+                .message(Message::system(SYSTEM_INSTRUCTION))
+                .message(Message::assistant("Acknowledged."))
                 .document(ordering_document())
                 .temperature(0.0)
                 // Needs headroom for deepseek-v4-flash's thinking tokens now
                 // that max_tokens is actually forwarded to the API.
                 .max_tokens(512)
-                .build();
-            let response = deepseek::functions::complete(&model_cfg, &rt, request)
+                .send()
                 .await
                 .expect("DeepSeek document ordering request should succeed");
 

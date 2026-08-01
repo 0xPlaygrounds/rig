@@ -1,10 +1,6 @@
 //! OpenAI extractor smoke test.
 
-use std::sync::Arc;
-
-use rig::agent::AgentConfig;
-use rig::extract::{ExtractOptions, extract_with_options};
-use rig::provider::Runtime;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig_agent::test_utils::validate_extraction_fields;
 
@@ -14,15 +10,13 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 #[tokio::test]
 async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {
-        let response = extract_with_options::<SmokePerson>(
-            AgentConfig::new(),
-            client.provider_config(openai::GPT_4O),
-            Arc::new(Runtime::new()),
-            EXTRACTOR_TEXT,
-            ExtractOptions::classic_extractor(),
-        )
-        .await
-        .expect("extractor request should succeed");
+        let agent = client.agent(openai::GPT_4O).build();
+        let response = agent
+            .extractor(EXTRACTOR_TEXT)
+            .classic()
+            .run_with_usage::<SmokePerson>()
+            .await
+            .expect("extractor request should succeed");
 
         validate_extraction_fields(
             "openai_extractor_smoke",

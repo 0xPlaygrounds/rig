@@ -1,8 +1,8 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
 
 use rig::OneOrMany;
-use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::telemetry::ProviderResponseExt;
 
@@ -47,13 +47,12 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+            let response = client
+                .completion_model(openai::GPT_4O)
+                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
                 .messages(Vec::new())
-                .build();
-            let response = openai::functions::complete(&cfg, &rt, request)
+                .send()
                 .await
                 .expect("raw completions api request should succeed");
 
@@ -121,14 +120,12 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest {
-                tools: vec![zero_arg_tool_definition("ping")],
-                tool_choice: Some(ToolChoice::Required),
-                ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-            };
-            let stream = openai::functions::open_stream(&cfg, &rt, request)
+            let stream = client
+                .completion_model(openai::GPT_4O)
+                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .tool(zero_arg_tool_definition("ping"))
+                .tool_choice(ToolChoice::Required)
+                .stream()
                 .await
                 .expect("stream should start");
 
@@ -143,13 +140,11 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request =
-                CompletionRequest::from_prompt("Reply with exactly: cassette null tool calls ok");
-
             let observation = collect_raw_stream_observation(
-                openai::functions::open_stream(&cfg, &rt, request)
+                client
+                    .completion_model(openai::GPT_4O)
+                    .completion_request("Reply with exactly: cassette null tool calls ok")
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -171,18 +166,14 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tools(vec![
-                    rig::tool::portable_tool_definition(&AlphaSignal),
-                    rig::tool::portable_tool_definition(&BetaSignal),
-                ])
-                .build();
-
             let observation = collect_raw_stream_observation(
-                openai::functions::open_stream(&cfg, &rt, request)
+                client
+                    .completion_model(openai::GPT_4O)
+                    .completion_request(TWO_TOOL_STREAM_PROMPT)
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(rig::tool::portable_tool_definition(&AlphaSignal))
+                    .tool(rig::tool::portable_tool_definition(&BetaSignal))
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -229,15 +220,14 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let cfg = client.config(openai::GPT_4O);
-            let rt = client.http();
-            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
-                              .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
-                              .build();
+            let model = client.completion_model(openai::GPT_4O);
 
             let first_turn = collect_raw_stream_observation(
-                openai::functions::open_stream(&cfg, &rt, request)
+                model
+                    .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+                    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                    .tool(rig::tool::portable_tool_definition(&AlphaSignal))
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -257,13 +247,12 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
-.preamble("Use the provided tool result and answer directly.")
-.messages(vec![assistant_message, tool_result_message])
-.build();
-
             let second_turn = collect_raw_stream_observation(
-                openai::functions::open_stream(&cfg, &rt, followup_request)
+                model
+                    .completion_request("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+                    .preamble("Use the provided tool result and answer directly.")
+                    .messages([assistant_message, tool_result_message])
+                    .stream()
                     .await
                     .expect("raw completions api followup stream should start"),
             )

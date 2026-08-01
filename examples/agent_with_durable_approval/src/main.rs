@@ -32,8 +32,8 @@ use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::executor::ToolExecutor;
-use rig::http_runtime::HttpRuntime;
 use rig::message::{ToolResultContent, UserContent};
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
@@ -153,11 +153,7 @@ async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `SessionRunner`.
-    // The provider is plain data (`openai::functions::Config` names the model)
-    // and the transport is a separate `HttpRuntime`; raw model calls go through
-    // the provider's free `complete` function.
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    let http = HttpRuntime::new();
+    let model = openai::CompletionsClient::from_env()?.completion_model(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let tools = ToolExecutor::from_tools([
@@ -183,12 +179,13 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("\n→ model call #{turn}");
-                let request = rig::completion::CompletionRequest::builder(prompt)
+                let response = model
+                    .completion_request(prompt)
                     .preamble(preamble)
                     .messages(history)
                     .tools(tool_definitions.clone())
-                    .build();
-                let response = openai::functions::complete(&cfg, &http, request).await?;
+                    .send()
+                    .await?;
                 let tool_names: BTreeSet<String> = tool_definitions
                     .iter()
                     .map(|def| def.name.clone())

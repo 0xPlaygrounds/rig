@@ -118,11 +118,11 @@ fn force_tool_on_first_turn() -> HookEntry {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
-    // A fresh agent per run (both share the same tool and preamble). The
-    // provider config is plain data, so each build just clones it.
+    let client = openai::Client::from_env()?;
+    // A fresh agent per run; both share the same connection, tool, and preamble.
     let make_agent = || {
-        AgentBuilder::new(cfg.clone())
+        client
+            .agent(openai::GPT_4O)
             .preamble(PREAMBLE)
             .tool(Add)
             .build()

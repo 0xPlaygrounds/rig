@@ -300,11 +300,11 @@ async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
     let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
 
-    // The provider is plain data: a config that names the model.
-    let cfg = openai::functions::Config::from_env(openai::GPT_4O)?;
+    let client = openai::Client::from_env()?;
 
     // Create agent with all tools
-    let echochambers_agent = AgentBuilder::new(cfg)
+    let echochambers_agent = client
+        .agent(openai::GPT_4O)
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
             You can send messages, retrieve message history, and analyze various metrics.

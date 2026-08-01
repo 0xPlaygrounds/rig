@@ -15,7 +15,7 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_ollama_cassette("tools/optional_argument", |env| async move {
-        let report = optional_argument(ProviderConfig::Ollama(env.config(MODEL)), |builder| {
+        let report = optional_argument(env.provider_config(MODEL), |builder| {
             builder.additional_params(json!({ "think": false }))
         })
         .await
@@ -28,7 +28,7 @@ async fn tool_with_optional_argument() {
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_ollama_cassette("tools/two_tools_nonstreaming", |env| async move {
-        let report = sequential_tools(ProviderConfig::Ollama(env.config(MODEL)), |builder| {
+        let report = sequential_tools(env.provider_config(MODEL), |builder| {
             builder.additional_params(json!({ "think": false }))
         })
         .await

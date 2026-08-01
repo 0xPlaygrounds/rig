@@ -1,19 +1,13 @@
 //! RAG-backed structured extraction.
 //!
-//! Extraction is a free function now ([`extract_with_options`]) and carries no
-//! hook stack, so the retrieval that used to live in a `BeforeModelCall` hook
-//! runs up front and lands on [`AgentConfig::static_context`]. A one-call
-//! extraction retrieves exactly once either way, so the request the model sees
-//! is the same.
+//! Retrieval runs before the one-shot extraction and its documents are passed
+//! through the non-generic fluent extraction runner.
 use rig::OneOrMany;
-use std::sync::Arc;
 
-use rig::agent::AgentConfig;
 use rig::completion::Document;
 use rig::embeddings::EmbeddingJob;
-use rig::extract::{ExtractOptions, extract_with_options};
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
-use rig::provider::Runtime;
 use rig::providers::gemini;
 use rig::{
     Embed, vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
@@ -110,9 +104,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Both Gemini faces are plain data over one shared HTTP runtime.
-    let ecfg = gemini::functions::EmbeddingConfig::from_env(gemini::EMBEDDING_001)?;
-    let http = HttpRuntime::new();
+    let client = gemini::Client::from_env()?;
+    let ecfg = client.embedding_config(gemini::EMBEDDING_001);
+    let http = client.http();
 
     // Generate embeddings for the definitions of all the documents.
     // `EmbeddingsBuilder` is gone: `embed_documents` batches the documents
@@ -156,24 +150,19 @@ async fn main() -> Result<(), anyhow::Error> {
             ";
     let classic = ExtractOptions::classic_extractor();
     let extraction_preamble = classic.preamble.clone().unwrap_or_default();
-    let options = classic.with_preamble(format!(
+    let preamble = format!(
         "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{ROLE}"
-    ));
-
-    let mut config = AgentConfig::new();
-    config.static_context = context;
+    );
+    let agent = client.agent("gemini-2.5-flash").build();
 
     // Prompt the model and print the response
-    let response = extract_with_options::<QuestionnaireResponses>(
-        config,
-        ProviderConfig::Gemini(gemini::functions::Config::from_env("gemini-2.5-flash")?),
-        // The agent runtime reuses the same HTTP transport as the embeddings.
-        Arc::new(Runtime::with_http(http.clone())),
-        APPLICANT_INFO,
-        options,
-    )
-    .await?
-    .value;
+    let response: QuestionnaireResponses = agent
+        .extractor(APPLICANT_INFO)
+        .classic()
+        .preamble(preamble)
+        .contexts(context)
+        .run()
+        .await?;
 
     println!("{response:#?}");
 

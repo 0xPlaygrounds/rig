@@ -62,7 +62,8 @@ async fn request_hook_records_prompt_and_response() {
         "request_hook/request_hook_records_prompt_and_response",
         |env| async move {
             let hook = ObservingHook::default();
-            let response = AgentBuilder::new(env.provider(DEFAULT_MODEL))
+            let response = env
+                .agent(DEFAULT_MODEL)
                 .build()
                 .runner("Entertain me with one short joke.")
                 .add_hook(hook.entry())

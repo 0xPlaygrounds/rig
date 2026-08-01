@@ -1,6 +1,6 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::providers::openai;
+use rig::{prelude::*, providers::openai};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{

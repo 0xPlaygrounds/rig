@@ -128,3 +128,4 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
     )
     .await
 }
+use rig::prelude::*;

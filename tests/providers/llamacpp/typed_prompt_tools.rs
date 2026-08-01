@@ -168,7 +168,7 @@ async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
     let hook = StepLogger::default();
 
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = AgentBuilder::new(support::provider(model))
+    let agent = support::client().agent(&model)
         .tool(WeatherTool::new(call_count.clone()))
         .preamble(
             "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.",

@@ -21,10 +21,10 @@ const TRANSLATOR_TOOL_NAME: &str = "translator";
 /// The answer in english is returned.
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // One plain-data provider config, cloned into both agents.
-    let provider = ProviderConfig::OpenAi(openai::functions::Config::from_env(openai::GPT_4O)?);
+    let client = openai::Client::from_env()?;
 
-    let translator_agent = AgentBuilder::new(provider.clone())
+    let translator_agent = client
+                .agent(openai::GPT_4O)
                 .preamble(
                     "You are a translator assistant that will translate any input text into english. \
                     If the text is already in english, simply respond with the original text but fix any mistakes (grammar, syntax, etc.)."
@@ -65,7 +65,8 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     );
 
-    let multi_agent_system = AgentBuilder::new(provider)
+    let multi_agent_system = client
+        .agent(openai::GPT_4O)
         .preamble(&format!(
             "You are a helpful assistant that can work with text in any language. \
             When you receive input that is not in English, or contains grammatical errors \

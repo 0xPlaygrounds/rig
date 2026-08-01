@@ -71,10 +71,10 @@ macro_rules! define_provider_config {
         /// includes secrets: `api_key` may be
         /// [`ApiKeyLocation::Inline`](rig_core::providers::descriptor::ApiKeyLocation),
         /// and `extra_headers` can include an `authorization` /
-        /// `x-api-key` / `api-key` header. `Debug` redacts the inline
-        /// `api_key`, but `extra_headers` print verbatim and serde stays
-        /// faithful by design (resuming a serialized config requires the
-        /// real values) — treat serialized configs as secrets.
+        /// `x-api-key` / `api-key` header. `Debug` redacts inline API keys and
+        /// every extra-header value, while serde stays faithful by design
+        /// (resuming a serialized config requires the real values) — treat
+        /// serialized configs as secrets.
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub enum ProviderConfig {
             $(
@@ -592,6 +592,57 @@ impl Runtime {
         }
     }
 
+    /// A runtime pre-seeded with a caller-built Bedrock SDK client.
+    #[cfg(feature = "bedrock")]
+    pub fn with_bedrock_client(
+        connection: rig_bedrock::functions::ConnectionConfig,
+        client: aws_sdk_bedrockruntime::Client,
+    ) -> Self {
+        Self {
+            http: HttpRuntime::new(),
+            bedrock: BedrockCache {
+                provider_client: None,
+                slot: std::sync::Arc::new(tokio::sync::Mutex::new(Some((
+                    bedrock_connection_key_from_connection(&connection),
+                    client,
+                )))),
+            },
+            #[cfg(feature = "gemini-grpc")]
+            gemini_grpc: GeminiGrpcCache::default(),
+        }
+    }
+
+    /// A runtime sharing the lazy or seeded SDK client owned by a concrete
+    /// Bedrock provider client.
+    #[cfg(feature = "bedrock")]
+    pub fn with_bedrock_provider_client(client: rig_bedrock::Client) -> Self {
+        Self {
+            http: HttpRuntime::new(),
+            bedrock: BedrockCache {
+                provider_client: Some(client),
+                slot: std::sync::Arc::default(),
+            },
+            #[cfg(feature = "gemini-grpc")]
+            gemini_grpc: GeminiGrpcCache::default(),
+        }
+    }
+
+    /// A runtime pre-seeded with a connected Gemini gRPC client.
+    #[cfg(feature = "gemini-grpc")]
+    pub fn with_gemini_grpc_client(
+        connection: rig_gemini_grpc::functions::ConnectionConfig,
+        client: rig_gemini_grpc::Client,
+    ) -> Self {
+        Self {
+            http: HttpRuntime::new(),
+            #[cfg(feature = "bedrock")]
+            bedrock: BedrockCache::default(),
+            gemini_grpc: GeminiGrpcCache {
+                slot: std::sync::Arc::new(tokio::sync::Mutex::new(Some((connection, client)))),
+            },
+        }
+    }
+
     /// The Bedrock client for `cfg`, built on first use and rebuilt only
     /// when the *connection* projection of the configuration changes.
     ///
@@ -605,6 +656,21 @@ impl Runtime {
         cfg: &rig_bedrock::functions::Config,
     ) -> aws_sdk_bedrockruntime::Client {
         let key = bedrock_connection_key(cfg);
+        {
+            let slot = self.bedrock.slot.lock().await;
+            if let Some((cached_key, client)) = slot.as_ref()
+                && *cached_key == key
+            {
+                return client.clone();
+            }
+        }
+
+        if let Some(client) = &self.bedrock.provider_client
+            && client.connection_config() == &cfg.connection
+        {
+            return client.get_inner().await;
+        }
+
         let mut slot = self.bedrock.slot.lock().await;
         if let Some((cached_key, client)) = slot.as_ref()
             && *cached_key == key
@@ -642,15 +708,15 @@ impl Runtime {
         cfg: &rig_gemini_grpc::functions::Config,
     ) -> Result<rig_gemini_grpc::Client, CompletionError> {
         let mut slot = self.gemini_grpc.slot.lock().await;
-        if let Some((cached_cfg, client)) = slot.as_ref()
-            && cached_cfg == cfg
+        if let Some((cached_connection, client)) = slot.as_ref()
+            && cached_connection == &cfg.connection
         {
             return Ok(client.clone());
         }
         let client = rig_gemini_grpc::functions::client_from_config(cfg)
             .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-        *slot = Some((cfg.clone(), client.clone()));
+        *slot = Some((cfg.connection.clone(), client.clone()));
         Ok(client)
     }
 }
@@ -663,16 +729,24 @@ type BedrockConnectionKey = (Option<String>, Option<String>, Option<String>);
 
 #[cfg(feature = "bedrock")]
 fn bedrock_connection_key(cfg: &rig_bedrock::functions::Config) -> BedrockConnectionKey {
+    bedrock_connection_key_from_connection(&cfg.connection)
+}
+
+#[cfg(feature = "bedrock")]
+fn bedrock_connection_key_from_connection(
+    connection: &rig_bedrock::functions::ConnectionConfig,
+) -> BedrockConnectionKey {
     (
-        cfg.region.clone(),
-        cfg.profile.clone(),
-        cfg.endpoint_url.clone(),
+        connection.region.clone(),
+        connection.profile.clone(),
+        connection.endpoint_url.clone(),
     )
 }
 
 #[cfg(feature = "bedrock")]
 #[derive(Debug, Default, Clone)]
 struct BedrockCache {
+    provider_client: Option<rig_bedrock::Client>,
     slot: std::sync::Arc<
         tokio::sync::Mutex<Option<(BedrockConnectionKey, aws_sdk_bedrockruntime::Client)>>,
     >,
@@ -682,7 +756,12 @@ struct BedrockCache {
 #[derive(Debug, Default, Clone)]
 struct GeminiGrpcCache {
     slot: std::sync::Arc<
-        tokio::sync::Mutex<Option<(rig_gemini_grpc::functions::Config, rig_gemini_grpc::Client)>>,
+        tokio::sync::Mutex<
+            Option<(
+                rig_gemini_grpc::functions::ConnectionConfig,
+                rig_gemini_grpc::Client,
+            )>,
+        >,
     >,
 }
 

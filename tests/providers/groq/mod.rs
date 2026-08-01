@@ -39,13 +39,3 @@ pub(super) const STREAMING_TOOLS_MULTI_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const STREAMING_TOOLS_ORDERED_MODEL: &str = "meta-llama/llama-4-scout-17b-16e-instruct";
 pub(super) const TOOLS_MODEL: &str = "llama-3.1-8b-instant";
 pub(super) const TYPED_PROMPT_TOOLS_MODEL: &str = "qwen/qwen3-32b";
-
-/// Live provider config resolved from the environment, for `#[ignore]`d tests
-/// that talk to the real API.
-#[allow(dead_code)]
-pub(super) fn live(model: &str) -> rig::provider::ProviderConfig {
-    rig::provider::ProviderConfig::Groq(
-        rig::providers::groq::functions::Config::from_env(model)
-            .expect("provider config should build from env"),
-    )
-}

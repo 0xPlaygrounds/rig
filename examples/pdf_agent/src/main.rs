@@ -133,9 +133,8 @@ fn load_pdf(path: PathBuf) -> Result<Vec<String>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Ollama is local and unauthenticated, so its configs are built with
-    // `new` (no credentials to read) and share one HTTP runtime.
-    let rt = HttpRuntime::new();
+    let client = ollama::Client::from_env()?;
+    let rt = client.http();
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("examples/documents");
@@ -143,8 +142,7 @@ async fn main() -> Result<()> {
         load_pdf(documents_dir.join("deepseek_r1.pdf")).context("Failed to load pdf documents")?;
     println!("Successfully loaded and chunked PDF documents");
 
-    // Embedding configuration is plain data naming the embedding model.
-    let ecfg = ollama::functions::EmbeddingConfig::new("bge-m3");
+    let ecfg = client.embedding_config("bge-m3");
 
     let documents: Vec<Document> = pdf_chunks
         .into_iter()
@@ -170,8 +168,8 @@ async fn main() -> Result<()> {
     println!("Successfully created vector store");
 
     // Create RAG agent with the passive-RAG hook
-    let cfg = ollama::functions::Config::new("deepseek-r1");
-    let rag_agent = AgentBuilder::new(cfg)
+    let rag_agent = client
+        .agent("deepseek-r1")
         .preamble("You are a helpful assistant that answers questions based on the provided document context. When answering questions, try to synthesize information from multiple chunks if they're related.")
         .add_hook(pdf_rag_hook(ecfg, rt, vector_store, 1))
         .build();

@@ -10,7 +10,6 @@
 
 use rig::OneOrMany;
 use rig::embeddings::EmbeddingJob;
-use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
@@ -26,8 +25,9 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(provider: ProviderConfig) -> rig::agent::Agent {
-    AgentBuilder::new(provider)
+fn build_dictionary_agent(client: &openai::Client) -> rig::agent::Agent {
+    client
+        .agent(openai::GPT_4)
         .preamble(
             "
             You are a dictionary assistant here to help the user understand non-standard words.
@@ -50,8 +50,9 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    let rt = HttpRuntime::new();
-    let ecfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let client = openai::Client::from_env()?;
+    let rt = client.http();
+    let ecfg = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
 
     let documents: Vec<String> = sample_definitions().iter().map(|s| s.to_string()).collect();
     let embeddings = EmbeddingJob::new()
@@ -61,9 +62,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
     let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    let agent = build_dictionary_agent(ProviderConfig::OpenAi(
-        openai::functions::Config::from_env(openai::GPT_4)?,
-    ));
+    let agent = build_dictionary_agent(&client);
 
     // Retrieve the most relevant definition, fold it into the prompt, then
     // prompt the agent. (The old pipeline ran the lookup "in parallel" with a

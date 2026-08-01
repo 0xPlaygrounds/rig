@@ -296,3 +296,4 @@ where
 
     Ok(final_res)
 }
+use rig::prelude::*;

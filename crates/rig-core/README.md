@@ -30,20 +30,19 @@ cargo add rig-core
 ## Simple example
 ```rust
 use rig_core::{
-    client::{CompletionClient, ProviderClient},
-    completion::{AssistantContent, CompletionModel, CompletionRequest},
+    completion::{AssistantContent, CompletionRequest},
+    http_runtime::HttpRuntime,
     providers::openai,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create an OpenAI client and completion model.
-    // This requires the `OPENAI_API_KEY` environment variable to be set.
-    let openai_client = openai::Client::from_env()?;
-
-    let model = openai_client.completion_model(openai::GPT_5_2);
-    let request = CompletionRequest::from_prompt("Who are you?");
-    let response = model.completion(request).await?;
+    // rig-core exposes the low-level data + execution layer. The root `rig`
+    // crate adds the agent and bound-request fluent facade.
+    let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_5_2)?;
+    let runtime = HttpRuntime::new();
+    let request = CompletionRequest::builder("Who are you?").build();
+    let response = openai::responses_api::functions::complete(&cfg, &runtime, request).await?;
     for item in response.choice {
         if let AssistantContent::Text(text) = item {
             println!("{}", text.text);

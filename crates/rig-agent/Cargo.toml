@@ -42,6 +42,7 @@ tracing-futures = { workspace = true, features = ["futures-03"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = ["test-utils"] }
 rig-memory = { path = "../rig-memory", version = "0.41.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }

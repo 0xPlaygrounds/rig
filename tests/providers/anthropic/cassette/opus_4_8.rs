@@ -4,6 +4,7 @@ use rig::completion::{
     AssistantContent, CompletionRequest, Document, Message, ProviderToolDefinition,
 };
 use rig::message::Text;
+use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;

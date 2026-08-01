@@ -3,6 +3,7 @@
 use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, ToolChoice};
+use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;

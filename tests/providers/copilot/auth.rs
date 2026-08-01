@@ -165,7 +165,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
         );
     }
 
-    let response = AgentBuilder::new(ProviderConfig::Copilot(cfg))
+    let response = AgentBuilder::new(cfg)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

@@ -11,7 +11,8 @@ use crate::support::{
 #[tokio::test]
 async fn tools_smoke() {
     with_deepseek_cassette("tools/tools_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider(deepseek::DEEPSEEK_V4_FLASH))
+        let agent = env
+            .agent(deepseek::DEEPSEEK_V4_FLASH)
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)
             .tool(Subtract)

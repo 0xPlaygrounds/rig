@@ -5,41 +5,25 @@ use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-/// Connection data for a running Perplexity cassette server.
-///
-/// Providers are data now: the cassette hands the test the base URL and API
-/// key, and each test mints a `functions::Config` for the model it exercises.
-pub(super) struct PerplexityCassetteEnv {
-    base_url: String,
-    api_key: String,
-}
-
-impl PerplexityCassetteEnv {
-    pub(super) fn config(&self, model: &str) -> perplexity::functions::Config {
-        perplexity::functions::Config::new(model)
-            .with_api_key(&self.api_key)
-            .with_base_url(&self.base_url)
-    }
-}
-
 async fn perplexity_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, PerplexityCassetteEnv) {
+) -> (ProviderCassette, perplexity::Client) {
     let cassette = ProviderCassette::start("perplexity", spec, "https://api.perplexity.ai").await;
-    let env = PerplexityCassetteEnv {
-        base_url: cassette.base_url(),
-        api_key: cassette.api_key("PERPLEXITY_API_KEY"),
-    };
+    let client = perplexity::Client::builder()
+        .api_key(cassette.api_key("PERPLEXITY_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("Perplexity cassette client should build");
 
-    (cassette, env)
+    (cassette, client)
 }
 
 pub(super) async fn with_perplexity_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(PerplexityCassetteEnv) -> Fut,
+    F: FnOnce(perplexity::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, env) = perplexity_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(env)).catch_unwind().await;
+    let (cassette, client) = perplexity_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

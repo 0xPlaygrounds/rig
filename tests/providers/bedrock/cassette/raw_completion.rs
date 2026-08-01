@@ -1,7 +1,7 @@
 //! AWS Bedrock raw completion cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::completion::CompletionRequest;
+use rig::prelude::*;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -40,13 +40,13 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_bedrock_cassette(
         "raw_completion/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let aws = client.aws_client();
             let model_id = bedrock::completion::AMAZON_NOVA_LITE;
-            let request = CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+            let response = client
+                .completion_model(model_id)
+                .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
                 .temperature(0.0)
-                .build();
-            let response = rig::bedrock::functions::complete(aws, model_id, request)
+                .send()
                 .await
                 .expect("raw Bedrock request should succeed");
 

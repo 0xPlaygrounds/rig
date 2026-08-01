@@ -10,6 +10,7 @@
 
 use rig::completion::{CompletionRequest, Message, ToolDefinition};
 use rig::message::AssistantContent;
+use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
 use serde::Deserialize;

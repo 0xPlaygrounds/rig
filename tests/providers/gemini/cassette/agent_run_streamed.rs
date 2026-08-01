@@ -580,3 +580,4 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     )
     .await;
 }
+use rig::prelude::*;

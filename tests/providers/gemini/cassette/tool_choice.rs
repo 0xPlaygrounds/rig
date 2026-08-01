@@ -62,7 +62,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
             .tool_choice(specific_add_choice())
             .build();
             let stream = client
-                .stream(model, request)
+                .completion_model(model)
+                .stream(request)
                 .await
                 .expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
@@ -119,7 +120,8 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
             .tool_choice(specific_add_choice())
             .build();
             let response = client
-                .complete(model, request)
+                .completion_model(model)
+                .completion(request)
                 .await
                 .expect("specific add raw completion should succeed");
 
@@ -232,3 +234,4 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
     )
     .await;
 }
+use rig::prelude::*;

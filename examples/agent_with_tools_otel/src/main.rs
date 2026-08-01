@@ -135,11 +135,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Provider selection is plain data — no client type.
-    let cfg = providers::openai::functions::Config::from_env(providers::openai::GPT_4O)?;
+    let client = providers::openai::Client::from_env()?;
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = AgentBuilder::new(cfg)
+    let calculator_agent = client
+        .agent(providers::openai::GPT_4O)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)
         .default_max_turns(2)

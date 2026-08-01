@@ -77,7 +77,9 @@ impl SessionIdHook {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn request_hook_records_prompt_and_response() -> Result<()> {
-    let agent = AgentBuilder::new(super::live(REQUEST_HOOK_MODEL))
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
+        .agent(REQUEST_HOOK_MODEL)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 

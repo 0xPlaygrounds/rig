@@ -54,7 +54,7 @@ async fn structured_output_smoke() {
         return;
     }
 
-    let agent = AgentBuilder::new(support::provider(support::model_name())).build();
+    let agent = support::client().agent(&support::model_name()).build();
 
     let response: SmokeStructuredOutput = agent
         .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -72,7 +72,8 @@ async fn prompt_typed_structured_output() {
     }
 
     let model = support::model_name();
-    let agent = AgentBuilder::new(support::provider(model))
+    let agent = support::client()
+        .agent(&model)
         .preamble(WEATHER_PREAMBLE)
         .build();
 
@@ -91,13 +92,14 @@ async fn prompt_typed_extended_details_structured_output() {
     }
 
     let model = support::model_name();
+    let client = support::client();
 
     // `prompt_typed(..).extended_details()` is gone; `extract_native` is the
     // typed-plus-usage successor (same native structured-output request).
     let extended = rig::extract::extract_native::<WeatherForecast>(
         rig::agent::AgentConfig::new().with_preamble(WEATHER_PREAMBLE),
-        support::provider(model.clone()),
-        std::sync::Arc::new(rig::provider::Runtime::new()),
+        client.provider_config(&model),
+        client.runtime(),
         "What's the weather forecast for Los Angeles?",
         0,
     )
@@ -115,7 +117,8 @@ async fn output_schema_structured_output() {
     }
 
     let model = support::model_name();
-    let agent_with_schema = AgentBuilder::new(support::provider(model))
+    let agent_with_schema = support::client()
+        .agent(&model)
         .preamble(WEATHER_PREAMBLE)
         .output_schema::<WeatherForecast>()
         .build();

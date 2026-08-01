@@ -9,7 +9,8 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response};
 #[tokio::test]
 async fn streaming_prompt_smoke() {
     with_deepseek_cassette("streaming/streaming_prompt_smoke", |env| async move {
-        let agent = AgentBuilder::new(env.provider(DEEPSEEK_V4_FLASH))
+        let agent = env
+            .agent(DEEPSEEK_V4_FLASH)
             .preamble("You are a helpful assistant.")
             .build();
 

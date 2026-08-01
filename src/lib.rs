@@ -5,35 +5,37 @@
 //! portable contracts from `rig_core` at their familiar `rig::...` paths and the
 //! agent runtime from `rig_agent` under `rig::agent`.
 //!
-//! # Providers are data
+//! # Concrete clients over provider data
 //!
-//! There is no client type and no capability trait. Each provider exposes a
-//! plain `functions::Config` (which names the model) plus free functions that
-//! take `(&Config, &HttpRuntime, request)`:
-//!
-//! ```no_run
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! use rig::providers::openai;
-//! use rig::http_runtime::HttpRuntime;
-//!
-//! let cfg = openai::functions::Config::from_env("gpt-4o")?;
-//! let rt = HttpRuntime::new();
-//! let models = openai::functions::list_models(&cfg, &rt).await?;
-//! # let _ = models;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! Agents wrap the same configuration in
-//! [`provider::ProviderConfig`]:
+//! Completion-capable providers expose concrete, monomorphic clients for the
+//! normal path. The prelude supplies fluent agent and direct-completion bridges:
 //!
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! use rig::prelude::*;
 //! use rig::providers::openai;
 //!
-//! let cfg = openai::functions::Config::from_env("gpt-4o")?;
-//! let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
+//! let client = openai::Client::from_env()?;
+//! let response = client
+//!     .completion_model(openai::GPT_5_2)
+//!     .completion_request("Who are you?")
+//!     .temperature(0.2)
+//!     .send()
+//!     .await?;
+//! # let _ = response;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Agents use the same client connection and runtime:
+//!
+//! ```no_run
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use rig::prelude::*;
+//! use rig::providers::openai;
+//!
+//! let client = openai::Client::from_env()?;
+//! let agent = client.agent(openai::GPT_5_2)
 //!     .preamble("You are a helpful assistant.")
 //!     .build();
 //! # let _ = agent;
@@ -41,7 +43,11 @@
 //! # }
 //! ```
 //!
-//! Embeddings follow the same shape: a provider `functions::EmbeddingConfig`
+//! The underlying data layer remains public: each provider has serializable
+//! `functions::Config` records, pure request/response conversion, and free
+//! execution functions over `HttpRuntime`. `CompletionRequest::builder` builds
+//! request data without sending it. Embeddings follow the same low-level shape:
+//! a provider `functions::EmbeddingConfig`
 //! plus `functions::embed`, batched for stores through
 //! [`embeddings::embed_documents`].
 //!
@@ -76,6 +82,13 @@ pub use rig_core::*;
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{Agent, AgentBuilder, AgentRun, SessionRunner};
+
+/// Fluent concrete-client bridges for agents and direct completions.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod client {
+    pub use rig_agent::client::*;
+}
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
@@ -167,8 +180,10 @@ pub mod prelude {
     pub use crate::tool::Tool;
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentBuilder, AgentStream, AgentStreamItem, EmbedderConfig, PromptError,
+        Agent, AgentBuilder, AgentClientExt, AgentStream, AgentStreamItem, BindCompletionExt,
+        BoundCompletionRequest, CompletionClientExt, CompletionHandle, EmbedderConfig, PromptError,
         PromptResponse, ProviderConfig, Runtime, SessionRunner, StructuredOutputError,
+        ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }
