@@ -321,7 +321,7 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
                         description,
                         parameters,
                         move |arguments| {
-                            ::std::boxed::Box::pin(async move {
+                            async move {
                                 // Mirror the classic argument parser's `null`
                                 // fallback for tools without required fields.
                                 let arguments = if arguments.is_null() {
@@ -346,7 +346,7 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
                                         #core::tool::ToolExecutionError::from_error(error),
                                     ),
                                 }
-                            })
+                            }
                         },
                     )
                 }

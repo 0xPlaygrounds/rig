@@ -113,49 +113,45 @@ fn tool_retrieval_hook(
     samples: u64,
 ) -> HookEntry {
     let state = (embedding_config, rt, store, samples);
-    HookEntry::with_state("tool-retrieval", state, |state, event| {
-        Box::pin(async move {
-            let HookEvent::BeforeModelCall {
-                prompt, history, ..
-            } = event
-            else {
-                return HookDecision::Continue;
-            };
-            let (embedding_config, rt, store, samples) = state;
-            let query = prompt
-                .rag_text()
-                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
-            let Some(query) = query else {
-                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
-            };
+    HookEntry::with_state("tool-retrieval", state, |state, event| async move {
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_config, rt, store, samples) = state.as_ref();
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
 
-            let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
-                Ok(response) => match response.embeddings.into_iter().next() {
-                    Some(embedding) => embedding,
-                    None => {
-                        return HookDecision::CompletionCall(CompletionCallAction::stop(
-                            "no embedding returned for the query".to_string(),
-                        ));
-                    }
-                },
-                Err(error) => {
+        let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+            Ok(response) => match response.embeddings.into_iter().next() {
+                Some(embedding) => embedding,
+                None => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
-                        error.to_string(),
+                        "no embedding returned for the query".to_string(),
                     ));
                 }
-            };
-            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
-            match store.top_n_ids(request).await {
-                // The store is keyed by tool name; narrow this turn's
-                // advertised tools to the retrieved names.
-                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
-                )),
-                Err(error) => {
-                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
-                }
+            },
+            Err(error) => {
+                return HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()));
             }
-        })
+        };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n_ids(request).await {
+            // The store is keyed by tool name; narrow this turn's
+            // advertised tools to the retrieved names.
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+            }
+        }
     })
 }
 

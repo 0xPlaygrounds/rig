@@ -113,8 +113,8 @@ pub struct ToolExecutor {
 /// # use rig_agent::executor::ToolExecutor;
 /// # use rig_core::tool::PortableDynamicTool;
 /// # fn dynamic(name: &str) -> PortableDynamicTool {
-/// #     PortableDynamicTool::new(name.to_string(), "d", serde_json::json!({}), |a| {
-/// #         Box::pin(async move { Ok(rig_core::tool::ToolOutput::json(a)) })
+/// #     PortableDynamicTool::new(name.to_string(), "d", serde_json::json!({}), |a| async move {
+/// #         Ok(rig_core::tool::ToolOutput::json(a))
 /// #     })
 /// # }
 /// let executor = ToolExecutor::builder()
@@ -498,13 +498,11 @@ mod tests {
             name,
             "echo",
             serde_json::json!({"type": "object"}),
-            move |_args| {
-                Box::pin(async move {
-                    if delay_ms > 0 {
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                    }
-                    Ok(ToolOutput::json(serde_json::json!({"reply": reply})))
-                })
+            move |_args| async move {
+                if delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+                Ok(ToolOutput::json(serde_json::json!({"reply": reply})))
             },
         )
     }
@@ -643,13 +641,11 @@ mod tests {
             name,
             "fail",
             serde_json::json!({"type": "object"}),
-            move |_args| {
-                Box::pin(async move {
-                    if delay_ms > 0 {
-                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                    }
-                    Err(ToolExecutionError::other(message.to_string()))
-                })
+            move |_args| async move {
+                if delay_ms > 0 {
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+                Err(ToolExecutionError::other(message.to_string()))
             },
         )
     }
@@ -715,7 +711,7 @@ mod tests {
             serde_json::json!({"type": "object"}),
             move |_args| {
                 counter.fetch_add(1, Ordering::SeqCst);
-                Box::pin(async move { Ok(ToolOutput::json(serde_json::json!(null))) })
+                async move { Ok(ToolOutput::json(serde_json::json!(null))) }
             },
         );
         let executor = ToolExecutor::new().register(counted);
@@ -795,18 +791,16 @@ mod tests {
                 "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
                 "required": ["a", "b"]
             }),
-            |args| {
-                Box::pin(async move {
-                    let a = args
-                        .get("a")
-                        .and_then(serde_json::Value::as_i64)
-                        .unwrap_or(0);
-                    let b = args
-                        .get("b")
-                        .and_then(serde_json::Value::as_i64)
-                        .unwrap_or(0);
-                    Ok(ToolOutput::json(serde_json::json!(a + b)))
-                })
+            |args| async move {
+                let a = args
+                    .get("a")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                let b = args
+                    .get("b")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                Ok(ToolOutput::json(serde_json::json!(a + b)))
             },
         );
         let executor = ToolExecutor::new().register(adder);

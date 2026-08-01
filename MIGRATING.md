@@ -828,13 +828,13 @@ agent_builder.add_hook(Logger)
 // after — one entry, matching owned events
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 fn logger() -> HookEntry {
-    HookEntry::new("logger", |event| Box::pin(async move {
+    HookEntry::new("logger", |event| async move {
         match event {
             HookEvent::BeforeModelCall { turn, prompt, .. } => { /* … */
                 HookDecision::Continue }
             _ => HookDecision::Continue,
         }
-    }))
+    })
 }
 agent_builder.add_hook(logger())
 ```
@@ -871,9 +871,9 @@ replacing the demotion-hook and compactor callbacks.
 
 ### The tool system is records, not traits (single-architecture R2)
 
-`ToolContext`, `ToolSet`, `ToolServer`, `DynamicTool`, `ToolEmbedding`, and
-`Agent::into_tool` are gone. `rig::tool::Tool` is now an alias for the
-portable contract:
+`ToolContext`, `ToolSet`, `ToolServer`, `DynamicTool`, `ToolEmbedding`, and the
+old zero-argument `Agent::into_tool()` adapter are gone. `rig::tool::Tool` is
+now an alias for the portable contract:
 
 ```rust
 // before
@@ -892,10 +892,64 @@ Dynamic tools are `PortableDynamicTool::new(name, desc, params, |args| async
 parameter (a targeted compile error guides you) and gain a `.portable()`
 record constructor; custom `Serialize` outputs need a one-line
 `impl IntoToolOutput` via `serialize_to_tool_output` (the `Any`-based
-blanket impl is gone). Sub-agents-as-tools are a `PortableDynamicTool`
-closing over an inner agent. MCP moved to `rig::tool::mcp` (`McpToolset`,
-host-polled `refresh()` instead of push updates); the `rmcp` cargo feature
-now aliases `mcp`.
+blanket impl is gone). Sub-agents-as-tools use
+`agent.into_tool(name, description)`, a data-to-data conversion into the same
+`PortableDynamicTool` record; it restores none of the classic context/server
+machinery or implicit `From<Agent>` conversion. MCP moved to `rig::tool::mcp`
+(`McpToolset`, host-polled `refresh()` instead of push updates); the `rmcp`
+cargo feature now aliases `mcp`.
+
+### Async tool and hook callbacks no longer expose boxing
+
+`PortableDynamicTool::new`, `HookEntry::new`, and `HookEntry::with_state` now
+accept ordinary futures. Code written against the transitional API may have
+returned an explicitly boxed wasm-compatible future; remove that wrapper and
+the corresponding future trait-object cast:
+
+```rust
+HookEntry::new("audit", |event| async move {
+    inspect(event).await;
+    HookDecision::Continue
+});
+```
+
+Stateful hooks receive an owned `Arc<S>` in each invocation future instead of
+a borrowed `&S` tied to a public boxed-future lifetime:
+
+```rust
+HookEntry::with_state("policy", state, |state, event| async move {
+    state.evaluate(event).await
+});
+```
+
+The records remain concrete and non-generic. Rig erases only each callback
+field behind a private `Arc<dyn Fn + Send + Sync>` and boxes the returned
+future internally. Consequently every stored callback has one allocation and
+vtable boundary, and every invocation through it allocates one boxed future
+(`HookEntry::sync` included).
+
+### Stored hooks and tools are `Send + Sync` on browser wasm
+
+Rig now separates a retained value from the future it produces. `HookEntry`
+callbacks and state, `PortableTool` values, dynamic-tool callbacks, and internal
+HTTP backends must be `Send + Sync` on every target. Invocation-local tool
+arguments, outputs, and errors and returned futures and streams still use the
+target-relaxed `WasmCompat*` bounds, so a shareable closure may return a
+browser-worker-local future.
+
+Browser-wasm code that stored `Rc`, `RefCell`, a DOM handle, or other
+JavaScript-affine state directly in a hook or tool no longer compiles. Acquire
+the handle inside the returned async block, keep persistent browser state in
+`thread_local!`, or use `Arc<Mutex<_>>`/`Arc<RwLock<_>>` for ordinary Rust
+shared state. Do not add an unsafe `Send`/`Sync` implementation for a
+JavaScript-affine value.
+
+Portable tool error types may remain worker-local. On native targets,
+`ToolExecutionError::from_error` retains the concrete source for downcasting;
+on browser wasm it preserves the diagnostic and classification but drops every
+non-envelope concrete source, including a shareable source passed through this
+generic path. Use `from_send_sync_error` or `with_source` when the source is
+shareable and must remain downcastable on every target.
 
 ### Mocking moved to `MockScript`
 
@@ -1006,12 +1060,11 @@ embed the prompt, query your concrete store's `top_n`, and inject the hits as
 per-turn context:
 
 ```rust,ignore
-HookEntry::new("rag", move |event| {
+HookEntry::new("rag", move |event| async move {
     // …embed the prompt, then `store.top_n(request).await` for `hits`…
-    let decision = HookDecision::CompletionCall(CompletionCallAction::patch(
+    HookDecision::CompletionCall(CompletionCallAction::patch(
         RequestPatch::new().extra_context(hits),
-    ));
-    Box::pin(async move { decision })
+    ))
 })
 ```
 

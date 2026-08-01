@@ -27,12 +27,13 @@
 //! supported with no feature flags to set — the relaxed async bounds follow
 //! from the target alone.
 //!
-//! The `rmcp` feature is unavailable on wasm: rmcp's `ClientHandler` requires
-//! `Send + Sync` unconditionally, which this crate's wasm tool registry cannot
-//! satisfy, so asking for it there raises a targeted `compile_error!`. WASI
-//! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
-//! not build for it. See the crate README for the full matrix and the
-//! reasoning.
+//! Stored hooks, tools, and agent/session data remain `Send + Sync` on every
+//! target. Invocation-local arguments, outputs, errors, futures, and streams
+//! retain target-relaxed bounds on browser wasm. The `rig-rmcp` companion
+//! integration is still native-only because its client and cancellation
+//! machinery is target-gated. WASI (`wasm32-wasip1`/`wasip2`) is **not
+//! supported**: the dependency graph does not build for it. See the crate
+//! README for the full matrix and reasoning.
 
 extern crate self as rig;
 

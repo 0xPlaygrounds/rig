@@ -152,80 +152,78 @@ async fn ask(prompt: &str) -> Option<String> {
 /// affordance, not a security boundary; real authorization belongs inside the
 /// tool itself.
 fn approval_hook() -> HookEntry {
-    HookEntry::new("human-approval", |event| {
-        Box::pin(async move {
-            let HookEvent::ToolCall { call, .. } = event else {
-                return HookDecision::Continue;
-            };
-            let tool_name = call.function.name;
-            let args = call.function.arguments;
+    HookEntry::new("human-approval", |event| async move {
+        let HookEvent::ToolCall { call, .. } = event else {
+            return HookDecision::Continue;
+        };
+        let tool_name = call.function.name;
+        let args = call.function.arguments;
 
-            println!("\n⏸  The agent wants to run a tool — your approval is required:");
-            println!("     tool: {tool_name}");
-            println!("     args: {args}");
+        println!("\n⏸  The agent wants to run a tool — your approval is required:");
+        println!("     tool: {tool_name}");
+        println!("     args: {args}");
 
-            // No input at all (closed stdin) → abort the run; there is no reviewer.
-            let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
-            else {
-                println!("     → no input (stdin closed); aborting (fail-closed)");
-                return HookDecision::ToolCall(ToolCallAction::stop(
-                    "no reviewer input available (stdin closed)",
-                ));
-            };
+        // No input at all (closed stdin) → abort the run; there is no reviewer.
+        let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
+        else {
+            println!("     → no input (stdin closed); aborting (fail-closed)");
+            return HookDecision::ToolCall(ToolCallAction::stop(
+                "no reviewer input available (stdin closed)",
+            ));
+        };
 
-            // Match the whole (lowercased) answer, accepting either the hotkey or
-            // the full word, so typing "abort" can never be mistaken for "approve".
-            let action = match choice.to_ascii_lowercase().as_str() {
-                "a" | "approve" => {
-                    println!("     → approved");
-                    ToolCallAction::run()
-                }
-                // Deny: the tool does not run; the reason is fed back to the model
-                // as the tool result so it can choose another course of action.
-                "d" | "deny" | "n" | "no" => {
-                    let reason = ask("     reason (shown to the model): ")
-                        .await
-                        .filter(|r| !r.is_empty())
-                        .unwrap_or_else(|| "denied by the human reviewer".to_string());
-                    println!("     → denied");
-                    ToolCallAction::skip(reason)
-                }
-                // Edit: run the tool with human-supplied JSON arguments instead.
-                "e" | "edit" => {
-                    match ask("     replacement JSON args (single line): ")
-                        .await
-                        .as_deref()
-                        .map(serde_json::from_str::<serde_json::Value>)
-                    {
-                        Some(Ok(value)) => {
-                            println!("     → running with edited arguments");
-                            ToolCallAction::rewrite(value)
-                        }
-                        other => {
-                            println!("     ! no valid JSON ({other:?}); denying instead");
-                            ToolCallAction::skip(
-                                "the reviewer tried to edit the arguments but supplied no valid JSON",
-                            )
-                        }
+        // Match the whole (lowercased) answer, accepting either the hotkey or
+        // the full word, so typing "abort" can never be mistaken for "approve".
+        let action = match choice.to_ascii_lowercase().as_str() {
+            "a" | "approve" => {
+                println!("     → approved");
+                ToolCallAction::run()
+            }
+            // Deny: the tool does not run; the reason is fed back to the model
+            // as the tool result so it can choose another course of action.
+            "d" | "deny" | "n" | "no" => {
+                let reason = ask("     reason (shown to the model): ")
+                    .await
+                    .filter(|r| !r.is_empty())
+                    .unwrap_or_else(|| "denied by the human reviewer".to_string());
+                println!("     → denied");
+                ToolCallAction::skip(reason)
+            }
+            // Edit: run the tool with human-supplied JSON arguments instead.
+            "e" | "edit" => {
+                match ask("     replacement JSON args (single line): ")
+                    .await
+                    .as_deref()
+                    .map(serde_json::from_str::<serde_json::Value>)
+                {
+                    Some(Ok(value)) => {
+                        println!("     → running with edited arguments");
+                        ToolCallAction::rewrite(value)
+                    }
+                    other => {
+                        println!("     ! no valid JSON ({other:?}); denying instead");
+                        ToolCallAction::skip(
+                            "the reviewer tried to edit the arguments but supplied no valid JSON",
+                        )
                     }
                 }
-                // Abort: stop the whole run.
-                "b" | "abort" | "q" | "quit" => {
-                    println!("     → aborting the run");
-                    ToolCallAction::stop("run aborted by the human reviewer")
-                }
-                // Fail closed: empty or unrecognized input denies rather than runs.
-                "" => {
-                    println!("     → empty input; denying (fail-closed)");
-                    ToolCallAction::skip("denied: the reviewer gave no decision")
-                }
-                other => {
-                    println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
-                    ToolCallAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
-                }
-            };
-            HookDecision::ToolCall(action)
-        })
+            }
+            // Abort: stop the whole run.
+            "b" | "abort" | "q" | "quit" => {
+                println!("     → aborting the run");
+                ToolCallAction::stop("run aborted by the human reviewer")
+            }
+            // Fail closed: empty or unrecognized input denies rather than runs.
+            "" => {
+                println!("     → empty input; denying (fail-closed)");
+                ToolCallAction::skip("denied: the reviewer gave no decision")
+            }
+            other => {
+                println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
+                ToolCallAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
+            }
+        };
+        HookDecision::ToolCall(action)
     })
 }
 

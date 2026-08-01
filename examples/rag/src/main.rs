@@ -41,57 +41,53 @@ fn rag_hook(
     samples: u64,
 ) -> HookEntry {
     let state = (embedding_config, rt, store, samples);
-    HookEntry::with_state("rag", state, |state, event| {
-        Box::pin(async move {
-            // Only the pre-model-call event is interesting; everything else
-            // falls through untouched.
-            let HookEvent::BeforeModelCall {
-                prompt, history, ..
-            } = event
-            else {
-                return HookDecision::Continue;
-            };
-            let (embedding_config, rt, store, samples) = state;
+    HookEntry::with_state("rag", state, |state, event| async move {
+        // Only the pre-model-call event is interesting; everything else
+        // falls through untouched.
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_config, rt, store, samples) = state.as_ref();
 
-            // Search with the prompt's text, falling back to the latest
-            // textual history message.
-            let query = prompt
-                .rag_text()
-                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
-            let Some(query) = query else {
-                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
-            };
+        // Search with the prompt's text, falling back to the latest
+        // textual history message.
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
 
-            // Embed the query, then run a pre-embedded similarity search.
-            let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
-                Ok(response) => match response.embeddings.into_iter().next() {
-                    Some(embedding) => embedding,
-                    None => {
-                        return HookDecision::CompletionCall(CompletionCallAction::stop(
-                            "no embedding returned for the query".to_string(),
-                        ));
-                    }
-                },
-                Err(error) => {
+        // Embed the query, then run a pre-embedded similarity search.
+        let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+            Ok(response) => match response.embeddings.into_iter().next() {
+                Some(embedding) => embedding,
+                None => {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
-                        error.to_string(),
+                        "no embedding returned for the query".to_string(),
                     ));
                 }
-            };
-            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
-            match store.top_n(request).await {
-                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
-                        id: hit.id,
-                        text: hit.payload.to_string(),
-                        additional_props: Default::default(),
-                    })),
-                )),
-                Err(error) => {
-                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
-                }
+            },
+            Err(error) => {
+                return HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()));
             }
-        })
+        };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n(request).await {
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
+                    id: hit.id,
+                    text: hit.payload.to_string(),
+                    additional_props: Default::default(),
+                })),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+            }
+        }
     })
 }
 

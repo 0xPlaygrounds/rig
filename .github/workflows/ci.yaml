@@ -107,12 +107,11 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
-  # MCP is native-only: rmcp's `ClientHandler` requires `Send + Sync`
-  # unconditionally, which rig's wasm tool registry cannot satisfy. Since the
-  # MCP integration moved out of rig-agent into the `rig-rmcp` crate, that crate
-  # is cfg'd off the wasm targets entirely and compiles to an empty library
-  # there rather than raising a `compile_error!`. Assert that it still builds
-  # clean on wasm — a stray ungated `use rmcp::…` is the regression this guards.
+  # MCP remains native-only: its rmcp/tokio client and cancellation machinery
+  # are cfg'd off wasm, so `rig-rmcp` compiles to an empty library there. This is
+  # independent of Rig's stored tool records, which are Send + Sync on every
+  # target. Assert that the empty wasm shell stays clean — a stray ungated
+  # `use rmcp::…` is the regression this guards.
   check-mcp-native-only:
     name: stable / mcp empty on wasm
     runs-on: ubuntu-latest

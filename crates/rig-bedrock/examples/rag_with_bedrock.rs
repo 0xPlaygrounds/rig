@@ -49,7 +49,7 @@ fn rag_hook(
     let state = std::sync::Arc::new((client, embedding_config, store, samples));
     HookEntry::new("rag", move |event| {
         let state = state.clone();
-        Box::pin(async move {
+        async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
             } = event
@@ -98,7 +98,7 @@ fn rag_hook(
                     HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
                 }
             }
-        })
+        }
     })
 }
 

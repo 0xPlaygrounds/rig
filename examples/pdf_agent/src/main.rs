@@ -41,15 +41,17 @@ fn pdf_rag_hook(
     store: InMemoryVectorStore,
     samples: u64,
 ) -> HookEntry {
-    HookEntry::with_state("pdf-rag", (ecfg, rt, store, samples), |state, event| {
-        Box::pin(async move {
+    HookEntry::with_state(
+        "pdf-rag",
+        (ecfg, rt, store, samples),
+        |state, event| async move {
             let HookEvent::BeforeModelCall {
                 prompt, history, ..
             } = event
             else {
                 return HookDecision::Continue;
             };
-            let (ecfg, rt, store, samples) = state;
+            let (ecfg, rt, store, samples) = state.as_ref();
             let query = prompt
                 .rag_text()
                 .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
@@ -89,8 +91,8 @@ fn pdf_rag_hook(
                     HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
                 }
             }
-        })
-    })
+        },
+    )
 }
 
 fn load_pdf(path: PathBuf) -> Result<Vec<String>> {

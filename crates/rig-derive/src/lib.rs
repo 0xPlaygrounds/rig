@@ -143,10 +143,10 @@ pub fn derive_embedding_trait(item: TokenStream) -> TokenStream {
 ///     }),
 ///     move |args| {
 ///         let user = user.clone();
-///         Box::pin(async move {
+///         async move {
 ///             let greeting = args["greeting"].as_str().unwrap_or("Hello");
 ///             Ok(format!("{greeting}, {user}!").into())
-///         })
+///         }
 ///     },
 /// );
 /// ```

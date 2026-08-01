@@ -50,8 +50,13 @@
 //! The classic contextual `Tool` trait, `ToolContext`, `ToolSet`, and the
 //! `ToolServer` actor were removed: close over your state in a
 //! [`PortableDynamicTool`] callback (or your `PortableTool` struct's fields)
-//! instead of threading a runtime context. MCP tools live in the `rig-rmcp`
-//! crate.
+//! instead of threading a runtime context. Stored callbacks, state, and tool
+//! values must be `Send + Sync` on every target; browser-local state may still
+//! be created inside the returned future or retrieved through `thread_local!`.
+//! `PortableDynamicTool::new` accepts an ordinary async closure and boxes its
+//! future only inside the record's private `Arc<dyn Fn + Send + Sync>` callback
+//! field. The record itself is concrete and non-generic.
+//! MCP tools live in the `rig-rmcp` crate.
 
 pub mod builtin;
 pub mod router_support;

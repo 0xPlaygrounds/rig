@@ -7332,28 +7332,27 @@ mod classic_hook_tests {
         HookEntry::with_state(
             "barrier-response-retry",
             (barrier, Mutex::new(0usize)),
-            |(barrier, attempts), event| {
-                Box::pin(async move {
-                    let HookEvent::ModelTurnFinished { content, .. } = event else {
-                        return HookDecision::Continue;
-                    };
-                    let rejected = content.iter().any(
+            |state, event| async move {
+                let (barrier, attempts) = state.as_ref();
+                let HookEvent::ModelTurnFinished { content, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                let rejected = content.iter().any(
                     |content| matches!(content, AssistantContent::Text(text) if text.text == "rejected"),
                 );
-                    if !rejected {
-                        return HookDecision::Continue;
-                    }
-                    barrier.wait().await;
-                    let attempt = {
-                        let mut attempts = attempts.lock().expect("retry attempts");
-                        *attempts += 1;
-                        *attempts
-                    };
-                    HookDecision::ModelTurn(if attempt > 1 {
-                        ModelTurnAction::stop("response retry limit (1) exceeded")
-                    } else {
-                        ModelTurnAction::repeat()
-                    })
+                if !rejected {
+                    return HookDecision::Continue;
+                }
+                barrier.wait().await;
+                let attempt = {
+                    let mut attempts = attempts.lock().expect("retry attempts");
+                    *attempts += 1;
+                    *attempts
+                };
+                HookDecision::ModelTurn(if attempt > 1 {
+                    ModelTurnAction::stop("response retry limit (1) exceeded")
+                } else {
+                    ModelTurnAction::repeat()
                 })
             },
         )

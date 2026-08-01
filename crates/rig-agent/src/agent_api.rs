@@ -146,18 +146,16 @@ mod tests {
                 "properties": {"a": {"type": "number"}, "b": {"type": "number"}},
                 "required": ["a", "b"]
             }),
-            |args| {
-                Box::pin(async move {
-                    let a = args
-                        .get("a")
-                        .and_then(serde_json::Value::as_i64)
-                        .unwrap_or(0);
-                    let b = args
-                        .get("b")
-                        .and_then(serde_json::Value::as_i64)
-                        .unwrap_or(0);
-                    Ok(ToolOutput::json(serde_json::json!(a + b)))
-                })
+            |args| async move {
+                let a = args
+                    .get("a")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                let b = args
+                    .get("b")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                Ok(ToolOutput::json(serde_json::json!(a + b)))
             },
         )
     }

@@ -61,54 +61,52 @@ fn tool_retrieval_hook(
     always_exposed: Vec<String>,
 ) -> HookEntry {
     let state = (embedding_model, store, samples, always_exposed);
-    HookEntry::with_state("tool-retrieval", state, |state, event| {
-        Box::pin(async move {
-            let HookEvent::BeforeModelCall {
-                prompt, history, ..
-            } = event
-            else {
-                return HookDecision::Continue;
-            };
-            let (embedding_model, store, samples, always_exposed) = state;
-            let query = prompt
-                .rag_text()
-                .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
-            let Some(query) = query else {
-                return HookDecision::CompletionCall(CompletionCallAction::continue_run());
-            };
+    HookEntry::with_state("tool-retrieval", state, |state, event| async move {
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_model, store, samples, always_exposed) = state.as_ref();
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
 
-            let (embedding_cfg, embedding_rt) = embedding_model;
-            let embedded =
-                match gemini::functions::embed(embedding_cfg, embedding_rt, vec![query.clone()])
-                    .await
-                    .map(|response| response.embeddings)
-                {
-                    Ok(mut embeddings) if !embeddings.is_empty() => embeddings.remove(0),
-                    Ok(_) => {
-                        return HookDecision::CompletionCall(CompletionCallAction::stop(
-                            "gemini returned no embedding for the retrieval query".to_string(),
-                        ));
-                    }
-                    Err(error) => {
-                        return HookDecision::CompletionCall(CompletionCallAction::stop(
-                            error.to_string(),
-                        ));
-                    }
-                };
-            let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
-            match store.top_n_ids(request).await {
-                Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
-                    RequestPatch::new().active_tools(
-                        hits.into_iter()
-                            .map(|(_score, name)| name)
-                            .chain(always_exposed.iter().cloned()),
-                    ),
-                )),
-                Err(error) => {
-                    HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+        let (embedding_cfg, embedding_rt) = embedding_model;
+        let embedded =
+            match gemini::functions::embed(embedding_cfg, embedding_rt, vec![query.clone()])
+                .await
+                .map(|response| response.embeddings)
+            {
+                Ok(mut embeddings) if !embeddings.is_empty() => embeddings.remove(0),
+                Ok(_) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "gemini returned no embedding for the retrieval query".to_string(),
+                    ));
                 }
+                Err(error) => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        error.to_string(),
+                    ));
+                }
+            };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n_ids(request).await {
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(
+                    hits.into_iter()
+                        .map(|(_score, name)| name)
+                        .chain(always_exposed.iter().cloned()),
+                ),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
             }
-        })
+        }
     })
 }
 

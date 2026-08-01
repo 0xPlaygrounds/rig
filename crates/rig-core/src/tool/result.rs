@@ -86,7 +86,10 @@ impl std::fmt::Display for ToolErrorKind {
 /// downcast. Explicit constructors use the diagnostic message as model-visible
 /// output so deliberately authored validation failures remain actionable.
 /// [`Self::from_error`] instead treats an arbitrary source as operator-only and
-/// exposes safe kind-level feedback. Use [`Self::with_model_feedback`] or
+/// exposes safe kind-level feedback. On browser wasm, a source that is not
+/// `Send + Sync` is converted to diagnostics but not retained for downcasting;
+/// use [`Self::from_send_sync_error`] when source retention is required on
+/// every target. Use [`Self::with_model_feedback`] or
 /// [`Self::with_model_output`] to provide a purpose-built presentation.
 #[derive(Clone)]
 pub struct ToolExecutionError {
@@ -97,10 +100,7 @@ pub struct ToolExecutionError {
     code: Option<String>,
     http_status: Option<u16>,
     refusal: bool,
-    #[cfg(not(target_family = "wasm"))]
     source: Option<Arc<dyn Error + Send + Sync + 'static>>,
-    #[cfg(target_family = "wasm")]
-    source: Option<Arc<dyn Error + 'static>>,
 }
 
 impl ToolExecutionError {
@@ -181,38 +181,57 @@ impl ToolExecutionError {
     /// Build a safely presented `Other` error from a concrete source.
     ///
     /// The source's display string remains available as the operator-facing
-    /// [`Self::message`] and the source remains downcastable, but the model sees
-    /// only the stable feedback for [`ToolErrorKind::Other`]. Passing an existing
-    /// `ToolExecutionError` preserves its classification and presentation.
+    /// [`Self::message`], while the model sees only the stable feedback for
+    /// [`ToolErrorKind::Other`]. Passing an existing `ToolExecutionError`
+    /// preserves its classification and presentation.
+    ///
+    /// Native targets retain the concrete source for downcasting. Browser wasm
+    /// retains it only when it is already a `ToolExecutionError`; another
+    /// source may be local to its JavaScript worker, so only its diagnostics are
+    /// retained. Use [`Self::from_send_sync_error`] to preserve a known
+    /// `Send + Sync` source on every target.
     pub fn from_error<E>(error: E) -> Self
     where
         E: Error + WasmCompatSend + WasmCompatSync + 'static,
     {
         #[cfg(not(target_family = "wasm"))]
         {
-            let source: Box<dyn Error + Send + Sync + 'static> = Box::new(error);
-            return match source.downcast::<Self>() {
-                Ok(error) => *error,
-                Err(source) => {
-                    let message = source.to_string();
-                    let mut error = Self::other(message).redact_model_feedback();
-                    error.source = Some(Arc::from(source));
-                    error
-                }
-            };
+            Self::from_send_sync_error(error)
         }
         #[cfg(target_family = "wasm")]
         {
             let source: Box<dyn Error + 'static> = Box::new(error);
-            match source.downcast::<Self>() {
-                Ok(error) => *error,
-                Err(source) => {
-                    let message = source.to_string();
-                    let mut error = Self::other(message).redact_model_feedback();
-                    error.source = Some(Arc::from(source));
-                    error
-                }
+            Self::from_unretained_error(source)
+        }
+    }
+
+    /// Build a safely presented `Other` error and retain its concrete source
+    /// for downcasting on every target.
+    ///
+    /// Prefer [`Self::from_error`] for a portable tool's generic error path;
+    /// use this method when the source is known to be `Send + Sync` and source
+    /// retention on browser wasm is important.
+    pub fn from_send_sync_error<E>(error: E) -> Self
+    where
+        E: Error + Send + Sync + 'static,
+    {
+        let source: Box<dyn Error + Send + Sync + 'static> = Box::new(error);
+        match source.downcast::<Self>() {
+            Ok(error) => *error,
+            Err(source) => {
+                let message = source.to_string();
+                let mut error = Self::other(message).redact_model_feedback();
+                error.source = Some(Arc::from(source));
+                error
             }
+        }
+    }
+
+    #[cfg(any(test, target_family = "wasm"))]
+    fn from_unretained_error(source: Box<dyn Error + 'static>) -> Self {
+        match source.downcast::<Self>() {
+            Ok(error) => *error,
+            Err(source) => Self::other(source.to_string()).redact_model_feedback(),
         }
     }
 
@@ -262,7 +281,7 @@ impl ToolExecutionError {
     /// Preserve a concrete source for later downcasting.
     pub fn with_source<E>(mut self, source: E) -> Self
     where
-        E: Error + WasmCompatSend + WasmCompatSync + 'static,
+        E: Error + Send + Sync + 'static,
     {
         self.source = Some(Arc::new(source));
         self
@@ -494,7 +513,6 @@ impl ToolResult {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<ToolExecutionError>();
@@ -508,6 +526,19 @@ mod tests {
     #[derive(Debug, thiserror::Error)]
     #[error("secret detail")]
     struct Concrete;
+
+    #[derive(Debug)]
+    struct LocalOnly {
+        _local: std::rc::Rc<()>,
+    }
+
+    impl std::fmt::Display for LocalOnly {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("local-only detail")
+        }
+    }
+
+    impl Error for LocalOnly {}
 
     #[test]
     fn envelope_is_classified_cloneable_downcastable_and_redacted() {
@@ -528,6 +559,38 @@ mod tests {
         let error = ToolExecutionError::from_error(ToolExecutionError::timeout("slow"));
         assert_eq!(error.kind(), ToolErrorKind::Timeout);
         assert_eq!(error.retryable(), Some(true));
+    }
+
+    #[test]
+    fn unretained_existing_envelope_preserves_classification_and_presentation() {
+        let error = ToolExecutionError::from_unretained_error(Box::new(
+            ToolExecutionError::timeout("operator detail")
+                .with_model_feedback("try later")
+                .with_code("T-1"),
+        ));
+
+        assert_eq!(error.kind(), ToolErrorKind::Timeout);
+        assert_eq!(error.message(), "operator detail");
+        assert_eq!(error.model_feedback(), Some("try later"));
+        assert_eq!(error.code(), Some("T-1"));
+    }
+
+    #[test]
+    fn unretained_local_error_keeps_diagnostics_but_drops_source() {
+        let error = ToolExecutionError::from_unretained_error(Box::new(LocalOnly {
+            _local: std::rc::Rc::new(()),
+        }));
+
+        assert_eq!(error.kind(), ToolErrorKind::Other);
+        assert_eq!(error.message(), "local-only detail");
+        assert_eq!(error.model_feedback(), Some("the tool failed"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn send_sync_source_path_preserves_downcasting() {
+        let error = ToolExecutionError::from_send_sync_error(Concrete);
+        assert!(error.is::<Concrete>());
     }
 
     #[test]

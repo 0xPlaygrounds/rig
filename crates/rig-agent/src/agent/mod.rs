@@ -81,12 +81,11 @@
 //!     store: InMemoryVectorStore,
 //!     samples: u64,
 //! ) -> HookEntry {
-//!     HookEntry::with_state("rag", (embedder, rt, store, samples), |state, event| {
-//!         Box::pin(async move {
+//!     HookEntry::with_state("rag", (embedder, rt, store, samples), |state, event| async move {
 //!             let HookEvent::BeforeModelCall { prompt, history, .. } = event else {
 //!                 return HookDecision::Continue;
 //!             };
-//!             let (embedder, rt, store, samples) = state;
+//!             let (embedder, rt, store, samples) = state.as_ref();
 //!             // Search with the prompt's text, falling back to the latest
 //!             // textual history message.
 //!             let query = prompt.rag_text().or_else(|| {
@@ -123,7 +122,6 @@
 //!                     error.to_string(),
 //!                 )),
 //!             }
-//!         })
 //!     })
 //! }
 //!

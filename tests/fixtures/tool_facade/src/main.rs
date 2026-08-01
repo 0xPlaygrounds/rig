@@ -50,7 +50,7 @@ fn main() {
         "portable_dynamic",
         "portable dynamic tool",
         serde_json::json!({"type": "object"}),
-        |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
+        |arguments| async move { Ok(rig::tool::ToolOutput::json(arguments)) },
     );
     let _ = &portable_dynamic;
 

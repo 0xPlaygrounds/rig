@@ -25,24 +25,30 @@ fn runtime_tools() -> Vec<PortableDynamicTool> {
         "required": ["x", "y"]
     });
     vec![
-        PortableDynamicTool::new("add", "Add x and y", parameters.clone(), |args| {
-            Box::pin(async move {
+        PortableDynamicTool::new(
+            "add",
+            "Add x and y",
+            parameters.clone(),
+            |args| async move {
                 let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
                     rig::tool::ToolExecutionError::invalid_args(error.to_string())
                         .with_source(error)
                 })?;
                 Ok(ToolOutput::json(json!(args.x + args.y)))
-            })
-        }),
-        PortableDynamicTool::new("subtract", "Subtract y from x", parameters, |args| {
-            Box::pin(async move {
+            },
+        ),
+        PortableDynamicTool::new(
+            "subtract",
+            "Subtract y from x",
+            parameters,
+            |args| async move {
                 let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
                     rig::tool::ToolExecutionError::invalid_args(error.to_string())
                         .with_source(error)
                 })?;
                 Ok(ToolOutput::json(json!(args.x - args.y)))
-            })
-        }),
+            },
+        ),
     ]
 }
 

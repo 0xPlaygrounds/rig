@@ -117,7 +117,7 @@ pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
 /// genericity reaches them. Bodies are `Vec<u8>` in and [`Bytes`] out; the only
 /// remaining type-erased edge is the streaming one, where the response body is
 /// a boxed byte stream.
-pub(crate) trait Backend: WasmCompatSend + WasmCompatSync {
+pub(crate) trait Backend: Send + Sync {
     /// Send a request and read the full response body.
     ///
     /// Non-success statuses are reported as

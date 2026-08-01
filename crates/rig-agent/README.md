@@ -28,6 +28,27 @@ contract. There is no separate contextual tool trait and no `ToolContext`:
 a tool that needs per-call state owns it in the implementing struct, and
 collections are assembled with `rig::executor::ToolExecutor`.
 
+Runtime-authored tools and hooks accept ordinary async closures; callers do
+not box or pin their futures:
+
+```rust,ignore
+let tool = PortableDynamicTool::new(name, description, schema, |args| async move {
+    Ok(ToolOutput::json(args))
+});
+
+let hook = HookEntry::with_state("audit", state, |state, event| async move {
+    state.inspect(event).await;
+    HookDecision::Continue
+});
+```
+
+The records stay concrete and non-generic. Only their callback fields are
+erased privately behind `Arc<dyn Fn + Send + Sync>`; each invocation is boxed
+inside Rig. Stateful hooks receive an owned `Arc<S>`, so the returned future
+can safely use the shared state across awaits. A sub-agent can be converted
+directly into the same concrete tool record with
+`agent.into_tool(name, description)`.
+
 ## Target support
 
 | Tier | Target | Status |
@@ -38,8 +59,10 @@ collections are assembled with `rig::executor::ToolExecutor`.
 | — | `wasm32-unknown-emscripten` | Not supported |
 
 **Building for `wasm32-unknown-unknown` is the entire opt-in** — there are no
-wasm feature flags anywhere in the workspace. `rig-core` relaxes its
-`WasmCompat*` bounds from the target alone.
+wasm feature flags anywhere in the workspace. `rig-core` relaxes future,
+stream, and invocation-local argument/output/error `WasmCompat*` bounds from
+the target alone; values retained by an agent, including hook callbacks/state
+and tools, remain `Send + Sync` on every target.
 
 Wasm gates name a `target_os` (`all(target_arch = "wasm32", target_os =
 "unknown")`) rather than a bare `target_arch = "wasm32"`, because the latter
@@ -49,9 +72,7 @@ feature set WASI rejects. Supporting it would mean making `reqwest` optional and
 adding a `wasi:http` client behind `rig_core::http_client` — a project, not a
 `cfg` fix.
 
-**`rmcp` is native-only.** rmcp's `ClientHandler` is declared
-`Sized + Send + Sync + 'static` unconditionally — its `local` feature relaxes
-the future bounds but not the handler itself — while this crate's handler owns a
-tool registry whose `Arc<dyn ErasedTool>` is deliberately neither `Send` nor
-`Sync` on wasm. Enabling `rmcp` on a wasm target fails with a single explanatory
-`compile_error!` rather than a wall of trait errors.
+**`rmcp` is native-only.** The companion integration's rmcp/tokio client
+machinery and cancellation dispatch remain target-gated, so `rig-rmcp`
+compiles to an empty library on wasm. This is an integration boundary, not a
+limitation of the agent's tool registry, which is `Send + Sync` on every target.

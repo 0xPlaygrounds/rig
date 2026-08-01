@@ -26,10 +26,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
-# MCP is native-only (mirrors rig-agent): rmcp's client machinery requires
-# `Send + Sync` unconditionally, which cannot be satisfied on wasm where Rig's
-# `WasmCompatSend`/`WasmCompatSync` are no-op markers. On wasm targets this
-# crate compiles to an empty library so workspace-wide wasm builds keep working.
+# MCP remains native-only because its rmcp/tokio client machinery and
+# cancellation dispatch are target-specific. On wasm this crate compiles to an
+# empty library so workspace-wide wasm builds keep working; Rig's stored tool
+# records themselves are `Send + Sync` on every target.
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rmcp = { workspace = true, features = ["client"] }
 tokio = { workspace = true, features = ["rt", "time"] }

@@ -1,8 +1,7 @@
 //! An agent that uses another agent as a tool.
 //!
-//! `Agent` is `Clone`, so a sub-agent can be exposed as a tool with a
-//! [`PortableDynamicTool`] whose callback closes over the inner agent and
-//! prompts it. The outer agent simply registers that record with
+//! [`Agent::into_tool`] converts a sub-agent into one concrete portable tool
+//! record. The outer agent simply registers that record with
 //! `.dynamic_tool(...)`.
 //!
 //! Both agents share one concrete OpenAI connection client.
@@ -11,7 +10,6 @@
 
 use anyhow::Result;
 use rig::prelude::*;
-use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -118,37 +116,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .tool(Subtract)
         .build();
 
-    // Expose the calculator agent as a tool: the dynamic tool's callback
-    // closes over a clone of the inner agent and forwards the prompt to it.
-    let inner = calculator_agent.clone();
-    let calculator_tool = PortableDynamicTool::new(
+    // Convert the calculator agent directly into a concrete portable record.
+    let calculator_tool = calculator_agent.into_tool(
         "calculator",
         "Delegate arithmetic questions to the calculator agent.",
-        json!({
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The arithmetic question for the calculator agent"
-                }
-            },
-            "required": ["prompt"]
-        }),
-        move |args| {
-            let inner = inner.clone();
-            Box::pin(async move {
-                let prompt = args
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let reply = inner
-                    .prompt(prompt)
-                    .await
-                    .map_err(|e| ToolExecutionError::other(e.to_string()))?;
-                Ok(ToolOutput::text(reply))
-            })
-        },
     );
 
     // Create agent which has the calculator agent as a tool

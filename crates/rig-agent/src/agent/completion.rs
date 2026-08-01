@@ -26,6 +26,7 @@ use crate::hooks::Hooks;
 use crate::provider::{ProviderConfig, Runtime};
 use crate::session::{AgentSession, SessionPolicy};
 use crate::stream::{AgentRunStream, AgentStream};
+use crate::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -34,6 +35,13 @@ use super::UNKNOWN_AGENT_NAME;
 
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct AgentToolArgs {
+    /// The task or question delegated to the inner agent.
+    prompt: String,
+}
 
 /// Whether the active [`ToolChoice`] lets the model call the synthetic output
 /// tool. Tool output mode finalizes via that call, so when the choice forbids it
@@ -352,6 +360,39 @@ impl Agent {
         self.config.description.as_deref()
     }
 
+    /// Convert this agent into one concrete portable tool record.
+    ///
+    /// The returned tool accepts exactly one required string field, `prompt`,
+    /// and delegates it through this agent's ordinary session driver. This is
+    /// a data-to-data conversion: it does not restore the removed classic tool
+    /// context, server, or erased-dispatch architecture.
+    pub fn into_tool(
+        self,
+        name: impl Into<String>,
+        description: impl Into<String>,
+    ) -> PortableDynamicTool {
+        let parameters = schemars::schema_for!(AgentToolArgs).as_value().clone();
+        let agent = Arc::new(self);
+
+        PortableDynamicTool::new(name, description, parameters, move |arguments| {
+            let agent = Arc::clone(&agent);
+            async move {
+                let arguments: AgentToolArgs =
+                    serde_json::from_value(arguments).map_err(|error| {
+                        ToolExecutionError::invalid_args(format!(
+                            "failed to parse agent tool arguments: {error}"
+                        ))
+                        .with_source(error)
+                    })?;
+                agent
+                    .prompt(arguments.prompt)
+                    .await
+                    .map(ToolOutput::text)
+                    .map_err(ToolExecutionError::from_error)
+            }
+        })
+    }
+
     pub(crate) fn name_or_default(&self) -> &str {
         self.config.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
@@ -609,9 +650,121 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::MockScript;
+    use rig_core::OneOrMany;
+    use rig_core::completion::{CompletionResponse, FinishReason, Usage};
+    use rig_core::message::AssistantContent;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn text_response(text: &str) -> CompletionResponse {
+        CompletionResponse::new(
+            OneOrMany::one(AssistantContent::text(text)),
+            Usage::new(),
+            "mock",
+        )
+        .with_finish_reason(FinishReason::Stop)
+    }
+
+    #[tokio::test]
+    async fn into_tool_uses_one_strict_argument_record() {
+        let tool = Agent::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(MockScript::from_responses(Vec::new())),
+        )
+        .into_tool("delegate", "Delegate a task");
+
+        let definition = tool.definition();
+        assert_eq!(definition.name, "delegate");
+        assert_eq!(definition.parameters["type"], "object");
+        assert_eq!(definition.parameters["additionalProperties"], false);
+        assert_eq!(
+            definition.parameters["required"],
+            serde_json::json!(["prompt"])
+        );
+        assert_eq!(
+            definition.parameters["properties"]["prompt"]["type"],
+            "string"
+        );
+
+        for invalid in [
+            serde_json::json!({}),
+            serde_json::json!({"prompt": 1}),
+            serde_json::json!([]),
+            serde_json::json!({"prompt": "hello", "unknown": true}),
+        ] {
+            let error = tool
+                .execute(invalid)
+                .await
+                .expect_err("invalid arguments must not reach the agent");
+            assert_eq!(error.kind(), crate::tool::ToolErrorKind::InvalidArgs);
+            assert!(
+                std::error::Error::source(&error)
+                    .and_then(|source| source.downcast_ref::<serde_json::Error>())
+                    .is_some(),
+                "the concrete deserialization error should be retained"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn into_tool_forwards_prompts_concurrently() {
+        let script = MockScript::from_responses(vec![text_response("one"), text_response("two")]);
+        let probe = script.clone();
+        let tool = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script))
+            .into_tool("delegate", "Delegate a task");
+
+        let first = {
+            let tool = tool.clone();
+            tokio::spawn(async move { tool.execute(serde_json::json!({"prompt": "first"})).await })
+        };
+        let second = {
+            let tool = tool.clone();
+            tokio::spawn(async move { tool.execute(serde_json::json!({"prompt": "second"})).await })
+        };
+
+        let first = first
+            .await
+            .expect("first task joins")
+            .expect("first tool call");
+        let second = second
+            .await
+            .expect("second task joins")
+            .expect("second tool call");
+        let mut outputs = [
+            first.as_text().expect("text output"),
+            second.as_text().expect("text output"),
+        ];
+        outputs.sort_unstable();
+        assert_eq!(outputs, ["one", "two"]);
+
+        let mut prompts: Vec<Message> = probe
+            .requests()
+            .into_iter()
+            .map(|request| request.chat_history.last())
+            .collect();
+        prompts.sort_by_key(|message| format!("{message:?}"));
+        let mut expected = [Message::user("first"), Message::user("second")];
+        expected.sort_by_key(|message| format!("{message:?}"));
+        assert_eq!(prompts, expected);
+    }
+
+    #[tokio::test]
+    #[cfg(not(target_family = "wasm"))]
+    async fn into_tool_retains_prompt_error_as_native_source() {
+        let script = MockScript::from_responses(Vec::new())
+            .with_errors(vec![Some("provider failed".to_owned())]);
+        let tool = Agent::new(AgentConfig::new(), ProviderConfig::Mock(script))
+            .into_tool("delegate", "Delegate a task");
+
+        let error = tool
+            .execute(serde_json::json!({"prompt": "fail"}))
+            .await
+            .expect_err("the scripted provider failure should surface");
+        let source = std::error::Error::source(&error).expect("native source retained");
+        assert!(source.downcast_ref::<PromptError>().is_some());
     }
 
     #[test]

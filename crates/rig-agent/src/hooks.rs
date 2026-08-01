@@ -23,6 +23,11 @@
 //! received; any other variant (including [`HookDecision::Continue`]) is
 //! treated as "no opinion" for that event.
 //!
+//! Constructors accept ordinary async closures. [`HookEntry`] remains a
+//! concrete record and privately erases only its callback field; callers never
+//! name or pin the boxed future used by runtime dispatch. Stateful callbacks
+//! receive an owned [`Arc`] for each invocation.
+//!
 //! # Delta events
 //!
 //! [`HookEvent::TextDelta`] and [`HookEvent::ToolCallDelta`] fire once per
@@ -38,7 +43,7 @@ use rig_core::OneOrMany;
 use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, Message, ToolCall};
 use rig_core::streaming::StreamFinal;
-use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
 
 use crate::agent::InvalidToolCallContext;
 use crate::agent::hook::{
@@ -182,43 +187,6 @@ pub enum HookDecision {
     Observation(ObservationAction),
 }
 
-// The callback object must own its captures because `HookEntry` stores it, but
-// an invocation future is awaited inline and may borrow that owned state.
-// Keeping those lifetimes separate avoids forcing runtime inputs to be
-// `'static` without putting a lifetime parameter on `HookEntry` or `Agent`.
-trait HookCallback: WasmCompatSend + WasmCompatSync {
-    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision>;
-}
-
-struct StaticFutureCallback<F>(F);
-
-impl<F> HookCallback for StaticFutureCallback<F>
-where
-    F: Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + WasmCompatSend + WasmCompatSync,
-{
-    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision> {
-        (self.0)(event)
-    }
-}
-
-struct StatefulCallback<S, F> {
-    state: S,
-    callback: F,
-}
-
-impl<S, F> HookCallback for StatefulCallback<S, F>
-where
-    S: WasmCompatSend + WasmCompatSync + 'static,
-    F: for<'call> Fn(&'call S, HookEvent) -> WasmBoxedFuture<'call, HookDecision>
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-{
-    fn call<'call>(&'call self, event: HookEvent) -> WasmBoxedFuture<'call, HookDecision> {
-        (self.callback)(&self.state, event)
-    }
-}
-
 /// One named hook callback record.
 #[derive(Clone)]
 pub struct HookEntry {
@@ -227,7 +195,8 @@ pub struct HookEntry {
     /// ([`HookEvent::TextDelta`], [`HookEvent::ToolCallDelta`]). `false` by
     /// default: the data form of the classic `observes(StepEventKind)` hint.
     observes_deltas: bool,
-    callback: Arc<dyn HookCallback>,
+    callback:
+        Arc<dyn Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + Send + Sync + 'static>,
 }
 
 impl std::fmt::Debug for HookEntry {
@@ -243,29 +212,41 @@ impl std::fmt::Debug for HookEntry {
 impl HookEntry {
     /// Create a named hook entry from an owned async callback.
     ///
-    /// Use [`Self::with_state`] when the invocation future should borrow state
-    /// owned by the hook instead of cloning that state into every future.
-    pub fn new<F>(name: impl Into<String>, callback: F) -> Self
+    /// Use [`Self::with_state`] to retain owned state and clone a shared handle
+    /// into each invocation future.
+    ///
+    /// On native targets, the returned future must be [`Send`]. This is checked
+    /// by the constructor even though callers never name or box that future:
+    ///
+    /// ```compile_fail
+    /// use std::rc::Rc;
+    /// use rig_agent::hooks::{HookDecision, HookEntry};
+    ///
+    /// let _entry = HookEntry::new("local", |_event| {
+    ///     let local = Rc::new(());
+    ///     async move {
+    ///         drop(local);
+    ///         HookDecision::Continue
+    ///     }
+    /// });
+    /// ```
+    pub fn new<F, Fut>(name: impl Into<String>, callback: F) -> Self
     where
-        F: Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision>
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
+        F: Fn(HookEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = HookDecision> + WasmCompatSend + 'static,
     {
         Self {
             name: name.into(),
             observes_deltas: false,
-            callback: Arc::new(StaticFutureCallback(callback)),
+            callback: Arc::new(move |event| Box::pin(callback(event))),
         }
     }
 
-    /// Create a named async hook whose invocation future borrows owned state.
+    /// Create a named async hook with owned shared state.
     ///
-    /// `state` is moved into the hook record and remains safe to retain with
-    /// the agent. The future returned by `callback` may borrow that state only
-    /// until the inline hook dispatch completes; it does not need to be
-    /// `'static`. Put every value the callback needs in `state` rather than
-    /// borrowing from the stack that constructs the hook.
+    /// `state` is retained in an [`Arc`] and a clone of that handle is moved
+    /// into each invocation future. Put every value the callback needs in
+    /// `state` rather than borrowing from the stack that constructs the hook.
     ///
     /// Cloning the resulting [`HookEntry`] shares this state. Use internal
     /// synchronization for mutable shared state, or construct separate entries
@@ -273,36 +254,27 @@ impl HookEntry {
     ///
     /// ```
     /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
-    /// use rig_core::wasm_compat::WasmBoxedFuture;
-    ///
     /// let marker = String::from("loaded at runtime");
-    /// let entry = HookEntry::with_state("marker", marker, |marker, event| {
-    ///     Box::pin(async move {
+    /// let entry = HookEntry::with_state("marker", marker, |marker, event| async move {
     ///         match event {
     ///             HookEvent::ModelTurnFinished { content, .. }
-    ///                 if content.iter().any(|item| format!("{item:?}").contains(marker)) =>
+    ///                 if content.iter().any(|item| format!("{item:?}").contains(marker.as_str())) =>
     ///             {
     ///                 HookDecision::Continue
     ///             }
     ///             _ => HookDecision::Continue,
     ///         }
-    ///     }) as WasmBoxedFuture<'_, HookDecision>
     /// });
     /// # let _ = entry;
     /// ```
-    pub fn with_state<S, F>(name: impl Into<String>, state: S, callback: F) -> Self
+    pub fn with_state<S, F, Fut>(name: impl Into<String>, state: S, callback: F) -> Self
     where
-        S: WasmCompatSend + WasmCompatSync + 'static,
-        F: for<'call> Fn(&'call S, HookEvent) -> WasmBoxedFuture<'call, HookDecision>
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
+        S: Send + Sync + 'static,
+        F: Fn(Arc<S>, HookEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = HookDecision> + WasmCompatSend + 'static,
     {
-        Self {
-            name: name.into(),
-            observes_deltas: false,
-            callback: Arc::new(StatefulCallback { state, callback }),
-        }
+        let state = Arc::new(state);
+        Self::new(name, move |event| callback(Arc::clone(&state), event))
     }
 
     /// Create a named hook entry from a **synchronous** callback.
@@ -328,14 +300,12 @@ impl HookEntry {
     /// [`observing_deltas`](Self::observing_deltas) opt-in are identical to
     /// [`Self::new`] — this only changes how the callback is written. For a
     /// genuinely async hook, use [`Self::new`] when its future owns its inputs,
-    /// or [`Self::with_state`] when the future borrows state owned by the hook.
+    /// or [`Self::with_state`] to retain shared state with the hook.
     pub fn sync<F>(name: impl Into<String>, callback: F) -> Self
     where
-        F: Fn(HookEvent) -> HookDecision + WasmCompatSend + WasmCompatSync + 'static,
+        F: Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
     {
-        Self::new(name, move |event| {
-            Box::pin(std::future::ready(callback(event))) as WasmBoxedFuture<'static, HookDecision>
-        })
+        Self::new(name, move |event| std::future::ready(callback(event)))
     }
 
     /// The entry's name.
@@ -358,7 +328,7 @@ impl HookEntry {
     }
 
     async fn dispatch(&self, event: HookEvent) -> HookDecision {
-        self.callback.call(event).await
+        (self.callback)(event).await
     }
 }
 
@@ -712,11 +682,6 @@ impl Hooks {
 /// session) fails to compile right here instead of at some distant
 /// `async_trait` call site.
 ///
-/// Native-only: on wasm the `WasmCompatSend`/`WasmCompatSync` markers are
-/// deliberately no-ops (the runtime is single-threaded), so the callback
-/// trait objects do not carry `Send`/`Sync` there and this census would not
-/// compile.
-#[cfg(not(target_family = "wasm"))]
 #[allow(dead_code)]
 fn _assert_agent_model_is_send_and_sync() {
     fn assert<T: Send + Sync>() {}
@@ -724,11 +689,49 @@ fn _assert_agent_model_is_send_and_sync() {
     assert::<HookEntry>();
     assert::<crate::executor::ToolExecutor>();
     assert::<crate::agent::Agent>();
+    assert::<crate::agent::AgentBuilder>();
+    assert::<crate::agent::SessionRunner>();
     assert::<crate::session::AgentSession>();
+}
+
+// Provider streams are an invocation result rather than retained agent data.
+// They remain local on browser wasm because their JavaScript transport handle
+// cannot cross workers.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[allow(dead_code)]
+fn _assert_agent_stream_is_send() {
     // `AgentStream` holds a boxed provider stream (a transport-edge `dyn`
     // that is `Send` but not `Sync`), so only `Send` is asserted for it.
     fn assert_send<T: Send>() {}
     assert_send::<crate::stream::AgentStream>();
+}
+
+// The wasm jobs run ordinary `cargo check`, not tests. Keep this probe in
+// module code so CI proves that shareable hook records may still produce a
+// worker-local future containing `Rc` state.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[allow(dead_code)]
+fn _assert_wasm_hooks_can_return_local_futures() {
+    use std::rc::Rc;
+    use std::sync::Mutex;
+
+    let asynchronous = HookEntry::new("wasm-local-future", |_event| {
+        let local = Rc::new(());
+        async move {
+            drop(local);
+            HookDecision::Continue
+        }
+    });
+    let synchronous = HookEntry::sync("sync", |_event| HookDecision::Continue);
+    let stateful = HookEntry::with_state("stateful", Mutex::new(0_u8), |_state, _event| {
+        std::future::ready(HookDecision::Continue)
+    });
+
+    fn assert_send_sync<T: Send + Sync>(_: &T) {}
+    assert_send_sync(&asynchronous);
+    assert_send_sync(&asynchronous.callback);
+    assert_send_sync(&synchronous);
+    assert_send_sync(&stateful);
 }
 
 #[cfg(test)]
@@ -770,14 +773,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn new_preserves_boxed_multi_branch_callbacks() {
-        let entry = HookEntry::new("boxed", |event| {
+    async fn new_accepts_pin_free_multi_branch_callbacks() {
+        let entry = HookEntry::new("pin-free", |event| async move {
             if matches!(event, HookEvent::BeforeModelCall { .. }) {
-                return Box::pin(async { HookDecision::Continue });
+                return HookDecision::Continue;
             }
-            Box::pin(async {
-                HookDecision::Observation(ObservationAction::stop("unexpected event"))
-            })
+            HookDecision::Observation(ObservationAction::stop("unexpected event"))
         });
 
         assert_eq!(
@@ -793,7 +794,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn callback_future_can_borrow_runtime_owned_state_across_await() {
+    async fn callback_future_owns_shared_runtime_state_across_await() {
         struct State {
             marker: String,
             calls: AtomicUsize,
@@ -806,23 +807,21 @@ mod tests {
                 marker,
                 calls: AtomicUsize::new(0),
             },
-            |state, event| {
-                Box::pin(async move {
-                    yield_once().await;
-                    let call = state.calls.fetch_add(1, Ordering::SeqCst) + 1;
-                    match event {
-                        HookEvent::ModelTurnFinished { content, .. }
-                            if content.iter().any(|item| {
-                                matches!(item, AssistantContent::Text(text) if text.text.contains(&state.marker))
-                            }) =>
-                        {
-                            HookDecision::ModelTurn(ModelTurnAction::stop(format!(
-                                "{}:{call}", state.marker
-                            )))
-                        }
-                        _ => HookDecision::Continue,
+            |state, event| async move {
+                yield_once().await;
+                let call = state.calls.fetch_add(1, Ordering::SeqCst) + 1;
+                match event {
+                    HookEvent::ModelTurnFinished { content, .. }
+                        if content.iter().any(|item| {
+                            matches!(item, AssistantContent::Text(text) if text.text.contains(&state.marker))
+                        }) =>
+                    {
+                        HookDecision::ModelTurn(ModelTurnAction::stop(format!(
+                            "{}:{call}", state.marker
+                        )))
                     }
-                })
+                    _ => HookDecision::Continue,
+                }
             },
         );
 

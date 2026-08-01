@@ -1,16 +1,13 @@
 //! A multi agent application: a translator agent exposed as a tool to a main
 //! agent.
 //!
-//! The translator sub-agent is wrapped in a [`PortableDynamicTool`] whose
-//! callback closes over a clone of the agent (`Agent` is `Clone`) and prompts
-//! it. When the main agent receives text that is not in English (or has
-//! grammatical errors), it calls the translator tool first, then answers.
+//! The translator sub-agent is converted into a concrete portable tool record.
+//! When the main agent receives text that is not in English (or has grammatical
+//! errors), it calls the translator tool first, then answers.
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{PortableDynamicTool, ToolExecutionError, ToolOutput};
-use serde_json::json;
 
 const TRANSLATOR_TOOL_NAME: &str = "translator";
 
@@ -31,38 +28,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 )
                 .build();
 
-    // Expose the translator agent as a tool by closing over it in a dynamic
-    // tool callback.
-    let inner = translator_agent.clone();
-    let translator_tool = PortableDynamicTool::new(
+    let translator_tool = translator_agent.into_tool(
         TRANSLATOR_TOOL_NAME,
         "Translate any text to English. If already in English, fix grammar and syntax issues.",
-        json!({
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The text to translate to English"
-                }
-            },
-            "required": ["prompt"]
-        }),
-        move |args| {
-            let inner = inner.clone();
-            Box::pin(async move {
-                let prompt = args
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let response = inner
-                    .prompt(prompt)
-                    .await
-                    .map_err(|e| ToolExecutionError::other(e.to_string()))?;
-                println!("Translated prompt: {response}");
-                Ok(ToolOutput::text(response))
-            })
-        },
     );
 
     let multi_agent_system = client

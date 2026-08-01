@@ -2052,8 +2052,6 @@ where
 // classic runtime is deleted.
 // =========================================================================
 
-use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-
 use crate::agent::Agent as SessionAgent;
 use crate::agent::AgentConfig;
 use crate::executor::ToolExecutor;
@@ -2155,7 +2153,7 @@ where
 /// Named hook entry over a synchronous decision function.
 fn hook_entry(
     name: &str,
-    decide: impl Fn(HookEvent) -> HookDecision + WasmCompatSend + WasmCompatSync + 'static,
+    decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
 ) -> HookEntry {
     HookEntry::sync(name, decide)
 }

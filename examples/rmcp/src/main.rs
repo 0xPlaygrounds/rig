@@ -278,7 +278,7 @@ async fn main() -> anyhow::Result<()> {
                 move |args| {
                     let toolset = Arc::clone(&toolset);
                     let tool_name = tool_name.clone();
-                    Box::pin(async move {
+                    async move {
                         let outcome = toolset
                             .call(&tool_name, &args, None)
                             .await
@@ -287,7 +287,7 @@ async fn main() -> anyhow::Result<()> {
                             return Err(error.clone());
                         }
                         Ok(outcome.result.output().clone())
-                    })
+                    }
                 },
             )
         })
