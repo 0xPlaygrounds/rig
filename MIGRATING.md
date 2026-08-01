@@ -272,6 +272,58 @@ defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
 
+### Unreleased
+
+#### Cohere token counts come from `tokens`, not `billed_units`
+
+`GetTokenUsage for cohere::completion::Usage` read `usage.billed_units`, while
+the non-streaming response conversion and the streaming final read
+`usage.tokens`. The same response therefore reported two different numbers
+depending on which surface you asked. All three now share one mapping, sourced
+from `tokens`.
+
+`billed_units` excludes cached input and system-prompt overhead, so the counters
+it produced were much smaller: a short prompt that reported 27 input / 66 output
+now reports 556 / 69. Nothing to change, but **telemetry dashboards and any
+cost estimates keyed on Cohere token counts will step up**, by roughly 10-20x on
+the input side. `cached_input_tokens` is also populated now, from Cohere's
+`usage.cached_tokens`, which was previously discarded.
+
+#### Cohere now honors `max_tokens`
+
+`CohereCompletionRequest` had no `max_tokens` field, so the value was dropped
+before the request was built and never reached `/v2/chat`, which defines it as a
+top-level parameter. It is now sent.
+
+Nothing to change — but if you set `max_tokens` on a Cohere agent at any point
+and moved on when it appeared to do nothing, **it starts applying now**, and
+generations that previously ran to the model's own output limit will be cut off
+at your value.
+
+#### Persisted Cohere `ToolResultContent` JSON no longer round-trips
+
+`cohere::completion::ToolResultContent` was missing the `#[serde(tag = "type")]`
+its sibling content enums carry, so it serialized externally-tagged as
+`{"Text":{"text":"-3"}}` — a shape Cohere rejects with a 422, which is why tool
+calling failed on the second turn. It now serializes as
+`{"type":"text","text":"-3"}`.
+
+The type is public. If you persisted it directly, records written by 0.41 or
+earlier fail to deserialize; re-encode them to the tagged form.
+
+#### Cohere HTTP errors surface as `InvalidStatusCodeWithMessage`
+
+`CompletionModel::completion` boxed transport failures into
+`http_client::Error::Instance`, which hid the status and body from
+`CompletionError::provider_response_status()` and `provider_response_body()` —
+both returned `None` on every real HTTP failure. The error is now propagated
+unwrapped.
+
+If you matched on the inner `http_client::Error` variant, the payload for a
+non-success response moves from `Instance(..)` to
+`InvalidStatusCodeWithMessage(status, body)`. Code that only used the
+`provider_response_*` helpers starts getting answers instead of `None`.
+
 ---
 
 ## 0.40 → 0.41

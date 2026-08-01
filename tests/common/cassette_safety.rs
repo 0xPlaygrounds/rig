@@ -70,6 +70,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         ],
     },
     ProviderCassetteSuite {
+        provider: "cohere",
+        source_dir: "tests/providers/cohere/cassette",
+        wrapper_names: &["with_cohere_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
