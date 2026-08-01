@@ -2,7 +2,7 @@ use anyhow::Result;
 use futures::StreamExt;
 use rig::agent::{PromptResponse, Text};
 use rig::prelude::*;
-use rig::stream::AgentStreamItem;
+use rig::stream::{AgentRunStream, AgentStreamItem};
 use rig::streaming::StreamedAssistantContent;
 
 use rig::{providers, tool::Tool};
@@ -145,9 +145,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .name("Bob")
         .build();
 
-    let mut stream = calculator_agent.runner("Calculate 2 - 5").stream_run();
+    let stream = calculator_agent.runner("Calculate 2 - 5").stream_run();
 
-    let res = drain_to_stdout(&mut stream).await?;
+    let res = drain_to_stdout(stream).await?;
 
     println!("Token usage response: {usage:?}", usage = res.usage());
     println!("Final text response: {message:?}", message = res.output());
@@ -163,11 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
 /// its own drain loop: print assistant text and reasoning deltas as they
 /// arrive, keep the terminal `FinalResponse` for usage/output, and mark a
 /// model-turn retry (text already written to stdout cannot be retracted).
-async fn drain_to_stdout<S>(stream: &mut S) -> anyhow::Result<PromptResponse>
-where
-    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
-        + Unpin,
-{
+async fn drain_to_stdout(mut stream: AgentRunStream) -> anyhow::Result<PromptResponse> {
     let mut final_response = PromptResponse::empty();
     print!("Response: ");
     while let Some(item) = stream.next().await {

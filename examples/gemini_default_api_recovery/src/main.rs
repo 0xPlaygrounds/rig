@@ -13,7 +13,7 @@ use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::stream::AgentStreamItem;
+use rig::stream::{AgentRunStream, AgentStreamItem};
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -228,12 +228,9 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
     serde_json::to_value(&additional_params)
 }
 
-async fn consume_workspace_like_stream<S>(stream: S) -> Result<WorkspaceStreamObservation, String>
-where
-    S: futures::Stream<Item = Result<AgentStreamItem, rig::completion::PromptError>>,
-{
-    futures::pin_mut!(stream);
-
+async fn consume_workspace_like_stream(
+    mut stream: AgentRunStream,
+) -> Result<WorkspaceStreamObservation, String> {
     let mut observation = WorkspaceStreamObservation::default();
 
     while let Some(item) = stream.next().await {

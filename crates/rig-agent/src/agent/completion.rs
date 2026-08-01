@@ -25,7 +25,7 @@ use crate::executor::ToolExecutor;
 use crate::hooks::Hooks;
 use crate::provider::{ProviderConfig, Runtime};
 use crate::session::{AgentSession, SessionPolicy};
-use crate::stream::AgentStream;
+use crate::stream::{AgentRunStream, AgentStream};
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -585,16 +585,12 @@ impl Agent {
     ///
     /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
     ///
-    /// The returned stream is [`Unpin`], so it can be polled behind a plain
-    /// `&mut` without the caller pinning it first.
-    pub fn stream_run(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> impl futures::Stream<Item = Result<crate::stream::AgentStreamItem, PromptError>> + Unpin
-    {
+    /// The concrete [`AgentRunStream`] is pinned internally, so callers can
+    /// use `.next().await` without pinning it first.
+    pub fn stream_run(&self, prompt: impl Into<Message> + WasmCompatSend) -> AgentRunStream {
         // See `SessionRunner::stream_run`: pinned once here instead of at
         // every call site.
-        Box::pin(
+        AgentRunStream::new(
             self.stream_prompt(prompt)
                 .drive(self.hooks.clone(), self.telemetry_aware_executor()),
         )

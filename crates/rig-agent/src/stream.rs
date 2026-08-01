@@ -10,9 +10,11 @@
 //! and serializable.
 
 use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 
 use crate::agent::hook::{
     CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch, ToolCallAction,
@@ -38,6 +40,7 @@ use tracing_futures::Instrument;
 
 use crate::provider::{self, ProviderConfig, Runtime};
 use crate::session::SessionPolicy;
+use rig_core::wasm_compat::WasmCompatSend;
 
 /// One item pulled from an [`AgentStream`].
 ///
@@ -127,6 +130,64 @@ pub enum AgentStreamItem {
     User(StreamedUserContent),
     /// The final response; the stream ends after this item.
     Final(PromptResponse),
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+type BoxedAgentRunStream =
+    Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + Send + 'static>>;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+type BoxedAgentRunStream =
+    Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + 'static>>;
+
+/// A fully driven agent run exposed as a stream of owned observation events.
+///
+/// Unlike the host-driven [`AgentStream`], this stream dispatches hooks and
+/// executes tools for the caller. It is already pinned internally, so callers
+/// can use [`StreamExt::next`] directly without pinning it or naming an
+/// `Unpin` bound.
+///
+/// Call [`AgentRunStream::into_final_response`] when intermediate events are
+/// not needed and only the committed terminal response matters.
+#[must_use = "streams do nothing unless polled"]
+pub struct AgentRunStream {
+    inner: BoxedAgentRunStream,
+}
+
+impl AgentRunStream {
+    pub(crate) fn new<S>(stream: S) -> Self
+    where
+        S: Stream<Item = Result<AgentStreamItem, PromptError>> + WasmCompatSend + 'static,
+    {
+        Self {
+            inner: Box::pin(stream),
+        }
+    }
+
+    /// Consume the stream and return its committed terminal response.
+    ///
+    /// Intermediate assistant, tool, retry, and completion-call observations
+    /// are discarded. Hooks are still dispatched and tools are still executed
+    /// by the fully driven run. A yielded [`PromptError`] is returned
+    /// immediately; a stream that ends without [`AgentStreamItem::Final`]
+    /// returns [`PromptError::StreamEndedWithoutFinalResponse`].
+    pub async fn into_final_response(mut self) -> Result<PromptResponse, PromptError> {
+        while let Some(item) = self.next().await {
+            if let AgentStreamItem::Final(response) = item? {
+                return Ok(response);
+            }
+        }
+
+        Err(PromptError::StreamEndedWithoutFinalResponse)
+    }
+}
+
+impl Stream for AgentRunStream {
+    type Item = Result<AgentStreamItem, PromptError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.get_mut().inner.as_mut().poll_next(cx)
+    }
 }
 
 /// The in-flight provider stream plus its sans-IO assembler.
@@ -1390,6 +1451,92 @@ mod tests {
         )
     }
 
+    fn assert_agent_run_stream_shape<T>()
+    where
+        T: Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin,
+    {
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn assert_send<T: Send>() {}
+
+    #[test]
+    fn agent_run_stream_has_a_directly_pollable_concrete_shape() {
+        assert_agent_run_stream_shape::<AgentRunStream>();
+
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        assert_send::<AgentRunStream>();
+    }
+
+    #[tokio::test]
+    async fn agent_run_stream_can_be_polled_without_caller_pinning() {
+        let mut stream = AgentRunStream::new(futures::stream::iter([Ok(
+            AgentStreamItem::ModelTurnRetried { turn: 2 },
+        )]));
+
+        assert!(matches!(
+            stream.next().await,
+            Some(Ok(AgentStreamItem::ModelTurnRetried { turn: 2 }))
+        ));
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn into_final_response_discards_observations_and_preserves_response() {
+        let mut usage = Usage::new();
+        usage.total_tokens = 7;
+        let expected = PromptResponse::new("done", usage)
+            .with_messages(vec![Message::user("go"), Message::assistant("done")])
+            .with_output_tool_calls(2);
+        let expected_json = serde_json::to_value(expected.clone()).expect("serialize response");
+        let stream = AgentRunStream::new(futures::stream::iter([
+            Ok(AgentStreamItem::ModelTurnRetried { turn: 1 }),
+            Ok(AgentStreamItem::Final(expected)),
+        ]));
+
+        let response = stream.into_final_response().await.expect("final response");
+
+        assert_eq!(
+            serde_json::to_value(response.clone()).expect("serialize returned response"),
+            expected_json
+        );
+        assert_eq!(response.output_tool_calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn into_final_response_propagates_prompt_errors() {
+        let stream =
+            AgentRunStream::new(futures::stream::iter([Err(PromptError::PromptCancelled {
+                chat_history: vec![Message::user("go")],
+                reason: "operator stop".to_string(),
+            })]));
+
+        let error = stream
+            .into_final_response()
+            .await
+            .expect_err("stream should fail");
+
+        assert!(matches!(
+            error,
+            PromptError::PromptCancelled { reason, .. } if reason == "operator stop"
+        ));
+    }
+
+    #[tokio::test]
+    async fn into_final_response_rejects_a_stream_without_final() {
+        let stream = AgentRunStream::new(futures::stream::empty());
+
+        let error = stream
+            .into_final_response()
+            .await
+            .expect_err("missing final response should fail");
+
+        assert!(matches!(
+            error,
+            PromptError::StreamEndedWithoutFinalResponse
+        ));
+    }
+
     /// Round-trip every serializable payload family through serde and check
     /// the restored item matches structurally.
     #[test]
@@ -1682,6 +1829,15 @@ mod migrated_streaming_tests {
         MockScript::from_responses(Vec::new()).with_streams(turns)
     }
 
+    #[test]
+    fn agent_and_runner_stream_run_return_agent_run_stream() {
+        let agent = agent_builder(script(Vec::new())).build();
+        let _: AgentRunStream = agent.stream_run("go");
+
+        let agent = agent_builder(script(Vec::new())).build();
+        let _: AgentRunStream = agent.runner("go").stream_run();
+    }
+
     fn text_item(text: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::Text(Text::new(text))
     }
@@ -1783,8 +1939,7 @@ mod migrated_streaming_tests {
         ]])))
         .build();
 
-        let stream = agent.stream_run("go");
-        futures::pin_mut!(stream);
+        let mut stream = agent.stream_run("go");
         let mut error = None;
         while let Some(item) = stream.next().await {
             if let Err(failure) = item {

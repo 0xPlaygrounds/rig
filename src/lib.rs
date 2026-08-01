@@ -180,10 +180,10 @@ pub mod prelude {
     pub use crate::tool::Tool;
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentBuilder, AgentClientExt, AgentStream, AgentStreamItem, BindCompletionExt,
-        BoundCompletionRequest, CompletionClientExt, CompletionHandle, EmbedderConfig, PromptError,
-        PromptResponse, ProviderConfig, Runtime, SessionRunner, StructuredOutputError,
-        ToProviderConfig,
+        Agent, AgentBuilder, AgentClientExt, AgentRunStream, AgentStream, AgentStreamItem,
+        BindCompletionExt, BoundCompletionRequest, CompletionClientExt, CompletionHandle,
+        EmbedderConfig, PromptError, PromptResponse, ProviderConfig, Runtime, SessionRunner,
+        StructuredOutputError, ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }

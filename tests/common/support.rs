@@ -5,7 +5,7 @@ use futures::StreamExt;
 use rig::{
     completion::{AssistantContent, PromptError, ToolDefinition},
     embeddings::Embedding,
-    stream::AgentStreamItem,
+    stream::{AgentRunStream, AgentStreamItem},
     streaming::{
         StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
     },
@@ -464,7 +464,7 @@ pub(crate) fn assert_embeddings_nonempty_and_consistent(
 }
 
 pub(crate) async fn collect_stream_final_response(
-    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
+    stream: &mut AgentRunStream,
 ) -> Result<String, PromptError> {
     let mut final_response = None;
 
@@ -478,7 +478,7 @@ pub(crate) async fn collect_stream_final_response(
 }
 
 pub(crate) async fn collect_stream_final_response_and_provider_final(
-    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
+    stream: &mut AgentRunStream,
 ) -> Result<(String, StreamFinal), PromptError> {
     let mut final_response = None;
     let mut provider_final = None;
@@ -588,9 +588,7 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation(
-    stream: &mut (impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin),
-) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(stream: &mut AgentRunStream) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {

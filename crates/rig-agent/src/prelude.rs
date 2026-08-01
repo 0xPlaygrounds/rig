@@ -12,7 +12,7 @@ pub use crate::client::{
 };
 pub use crate::completion::{CompletionError, Message, PromptError, StructuredOutputError};
 pub use crate::provider::{EmbedderConfig, ProviderConfig, Runtime};
-pub use crate::stream::{AgentStream, AgentStreamItem};
+pub use crate::stream::{AgentRunStream, AgentStream, AgentStreamItem};
 pub use crate::tool::{PortableDynamicTool, PortableTool};
 
 pub use rig_core::Embed;

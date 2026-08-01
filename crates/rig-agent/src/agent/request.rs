@@ -32,7 +32,7 @@ use crate::executor::ToolExecutor;
 use crate::hooks::{HookEntry, Hooks};
 use crate::provider::{ProviderConfig, Runtime};
 use crate::session::AgentSession;
-use crate::stream::{AgentStream, AgentStreamItem};
+use crate::stream::{AgentRunStream, AgentStream};
 
 /// One configured agent request. See the [module docs](self).
 #[non_exhaustive]
@@ -346,16 +346,14 @@ impl SessionRunner {
     /// a final response, with this request's hooks dispatched and its
     /// executor answering tool batches.
     ///
-    /// The returned stream is [`Unpin`], so callers can `.next().await` it
-    /// behind a plain `&mut` without pinning it first:
+    /// The concrete [`AgentRunStream`] is pinned internally, so callers can
+    /// use `.next().await` without pinning it first:
     ///
     /// ```ignore
     /// let mut stream = agent.runner(prompt).max_turns(3).stream_run();
     /// while let Some(item) = stream.next().await { /* … */ }
     /// ```
-    pub fn stream_run(
-        self,
-    ) -> impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin {
+    pub fn stream_run(self) -> AgentRunStream {
         let hooks = self.hooks.clone();
         let record_content = self.config.record_telemetry_content;
         let defer_result = !hooks.is_empty();
@@ -367,7 +365,7 @@ impl SessionRunner {
         // Pinned here rather than at every call site. `drive` yields an
         // `async_stream` generator, which is `!Unpin`; boxing it once is what
         // the deleted `StreamingResult` did too, so this is not new cost.
-        Box::pin(self.stream().drive(hooks, executor))
+        AgentRunStream::new(self.stream().drive(hooks, executor))
     }
 }
 

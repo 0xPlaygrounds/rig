@@ -266,11 +266,9 @@ async fn permission_control_streaming_example() -> Result<()> {
 
 /// Local stand-in for the deleted `rig::agent::stream_to_stdout` helper:
 /// drains a streamed agent run to stdout and returns the final response.
-async fn stream_to_stdout<S>(stream: &mut S) -> Result<rig::agent::PromptResponse, std::io::Error>
-where
-    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
-        + Unpin,
-{
+async fn stream_to_stdout(
+    stream: &mut rig::stream::AgentRunStream,
+) -> Result<rig::agent::PromptResponse, std::io::Error> {
     use futures::StreamExt;
     use rig::message::Text;
     use rig::stream::AgentStreamItem;

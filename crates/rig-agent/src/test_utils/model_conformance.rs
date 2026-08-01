@@ -1759,11 +1759,10 @@ where
         .tool(AddTool(calls.clone()))
         .default_max_turns(4)
         .build();
-    let stream = agent
+    let mut stream = agent
         .runner("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
         .stream_run();
-    futures::pin_mut!(stream);
     let mut final_response = None;
     let mut final_count = 0_usize;
     let mut completion_usage = crate::completion::Usage::new();
@@ -2000,11 +1999,10 @@ where
         .tool(AddTool(calls.clone()))
         .default_max_turns(5)
         .build();
-    let stream = agent
+    let mut stream = agent
         .runner("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .max_turns(5)
         .stream_run();
-    futures::pin_mut!(stream);
     let mut final_response = None;
     let mut final_count = 0_usize;
     while let Some(item) = stream.next().await {

@@ -5,7 +5,7 @@
 use futures::StreamExt;
 use rig_agent::agent::{PromptResponse, Text};
 use rig_agent::client::AgentClientExt;
-use rig_agent::stream::AgentStreamItem;
+use rig_agent::stream::{AgentRunStream, AgentStreamItem};
 use rig_agent::streaming::StreamedAssistantContent;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 mod common;
@@ -28,8 +28,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 + 5");
-    let mut stream = agent.runner("Calculate 2 + 5").stream_run();
-    let _ = drain_to_stdout(&mut stream).await?;
+    let stream = agent.runner("Calculate 2 + 5").stream_run();
+    let _ = drain_to_stdout(stream).await?;
     Ok(())
 }
 
@@ -39,12 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
 /// its own drain loop: print assistant text and reasoning deltas as they
 /// arrive, keep the terminal `FinalResponse` for usage/output, and mark a
 /// model-turn retry (text already written to stdout cannot be retracted).
-async fn drain_to_stdout<S>(stream: &mut S) -> anyhow::Result<PromptResponse>
-where
-    S: futures::Stream<
-            Item = Result<rig_agent::stream::AgentStreamItem, rig_agent::completion::PromptError>,
-        > + Unpin,
-{
+async fn drain_to_stdout(mut stream: AgentRunStream) -> anyhow::Result<PromptResponse> {
     let mut final_response = PromptResponse::empty();
     print!("Response: ");
     while let Some(item) = stream.next().await {

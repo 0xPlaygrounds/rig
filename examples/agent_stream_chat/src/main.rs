@@ -1,30 +1,14 @@
-//! Demonstrates `stream_chat` with prior conversation history.
+//! Demonstrates a fully driven streamed run with prior conversation history,
+//! consuming only its committed final response.
 //! Requires `OPENAI_API_KEY`.
-//! Run it to see a streamed continuation of an existing exchange.
+//! Run it to obtain a continuation of an existing exchange.
 
-use anyhow::{Result, anyhow};
-use futures::StreamExt;
+use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai;
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
-
-async fn collect_stream_final_response<S>(stream: &mut S) -> Result<String>
-where
-    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
-        + Unpin,
-{
-    let mut final_response = None;
-
-    while let Some(item) = stream.next().await {
-        if let AgentStreamItem::Final(response) = item? {
-            final_response = Some(response.output().to_owned());
-        }
-    }
-
-    final_response.ok_or_else(|| anyhow!("stream finished without a final response"))
-}
 
 fn sample_history() -> Vec<Message> {
     vec![
@@ -41,9 +25,13 @@ async fn main() -> Result<()> {
         .build();
 
     let history = sample_history();
-    let mut stream = agent.runner(PROMPT).history(&history).stream_run();
-    let response = collect_stream_final_response(&mut stream).await?;
-    println!("{response}");
+    let response = agent
+        .runner(PROMPT)
+        .history(&history)
+        .stream_run()
+        .into_final_response()
+        .await?;
+    println!("{}", response.output());
 
     Ok(())
 }

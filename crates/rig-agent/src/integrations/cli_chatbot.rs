@@ -78,13 +78,12 @@ impl ChatBot {
         prompt: &str,
         history: &mut Vec<Message>,
     ) -> Result<String, PromptError> {
-        let response_stream = self
+        let mut response_stream = self
             .agent
             .runner(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
             .stream_run();
-        futures::pin_mut!(response_stream);
 
         let mut acc = String::new();
         let mut messages = None;

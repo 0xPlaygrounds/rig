@@ -251,11 +251,9 @@ struct ConcurrentToolObservation {
     events: Vec<&'static str>,
 }
 
-async fn collect_concurrent_tool_observation<S>(stream: &mut S) -> ConcurrentToolObservation
-where
-    S: futures::Stream<Item = Result<rig::stream::AgentStreamItem, rig::completion::PromptError>>
-        + Unpin,
-{
+async fn collect_concurrent_tool_observation(
+    stream: &mut rig::stream::AgentRunStream,
+) -> ConcurrentToolObservation {
     let mut observation = ConcurrentToolObservation::default();
     let mut tool_names_by_id = HashMap::new();
 

@@ -38,6 +38,10 @@ pub enum PromptError {
         reason: String,
     },
 
+    /// A fully driven stream ended without yielding its committed response.
+    #[error("AgentRunStream ended without a final response")]
+    StreamEndedWithoutFinalResponse,
+
     /// The model attempted to call a tool unavailable for the current turn.
     #[error(
         "UnknownToolCall: model attempted to call unknown or disallowed tool `{tool_name}`. Available tools: {available_tools:?}. Allowed tools for this turn: {allowed_tools:?}"
