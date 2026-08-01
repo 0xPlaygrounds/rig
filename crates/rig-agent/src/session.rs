@@ -4,12 +4,29 @@
 //! drives the sans-IO [`AgentRun`] protocol: [`AgentSession::advance`] runs
 //! until the next event the [`SessionPolicy`] surfaces, and every decision
 //! flows back in as a plain value through a decision inbox — a `match` in
-//! the host's loop replaces callback registration. The whole session except
-//! its [`Runtime`] handle is serializable between events. One caveat:
-//! [`SessionEvent::BeforeModelCall`] is not a durable suspension point — a
-//! run serialized there (or while any model call was in flight) is resumed
-//! by [`AgentSession::resume`] re-issuing the model call from the pre-call
-//! state, so the call is re-prepared rather than picked up mid-flight.
+//! the host's loop replaces callback registration.
+//!
+//! # What persists between events
+//!
+//! [`AgentRun`] is the serializable unit, not the session: serialize
+//! [`AgentSession::run_state`], and rebuild a session around the
+//! deserialized run with [`AgentSession::resume`]. Two things do not survive
+//! that round trip, both by construction rather than oversight:
+//!
+//! - **In-flight host decisions.** Tool-call and tool-result gate state
+//!   (arguments already rewritten, calls already skipped, results already
+//!   decided) lives in the session, not the run. A session serialized
+//!   mid-gate resumes with those gates empty; the run re-surfaces the same
+//!   calls and the host decides again. Idempotent, but *not* a checkpoint —
+//!   a host whose decisions have side effects should drive each gate to
+//!   completion before serializing.
+//! - **In-flight model calls.** [`SessionEvent::BeforeModelCall`] is not a
+//!   durable suspension point: a run serialized there (or while any model
+//!   call was in flight) is resumed by re-issuing the call from the pre-call
+//!   state, so it is re-prepared rather than picked up mid-flight.
+//!
+//! A run suspended on an invalid tool-call decision *is* recovered — `resume`
+//! re-derives it from the run and re-surfaces the event.
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -304,13 +321,26 @@ impl AgentSession {
     /// Resume a suspended run: pair a deserialized [`AgentRun`] with its
     /// configuration and a fresh runtime. The run re-emits its pending step
     /// idempotently ([`AgentRun::next_step`] semantics), so a process can
-    /// serialize mid-tools and pick up exactly where it left off.
+    /// serialize mid-tools and pick up where it left off.
     ///
-    /// A run suspended on an invalid tool-call decision re-derives its
-    /// pending context: the next [`AgentSession::advance`] re-surfaces
-    /// [`SessionEvent::InvalidToolCall`] for [`AgentSession::resolve_invalid`].
-    /// A run serialized while a model call was in flight (for example after
-    /// a transient provider error) recovers by re-issuing that call.
+    /// The new session starts with default `tools` and `policy` — reattach
+    /// them with [`Self::with_tools`] / [`Self::with_policy`], since neither
+    /// is carried by the run.
+    ///
+    /// Recovered from the run:
+    ///
+    /// - A run suspended on an invalid tool-call decision re-derives its
+    ///   pending context; the next [`AgentSession::advance`] re-surfaces
+    ///   [`SessionEvent::InvalidToolCall`] for
+    ///   [`AgentSession::resolve_invalid`].
+    /// - A run serialized while a model call was in flight (for example after
+    ///   a transient provider error) recovers by re-issuing that call.
+    ///
+    /// **Not** recovered, because the run does not carry it: gate state for
+    /// [`SessionEvent::ToolCallPending`] and [`SessionEvent::ToolResultReady`]
+    /// (rewrites, skips, and results the host had already supplied), along
+    /// with `last_response` and the in-flight telemetry spans. Those gates
+    /// restart and re-surface their calls. See the [module docs](self).
     pub fn resume(
         config: AgentConfig,
         provider: ProviderConfig,

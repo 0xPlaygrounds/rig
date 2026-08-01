@@ -651,7 +651,7 @@ impl CompletionRequestBuilder {
     }
 
     /// Sets the preamble, canonicalized at [`Self::build`] into a leading
-    /// [`Message::System`] rather than the legacy `preamble` field.
+    /// [`Message::System`] — the one representation of system instructions.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
         self.preamble = Some(preamble.into());
         self
@@ -823,9 +823,9 @@ impl CompletionRequestBuilder {
 
     /// Builds the concrete [`CompletionRequest`].
     ///
-    /// Any preamble becomes a leading [`Message::System`] and the request's
-    /// legacy `preamble` field stays `None`; history keeps its order with the
-    /// prompt last; provider tools merge into `additional_params.tools`.
+    /// Any preamble becomes a leading [`Message::System`]; history keeps its
+    /// order with the prompt last; provider tools merge into
+    /// `additional_params.tools`.
     pub fn build(self) -> CompletionRequest {
         let mut chat_history = self.chat_history;
         let prompt = self.prompt;

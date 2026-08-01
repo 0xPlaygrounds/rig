@@ -56,13 +56,13 @@ pub fn create_request_body(
         Some(generation_config)
     };
 
-    // Every canonical system message, joined in order. The old `.or_else`
-    // preferred a scalar preamble and *discarded* history system messages;
-    // with one representation there is nothing left to prefer, so the
-    // data-loss path is gone by construction.
-    // Canonical system messages are the only source. There is deliberately no
-    // input-side `additional_params.system_instruction` channel: a second way
-    // to say the same thing is what the `.or_else` data-loss bug grew out of.
+    // Every canonical system message, joined in order — the only source.
+    // The old `.or_else` preferred a scalar preamble and *discarded* history
+    // system messages; with one representation there is nothing left to
+    // prefer, so that data-loss path is gone by construction. For the same
+    // reason there is deliberately no input-side
+    // `additional_params.system_instruction` channel: a second way to say the
+    // same thing is what the bug grew out of.
     let system_instruction = (!history_system.is_empty()).then(|| history_system.join("\n\n"));
 
     let mut tools = Vec::new();

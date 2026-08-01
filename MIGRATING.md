@@ -293,10 +293,12 @@ function; that terminal is deliberately *not* restored.
 `CompletionRequestBuilder` returns via `CompletionRequest::builder(prompt)`:
 
 ```rust
-// verbose form (still supported)
+// verbose form (still supported): the preamble is a leading system message
+let mut history = history;
+history.insert(0, Message::system("Be concise."));
 let request = CompletionRequest {
     temperature: Some(0.5),
-    ..CompletionRequest::with_history(Some("Be concise."), history, "Who are you?")
+    ..CompletionRequest::with_history(history, "Who are you?")
 };
 
 // fluent form
@@ -308,31 +310,27 @@ let request = CompletionRequest::builder("Who are you?")
 let response = openai::functions::complete(&cfg, &rt, request).await?;
 ```
 
-**The two forms are interchangeable.** The builder canonicalizes `preamble`
-into a leading `Message::System` and leaves the legacy `request.preamble` field
-`None`, while `CompletionRequest::with_history(Some(..), ..)` populates that
-field instead — but every provider consumes both and renders them identically.
-The pattern is the same everywhere: the preamble is emitted first, then system
-messages lifted out of the history are appended.
+**The two forms are interchangeable**, because there is now only one
+representation to produce: `.preamble(..)` is a convenience that inserts a
+leading `Message::System` at `build()` time, which is exactly what the verbose
+form writes by hand. The scalar `CompletionRequest::preamble` field is gone; a
+`Message::System` in `chat_history` is the only way to say it.
 
-Verified provider by provider — Anthropic (`system` array + `history_system`),
-OpenAI chat and Responses, Gemini `generateContent`, Cohere, Ollama,
-OpenRouter, xAI, and Bedrock all agree. The equivalence is pinned by
-`system_instruction_forms_produce_identical_request_bodies` in
-`providers/openai/functions.rs`, and the recorded provider suites replay
-byte-identically across both forms.
+Every provider renders that leading system message the same way it always
+rendered a preamble: emitted first, then system messages lifted out of the rest
+of the history. Verified provider by provider — Anthropic (`system` array +
+`history_system`), OpenAI chat and Responses, Gemini `generateContent`, Cohere,
+Ollama, OpenRouter, xAI, and Bedrock all agree — with a placement conversion
+test per provider outside the replay claim (for example
+`system_messages_land_in_system_instruction_not_contents` in
+`rig-vertexai` and `rig-gemini-grpc`), and the recorded provider suites replay
+byte-identically.
 
-One caveat worth knowing if you set a preamble **and** put a `Message::System`
-in the history: Gemini's Interactions API takes the preamble and *discards* the
-history system messages (`gemini/interactions_api/mod.rs:59` uses `.or_else`,
-where every other provider appends both). Supplying system instructions through
-exactly one channel — which the builder enforces — avoids the question
-entirely.
-
-An earlier revision of this guide claimed these forms could not be swapped.
-That was wrong: it came from a grep that missed providers destructuring the
-field (`let CoreCompletionRequest { preamble, .. } = req`) and counted
-providers that touch `preamble` only when building a telemetry span.
+Collapsing to one representation also closed a data-loss bug: Gemini's
+Interactions API used to prefer a scalar preamble and *discard* the history
+system messages (an `.or_else` where every other provider appended both). With
+nothing left to prefer, that path is gone by construction — every canonical
+system message is joined in order.
 
 `additional_params` **merges** into whatever is already set;
 `additional_params_opt` replaces (and clears with `None`).
