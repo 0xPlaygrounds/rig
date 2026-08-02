@@ -978,6 +978,7 @@ impl GetTokenUsage for ResponsesUsage {
                 .as_ref()
                 .map(|details| details.reasoning_tokens)
                 .unwrap_or(0),
+        cost: None,
         }
     }
 }

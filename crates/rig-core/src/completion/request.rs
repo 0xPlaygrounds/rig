@@ -254,7 +254,7 @@ where
 
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
     /// The number of input ("prompt") tokens used in a given request.
     pub input_tokens: u64,
@@ -272,6 +272,9 @@ pub struct Usage {
     /// The number of tokens spent on internal reasoning / "thoughts" by reasoning-capable
     /// models (e.g. Gemini thinking, Anthropic extended thinking, OpenAI o-series).
     pub reasoning_tokens: u64,
+    /// Provider-reported request cost (USD), if the provider supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 impl Usage {
@@ -285,6 +288,7 @@ impl Usage {
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
+            cost: None,
         }
     }
 
@@ -303,6 +307,8 @@ impl Default for Usage {
     }
 }
 
+impl Eq for Usage {}
+
 impl Add for Usage {
     type Output = Self;
 
@@ -316,6 +322,7 @@ impl Add for Usage {
                 + other.cache_creation_input_tokens,
             tool_use_prompt_tokens: self.tool_use_prompt_tokens + other.tool_use_prompt_tokens,
             reasoning_tokens: self.reasoning_tokens + other.reasoning_tokens,
+            cost: self.cost.or(other.cost),
         }
     }
 }
@@ -329,6 +336,9 @@ impl AddAssign for Usage {
         self.cache_creation_input_tokens += other.cache_creation_input_tokens;
         self.tool_use_prompt_tokens += other.tool_use_prompt_tokens;
         self.reasoning_tokens += other.reasoning_tokens;
+        if self.cost.is_none() {
+            self.cost = other.cost;
+        }
     }
 }
 

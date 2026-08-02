@@ -683,6 +683,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse<ChatComp
                 cache_creation_input_tokens: 0,
                 tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
+            cost: None,
             })
             .unwrap_or_default();
 
@@ -1596,6 +1597,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                 data.id,
                 data.model,
                 data.usage,
+                None,
                 &data.choices,
                 |choice| CompatibleChoiceData {
                     finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
@@ -1614,9 +1616,10 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(&self, usage: Self::Usage, cost: Option<f64>) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
+            cost,
         })
     }
 

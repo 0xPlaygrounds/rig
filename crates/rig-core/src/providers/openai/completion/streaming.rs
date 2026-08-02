@@ -109,6 +109,27 @@ struct StreamingCompletionChunk<U = Usage> {
     model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<U>,
+    /// Some gateways report cost as a string, others as a number.
+    #[serde(default, deserialize_with = "deserialize_cost")]
+    cost: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CostValue {
+    Number(f64),
+    String(String),
+}
+
+fn deserialize_cost<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match Option::<CostValue>::deserialize(deserializer)? {
+        Some(CostValue::Number(n)) => Some(n),
+        Some(CostValue::String(s)) => s.trim().parse().ok(),
+        None => None,
+    })
 }
 
 /// Final streaming response. `U` is the provider's streaming usage payload
@@ -118,6 +139,9 @@ struct StreamingCompletionChunk<U = Usage> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     pub usage: U,
+    /// Provider-reported request cost (USD), when the provider supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 impl<U> GetTokenUsage for StreamingCompletionResponse<U>
@@ -125,7 +149,9 @@ where
     U: GetTokenUsage,
 {
     fn token_usage(&self) -> crate::completion::Usage {
-        self.usage.token_usage()
+        let mut usage = self.usage.token_usage();
+        usage.cost = self.cost;
+        usage
     }
 }
 
@@ -271,6 +297,7 @@ where
                 data.id,
                 data.model,
                 data.usage,
+                data.cost,
                 &data.choices,
                 |choice| CompatibleChoiceData {
                     // `function_call` is the deprecated pre-tools finish reason
@@ -297,8 +324,8 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(&self, usage: Self::Usage, cost: Option<f64>) -> Self::FinalResponse {
+        StreamingCompletionResponse { usage, cost }
     }
 
     fn decorate_tool_call(
@@ -577,6 +604,61 @@ mod tests {
                 .unwrap(),
             "ation\":\"NYC\"}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_streaming_captures_provider_reported_cost() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // OpenCode Go emits a final usage chunk followed by a dedicated
+        // `inference-cost` chunk carrying `cost` as a string.
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}",
+                "{\"choices\":[],\"cost\":\"0.00006972\"}",
+                "[DONE]",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut final_response = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                final_response = Some(res);
+                break;
+            }
+        }
+
+        let response = final_response.expect("expected a final streaming response");
+        assert_eq!(response.cost, Some(0.00006972));
+        assert_eq!(response.token_usage().cost, Some(0.00006972));
+        assert_eq!(response.token_usage().input_tokens, 10);
+    }
+
+    #[test]
+    fn test_streaming_chunk_parses_cost_string_or_number() {
+        let chunk: StreamingCompletionChunk =
+            serde_json::from_str(r#"{"choices":[],"cost":"0.00006972"}"#).unwrap();
+        assert_eq!(chunk.cost, Some(0.00006972));
+
+        let chunk: StreamingCompletionChunk =
+            serde_json::from_str(r#"{"choices":[],"cost":0.001}"#).unwrap();
+        assert_eq!(chunk.cost, Some(0.001));
+
+        let chunk: StreamingCompletionChunk =
+            serde_json::from_str(r#"{"choices":[],"usage":null}"#).unwrap();
+        assert_eq!(chunk.cost, None);
     }
 
     #[tokio::test]
