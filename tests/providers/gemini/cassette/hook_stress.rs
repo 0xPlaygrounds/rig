@@ -22,7 +22,6 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use futures::StreamExt;
 use rig::agent::{
     CompletionCallAction, ModelTurnAction, ObservationAction, RequestPatch, ToolCallAction,
     ToolResultAction,

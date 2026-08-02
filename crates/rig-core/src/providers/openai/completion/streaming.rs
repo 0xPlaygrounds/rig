@@ -178,9 +178,7 @@ mod tests {
     /// The sans-IO half of `functions::open_stream`: same
     /// `drive_compatible_stream` + `STREAM_DIALECT`, with the transport edge
     /// (`boxed_event_source`) fed a canned event source instead of a live one.
-    fn drive_openai_sse(
-        sse_bytes: impl Into<bytes::Bytes>,
-    ) -> streaming::StreamingCompletionResponse {
+    fn drive_openai_sse(sse_bytes: impl Into<bytes::Bytes>) -> streaming::CompletionStream {
         let client = MockStreamingClient {
             sse_bytes: sse_bytes.into(),
         };
@@ -435,8 +433,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_usage_only_chunk_is_not_ignored() {
-        use futures::StreamExt;
-
         // Some providers emit a final "usage-only" chunk where `choices` is empty.
         let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}",
@@ -459,8 +455,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
-        use futures::StreamExt;
-
         let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
             "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"think \",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
             "{\"id\":\"cmpl-1\",\"model\":\"Qwen/Qwen3-4B\",\"choices\":[{\"delta\":{\"reasoning_content\":\"more\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}",
@@ -501,8 +495,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_cached_input_tokens_populated() {
-        use futures::StreamExt;
-
         // Usage chunk includes prompt_tokens_details with cached_tokens.
         let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"content\":\"Hi\",\"tool_calls\":[]}}],\"usage\":null}",
@@ -533,8 +525,6 @@ mod tests {
     /// the fix, rig merges both calls into one corrupted entry.
     #[tokio::test]
     async fn test_duplicate_index_different_id_tool_calls() {
-        use futures::StreamExt;
-
         // Simulate a gateway that sends two tool calls both at index 0.
         // First tool call: id="call_aaa", name="command", args={"cmd":"ls"}
         // Second tool call: id="call_bbb", name="git", args={"action":"log"}
@@ -584,8 +574,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_call_id_chunk_without_function_is_preserved() {
-        use futures::StreamExt;
-
         let mut stream = drive_openai_sse(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_abc123\"}]},\"finish_reason\":null}],\"usage\":null}",
             "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":null,\"function\":{\"name\":\"lookup\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
@@ -624,8 +612,6 @@ mod tests {
     /// yielding incomplete fragments as "completed" tool calls.
     #[tokio::test]
     async fn test_unique_id_per_chunk_single_tool_call() {
-        use futures::StreamExt;
-
         // Each chunk carries a different id but they all represent delta
         // fragments of the SAME tool call at index 0.
         let mut stream = drive_openai_sse(sse_bytes_from_data_lines([

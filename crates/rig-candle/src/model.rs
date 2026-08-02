@@ -83,7 +83,7 @@ use futures::Stream;
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse};
+use rig_core::streaming::{CompletionStream, RawStreamingChoice, StreamFinal};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -271,7 +271,7 @@ impl CandleModel {
     pub async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<CompletionStream, CompletionError> {
         open_stream_request(self, request).await
     }
 }
@@ -493,7 +493,7 @@ pub(crate) async fn complete_request(
 pub(crate) async fn open_stream_request(
     model: &CandleModel,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     {
         let loaded = &model.loaded;
 
@@ -526,7 +526,7 @@ pub(crate) async fn open_stream_request(
                 cancellation,
             };
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(CompletionStream::from_stream(stream))
         }
 
         #[cfg(target_family = "wasm")]
@@ -540,7 +540,7 @@ pub(crate) async fn open_stream_request(
                 .with_finish_reason(response.finish_reason.normalized());
             events.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
             let stream = futures::stream::iter(events);
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(CompletionStream::from_stream(stream))
         }
     }
 }

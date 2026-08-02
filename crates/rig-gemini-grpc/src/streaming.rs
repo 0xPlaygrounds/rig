@@ -18,7 +18,7 @@ pub(crate) async fn stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<streaming::CompletionStream, CompletionError> {
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
@@ -123,7 +123,7 @@ pub(crate) async fn stream(
         yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(stream))
+    Ok(streaming::CompletionStream::from_stream(stream))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

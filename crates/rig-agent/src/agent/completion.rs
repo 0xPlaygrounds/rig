@@ -627,14 +627,11 @@ impl Agent {
     /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
     ///
     /// The concrete [`AgentRunStream`] is pinned internally, so callers can
-    /// use `.next().await` without pinning it first.
+    /// use its inherent `.next().await` without importing `StreamExt` or
+    /// pinning it first.
     pub fn stream_run(&self, prompt: impl Into<Message> + WasmCompatSend) -> AgentRunStream {
-        // See `SessionRunner::stream_run`: pinned once here instead of at
-        // every call site.
-        AgentRunStream::new(
-            self.stream_prompt(prompt)
-                .drive(self.hooks.clone(), self.telemetry_aware_executor()),
-        )
+        self.stream_prompt(prompt)
+            .drive(self.hooks.clone(), self.telemetry_aware_executor())
     }
 
     /// Resolve the provider-facing tool definitions registered on the agent.

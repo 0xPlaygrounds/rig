@@ -13,7 +13,6 @@ use crate::{
     stream::AgentStreamItem,
     streaming::StreamedAssistantContent,
 };
-use futures::StreamExt;
 use std::io::{self, Write};
 
 /// Builder for a [`ChatBot`].

@@ -20,7 +20,6 @@
 //! `OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run --example openai_streaming_per_call_usage`
 
 use anyhow::{Result, anyhow};
-use futures::StreamExt;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;

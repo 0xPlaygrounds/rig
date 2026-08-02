@@ -34,7 +34,7 @@ use crate::completion::{Message, PromptError, Usage};
 use rig_core::OneOrMany;
 use rig_core::message::{AssistantContent, ToolCall, UserContent};
 use rig_core::streaming::{
-    StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
+    CompletionStream, StreamFinal, StreamedAssistantContent, StreamedUserContent,
 };
 use tracing_futures::Instrument;
 
@@ -133,35 +133,45 @@ pub enum AgentStreamItem {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-type BoxedAgentRunStream =
+type ErasedAgentRunStream =
     Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + Send + 'static>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-type BoxedAgentRunStream =
+type ErasedAgentRunStream =
     Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + 'static>>;
 
 /// A fully driven agent run exposed as a stream of owned observation events.
 ///
 /// Unlike the host-driven [`AgentStream`], this stream dispatches hooks and
 /// executes tools for the caller. It is already pinned internally, so callers
-/// can use [`StreamExt::next`] directly without pinning it or naming an
-/// `Unpin` bound.
+/// can use [`Self::next`] without importing [`StreamExt`], pinning it, or naming
+/// an `Unpin` bound. It remains a [`Stream`] for combinator interoperability.
 ///
 /// Call [`AgentRunStream::into_final_response`] when intermediate events are
 /// not needed and only the committed terminal response matters.
 #[must_use = "streams do nothing unless polled"]
 pub struct AgentRunStream {
-    inner: BoxedAgentRunStream,
+    inner: ErasedAgentRunStream,
 }
 
 impl AgentRunStream {
-    pub(crate) fn new<S>(stream: S) -> Self
+    fn new<S>(stream: S) -> Self
     where
         S: Stream<Item = Result<AgentStreamItem, PromptError>> + WasmCompatSend + 'static,
     {
         Self {
             inner: Box::pin(stream),
         }
+    }
+
+    /// Pull the next observation without requiring [`StreamExt`] or caller
+    /// pinning.
+    ///
+    /// The suspended generator remains stored in this handle when the
+    /// temporary future returned here is dropped, so an in-flight hook or tool
+    /// operation resumes on the next poll instead of being reconstructed.
+    pub async fn next(&mut self) -> Option<Result<AgentStreamItem, PromptError>> {
+        StreamExt::next(&mut self.inner).await
     }
 
     /// Consume the stream and return its committed terminal response.
@@ -190,9 +200,33 @@ impl Stream for AgentRunStream {
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[allow(dead_code)]
+fn _assert_agent_run_stream_is_send() {
+    fn assert_send<T: Send>() {}
+
+    assert_send::<AgentRunStream>();
+}
+
+// Browser-wasm execution may retain worker-local JavaScript state inside the
+// suspended generator. This lives in ordinary module code because wasm CI runs
+// `cargo check`, which does not compile `#[cfg(test)]` modules.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[allow(dead_code)]
+fn _assert_agent_run_stream_accepts_worker_local_generator() {
+    let worker_local = std::rc::Rc::new(());
+    let stream = futures::stream::once(async move {
+        std::future::pending::<()>().await;
+        drop(worker_local);
+        Ok(AgentStreamItem::Final(PromptResponse::empty()))
+    });
+
+    let _stream = AgentRunStream::new(stream);
+}
+
 /// The in-flight provider stream plus its sans-IO assembler.
 struct ActiveTurn {
-    stream: StreamingCompletionResponse,
+    stream: CompletionStream,
     assembler: StreamedTurnAssembler,
     turn: usize,
     /// The per-call `chat_streaming` span the provider stream is polled
@@ -618,7 +652,7 @@ impl AgentStream {
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             let partial = active
                                 .assembler
-                                .partial_turn(active.stream.message_id.clone());
+                                .partial_turn(active.stream.message_id().map(str::to_owned));
                             let context = self
                                 .run
                                 .streamed_invalid_tool_call_context(&partial, &invalid);
@@ -666,7 +700,8 @@ impl AgentStream {
                     chat_span,
                     provider_final_seen: _,
                 } = active;
-                let streamed = assembler.finish(stream.message_id.clone(), &stream.choice);
+                let streamed =
+                    assembler.finish(stream.message_id().map(str::to_owned), stream.choice());
                 // Exactly one CompletionCall item per model call: when the
                 // provider never yielded a terminal record, `streamed_turn`
                 // records the no-usage fallback and the item is surfaced here.
@@ -1229,10 +1264,10 @@ impl AgentStream {
         mut self,
         hooks: crate::hooks::Hooks,
         executor: Option<crate::executor::ToolExecutor>,
-    ) -> impl futures::Stream<Item = Result<AgentStreamItem, PromptError>> {
+    ) -> AgentRunStream {
         // Only entries that opted in observe the hot-path deltas.
         let observes_deltas = hooks.observes_deltas();
-        async_stream::stream! {
+        AgentRunStream::new(async_stream::stream! {
             // The turn prompt surfaced on `BeforeModelCall`, replayed into the
             // response-finish observation (classic parity).
             let mut turn_prompt: Option<Message> = None;
@@ -1433,7 +1468,7 @@ impl AgentStream {
                     other => yield Ok(other),
                 }
             }
-        }
+        })
     }
 }
 
@@ -1468,17 +1503,21 @@ mod tests {
         assert_send::<AgentRunStream>();
     }
 
-    #[tokio::test]
-    async fn agent_run_stream_can_be_polled_without_caller_pinning() {
-        let mut stream = AgentRunStream::new(futures::stream::iter([Ok(
-            AgentStreamItem::ModelTurnRetried { turn: 2 },
-        )]));
+    mod inherent_next_without_stream_ext {
+        use crate::stream::{AgentRunStream, AgentStreamItem};
 
-        assert!(matches!(
-            stream.next().await,
-            Some(Ok(AgentStreamItem::ModelTurnRetried { turn: 2 }))
-        ));
-        assert!(stream.next().await.is_none());
+        #[tokio::test]
+        async fn polls_without_the_extension_trait_or_caller_pinning() {
+            let mut stream = AgentRunStream::new(futures::stream::iter([Ok(
+                AgentStreamItem::ModelTurnRetried { turn: 2 },
+            )]));
+
+            assert!(matches!(
+                stream.next().await,
+                Some(Ok(AgentStreamItem::ModelTurnRetried { turn: 2 }))
+            ));
+            assert!(stream.next().await.is_none());
+        }
     }
 
     #[tokio::test]
@@ -1820,7 +1859,7 @@ mod migrated_streaming_tests {
     use serde::Deserialize;
     use serde_json::json;
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
     use std::time::Duration;
 
     // ---------- scripting helpers ----------
@@ -1836,6 +1875,103 @@ mod migrated_streaming_tests {
 
         let agent = agent_builder(script(Vec::new())).build();
         let _: AgentRunStream = agent.runner("go").stream_run();
+    }
+
+    #[tokio::test]
+    async fn driven_stream_is_exhausted_after_its_final_response() {
+        let agent = agent_builder(script(vec![vec![text_item("done"), final_tokens(1)]])).build();
+        let mut stream = agent.stream_run("go");
+
+        loop {
+            match stream.next().await {
+                Some(Ok(AgentStreamItem::Final(response))) => {
+                    assert_eq!(response.output, "done");
+                    break;
+                }
+                Some(Ok(_)) => {}
+                Some(Err(error)) => panic!("driven run failed before its final response: {error}"),
+                None => panic!("driven run ended without a final response"),
+            }
+        }
+
+        assert!(stream.next().await.is_none());
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn driven_stream_is_exhausted_after_its_terminal_error() {
+        let agent = agent_builder(script(Vec::new()))
+            .add_hook(stop_before_completion_entry())
+            .build();
+        let mut stream = agent.stream_run("go");
+
+        loop {
+            match stream.next().await {
+                Some(Err(PromptError::PromptCancelled { reason, .. })) => {
+                    assert_eq!(reason, "agent streaming stopped");
+                    break;
+                }
+                Some(Err(error)) => panic!("unexpected terminal error: {error}"),
+                Some(Ok(AgentStreamItem::Final(_))) => {
+                    panic!("driven run completed instead of yielding its hook error")
+                }
+                Some(Ok(_)) => {}
+                None => panic!("driven run ended without its hook error"),
+            }
+        }
+
+        assert!(stream.next().await.is_none());
+        assert!(stream.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn dropping_next_preserves_the_in_flight_hook_future() {
+        let invocations = Arc::new(AtomicUsize::new(0));
+        let polls = Arc::new(AtomicUsize::new(0));
+        let hook_invocations = Arc::clone(&invocations);
+        let hook_polls = Arc::clone(&polls);
+        let hook = HookEntry::new("pending-once", move |event| {
+            let targeted = matches!(event, HookEvent::BeforeModelCall { .. });
+            if targeted {
+                hook_invocations.fetch_add(1, Ordering::SeqCst);
+            }
+            let hook_polls = Arc::clone(&hook_polls);
+            let mut pending_once = targeted;
+            futures::future::poll_fn(move |cx| {
+                if pending_once {
+                    pending_once = false;
+                    hook_polls.fetch_add(1, Ordering::SeqCst);
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    if targeted {
+                        hook_polls.fetch_add(1, Ordering::SeqCst);
+                    }
+                    Poll::Ready(HookDecision::Continue)
+                }
+            })
+        });
+        let agent = agent_builder(script(vec![vec![text_item("done"), final_tokens(1)]]))
+            .add_hook(hook)
+            .build();
+        let mut stream = agent.stream_run("go");
+
+        {
+            let next = stream.next();
+            futures::pin_mut!(next);
+            assert!(futures::poll!(next).is_pending());
+        }
+
+        let mut finals = 0;
+        while let Some(item) = stream.next().await {
+            if matches!(item.expect("driven item"), AgentStreamItem::Final(_)) {
+                finals += 1;
+            }
+        }
+
+        assert_eq!(invocations.load(Ordering::SeqCst), 1);
+        assert_eq!(polls.load(Ordering::SeqCst), 2);
+        assert_eq!(finals, 1);
     }
 
     fn text_item(text: &str) -> StreamedAssistantContent {

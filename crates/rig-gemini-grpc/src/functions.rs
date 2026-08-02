@@ -9,7 +9,7 @@
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 use serde::{Deserialize, Serialize};
 use tonic::transport::{ClientTlsConfig, Endpoint};
 
@@ -147,7 +147,7 @@ pub async fn open_stream(
     client: &Client,
     model: &str,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     crate::streaming::stream(client.clone(), model.to_string(), request).await
 }
 

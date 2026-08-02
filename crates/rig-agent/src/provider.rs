@@ -21,7 +21,7 @@ use rig_core::completion::{CompletionError, CompletionRequest, CompletionRespons
 use rig_core::embeddings::EmbeddingError;
 use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::descriptor::ProviderDescriptor;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 
 /// One row per bundled in-core provider: `(Variant, module, feature-less)`.
 /// Adding a provider is one row here plus its `functions` module; the
@@ -196,7 +196,7 @@ macro_rules! define_provider_config {
             provider: &ProviderConfig,
             rt: &Runtime,
             request: CompletionRequest,
-        ) -> Result<StreamingCompletionResponse, CompletionError> {
+        ) -> Result<CompletionStream, CompletionError> {
             match provider {
                 $(
                     ProviderConfig::$variant(cfg) => {
@@ -879,7 +879,7 @@ impl MockScript {
     fn next_stream(
         &self,
         request: &CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<CompletionStream, CompletionError> {
         use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal};
 
         let index = self.record_call(request);
@@ -1008,7 +1008,7 @@ impl MockScript {
             items.push(RawStreamingChoice::FinalResponse(final_record));
             items
         };
-        Ok(StreamingCompletionResponse::stream(futures::stream::iter(
+        Ok(CompletionStream::from_stream(futures::stream::iter(
             items.into_iter().map(Ok),
         )))
     }

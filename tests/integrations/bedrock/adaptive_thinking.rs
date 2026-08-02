@@ -1,6 +1,5 @@
 //! Live Bedrock Anthropic adaptive-thinking regression tests.
 
-use futures::StreamExt;
 use rig::agent::AgentBuilder;
 use rig::completion::CompletionRequest;
 use rig::streaming::StreamedAssistantContent;

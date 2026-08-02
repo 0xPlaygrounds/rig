@@ -28,7 +28,6 @@ use std::{
     time::Duration,
 };
 
-use futures::StreamExt;
 use rig_agent::agent::{
     AgentConfig, AgentRun, AgentRunStep, ModelTurn, OutputMode, RequestPatch, ToolCatalog,
     prepare_request,

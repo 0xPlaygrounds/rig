@@ -12,7 +12,6 @@
 //! matching the official Gemini Deep Research examples.
 
 use anyhow::Result;
-use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::prelude::*;
 use rig::providers::gemini::interactions_api::{

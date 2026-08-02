@@ -11,7 +11,7 @@ use rig_core::completion::{
     Message, ProviderToolDefinition, ToolDefinition,
 };
 use rig_core::message::ToolChoice;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 
 use crate::AgentBuilder;
 use crate::provider::{self, ProviderConfig, Runtime};
@@ -89,7 +89,7 @@ impl CompletionHandle {
     pub async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<CompletionStream, CompletionError> {
         provider::open_stream(&self.provider, &self.runtime, request).await
     }
 
@@ -275,7 +275,7 @@ impl BoundCompletionRequest {
     }
 
     /// Open a normalized streaming completion through the bundled dispatcher.
-    pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
+    pub async fn stream(self) -> Result<CompletionStream, CompletionError> {
         let request = self.builder.build();
         provider::open_stream(&self.target.provider, &self.target.runtime, request).await
     }

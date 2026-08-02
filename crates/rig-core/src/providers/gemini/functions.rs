@@ -189,7 +189,7 @@ pub async fn open_stream(
     cfg: &Config,
     rt: &HttpRuntime,
     request: CompletionRequest,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<crate::streaming::CompletionStream, CompletionError> {
     let model = resolve_request_model(&cfg.model, &request);
     // `gcp.gemini` is the OTel `gen_ai.provider.name` value the deleted
     // `CompletionModel::stream` recorded; `DESCRIPTOR.name` ("gemini") is the
@@ -201,7 +201,7 @@ pub async fn open_stream(
         &request,
     );
     let req = build_request(cfg, &request, true)?;
-    Ok(crate::streaming::StreamingCompletionResponse::stream(
+    Ok(crate::streaming::CompletionStream::from_stream(
         super::streaming::generate_content_stream(rt.sse_events(req, false), span),
     ))
 }
@@ -683,7 +683,6 @@ mod tests {
 #[cfg(test)]
 mod telemetry_tests {
     use super::*;
-    use futures::StreamExt;
     use std::io;
     use std::sync::{Arc, Mutex};
 

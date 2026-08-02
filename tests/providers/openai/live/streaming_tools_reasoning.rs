@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use rig::AgentBuilder;
 use rig::{completion::Message, providers::openai};
 use rig_agent::test_utils::MockExampleTool;

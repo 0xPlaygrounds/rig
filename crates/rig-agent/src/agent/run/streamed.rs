@@ -636,7 +636,7 @@ impl StreamedTurnAssembler {
 
     /// Assemble the completed turn. `final_choice` is the provider's
     /// aggregated choice for the turn
-    /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
+    /// ([`crate::streaming::CompletionStream::choice`]).
     pub fn finish(
         self,
         message_id: Option<String>,

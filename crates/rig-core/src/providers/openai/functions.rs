@@ -176,14 +176,14 @@ pub fn parse_response(
 
 /// Open a streaming completion for `request`.
 ///
-/// Returns the concrete [`crate::streaming::StreamingCompletionResponse`];
+/// Returns the concrete [`crate::streaming::CompletionStream`];
 /// items terminate with the normalized
 /// [`StreamFinal`](crate::streaming::StreamFinal).
 pub async fn open_stream(
     cfg: &Config,
     rt: &HttpRuntime,
     request: CompletionRequest,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<crate::streaming::CompletionStream, CompletionError> {
     let req = build_request(cfg, &request, true)?;
     Ok(compatible_open_stream(rt, req, STREAM_DIALECT))
 }
@@ -846,7 +846,7 @@ pub(crate) fn compatible_open_stream(
     rt: &HttpRuntime,
     req: http::Request<Vec<u8>>,
     dialect: ChatCompletionsDialect,
-) -> crate::streaming::StreamingCompletionResponse {
+) -> crate::streaming::CompletionStream {
     use crate::providers::internal::openai_chat_completions_compatible as compat;
 
     compat::drive_compatible_stream(

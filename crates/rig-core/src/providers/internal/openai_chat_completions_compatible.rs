@@ -315,7 +315,7 @@ pub(crate) fn should_evict_distinct_named_tool_call(
 pub(crate) fn drive_compatible_stream(
     event_source: BoxedEventSource,
     normalizer: ChunkNormalizer,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     let span = tracing::Span::current();
     let instrument_span = span.clone();
     let mut event_source = event_source;
@@ -480,7 +480,7 @@ pub(crate) fn drive_compatible_stream(
     }
     .instrument(instrument_span);
 
-    streaming::StreamingCompletionResponse::stream(stream)
+    streaming::CompletionStream::from_stream(stream)
 }
 
 fn record_usage(span: &tracing::Span, usage: &crate::completion::Usage) {
@@ -660,7 +660,6 @@ fn take_finalized_tool_calls(
 pub(crate) mod test_support {
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
-    use futures::StreamExt;
 
     pub(crate) fn sse_bytes_from_data_lines<T>(events: impl IntoIterator<Item = T>) -> Bytes
     where
@@ -689,7 +688,7 @@ pub(crate) mod test_support {
     }
 
     pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
-        mut stream: streaming::StreamingCompletionResponse,
+        mut stream: streaming::CompletionStream,
         expected_id: &str,
         expected_name: &str,
         expect_final_response: bool,
@@ -736,14 +735,13 @@ mod tests {
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::internal_streaming_profiles::TestNormalizer;
-    use futures::StreamExt;
 
     /// Drive a scripted normalizer over a test HTTP client.
     fn send_compatible_streaming_request<T>(
         client: T,
         req: http::Request<Vec<u8>>,
         normalizer: TestNormalizer,
-    ) -> crate::streaming::StreamingCompletionResponse
+    ) -> crate::streaming::CompletionStream
     where
         T: Backend + Clone + 'static,
     {
@@ -757,7 +755,7 @@ mod tests {
     fn send_openai_streaming_request<T>(
         client: T,
         req: http::Request<Vec<u8>>,
-    ) -> crate::streaming::StreamingCompletionResponse
+    ) -> crate::streaming::CompletionStream
     where
         T: Backend + Clone + 'static,
     {

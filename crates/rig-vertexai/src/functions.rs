@@ -17,7 +17,7 @@
 use google_cloud_auth::credentials;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::ProviderDescriptor;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 use serde::{Deserialize, Serialize};
 
 use crate::client::{Client, VertexAiClientError};
@@ -209,7 +209,7 @@ pub async fn open_stream(
     _client: &Client,
     _model: &str,
     _request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     Err(CompletionError::ProviderError(
         "Streaming is not supported for Vertex AI in this integration".to_string(),
     ))

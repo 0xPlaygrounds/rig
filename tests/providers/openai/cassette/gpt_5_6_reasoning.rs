@@ -14,7 +14,6 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::providers::openai;
@@ -415,7 +414,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: stream.message_id.clone(),
+                        id: stream.message_id().map(str::to_owned),
                         content: rig::OneOrMany::many(reasoning_blocks)
                             .expect("streamed assistant message should not be empty"),
                     },

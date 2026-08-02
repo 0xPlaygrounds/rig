@@ -1,6 +1,5 @@
 //! ChatGPT completion normalization smoke tests.
 
-use futures::StreamExt;
 use rig::completion::CompletionRequest;
 use rig::message::AssistantContent;
 use rig::message::Message;
@@ -64,7 +63,7 @@ async fn system_messages_are_lifted_into_instructions() {
         }
     }
     if text.trim().is_empty() {
-        text = aggregated_text(&stream.choice);
+        text = aggregated_text(stream.choice());
     }
     assert_nonempty_response(&text);
     assert_contains_any_case_insensitive(&text, &["maple"]);

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- [**breaking**] The live completion handle is renamed from
+  `StreamingCompletionResponse` to `CompletionStream`, and its constructor is
+  renamed from `stream` to `from_stream`. Its aggregation and control state is
+  private; use `choice()`, `final_record()`, and `message_id()` for read-only
+  access. An inherent `next().await` supports the default polling loop without
+  caller pinning or a `StreamExt` import, while the `Stream` implementation
+  remains available for combinators. Provider-stream pinning and dynamic
+  erasure remain private inside the owned live handle.
+- [**breaking**] Remove the unused
+  `openai::responses_api::streaming::StreamingCompletionResponse` wire DTO.
+  OpenAI Responses stream events already deserialize their terminal payload
+  into `responses_api::CompletionResponse` before normalization.
+- [**breaking**] The public boxed `InteractionEventStream` alias becomes a
+  concrete live handle with private transport state and an inherent pin-free
+  `next()` method. Core's boxed byte-stream and SSE-event-source aliases are now
+  crate-private transport details.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
 
 ### Added

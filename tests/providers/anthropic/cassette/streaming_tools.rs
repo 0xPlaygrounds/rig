@@ -1,6 +1,5 @@
 //! Anthropic streaming tools smoke test.
 
-use futures::StreamExt;
 use rig::completion::PromptError;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;

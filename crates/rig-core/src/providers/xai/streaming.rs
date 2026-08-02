@@ -12,7 +12,7 @@ use crate::streaming;
 /// Send a streaming request
 pub(crate) async fn send_xai_streaming_request(
     event_source: crate::http_client::sse::BoxedEventSource,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<streaming::CompletionStream, CompletionError> {
     let span = tracing::Span::current();
 
     Ok(stream_from_event_source_with_options(
@@ -70,7 +70,6 @@ mod tests {
     #[tokio::test]
     async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::test_utils::MockStreamingClient;
-        use futures::StreamExt;
         use serde_json::json;
 
         let tool_call_done = json!({

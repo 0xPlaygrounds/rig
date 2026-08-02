@@ -2,7 +2,6 @@
 
 use std::path::PathBuf;
 
-use futures::StreamExt;
 use rig_candle::{CandleModel, ModelData};
 use rig_core::streaming::StreamedAssistantContent;
 

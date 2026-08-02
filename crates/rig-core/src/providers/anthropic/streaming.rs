@@ -199,7 +199,7 @@ pub(super) fn stream_anthropic_sse(
     event_source: crate::http_client::sse::BoxedEventSource,
     provider_name: &'static str,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     let stream = event_source;
 
     // Use our SSE decoder to directly handle Server-Sent Events format
@@ -302,7 +302,7 @@ pub(super) fn stream_anthropic_sse(
             yield Ok(RawStreamingChoice::FinalResponse(final_response))
         }.instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(stream)
+    streaming::CompletionStream::from_stream(stream)
 }
 
 fn handle_event(
@@ -501,7 +501,6 @@ mod tests {
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
     use async_stream::stream;
-    use futures::StreamExt;
 
     #[test]
     fn test_streaming_tool_build_marks_final_combined_tool() {
@@ -1547,11 +1546,11 @@ mod tests {
             )));
         };
 
-        let mut stream = crate::streaming::StreamingCompletionResponse::stream(raw_stream);
+        let mut stream = crate::streaming::CompletionStream::from_stream(raw_stream);
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =
-            stream.choice.clone().into_iter().collect();
+            stream.choice().clone().into_iter().collect();
         assert_eq!(choice_items.len(), 3);
         assert!(
             choice_items
@@ -1692,11 +1691,11 @@ mod tests {
             )));
         };
 
-        let mut stream = crate::streaming::StreamingCompletionResponse::stream(raw_stream);
+        let mut stream = crate::streaming::CompletionStream::from_stream(raw_stream);
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =
-            stream.choice.clone().into_iter().collect();
+            stream.choice().clone().into_iter().collect();
         let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
             panic!("expected accumulated text item");
         };

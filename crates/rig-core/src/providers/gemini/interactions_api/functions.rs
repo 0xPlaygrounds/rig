@@ -280,7 +280,7 @@ pub async fn open_stream(
     cfg: &Config,
     rt: &HttpRuntime,
     request: CompletionRequest,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<crate::streaming::CompletionStream, CompletionError> {
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     // `gcp.gemini` is the OTel `gen_ai.provider.name` value the deleted
     // `InteractionsCompletionModel::stream` recorded; `DESCRIPTOR.name`

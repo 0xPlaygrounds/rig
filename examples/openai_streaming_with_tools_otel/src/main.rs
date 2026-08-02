@@ -1,5 +1,4 @@
 use anyhow::Result;
-use futures::StreamExt;
 use rig::agent::{PromptResponse, Text};
 use rig::prelude::*;
 use rig::stream::{AgentRunStream, AgentStreamItem};

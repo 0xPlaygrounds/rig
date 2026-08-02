@@ -5,7 +5,6 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use futures::StreamExt;
 use rig::agent::run::{
     AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
     StreamedTurnEvent,
@@ -82,7 +81,7 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler.partial_turn(stream.message_id.clone());
+                    let partial = assembler.partial_turn(stream.message_id().map(str::to_owned));
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -128,12 +127,12 @@ async fn run_streamed_turn(
         run.record_streamed_completion_call(Usage::new())
             .expect("turns without provider usage still record a completion call");
     }
-    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
+    let streamed_turn = assembler.finish(stream.message_id().map(str::to_owned), stream.choice());
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }
 
-async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResponse) -> Usage {
+async fn drain_stream_usage(stream: &mut rig::streaming::CompletionStream) -> Usage {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {
             return final_response.usage;

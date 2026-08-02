@@ -1,6 +1,5 @@
 //! Gemini streaming regression for multimodal tool results in chat history.
 
-use futures::StreamExt;
 use rig::OneOrMany;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,

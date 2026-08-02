@@ -6,7 +6,7 @@ use crate::{
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::FinishReason;
-use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
+use rig_core::streaming::{CompletionStream, StreamFinal};
 use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use rig_core::{
     completion::CompletionError,
@@ -94,7 +94,7 @@ pub(crate) async fn stream_converse(
     default_model: &str,
     prompt_caching: bool,
     completion_request: rig_core::completion::CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     {
         let request_model = resolve_request_model(default_model, &completion_request);
         // Built before the request is moved into the AWS wrapper, so the span
@@ -283,7 +283,7 @@ pub(crate) async fn stream_converse(
             }
         }.instrument(span);
 
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(CompletionStream::from_stream(stream))
     }
 }
 

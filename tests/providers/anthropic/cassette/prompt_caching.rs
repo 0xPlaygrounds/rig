@@ -1,6 +1,5 @@
 //! Anthropic prompt caching cassette tests.
 
-use futures::StreamExt;
 use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
 };

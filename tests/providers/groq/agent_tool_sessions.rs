@@ -8,7 +8,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::{CompletionRequest, Message};
 use rig::http_runtime::HttpRuntime;

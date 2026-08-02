@@ -347,7 +347,8 @@ impl SessionRunner {
     /// executor answering tool batches.
     ///
     /// The concrete [`AgentRunStream`] is pinned internally, so callers can
-    /// use `.next().await` without pinning it first:
+    /// use its inherent `.next().await` without importing `StreamExt` or
+    /// pinning it first:
     ///
     /// ```ignore
     /// let mut stream = agent.runner(prompt).max_turns(3).stream_run();
@@ -362,10 +363,7 @@ impl SessionRunner {
                 .record_content_telemetry(record_content)
                 .defer_result_telemetry(defer_result)
         });
-        // Pinned here rather than at every call site. `drive` yields an
-        // `async_stream` generator, which is `!Unpin`; boxing it once is what
-        // the deleted `StreamingResult` did too, so this is not new cost.
-        AgentRunStream::new(self.stream().drive(hooks, executor))
+        self.stream().drive(hooks, executor)
     }
 }
 

@@ -257,7 +257,7 @@ pub async fn open_stream(
     cfg: &Config,
     rt: &HttpRuntime,
     request: CompletionRequest,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<crate::streaming::CompletionStream, CompletionError> {
     let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
     let span = completion_span(
         DESCRIPTOR.name,

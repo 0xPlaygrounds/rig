@@ -440,7 +440,7 @@ pub async fn open_stream(
     cfg: &Config,
     rt: &HttpRuntime,
     request: CompletionRequest,
-) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<crate::streaming::CompletionStream, CompletionError> {
     let req = build_request(cfg, &request, true)?;
     if route_for_model(&cfg.model) == CompletionRoute::Responses {
         let span = completion_span(

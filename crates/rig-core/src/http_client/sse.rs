@@ -2,7 +2,7 @@
 //!
 //! An event source over any `Backend`, with
 //! automatic retry handling. Providers never see it directly: they consume the
-//! boxed [`BoxedEventSource`], which is where backend genericity ends.
+//! boxed `BoxedEventSource`, which is where backend genericity ends.
 use crate::{
     http_client::{
         Backend, Result as StreamResult,
@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
+pub(crate) type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
 
 /// A type-erased SSE event stream — the transport edge for the sans-IO
 /// provider stream parsers.
@@ -36,16 +36,19 @@ pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult
 /// Provider stream state machines consume this concrete type instead of being
 /// generic over the crate-internal `Backend`: genericity ends at the boxing site (see
 /// `boxed_event_source` and `HttpRuntime::sse_events`).
-pub type BoxedEventSource = Pin<Box<dyn WasmCompatEventStream>>;
+pub(crate) type BoxedEventSource = Pin<Box<dyn WasmCompatEventStream>>;
 
 /// Helper supertrait so [`BoxedEventSource`] can be a trait object:
 /// `WasmCompatSend` is not an auto trait, so it cannot be an additional bound
 /// on `dyn Stream`. `Send`-bounded on native targets, unbounded on browser wasm.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> + Send {}
+pub(crate) trait WasmCompatEventStream:
+    Stream<Item = Result<Event, super::Error>> + Send
+{
+}
 /// Helper supertrait so [`BoxedEventSource`] can be a trait object.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> {}
+pub(crate) trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> {}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> + Send {}

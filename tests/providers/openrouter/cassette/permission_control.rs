@@ -263,7 +263,6 @@ async fn permission_control_streaming_example() -> Result<()> {
 async fn stream_to_stdout(
     stream: &mut rig::stream::AgentRunStream,
 ) -> Result<rig::agent::PromptResponse, std::io::Error> {
-    use futures::StreamExt;
     use rig::message::Text;
     use rig::stream::AgentStreamItem;
     use rig::streaming::StreamedAssistantContent;

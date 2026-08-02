@@ -31,22 +31,6 @@ pub enum StreamingCompletionChunk {
     Delta(ItemChunk),
 }
 
-/// Wire-level aggregate of the terminal Responses API stream event (usage plus
-/// reasoning metadata). The normalized stream terminates with
-/// [`crate::streaming::StreamFinal`]; this type remains for parsing by
-/// downstream Responses-compatible providers (e.g. Copilot).
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StreamingCompletionResponse {
-    /// Token usage
-    pub usage: ResponsesUsage,
-    /// The complete object-shaped reasoning metadata from the terminal response event.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
-    /// The effective reasoning context from the terminal response event.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_context: Option<String>,
-}
-
 pub(crate) fn reasoning_choices_from_done_item(
     id: &str,
     summary: &[ReasoningSummary],
@@ -552,30 +536,28 @@ pub(crate) async fn completion_response_from_sse_body(
             .map(Ok::<_, CompletionError>)
             .collect::<Vec<_>>(),
     );
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(stream);
+    let mut stream = crate::streaming::CompletionStream::from_stream(stream);
 
     while let Some(item) = stream.next().await {
         item?;
     }
 
-    if choice_is_empty(&stream.choice) {
+    if choice_is_empty(stream.choice()) {
         return Err(CompletionError::ResponseError(
             "Response contained no parts".to_owned(),
         ));
     }
 
     let usage = stream
-        .response
-        .as_ref()
+        .final_record()
         .map(|final_response| final_response.usage)
         .unwrap_or_else(|| usage_from_raw_response(&raw_response));
     let message_id = stream
-        .message_id
-        .clone()
+        .message_id()
+        .map(str::to_owned)
         .or_else(|| message_id_from_response(&raw_response));
     let finish_reason = stream
-        .response
-        .as_ref()
+        .final_record()
         .and_then(|final_response| final_response.finish_reason.clone())
         .or_else(|| {
             super::finish_reason_from_status(
@@ -584,8 +566,10 @@ pub(crate) async fn completion_response_from_sse_body(
             )
         });
 
-    let mut normalized = completion::CompletionResponse::new(stream.choice, usage, "openai")
-        .with_model(raw_response.model.clone());
+    let mut normalized: completion::CompletionResponse = stream.into();
+    normalized.usage = usage;
+    normalized.provider = "openai".to_owned();
+    normalized.model = Some(raw_response.model.clone());
     normalized.message_id = message_id;
     normalized.finish_reason = finish_reason;
     Ok(normalized)
@@ -619,7 +603,7 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
 pub(crate) fn stream_from_event_source(
     event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
 }
 
@@ -627,7 +611,7 @@ pub(crate) fn stream_from_event_source_with_options(
     event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
     options: ResponsesStreamOptions,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     let mut event_source = event_source;
     let stream = stream! {
         let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
@@ -729,7 +713,7 @@ pub(crate) fn stream_from_event_source_with_options(
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(stream)
+    streaming::CompletionStream::from_stream(stream)
 }
 
 /// An item message chunk from OpenAI's Responses API.
@@ -876,7 +860,6 @@ mod tests {
     };
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
     use serde_json::{self, json};
 
     fn sample_response(status: ResponseStatus) -> CompletionResponse {
@@ -904,9 +887,7 @@ mod tests {
     ///
     /// The sans-IO half of `functions::open_stream`: the same
     /// `stream_from_event_source`, with the transport edge fed canned bytes.
-    fn drive_responses_sse(
-        events: &[serde_json::Value],
-    ) -> crate::streaming::StreamingCompletionResponse {
+    fn drive_responses_sse(events: &[serde_json::Value]) -> crate::streaming::CompletionStream {
         let client = MockStreamingClient {
             sse_bytes: sse_bytes_from_json_events(events),
         };

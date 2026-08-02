@@ -1,6 +1,7 @@
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use std::pin::Pin;
+use std::task::{Context, Poll};
 use tracing_futures::Instrument;
 
 use super::interactions_api_types::{
@@ -14,13 +15,65 @@ use crate::streaming;
 use crate::telemetry::SpanCombinator;
 use serde_json::{Map, Value};
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>> + Send>>;
+/// A live stream of raw Gemini Interactions events.
+///
+/// The erased SSE transport remains private. Use [`Self::next`] for the
+/// default pin-free loop or the [`Stream`] implementation for combinators.
+#[must_use = "streams do nothing unless polled"]
+pub struct InteractionEventStream {
+    inner: BoxedEventSource,
+    done: bool,
+}
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
+impl InteractionEventStream {
+    /// Pull the next decoded provider event without caller pinning or a
+    /// [`StreamExt`] import.
+    pub async fn next(&mut self) -> Option<Result<InteractionSseEvent, CompletionError>> {
+        StreamExt::next(self).await
+    }
+}
+
+impl Stream for InteractionEventStream {
+    type Item = Result<InteractionSseEvent, CompletionError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let stream = self.get_mut();
+
+        if stream.done {
+            return Poll::Ready(None);
+        }
+
+        loop {
+            match stream.inner.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None | Some(Err(crate::http_client::Error::StreamEnded))) => {
+                    stream.done = true;
+                    return Poll::Ready(None);
+                }
+                Poll::Ready(Some(Ok(Event::Open))) => continue,
+                Poll::Ready(Some(Ok(Event::Message(message)))) => {
+                    if message.data.trim().is_empty() {
+                        continue;
+                    }
+
+                    match serde_json::from_str::<InteractionSseEvent>(&message.data) {
+                        Ok(event) => return Poll::Ready(Some(Ok(event))),
+                        Err(error) => {
+                            tracing::debug!(
+                                "Failed to deserialize interactions SSE event: {error}"
+                            );
+                        }
+                    }
+                }
+                Poll::Ready(Some(Err(error))) => {
+                    stream.done = true;
+                    tracing::error!(?error, "SSE error");
+                    return Poll::Ready(Some(Err(CompletionError::from_stream_transport(error))));
+                }
+            }
+        }
+    }
+}
 
 /// Drive an Interactions SSE stream into the normalized streaming response.
 ///
@@ -32,7 +85,7 @@ pub type InteractionEventStream =
 pub(crate) fn interaction_completion_stream(
     event_source: BoxedEventSource,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     let mut event_source = event_source;
 
     let stream = stream! {
@@ -127,7 +180,7 @@ pub(crate) fn interaction_completion_stream(
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(stream)
+    streaming::CompletionStream::from_stream(stream)
 }
 
 /// Decode an Interactions SSE stream into raw [`InteractionSseEvent`]s.
@@ -135,36 +188,10 @@ pub(crate) fn interaction_completion_stream(
 /// The transport-free replacement for the deleted
 /// `stream_interaction_events`, which was generic over `H: HttpClientExt`.
 pub(crate) fn interaction_event_stream(event_source: BoxedEventSource) -> InteractionEventStream {
-    let mut event_source = event_source;
-
-    let stream = stream! {
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => continue,
-                Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    match serde_json::from_str::<InteractionSseEvent>(&message.data) {
-                        Ok(data) => yield Ok(data),
-                        Err(err) => {
-                            tracing::debug!("Failed to deserialize interactions SSE event: {err}");
-                            continue;
-                        }
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => break,
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
-            }
-        }
-    };
-
-    Box::pin(stream)
+    InteractionEventStream {
+        inner: event_source,
+        done: false,
+    }
 }
 
 /// Map an Interactions `step.start` payload onto a raw streaming choice. Pure.
@@ -312,5 +339,19 @@ mod tests {
             }
             other => panic!("unexpected choice: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn raw_event_stream_transport_error_is_terminal() {
+        let source = futures::stream::iter([
+            Err(crate::http_client::Error::InvalidStatusCode(
+                http::StatusCode::BAD_GATEWAY,
+            )),
+            Ok(Event::Open),
+        ]);
+        let mut stream = interaction_event_stream(Box::pin(source));
+
+        assert!(matches!(stream.next().await, Some(Err(_))));
+        assert!(stream.next().await.is_none());
     }
 }

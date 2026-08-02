@@ -12,7 +12,6 @@ use rig::completion::CompletionRequest;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::StreamExt;
 use rig::completion::Message;
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;

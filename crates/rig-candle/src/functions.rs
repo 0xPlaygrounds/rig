@@ -12,7 +12,7 @@
 
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use rig_core::providers::descriptor::ProviderDescriptor;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 use serde::{Deserialize, Serialize};
 
 use crate::artifacts::ModelArtifacts;
@@ -125,14 +125,14 @@ pub async fn complete(
 }
 
 /// Open a streaming completion on the loaded `model`, returning the
-/// concrete [`StreamingCompletionResponse`].
+/// concrete [`CompletionStream`].
 ///
 /// Extracted from the `CompletionModel::stream` trait impl, which is
 /// rewired through the same implementation; behavior is unchanged.
 pub async fn open_stream(
     model: &CandleModel,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     crate::model::open_stream_request(model, request).await
 }
 

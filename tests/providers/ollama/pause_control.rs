@@ -1,6 +1,5 @@
 //! Migrated from `examples/ollama_streaming_pause_control.rs`.
 
-use futures::StreamExt;
 use rig::http_runtime::HttpRuntime;
 use rig::providers::ollama;
 use rig::streaming::StreamedAssistantContent;

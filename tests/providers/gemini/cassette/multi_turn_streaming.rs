@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::StreamExt;
 use rig::providers::gemini;
 use rig::stream::AgentStreamItem;
 use rig::tool::Tool;

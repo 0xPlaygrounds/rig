@@ -817,8 +817,9 @@ the runner's *type* was renamed:
 | `agent.runner(p).run_typed::<T>().await?` | unchanged |
 
 **Streaming call sites change.** The old surface was a future returning a
-stream of `MultiTurnStreamItem`; the new one is a stream of
-`AgentStreamItem` that must be pinned:
+stream of `MultiTurnStreamItem`; the new one is the concrete `AgentRunStream`
+of `AgentStreamItem`. Its inherent `next` method needs neither caller pinning
+nor a `StreamExt` import:
 
 ```rust
 // before
@@ -826,10 +827,12 @@ let mut stream = agent.stream_prompt("hi").max_turns(3).await;
 while let Some(item) = stream.next().await { … }
 
 // after
-let stream = agent.runner("hi").max_turns(3).stream_run();
-futures::pin_mut!(stream);
+let mut stream = agent.runner("hi").max_turns(3).stream_run();
 while let Some(item) = stream.next().await { … }
 ```
+
+`AgentRunStream` still implements `Stream`; import `StreamExt` when you opt in
+to combinators such as `map`, `filter`, or `collect`.
 
 With no per-request setters, `agent.stream_run("hi")` is the whole call.
 `Agent::stream_prompt`/`stream_chat` now return the **host-driven**
@@ -1041,7 +1044,7 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
 - **`GetTokenUsage` is removed.** Usage is a plain field on
   `CompletionResponse` and `StreamFinal`; read `.usage` directly.
 - The retained streaming vocabulary lost its type parameters:
-  `RawStreamingChoice`/`StreamingCompletionResponse`/
+  `RawStreamingChoice`/`CompletionStream`/
   `StreamedAssistantContent`/`MultiTurnStreamItem` are all concrete, and
   `CompletionModel` no longer has `type Response`/`type StreamingResponse`.
   Provider-specific streaming-final aliases (deepseek, groq, mistral,
@@ -1056,12 +1059,73 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
   StreamingCompletionResponse::stream(stream)
 
   // after
-  StreamingCompletionResponse::stream(provider_stream)
+  CompletionStream::from_stream(provider_stream)
   ```
 
-  `StreamingCompletionResponse` owns the pinning and dynamic erasure privately.
-  Its constructor requires a native `Send` stream while retaining the existing
-  browser-wasm relaxation, so worker-local JavaScript execution remains valid.
+  `CompletionStream` owns the pinning and dynamic erasure privately. Its
+  constructor requires an owned (`'static`) native `Send` stream while
+  retaining the existing browser-wasm relaxation, so worker-local JavaScript
+  execution remains valid. Here `'static` means the handle owns the source and
+  borrows no stack data; it does not mean the stream lives forever.
+- The live handle's aggregation fields are private. Replace direct reads with
+  the borrowing accessors:
+
+  ```rust
+  // before
+  let choice = &stream.choice;
+  let final_record = stream.response.as_ref();
+  let message_id = stream.message_id.as_deref();
+
+  // after
+  let choice = stream.choice();
+  let final_record = stream.final_record();
+  let message_id = stream.message_id();
+  ```
+
+- The unused
+  `openai::responses_api::streaming::StreamingCompletionResponse` wire DTO is
+  removed. There is no replacement: Responses stream events already contain
+  `openai::responses_api::CompletionResponse`, while normalized streaming uses
+  `CompletionStream` and `StreamFinal`.
+
+- `CompletionStream` and `AgentRunStream` now provide inherent
+  `.next().await`. The default loop needs neither caller pinning nor a
+  `futures::StreamExt` import:
+
+  ```rust
+  let mut stream = agent.stream_run("hello");
+  while let Some(item) = stream.next().await {
+      let item = item?;
+      // ...
+  }
+  ```
+
+  Both handles still implement `Stream`; import `StreamExt` only when using
+  ecosystem combinators. `AgentRunStream` retains its private boxed generator
+  so dropping a temporary `next()` future suspends rather than reconstructs an
+  in-flight hook or tool operation.
+
+- Gemini's low-level raw Interactions stream changes from the public
+  `InteractionEventStream = Pin<Box<dyn Stream<...>>>` alias to a concrete
+  `InteractionEventStream` handle. It also supports the same pin-free default
+  loop:
+
+  ```rust
+  let mut events = gemini::interactions_api::functions::stream_interaction_events(
+      &config,
+      &runtime,
+      request,
+  )
+  .await?;
+
+  while let Some(event) = events.next().await {
+      let event = event?;
+      // ...
+  }
+  ```
+
+  The handle stores the already-erased SSE transport rather than adding another
+  box. The default normalized completion path remains `CompletionStream`.
 
 ### Completion requests are plain data with an optional bound facade
 

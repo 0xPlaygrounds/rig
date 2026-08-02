@@ -13,7 +13,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::StreamExt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

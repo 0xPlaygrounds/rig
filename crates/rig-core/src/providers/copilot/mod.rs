@@ -37,7 +37,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 };
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
-use crate::streaming::{self, RawStreamingChoice, StreamingCompletionResponse};
+use crate::streaming::{self, CompletionStream, RawStreamingChoice};
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -431,7 +431,7 @@ pub(crate) enum ChatApiResponse<T> {
 pub(crate) fn stream_copilot_responses_from_event_source(
     event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> StreamingCompletionResponse {
+) -> CompletionStream {
     let mut event_source = event_source;
     let stream = tracing_futures::Instrument::instrument(
         stream! {
@@ -645,7 +645,7 @@ pub(crate) fn stream_copilot_responses_from_event_source(
         span,
     );
 
-    StreamingCompletionResponse::stream(stream)
+    CompletionStream::from_stream(stream)
 }
 
 #[derive(Deserialize)]
@@ -921,7 +921,7 @@ pub(crate) fn normalize_copilot_chat_chunk(
 
 pub(crate) fn send_copilot_chat_streaming_request(
     event_source: crate::http_client::sse::BoxedEventSource,
-) -> StreamingCompletionResponse {
+) -> CompletionStream {
     openai_chat_completions_compatible::drive_compatible_stream(
         event_source,
         openai_chat_completions_compatible::ChunkNormalizer::CopilotChat,
@@ -958,15 +958,14 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
-    use crate::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
+    use crate::streaming::{CompletionStream, StreamedAssistantContent};
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
-    use futures::StreamExt;
 
     /// Drive the surviving Responses SSE state machine over `http_client`,
     /// the way `functions::open_stream` does (building the event source
     /// directly keeps the test focused on the state machine).
-    fn responses_stream<H>(http_client: H, model: &str) -> StreamingCompletionResponse
+    fn responses_stream<H>(http_client: H, model: &str) -> CompletionStream
     where
         H: crate::http_client::Backend + Clone + 'static,
     {
@@ -980,7 +979,7 @@ mod tests {
     }
 
     /// Same, for the chat-completions SSE state machine.
-    fn chat_stream<H>(http_client: H, model: &str) -> StreamingCompletionResponse
+    fn chat_stream<H>(http_client: H, model: &str) -> CompletionStream
     where
         H: crate::http_client::Backend + Clone + 'static,
     {

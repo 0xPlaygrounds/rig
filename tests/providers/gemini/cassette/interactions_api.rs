@@ -1,6 +1,5 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
-use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::CompletionRequest;
 use rig::message::{

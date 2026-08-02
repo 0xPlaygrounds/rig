@@ -1,14 +1,11 @@
 //! Shared fixtures, tiny tools, and durable assertions for ignored smoke tests.
 #![allow(dead_code)]
 
-use futures::StreamExt;
 use rig::{
     completion::{AssistantContent, PromptError, ToolDefinition},
     embeddings::Embedding,
     stream::{AgentRunStream, AgentStreamItem},
-    streaming::{
-        StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
-    },
+    streaming::{CompletionStream, StreamFinal, StreamedAssistantContent, StreamedUserContent},
     tool::PortableTool,
     tool::Tool,
 };
@@ -502,7 +499,7 @@ pub(crate) async fn collect_stream_final_response_and_provider_final(
 }
 
 pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
-    mut stream: StreamingCompletionResponse,
+    mut stream: CompletionStream,
     expected_name: &str,
     expect_final_response: bool,
 ) {
@@ -646,7 +643,7 @@ pub(crate) async fn collect_stream_observation(stream: &mut AgentRunStream) -> S
 }
 
 pub(crate) async fn collect_raw_stream_observation(
-    mut stream: StreamingCompletionResponse,
+    mut stream: CompletionStream,
 ) -> RawStreamObservation {
     let mut observation = RawStreamObservation::new();
 

@@ -572,7 +572,7 @@ pub mod functions {
         cfg: &Config,
         rt: &HttpRuntime,
         request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
         let req = build_request(cfg, &request, true)?;
         Ok(openai_functions::compatible_open_stream(
             rt,

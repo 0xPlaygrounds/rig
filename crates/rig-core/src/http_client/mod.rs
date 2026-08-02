@@ -74,7 +74,7 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::InvalidStatusCodeWithMessage(status, message)
 }
 
-pub type StreamingResponse = Response<BoxedStream>;
+pub(crate) type StreamingResponse = Response<BoxedStream>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct NoBody;

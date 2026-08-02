@@ -1149,7 +1149,7 @@ pub mod functions {
         cfg: &Config,
         rt: &HttpRuntime,
         request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
         use tracing_futures::Instrument;
 
         let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
@@ -1172,7 +1172,7 @@ pub mod functions {
         let stream = super::consume_chat_streaming_response(response)
             .instrument(span.clone())
             .await?;
-        Ok(crate::streaming::StreamingCompletionResponse::stream(
+        Ok(crate::streaming::CompletionStream::from_stream(
             stream.instrument(span),
         ))
     }
@@ -2713,7 +2713,6 @@ mod telemetry_tests {
     use crate::http_runtime::HttpRuntime;
     use crate::message::Message;
     use crate::test_utils::MockStreamingClient;
-    use futures::StreamExt;
     use std::io;
     use std::sync::{Arc, Mutex};
 

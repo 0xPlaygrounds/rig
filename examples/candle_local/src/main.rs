@@ -8,7 +8,6 @@
 use std::io::Write;
 
 use anyhow::Context;
-use futures::StreamExt;
 use rig::candle::{CandleModel, ModelData};
 use rig::streaming::StreamedAssistantContent;
 

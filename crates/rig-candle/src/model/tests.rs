@@ -2,7 +2,6 @@ use candle_core::quantized::{GgmlDType, gguf_file};
 use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
-use futures::StreamExt;
 use rig_core::OneOrMany;
 use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};

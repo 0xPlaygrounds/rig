@@ -4,7 +4,6 @@
 //! Run with `RIG_GEMINI_DEFAULT_API_CANARY_ATTEMPTS=6` to increase the chance of
 //! seeing the recoverable legacy tool-name emission.
 
-use futures::StreamExt;
 use rig::agent::{InvalidToolCallAction, PromptResponse};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolResultContent;

@@ -76,7 +76,7 @@ pub struct Config { /* model, api_key, base_url, knobs — all serde */ }
 
 pub async fn complete(cfg: &Config, rt: &HttpRuntime, request: CompletionRequest)
     -> Result<CompletionResponse, CompletionError>;
-pub async fn open_stream(/* … */) -> Result<StreamingCompletionResponse, CompletionError>;
+pub async fn open_stream(/* … */) -> Result<CompletionStream, CompletionError>;
 ```
 
 Capabilities are declared as data on the `DESCRIPTOR` const, not as trait

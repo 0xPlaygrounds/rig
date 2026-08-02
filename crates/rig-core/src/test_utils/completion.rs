@@ -9,7 +9,7 @@ use crate::{
     OneOrMany,
     completion::{AssistantContent, CompletionError, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
-    streaming::StreamingCompletionResponse,
+    streaming::CompletionStream,
 };
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
@@ -273,7 +273,7 @@ impl MockCompletionModel {
     pub async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<CompletionStream, CompletionError> {
         self.record_request(request);
         let Some(events) = self.next_stream_turn() else {
             return Err(CompletionError::ProviderError(
@@ -286,7 +286,7 @@ impl MockCompletionModel {
                 yield event.into_raw_choice();
             }
         };
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(CompletionStream::from_stream(stream))
     }
 }
 
@@ -297,7 +297,6 @@ mod tests {
         message::Message,
         streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     };
-    use futures::StreamExt;
 
     fn request(prompt: &str) -> CompletionRequest {
         CompletionRequest {
@@ -419,7 +418,7 @@ mod tests {
         assert!(saw_arguments_delta);
         assert!(saw_tool_call);
         assert!(saw_final);
-        assert_eq!(stream.message_id.as_deref(), Some("msg_stream"));
+        assert_eq!(stream.message_id(), Some("msg_stream"));
         assert_eq!(model.request_count(), 1);
     }
 

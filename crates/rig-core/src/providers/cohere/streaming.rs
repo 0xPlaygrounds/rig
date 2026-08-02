@@ -85,7 +85,7 @@ fn streamed_token_usage(usage: Option<&Usage>) -> crate::completion::Usage {
 pub(super) fn stream_cohere_sse(
     event_source: crate::http_client::sse::BoxedEventSource,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse {
+) -> streaming::CompletionStream {
     let mut event_source = event_source;
 
     let stream = stream! {
@@ -199,7 +199,7 @@ pub(super) fn stream_cohere_sse(
             )))
         }.instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(stream)
+    streaming::CompletionStream::from_stream(stream)
 }
 
 #[cfg(test)]

@@ -18,7 +18,7 @@ use aws_config::{BehaviorVersion, Region};
 use aws_smithy_types::Blob;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::providers::descriptor::ProviderDescriptor;
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::CompletionStream;
 use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
@@ -233,7 +233,7 @@ pub async fn open_stream(
     client: &aws_sdk_bedrockruntime::Client,
     model: &str,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     open_stream_with_options(client, model, false, request).await
 }
 
@@ -243,7 +243,7 @@ pub async fn open_stream_with_options(
     model: &str,
     prompt_caching: bool,
     request: CompletionRequest,
-) -> Result<StreamingCompletionResponse, CompletionError> {
+) -> Result<CompletionStream, CompletionError> {
     crate::streaming::stream_converse(client, model, prompt_caching, request).await
 }
 
