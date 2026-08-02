@@ -1082,6 +1082,34 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
   let message_id = stream.message_id();
   ```
 
+- Live-stream inspection borrows; partial snapshots clone at their owned-data
+  boundary; exhausted streams convert into owned `CompletionResponse` data and
+  move the fields consumed by completed-turn assembly. The public
+  `StreamedTurnAssembler` signatures therefore change from owned-ID/borrowed-
+  choice inputs to borrowed-ID/owned-choice inputs:
+
+  ```rust
+  // before: allocate the live ID at the call site, then borrow the EOF choice
+  let partial = assembler.partial_turn(stream.message_id().map(str::to_owned));
+  // ... drain the stream to EOF ...
+  let turn = assembler.finish(
+      stream.message_id().map(str::to_owned),
+      stream.choice(),
+  );
+
+  // after: borrow while the stream is live; consume it after EOF
+  let partial = assembler.partial_turn(stream.message_id());
+  // ... drain the stream to EOF ...
+  let response = CompletionResponse::from(stream);
+  let turn = assembler.finish(response.message_id, response.choice);
+  ```
+
+  `partial_turn` still returns a fully owned, serializable rollback snapshot;
+  it performs the one necessary message-ID copy internally because the provider
+  stream may continue, retry, or drain after the snapshot is created. For
+  read-only live inspection, continue using `choice()`, `final_record()`, and
+  `message_id()`; do not consume the stream until it is exhausted.
+
 - The unused
   `openai::responses_api::streaming::StreamingCompletionResponse` wire DTO is
   removed. There is no replacement: Responses stream events already contain

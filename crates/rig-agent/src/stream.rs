@@ -30,7 +30,7 @@ use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span, record_usage_on_span,
 };
 use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse, UNKNOWN_AGENT_NAME};
-use crate::completion::{Message, PromptError, Usage};
+use crate::completion::{CompletionResponse, Message, PromptError, Usage};
 use rig_core::OneOrMany;
 use rig_core::message::{AssistantContent, ToolCall, UserContent};
 use rig_core::streaming::{
@@ -650,9 +650,7 @@ impl AgentStream {
                             ));
                         }
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
-                            let partial = active
-                                .assembler
-                                .partial_turn(active.stream.message_id().map(str::to_owned));
+                            let partial = active.assembler.partial_turn(active.stream.message_id());
                             let context = self
                                 .run
                                 .streamed_invalid_tool_call_context(&partial, &invalid);
@@ -700,8 +698,8 @@ impl AgentStream {
                     chat_span,
                     provider_final_seen: _,
                 } = active;
-                let streamed =
-                    assembler.finish(stream.message_id().map(str::to_owned), stream.choice());
+                let response = CompletionResponse::from(stream);
+                let streamed = assembler.finish(response.message_id, response.choice);
                 // Exactly one CompletionCall item per model call: when the
                 // provider never yielded a terminal record, `streamed_turn`
                 // records the no-usage fallback and the item is surfaced here.

@@ -503,33 +503,33 @@ impl From<CompletionStream> for CompletionResponse {
         // Usage is the zero sentinel (`Usage::new`) when the stream produced
         // no final record. Normalized metadata carries over from the final
         // record; the stream-level message_id wins when both are present.
-        let usage = value
-            .final_record
-            .as_ref()
-            .map(|record| record.usage)
-            .unwrap_or_default();
+        let CompletionStream {
+            choice,
+            final_record,
+            message_id: stream_message_id,
+            ..
+        } = value;
+        let (usage, terminal_message_id, finish_reason, provider, model) = final_record
+            .map_or_else(
+                || (Usage::new(), None, None, String::new(), None),
+                |record| {
+                    (
+                        record.usage,
+                        record.message_id,
+                        record.finish_reason,
+                        record.provider,
+                        record.model,
+                    )
+                },
+            );
+
         CompletionResponse {
-            choice: value.choice,
+            choice,
             usage,
-            message_id: value.message_id.or_else(|| {
-                value
-                    .final_record
-                    .as_ref()
-                    .and_then(|record| record.message_id.clone())
-            }),
-            finish_reason: value
-                .final_record
-                .as_ref()
-                .and_then(|record| record.finish_reason.clone()),
-            provider: value
-                .final_record
-                .as_ref()
-                .map(|record| record.provider.clone())
-                .unwrap_or_default(),
-            model: value
-                .final_record
-                .as_ref()
-                .and_then(|record| record.model.clone()),
+            message_id: stream_message_id.or(terminal_message_id),
+            finish_reason,
+            provider,
+            model,
         }
     }
 }
@@ -836,6 +836,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn conversion_without_final_record_keeps_missing_metadata_and_zero_usage() {
+        let mut stream = CompletionStream::from_stream(stream! {
+            yield Ok(RawStreamingChoice::Message("no final response".to_string()));
+        });
+        while stream.next().await.is_some() {}
+
+        let response = CompletionResponse::from(stream);
+
+        assert_eq!(response.usage, Usage::new());
+        assert_eq!(response.message_id, None);
+        assert_eq!(response.finish_reason, None);
+        assert!(response.provider.is_empty());
+        assert_eq!(response.model, None);
+        assert!(matches!(
+            response.choice.first_ref(),
+            AssistantContent::Text(Text { text, .. }) if text == "no final response"
+        ));
+    }
+
+    #[tokio::test]
     async fn accessors_and_conversion_preserve_terminal_metadata_precedence() {
         let final_record = StreamFinal::new("mock-provider", Usage::new())
             .with_message_id("terminal-id")
@@ -859,11 +879,12 @@ mod tests {
         assert_eq!(stream.message_id(), Some("stream-id"));
         assert_eq!(stream.final_record(), Some(&final_record));
         assert!(matches!(
-            stream.choice().first(),
+            stream.choice().first_ref(),
             AssistantContent::Text(Text { text, .. }) if text == "hello"
         ));
 
         let response: CompletionResponse = stream.into();
+        assert_eq!(response.usage, Usage::new());
         assert_eq!(response.message_id.as_deref(), Some("stream-id"));
         assert_eq!(response.provider, "mock-provider");
         assert_eq!(response.model.as_deref(), Some("mock-model"));
@@ -1003,7 +1024,7 @@ mod tests {
         let mut stream = create_reasoning_stream();
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
 
         assert!(choice_items.iter().any(|item| matches!(
             item,
@@ -1026,11 +1047,11 @@ mod tests {
         let mut stream = create_reasoning_only_stream();
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 1);
         assert!(matches!(
-            choice_items.first(),
-            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_only"
+            choice_items.first_ref(),
+            AssistantContent::Reasoning(Reasoning { id: Some(id), .. }) if id == "rs_only"
         ));
     }
 
@@ -1039,18 +1060,18 @@ mod tests {
         let mut stream = create_interleaved_stream();
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 3);
         assert!(matches!(
-            choice_items.first(),
-            Some(AssistantContent::Reasoning(Reasoning { id: Some(id), .. })) if id == "rs_interleaved"
+            choice_items.first_ref(),
+            AssistantContent::Reasoning(Reasoning { id: Some(id), .. }) if id == "rs_interleaved"
         ));
         assert!(matches!(
-            choice_items.get(1),
+            choice_items.iter().nth(1),
             Some(AssistantContent::Text(Text { text, .. })) if text == "final-text"
         ));
         assert!(matches!(
-            choice_items.get(2),
+            choice_items.iter().nth(2),
             Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_1"
         ));
     }
@@ -1086,11 +1107,11 @@ mod tests {
 
         // ... but it is structurally absent from the aggregated assistant choice
         // (the sole source of persisted history): only the text item remains.
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 1);
         assert!(matches!(
-            choice_items.first(),
-            Some(AssistantContent::Text(Text { text, .. })) if text == "done"
+            choice_items.first_ref(),
+            AssistantContent::Text(Text { text, .. }) if text == "done"
         ));
     }
 
@@ -1099,18 +1120,18 @@ mod tests {
         let mut stream = create_text_tool_text_stream();
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 3);
         assert!(matches!(
-            choice_items.first(),
-            Some(AssistantContent::Text(Text { text, .. })) if text == "first"
+            choice_items.first_ref(),
+            AssistantContent::Text(Text { text, .. }) if text == "first"
         ));
         assert!(matches!(
-            choice_items.get(1),
+            choice_items.iter().nth(1),
             Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_split"
         ));
         assert!(matches!(
-            choice_items.get(2),
+            choice_items.iter().nth(2),
             Some(AssistantContent::Text(Text { text, .. })) if text == "second"
         ));
     }
@@ -1120,13 +1141,13 @@ mod tests {
         let mut stream = create_text_metadata_stream();
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<AssistantContent> = stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 2);
 
-        let Some(AssistantContent::Text(Text {
+        let AssistantContent::Text(Text {
             text,
             additional_params: Some(additional_params),
-        })) = choice_items.first()
+        }) = choice_items.first_ref()
         else {
             panic!("expected first text item with metadata");
         };
@@ -1142,7 +1163,7 @@ mod tests {
         let Some(AssistantContent::Text(Text {
             text,
             additional_params: Some(additional_params),
-        })) = choice_items.get(1)
+        })) = choice_items.iter().nth(1)
         else {
             panic!("expected second text item with metadata");
         };

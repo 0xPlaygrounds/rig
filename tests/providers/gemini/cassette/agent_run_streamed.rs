@@ -10,7 +10,7 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{InvalidToolCallAction, ToolCallAction};
-use rig::completion::{PromptError, Usage};
+use rig::completion::{CompletionResponse, PromptError, Usage};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
@@ -81,7 +81,7 @@ async fn run_streamed_turn(
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler.partial_turn(stream.message_id().map(str::to_owned));
+                    let partial = assembler.partial_turn(stream.message_id());
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -127,7 +127,8 @@ async fn run_streamed_turn(
         run.record_streamed_completion_call(Usage::new())
             .expect("turns without provider usage still record a completion call");
     }
-    let streamed_turn = assembler.finish(stream.message_id().map(str::to_owned), stream.choice());
+    let response = CompletionResponse::from(stream);
+    let streamed_turn = assembler.finish(response.message_id, response.choice);
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }

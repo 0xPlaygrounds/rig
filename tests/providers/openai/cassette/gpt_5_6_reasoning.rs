@@ -411,10 +411,11 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     )));
                 }
                 reasoning_blocks.push(AssistantContent::text(&text));
+                let response = CompletionResponse::from(stream);
                 stored_turns.push(StoredTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: stream.message_id().map(str::to_owned),
+                        id: response.message_id,
                         content: rig::OneOrMany::many(reasoning_blocks)
                             .expect("streamed assistant message should not be empty"),
                     },

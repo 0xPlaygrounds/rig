@@ -542,36 +542,29 @@ pub(crate) async fn completion_response_from_sse_body(
         item?;
     }
 
-    if choice_is_empty(stream.choice()) {
+    let stream_had_final_record = stream.final_record().is_some();
+    let mut normalized = completion::CompletionResponse::from(stream);
+
+    if choice_is_empty(&normalized.choice) {
         return Err(CompletionError::ResponseError(
             "Response contained no parts".to_owned(),
         ));
     }
 
-    let usage = stream
-        .final_record()
-        .map(|final_response| final_response.usage)
-        .unwrap_or_else(|| usage_from_raw_response(&raw_response));
-    let message_id = stream
-        .message_id()
-        .map(str::to_owned)
-        .or_else(|| message_id_from_response(&raw_response));
-    let finish_reason = stream
-        .final_record()
-        .and_then(|final_response| final_response.finish_reason.clone())
-        .or_else(|| {
-            super::finish_reason_from_status(
-                &raw_response.status,
-                raw_response.incomplete_details.as_ref(),
-            )
-        });
-
-    let mut normalized: completion::CompletionResponse = stream.into();
-    normalized.usage = usage;
+    if !stream_had_final_record {
+        normalized.usage = usage_from_raw_response(&raw_response);
+    }
+    normalized.message_id = normalized
+        .message_id
+        .or_else(|| message_id_from_output(raw_response.output));
+    normalized.finish_reason = normalized.finish_reason.or_else(|| {
+        super::finish_reason_from_status(
+            &raw_response.status,
+            raw_response.incomplete_details.as_ref(),
+        )
+    });
     normalized.provider = "openai".to_owned();
-    normalized.model = Some(raw_response.model.clone());
-    normalized.message_id = message_id;
-    normalized.finish_reason = finish_reason;
+    normalized.model = Some(raw_response.model);
     Ok(normalized)
 }
 
@@ -584,9 +577,9 @@ fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> b
     })
 }
 
-fn message_id_from_response(response: &CompletionResponse) -> Option<String> {
-    response.output.iter().find_map(|item| match item {
-        Output::Message(message) => Some(message.id.clone()),
+fn message_id_from_output(output: Vec<Output>) -> Option<String> {
+    output.into_iter().find_map(|item| match item {
+        Output::Message(message) => Some(message.id),
         _ => None,
     })
 }

@@ -1549,8 +1549,7 @@ mod tests {
         let mut stream = crate::streaming::CompletionStream::from_stream(raw_stream);
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<crate::message::AssistantContent> =
-            stream.choice().clone().into_iter().collect();
+        let choice_items = stream.choice();
         assert_eq!(choice_items.len(), 3);
         assert!(
             choice_items
@@ -1559,7 +1558,7 @@ mod tests {
             "provider-owned web-search blocks must not become Rig client tool calls"
         );
 
-        let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first()
+        let crate::message::AssistantContent::Text(server_tool_use) = choice_items.first_ref()
         else {
             panic!("expected raw server_tool_use metadata");
         };
@@ -1574,7 +1573,8 @@ mod tests {
             "claude shannon birth date"
         );
 
-        let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
+        let Some(crate::message::AssistantContent::Text(web_search_result)) =
+            choice_items.iter().nth(1)
         else {
             panic!("expected raw web_search_tool_result metadata");
         };
@@ -1585,7 +1585,8 @@ mod tests {
             "encrypted-content"
         );
 
-        let Some(crate::message::AssistantContent::Text(answer)) = choice_items.get(2) else {
+        let Some(crate::message::AssistantContent::Text(answer)) = choice_items.iter().nth(2)
+        else {
             panic!("expected answer text");
         };
         assert_eq!(answer.text, "Claude Shannon was born on April 30, 1916.");
@@ -1694,9 +1695,8 @@ mod tests {
         let mut stream = crate::streaming::CompletionStream::from_stream(raw_stream);
         while stream.next().await.is_some() {}
 
-        let choice_items: Vec<crate::message::AssistantContent> =
-            stream.choice().clone().into_iter().collect();
-        let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
+        let choice_items = stream.choice();
+        let crate::message::AssistantContent::Text(text) = choice_items.first_ref() else {
             panic!("expected accumulated text item");
         };
 
