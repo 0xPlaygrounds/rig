@@ -107,6 +107,40 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
+  # Compile checks prove the retained hook records stay Send + Sync, but they
+  # cannot prove that a worker-local future resolves or that folds preserve
+  # ordering and short-circuiting after wasm-bindgen lowers the code. Execute
+  # the dedicated package under Node: it supplies the same JavaScript Promise
+  # and microtask boundary these tests need without paying for a headless
+  # browser when no tested behavior touches the DOM.
+  test-wasm-hooks:
+    name: stable / execute wasm hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install pinned wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack@0.12.1
+
+      # `pipefail` preserves wasm-pack's exit status through `tee`; the grep
+      # prevents a zero-tests-matched run from becoming a false green.
+      - name: Execute browser-wasm hook semantics under Node
+        shell: bash
+        run: |
+          set -o pipefail
+          output="$(mktemp)"
+          wasm-pack test --node examples/wasm_hooks 2>&1 | tee "$output"
+          grep -F "test result: ok. 3 passed; 0 failed" "$output"
+
   # MCP remains native-only: its rmcp/tokio client and cancellation machinery
   # are cfg'd off wasm, so `rig-rmcp` compiles to an empty library there. This is
   # independent of Rig's stored tool records, which are Send + Sync on every

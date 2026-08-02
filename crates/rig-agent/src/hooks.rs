@@ -28,6 +28,16 @@
 //! name or pin the boxed future used by runtime dispatch. Stateful callbacks
 //! receive an owned [`Arc`] for each invocation.
 //!
+//! **Stored configuration is shareable; execution may remain worker-local.**
+//! A callback and any [`HookEntry::with_state`] value are `Send + Sync` on every
+//! target. The future they produce uses the target-relaxed
+//! [`WasmCompatSend`] bound, so browser-wasm execution may own `Rc`, `RefCell`,
+//! network futures, Promises, and JavaScript handles. Persistent
+//! JavaScript-affine state belongs in `thread_local!` and is accessed during
+//! invocation; ordinary shared Rust state belongs in `Arc<Mutex<_>>` or
+//! `Arc<RwLock<_>>`. Never use an unsafe `Send` or `Sync` implementation to
+//! make a JavaScript-affine value appear shareable.
+//!
 //! # Delta events
 //!
 //! [`HookEvent::TextDelta`] and [`HookEvent::ToolCallDelta`] fire once per
@@ -214,6 +224,11 @@ impl HookEntry {
     ///
     /// Use [`Self::with_state`] to retain owned state and clone a shared handle
     /// into each invocation future.
+    ///
+    /// **Stored configuration is shareable; execution may remain worker-local.**
+    /// On browser wasm, create worker-affine values inside the returned future
+    /// or access persistent values through `thread_local!`; do not capture them
+    /// in the stored callback.
     ///
     /// On native targets, the returned future must be [`Send`]. This is checked
     /// by the constructor even though callers never name or box that future:

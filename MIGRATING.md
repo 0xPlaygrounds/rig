@@ -937,12 +937,21 @@ arguments, outputs, and errors and returned futures and streams still use the
 target-relaxed `WasmCompat*` bounds, so a shareable closure may return a
 browser-worker-local future.
 
+**Stored configuration is shareable; execution may remain worker-local.** A
+hook invocation future may own `Rc`, `RefCell`, a network future, a Promise, or
+a JavaScript handle even though the retained `HookEntry` and any
+`HookEntry::with_state` value remain `Send + Sync`.
+
 Browser-wasm code that stored `Rc`, `RefCell`, a DOM handle, or other
 JavaScript-affine state directly in a hook or tool no longer compiles. Acquire
 the handle inside the returned async block, keep persistent browser state in
 `thread_local!`, or use `Arc<Mutex<_>>`/`Arc<RwLock<_>>` for ordinary Rust
 shared state. Do not add an unsafe `Send`/`Sync` implementation for a
 JavaScript-affine value.
+
+The checked [`wasm_hooks` example](examples/wasm_hooks/README.md) shows the
+`thread_local!` pattern, and its wasm-bindgen tests execute Promise-backed async
+resolution, registration ordering, and terminal short-circuiting under Node.
 
 Portable tool error types may remain worker-local. On native targets,
 `ToolExecutionError::from_error` retains the concrete source for downcasting;

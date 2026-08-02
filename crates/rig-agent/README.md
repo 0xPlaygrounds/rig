@@ -49,6 +49,16 @@ can safely use the shared state across awaits. A sub-agent can be converted
 directly into the same concrete tool record with
 `agent.into_tool(name, description)`.
 
+**Stored configuration is shareable; execution may remain worker-local.** Hook
+callbacks and `HookEntry::with_state` values are `Send + Sync` on every target,
+while the future returned by a hook uses `WasmCompatSend` and may be non-`Send`
+on browser wasm. Per-invocation `Rc`, `RefCell`, network futures, Promises, and
+JavaScript handles can live inside that future. Keep persistent
+JavaScript-affine state in `thread_local!`; use `Arc<Mutex<_>>` or
+`Arc<RwLock<_>>` for ordinary shared Rust state, and never add an unsafe
+`Send`/`Sync` implementation for a JavaScript handle. See the checked,
+copy-pasteable [`wasm_hooks` example](../../examples/wasm_hooks/README.md).
+
 ## Target support
 
 | Tier | Target | Status |

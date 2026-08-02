@@ -1,0 +1,20 @@
+[package]
+name = "wasm_hooks"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+js-sys = { workspace = true }
+rig = { path = "../..", default-features = false, features = ["agent"] }
+wasm-bindgen = { workspace = true }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-futures = { workspace = true }
+wasm-bindgen-test = { workspace = true }

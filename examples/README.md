@@ -147,3 +147,4 @@ stack goes through `HttpRuntime::from_reqwest(client)`, and for agents through
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embedding configs (`with_input_type`). |
 | `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding config. |
 | `vector_search` | Demonstrates embedding documents with `embed_documents` and querying a pre-embedded in-memory vector store. |
+| `wasm_hooks` | Copy-pasteable browser hook state through `thread_local!`, with executed wasm tests for async resolution, ordering, and short-circuiting. |
