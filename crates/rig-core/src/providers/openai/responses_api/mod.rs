@@ -1236,18 +1236,12 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         })?;
 
         let mut additional_params_payload = req.additional_params.take().unwrap_or(Value::Null);
-        let stream = match &additional_params_payload {
-            Value::Bool(stream) => Some(*stream),
-            Value::Object(map) => map.get("stream").and_then(Value::as_bool),
-            _ => None,
-        };
 
         let mut additional_tools = Vec::new();
-        if let Some(additional_params_map) = additional_params_payload.as_object_mut() {
-            if let Some(raw_tools) = additional_params_map.remove("tools") {
-                additional_tools = serde_json::from_value::<Vec<ResponsesToolDefinition>>(
-                    raw_tools,
-                )
+        if let Some(additional_params_map) = additional_params_payload.as_object_mut()
+            && let Some(raw_tools) = additional_params_map.remove("tools")
+        {
+            additional_tools = serde_json::from_value::<Vec<ResponsesToolDefinition>>(raw_tools)
                 .map_err(|err| {
                     CompletionError::RequestError(
                         format!(
@@ -1256,13 +1250,25 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
                         .into(),
                     )
                 })?;
-            }
-            additional_params_map.remove("stream");
         }
-
-        if additional_params_payload.is_boolean() {
-            additional_params_payload = Value::Null;
+        let mut reserved = vec![
+            "input",
+            "model",
+            "instructions",
+            "max_output_tokens",
+            "stream",
+            "tool_choice",
+            "tools",
+            "temperature",
+        ];
+        if req.output_schema.is_some() {
+            reserved.push("text");
         }
+        crate::json_utils::validated_additional_params(
+            Some(&additional_params_payload),
+            &reserved,
+            "OpenAI Responses request",
+        )?;
 
         let mut additional_parameters = if additional_params_payload.is_null() {
             // If there's no additional parameters, initialise an empty object
@@ -1314,7 +1320,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
             model,
             instructions,
             max_output_tokens: req.max_tokens,
-            stream,
+            stream: None,
             tool_choice,
             tools,
             temperature: req.temperature,
@@ -2841,6 +2847,29 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
         }
+    }
+
+    #[test]
+    fn responses_text_extension_conflicts_only_with_canonical_output_schema() {
+        let mut colliding = weather_tool_request();
+        colliding.output_schema = Some(schemars::schema_for!(serde_json::Value));
+        colliding.additional_params = Some(json!({
+            "text": {"format": {"type": "text"}}
+        }));
+
+        let error = CompletionRequest::try_from(("gpt-test".to_string(), colliding))
+            .expect_err("text must not override a canonical output schema");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("text"));
+
+        let mut passthrough = weather_tool_request();
+        passthrough.additional_params = Some(json!({
+            "text": {"format": {"type": "text"}}
+        }));
+        let request = CompletionRequest::try_from(("gpt-test".to_string(), passthrough))
+            .expect("provider text configuration should be accepted without a canonical schema");
+        let value = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(value["text"]["format"]["type"], "text");
     }
 
     #[test]

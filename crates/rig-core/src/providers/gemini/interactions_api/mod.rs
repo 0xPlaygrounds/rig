@@ -34,9 +34,38 @@ pub fn create_request_body(
 
     let input = InteractionInput::Steps(steps);
 
-    let raw_params = completion_request
-        .additional_params
-        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut raw_params = completion_request.additional_params.unwrap_or(Value::Null);
+
+    let mut reserved_top_level = vec!["model", "input", "system_instruction"];
+    if stream_override.is_some() {
+        reserved_top_level.push("stream");
+    }
+    crate::json_utils::validated_additional_params(
+        Some(&raw_params),
+        &reserved_top_level,
+        "Gemini Interactions request",
+    )?;
+    if raw_params.is_null() {
+        raw_params = Value::Object(Map::new());
+    }
+
+    if let Some(raw_generation_config) = raw_params.get("generation_config") {
+        let mut reserved = Vec::new();
+        if completion_request.temperature.is_some() {
+            reserved.push("temperature");
+        }
+        if completion_request.max_tokens.is_some() {
+            reserved.push("max_output_tokens");
+        }
+        if completion_request.tool_choice.is_some() {
+            reserved.push("tool_choice");
+        }
+        crate::json_utils::validated_additional_params(
+            Some(raw_generation_config),
+            &reserved,
+            "Gemini Interactions generation_config",
+        )?;
+    }
 
     let mut params: AdditionalParameters = serde_json::from_value(raw_params)?;
 
@@ -338,16 +367,27 @@ pub mod interactions_api_types {
     #[derive(Debug, Deserialize, Serialize, Default, Clone)]
     #[serde(rename_all = "snake_case")]
     pub struct AdditionalParameters {
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub agent: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub agent_config: Option<AgentConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub background: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub generation_config: Option<GenerationConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub previous_interaction_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_modalities: Option<Vec<ResponseModality>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_format: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub store: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub stream: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub tools: Option<Vec<Tool>>,
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<Value>,
@@ -2270,6 +2310,95 @@ mod tests {
     use crate::completion::{CompletionRequest, Message};
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["system_instruction", "input"] {
+            let mut request = CompletionRequest::from_prompt("Hello");
+            request.additional_params = Some(json!({ (key): "override" }));
+
+            let error = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+                .expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "custom_extension": {"enabled": true}
+        }));
+
+        let request = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["custom_extension"]["enabled"], true);
+    }
+
+    #[test]
+    fn request_treats_null_additional_params_as_no_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(Value::Null);
+
+        create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("null should mean no extensions");
+    }
+
+    #[test]
+    fn typed_additional_parameter_defaults_do_not_shadow_request_owned_fields() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(
+            serde_json::to_value(AdditionalParameters::default())
+                .expect("typed additional parameters should serialize"),
+        );
+
+        let request = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("omitted typed parameters should not collide");
+
+        assert_eq!(request.stream, Some(false));
+    }
+
+    #[test]
+    fn provider_native_stream_is_allowed_only_without_a_canonical_override() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({ "stream": true }));
+
+        let native = create_request_body("gemini-2.5-flash".to_string(), request.clone(), None)
+            .expect("provider-native stream should be accepted without an override");
+        assert_eq!(native.stream, Some(true));
+
+        let error = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect_err("canonical stream override must reject a second owner");
+        assert!(error.to_string().contains("stream"));
+    }
+
+    #[test]
+    fn generation_config_rejects_only_nested_canonical_collisions() {
+        let mut colliding = CompletionRequest::from_prompt("Hello");
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(json!({
+            "generation_config": {"temperature": 0.9, "top_p": 0.8}
+        }));
+
+        let error = create_request_body("gemini-2.5-flash".to_string(), colliding, Some(false))
+            .expect_err("nested canonical field collision must fail");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = CompletionRequest::from_prompt("Hello");
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(json!({
+            "generation_config": {"top_p": 0.8}
+        }));
+        let request = create_request_body("gemini-2.5-flash".to_string(), passthrough, Some(false))
+            .expect("unrelated nested provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(value["generation_config"]["temperature"], 0.2);
+        assert_eq!(value["generation_config"]["top_p"], 0.8);
+    }
 
     #[test]
     fn test_create_request_body_simple() {

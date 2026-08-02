@@ -467,7 +467,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
         Err(CompletionError::RequestError(error))
             if error
                 .to_string()
-                .contains("Invalid OpenAI Responses additional_params payload")
+                .contains("OpenAI Responses request additional parameters must be a JSON object")
     ));
 }
 

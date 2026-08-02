@@ -411,10 +411,8 @@ impl_bind_completion!(
 );
 impl_bind_completion!(rig_core::providers::zai::functions::Config, Zai);
 
-#[cfg(feature = "bedrock")]
-impl_bind_completion!(rig_bedrock::functions::Config, Bedrock);
-#[cfg(feature = "gemini-grpc")]
-impl_bind_completion!(rig_gemini_grpc::functions::Config, GeminiGrpc);
+impl_bind_completion!(rig_core::providers::bedrock::Config, Bedrock);
+impl_bind_completion!(rig_core::providers::gemini_grpc::Config, GeminiGrpc);
 
 #[cfg(test)]
 mod tests {

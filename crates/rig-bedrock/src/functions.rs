@@ -17,11 +17,12 @@
 use aws_config::{BehaviorVersion, Region};
 use aws_smithy_types::Blob;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
-use rig_core::providers::descriptor::ProviderDescriptor;
 use rig_core::streaming::CompletionStream;
 use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
+
+pub use rig_core::providers::bedrock::{Config, ConnectionConfig, DESCRIPTOR, EmbeddingConfig};
 
 use crate::completion::resolve_request_model;
 use crate::types::{
@@ -31,106 +32,6 @@ use crate::types::{
     errors::{AwsSdkConverseError, AwsSdkInvokeModelError},
     text_to_image::{TextToImageGeneration, TextToImageResponse},
 };
-
-/// Bedrock's capability sheet.
-///
-/// `supports_response_format` and `composes_native_output_with_tools` are
-/// true because the Converse request builder sets `output_config` and
-/// `tool_config` on the same request without gating.
-/// `stream_include_usage` and `emits_complete_single_chunk_tool_calls` are
-/// OpenAI-wire concepts that do not apply to the AWS SDK transport.
-pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("aws_bedrock")
-    .with_tools(true)
-    .with_response_format(true)
-    .with_composes_native_output_with_tools(true)
-    .with_max_embedding_documents(1024);
-
-/// Plain-data description of how to build a Bedrock runtime client.
-///
-/// This describes client *construction* (region / profile / endpoint) as
-/// data; it never holds an AWS client or credentials. Credential material is
-/// resolved by the AWS SDK's default credential chain at
-/// [`client_from_config`] time.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[non_exhaustive]
-pub struct ConnectionConfig {
-    /// AWS region (`None` defers to the SDK's default region resolution).
-    pub region: Option<String>,
-    /// Named AWS profile to load credentials from.
-    pub profile: Option<String>,
-    /// Custom endpoint URL override (local stacks, VPC endpoints).
-    pub endpoint_url: Option<String>,
-}
-
-/// Plain-data Bedrock completion configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct Config {
-    /// Reusable AWS client-construction data.
-    #[serde(flatten)]
-    pub connection: ConnectionConfig,
-    /// Model identifier requests are built for.
-    pub model: String,
-    /// Enable Bedrock prompt caching, inserting cache points into requests.
-    ///
-    /// `CachePoint` blocks are placed after the serialized `system` content
-    /// and after the final `messages` entry of each Converse request, so
-    /// Bedrock can reuse repeated prompt prefixes. Cacheability and token
-    /// thresholds are model-specific; too-short prefixes are ignored by
-    /// Bedrock. Tool definitions are not cached yet.
-    #[serde(default)]
-    pub prompt_caching: bool,
-}
-
-impl Config {
-    /// Config for `model` using the SDK's default credential chain and
-    /// region resolution.
-    pub fn new(model: impl Into<String>) -> Self {
-        Self {
-            connection: ConnectionConfig::default(),
-            model: model.into(),
-            prompt_caching: false,
-        }
-    }
-
-    /// Pin the AWS region.
-    pub fn with_region(mut self, region: impl Into<String>) -> Self {
-        self.connection.region = Some(region.into());
-        self
-    }
-
-    /// Load credentials from a named AWS profile.
-    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
-        self.connection.profile = Some(profile.into());
-        self
-    }
-
-    /// Override the endpoint URL.
-    pub fn with_endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
-        self.connection.endpoint_url = Some(endpoint_url.into());
-        self
-    }
-
-    /// Enable Bedrock prompt caching for requests built from this config.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-}
-
-impl std::ops::Deref for Config {
-    type Target = ConnectionConfig;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for Config {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
 
 /// Build an `aws_sdk_bedrockruntime::Client` from `cfg`.
 ///
@@ -251,85 +152,6 @@ pub async fn open_stream_with_options(
 // Embeddings
 // ================================================================
 
-/// Plain-data Bedrock embeddings configuration.
-///
-/// A sibling of [`Config`]: the same client-construction fields plus the
-/// embedding model identifier and its optional dimension count.
-/// [`Self::client_config`] projects the connection half so the host runtime
-/// can share its cached AWS client machinery.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct EmbeddingConfig {
-    /// Reusable AWS client-construction data.
-    #[serde(flatten)]
-    pub connection: ConnectionConfig,
-    /// Embedding model identifier requests are built for.
-    pub model: String,
-    /// Requested embedding dimensions, forwarded as the Titan `dimensions`
-    /// field (`None` sends the classic path's zero-valued default).
-    pub ndims: Option<usize>,
-}
-
-impl EmbeddingConfig {
-    /// Config for `model` using the SDK's default credential chain and
-    /// region resolution.
-    pub fn new(model: impl Into<String>) -> Self {
-        Self {
-            connection: ConnectionConfig::default(),
-            model: model.into(),
-            ndims: None,
-        }
-    }
-
-    /// Pin the AWS region.
-    pub fn with_region(mut self, region: impl Into<String>) -> Self {
-        self.connection.region = Some(region.into());
-        self
-    }
-
-    /// Load credentials from a named AWS profile.
-    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
-        self.connection.profile = Some(profile.into());
-        self
-    }
-
-    /// Override the endpoint URL.
-    pub fn with_endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
-        self.connection.endpoint_url = Some(endpoint_url.into());
-        self
-    }
-
-    /// Request `ndims`-sized embeddings.
-    pub fn with_ndims(mut self, ndims: usize) -> Self {
-        self.ndims = Some(ndims);
-        self
-    }
-
-    /// The client-construction half of this config as a [`Config`], for
-    /// sharing a host runtime's cached [`client_from_config`] machinery.
-    pub fn client_config(&self) -> Config {
-        Config {
-            connection: self.connection.clone(),
-            model: self.model.clone(),
-            prompt_caching: false,
-        }
-    }
-}
-
-impl std::ops::Deref for EmbeddingConfig {
-    type Target = ConnectionConfig;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for EmbeddingConfig {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
-
 /// Embed `texts` with `model`, one `InvokeModel` call per document (the
 /// Bedrock embedding API is single-document), summing reported input token
 /// counts into usage.
@@ -447,11 +269,9 @@ impl ImageConfig {
     /// The client-construction half of this config as a [`Config`], for
     /// sharing a host runtime's cached [`client_from_config`] machinery.
     pub fn client_config(&self) -> Config {
-        Config {
-            connection: self.connection.clone(),
-            model: self.model.clone(),
-            prompt_caching: false,
-        }
+        let mut config = Config::new(self.model.clone());
+        config.connection = self.connection.clone();
+        config
     }
 }
 

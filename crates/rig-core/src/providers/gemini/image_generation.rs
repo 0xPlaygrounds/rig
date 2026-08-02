@@ -14,6 +14,15 @@ use serde_json::Value;
 /// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
 pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
 
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "Gemini image generation cannot represent dimensions {width}x{height}; use a supported ratio or set `additional_params.generationConfig.imageConfig.aspectRatio` explicitly"
+)]
+struct UnsupportedImageDimensions {
+    width: u32,
+    height: u32,
+}
+
 impl TryFrom<GenerateContentResponse>
     for image_generation::ImageGenerationResponse<GenerateContentResponse>
 {
@@ -75,6 +84,8 @@ pub(crate) fn create_request_body(
         tools: None,
         tool_config: None,
         generation_config: Some(GenerationConfig {
+            temperature: None,
+            max_output_tokens: None,
             response_modalities: Some(vec![ResponseModality::Image]),
             image_config: Some(ImageConfig {
                 aspect_ratio: aspect_ratio(generation_request.width, generation_request.height),
@@ -87,40 +98,68 @@ pub(crate) fn create_request_body(
         additional_params: None,
     };
 
-    let mut body = serde_json::to_value(request)?;
-
-    if let Some(additional_params) = generation_request.additional_params {
-        merge_json_deep(&mut body, additional_params);
+    let width = generation_request.width;
+    let height = generation_request.height;
+    let mut body = crate::json_utils::merge_additional_params_deep(
+        serde_json::to_value(request)?,
+        generation_request.additional_params,
+        &[
+            "contents",
+            "tools",
+            "toolConfig",
+            "safetySettings",
+            "systemInstruction",
+        ],
+        "Gemini image-generation request",
+    )?;
+    let generation_config = body
+        .get_mut("generationConfig")
+        .and_then(Value::as_object_mut)
+        .ok_or(crate::json_utils::RequestOverlayError::CanonicalNotObject {
+            context: "Gemini image-generation generationConfig",
+        })?;
+    generation_config
+        .entry("temperature".to_string())
+        .or_insert_with(|| serde_json::json!(1.0));
+    generation_config
+        .entry("maxOutputTokens".to_string())
+        .or_insert_with(|| serde_json::json!(4096));
+    if body
+        .pointer("/generationConfig/imageConfig/aspectRatio")
+        .is_none()
+    {
+        return Err(ImageGenerationError::RequestError(Box::new(
+            UnsupportedImageDimensions { width, height },
+        )));
     }
 
     Ok(body)
 }
 
-fn merge_json_deep(target: &mut Value, source: Value) {
-    match (target, source) {
-        (Value::Object(target), Value::Object(source)) => {
-            for (key, value) in source {
-                if let Some(existing) = target.get_mut(&key) {
-                    merge_json_deep(existing, value);
-                } else {
-                    target.insert(key, value);
-                }
-            }
-        }
-        (target, source) => *target = source,
-    }
-}
-
 fn aspect_ratio(width: u32, height: u32) -> Option<String> {
-    match (width, height) {
-        (0, _) | (_, 0) => None,
-        (w, h) if w == h => Some("1:1".to_string()),
-        (w, h) if w.saturating_mul(3) == h.saturating_mul(4) => Some("3:4".to_string()),
-        (w, h) if w.saturating_mul(4) == h.saturating_mul(3) => Some("4:3".to_string()),
-        (w, h) if w.saturating_mul(9) == h.saturating_mul(16) => Some("9:16".to_string()),
-        (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("16:9".to_string()),
-        _ => None,
+    const RATIOS: &[(&str, u64, u64)] = &[
+        ("1:1", 1, 1),
+        ("2:3", 2, 3),
+        ("3:2", 3, 2),
+        ("3:4", 3, 4),
+        ("4:3", 4, 3),
+        ("4:5", 4, 5),
+        ("5:4", 5, 4),
+        ("9:16", 9, 16),
+        ("16:9", 16, 9),
+        ("21:9", 21, 9),
+    ];
+
+    let width = u64::from(width);
+    let height = u64::from(height);
+    if width == 0 || height == 0 {
+        return None;
     }
+
+    RATIOS
+        .iter()
+        .find(|(_, ratio_width, ratio_height)| width * ratio_height == height * ratio_width)
+        .map(|(name, _, _)| (*name).to_string())
 }
 
 fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, ImageGenerationError> {
@@ -192,30 +231,92 @@ mod tests {
             body["generationConfig"]["imageConfig"]["aspectRatio"],
             "1:1"
         );
+        assert_eq!(body["generationConfig"]["temperature"], 1.0);
+        assert_eq!(body["generationConfig"]["maxOutputTokens"], 4096);
     }
 
     #[test]
-    fn request_body_allows_additional_params_to_override_image_config() {
+    fn request_body_preserves_provider_native_image_config_leaves() {
         let mut request = image_generation_request("Generate an image of an axolotl");
         request.additional_params = Some(json!({
             "generationConfig": {
                 "imageConfig": {
-                    "aspectRatio": "16:9",
                     "imageSize": "2K"
-                }
+                },
+                "temperature": 0.4
             }
+        }));
+
+        let body = create_request_body(request)
+            .expect("provider-native leaves should merge beside canonical leaves");
+        assert_eq!(body["generationConfig"]["imageConfig"]["imageSize"], "2K");
+        assert_eq!(body["generationConfig"]["temperature"], 0.4);
+        assert_eq!(
+            body["generationConfig"]["imageConfig"]["aspectRatio"],
+            "1:1"
+        );
+    }
+
+    #[test]
+    fn request_body_rejects_exact_nested_image_config_collision() {
+        let mut request = image_generation_request("Generate an image of an axolotl");
+        request.additional_params = Some(json!({
+            "generationConfig": {
+                "imageConfig": {"aspectRatio": "16:9"}
+            }
+        }));
+
+        let error = create_request_body(request)
+            .expect_err("the canonical aspect ratio must not be replaced");
+        assert!(matches!(error, ImageGenerationError::RequestError(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("generationConfig.imageConfig.aspectRatio")
+        );
+    }
+
+    #[test]
+    fn request_body_preserves_unrelated_provider_extensions() {
+        let mut request = image_generation_request("Generate an image of an axolotl");
+        request.additional_params = Some(json!({
+            "customExtension": {"enabled": true}
         }));
 
         let body = create_request_body(request).expect("request should serialize");
 
+        assert_eq!(body["customExtension"]["enabled"], true);
         assert_eq!(
             body["generationConfig"]["imageConfig"]["aspectRatio"],
-            "16:9"
+            "1:1"
         );
-        assert_eq!(body["generationConfig"]["imageConfig"]["imageSize"], "2K");
+    }
+
+    #[test]
+    fn request_body_requires_explicit_ratio_for_unsupported_dimensions() {
+        let mut request = image_generation_request("Generate an image of an axolotl");
+        request.width = 5;
+        request.height = 3;
+
+        let error = create_request_body(request)
+            .expect_err("unsupported dimensions must not be silently ignored");
+        assert!(matches!(error, ImageGenerationError::RequestError(_)));
+        assert!(error.to_string().contains("5x3"));
+
+        let mut request = image_generation_request("Generate an image of an axolotl");
+        request.width = 5;
+        request.height = 3;
+        request.additional_params = Some(json!({
+            "generationConfig": {
+                "imageConfig": {"aspectRatio": "auto"}
+            }
+        }));
+        let body = create_request_body(request)
+            .expect("an explicit provider-native ratio should be accepted");
+
         assert_eq!(
-            body["generationConfig"]["responseModalities"],
-            json!(["IMAGE"])
+            body["generationConfig"]["imageConfig"]["aspectRatio"],
+            "auto"
         );
     }
 

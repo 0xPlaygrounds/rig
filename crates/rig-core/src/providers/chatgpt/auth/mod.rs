@@ -98,10 +98,19 @@ impl fmt::Debug for Authenticator {
 
 pub use crate::providers::internal::auth::AuthError;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthContext {
     pub access_token: String,
     pub account_id: Option<String>,
+}
+
+impl fmt::Debug for AuthContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthContext")
+            .field("access_token", &"******")
+            .field("account_id", &self.account_id)
+            .finish()
+    }
 }
 
 impl Authenticator {
@@ -155,5 +164,23 @@ impl Authenticator {
                 self.platform.auth_context_oauth().await
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AuthContext;
+
+    #[test]
+    fn auth_context_debug_redacts_access_token() {
+        let debug = format!(
+            "{:?}",
+            AuthContext {
+                access_token: "chatgpt-auth-secret".to_string(),
+                account_id: Some("account-id".to_string()),
+            }
+        );
+        assert!(!debug.contains("chatgpt-auth-secret"));
+        assert!(debug.contains("account-id"));
     }
 }

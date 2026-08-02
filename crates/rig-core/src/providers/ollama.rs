@@ -363,7 +363,12 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 }
             }
 
-            json_utils::merge(base_options, extra)
+            json_utils::merge_additional_params(
+                base_options,
+                Some(extra),
+                &["temperature", "num_predict"],
+                "Ollama options",
+            )?
         } else {
             base_options
         };
@@ -2364,11 +2369,11 @@ mod tests {
         assert_eq!(serialized, expected);
     }
 
-    // The native API takes the token limit as `options.num_predict`; an
-    // explicit `num_predict` in `additional_params` wins over
-    // `CompletionRequest::max_tokens`.
+    // The native API takes the token limit as `options.num_predict`. It is
+    // request-owned when `CompletionRequest::max_tokens` supplies it, so an
+    // extension cannot silently replace it.
     #[test]
-    fn test_completion_request_num_predict_from_additional_params_wins() {
+    fn test_completion_request_rejects_num_predict_collision() {
         use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
@@ -2388,13 +2393,11 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
-            .expect("Failed to create Ollama request");
-        let serialized =
-            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+        let error = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect_err("num_predict must not override the canonical token limit");
 
-        assert_eq!(serialized["options"], json!({ "num_predict": 42 }));
-        assert_eq!(serialized.get("max_tokens"), None);
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("num_predict"));
     }
 
     // The plain path: `max_tokens` with no `additional_params` at all, which

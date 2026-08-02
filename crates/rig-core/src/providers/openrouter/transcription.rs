@@ -135,13 +135,11 @@ pub(crate) fn build_transcription_body(
         body_map.insert("temperature".to_string(), serde_json::json!(temperature));
     }
 
-    if let Some(ref additional_params) = request.additional_params {
-        let params = additional_params.as_object().ok_or_else(|| {
-            TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "additional transcription parameters must be a JSON object",
-            )))
-        })?;
+    if let Some(params) = crate::json_utils::validated_additional_params(
+        request.additional_params.as_ref(),
+        &["model", "input_audio", "language", "temperature"],
+        "OpenRouter transcription request",
+    )? {
         for (k, v) in params {
             body_map.insert(k.clone(), v.clone());
         }

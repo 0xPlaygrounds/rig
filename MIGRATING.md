@@ -415,8 +415,24 @@ system messages (an `.or_else` where every other provider appended both). With
 nothing left to prefer, that path is gone by construction — every canonical
 system message is joined in order.
 
-`additional_params` **merges** into whatever is already set;
-`additional_params_opt` replaces (and clears with `None`).
+At the request-builder layer, `additional_params` **merges** into whatever is
+already set; `additional_params_opt` replaces (and clears with `None`). At the
+provider wire boundary, extension maps no longer override canonical fields:
+non-object values and reserved-key collisions now return the modality's typed
+request error. Move values into the canonical request field, or keep only
+provider-native keys that do not collide. Typed provider extensions such as
+Anthropic output configuration, Groq native tools, and Gemini safety settings
+continue to work because their builders parse them before applying the
+collision boundary. Nested provider configuration is checked at the leaf that
+the canonical request actually owns, so settings such as Gemini `imageSize`
+can coexist with a canonical `aspectRatio`. Provider fallbacks such as an audio
+response format or language are applied only when the extension omitted them.
+
+Gemini and xAI image generation now translate supported `width`/`height`
+ratios into the provider's aspect-ratio field. A requested ratio that the
+provider cannot represent returns a request error unless the caller explicitly
+chooses a provider-native aspect ratio in `additional_params`; it no longer
+silently produces the provider's default dimensions.
 
 Provider configs convert into `ProviderConfig`, so `AgentBuilder::new` takes
 either:
@@ -767,6 +783,23 @@ let provider = ProviderConfig::OpenAiResponses(
 );
 let agent = AgentBuilder::new(provider).preamble("…").build();
 ```
+
+The closed provider vocabulary is now feature-stable. `ProviderConfig::Bedrock`,
+`ProviderConfig::GeminiGrpc`, and their `EmbedderConfig` siblings exist even
+when the SDK/tonic fulfillment features are disabled. Their lightweight config
+types live at `rig::providers::{bedrock, gemini_grpc}`; the companion crates
+re-export the same types from `functions`, so feature-enabled source paths keep
+working. A disabled transport is reported only when `complete`, `open_stream`,
+or `embed` is called; Cargo feature unification no longer changes exhaustive
+matches or serde shape.
+
+`EmbedderConfig` also gains generated `Llamafile`, `Mistral`, `OpenRouter`, and
+`Together` variants and `From<EmbeddingConfig>` conversions. Both provider
+enums, their descriptor/model accessors, conversions, and fulfillment dispatch
+come from the same compile-time capability registry. The deterministic
+`MockScript`/`MockEmbedder` surface is always present for the same shape-stability
+reason. FastEmbed remains outside this vocabulary because loaded local weights
+cannot be serialized as resumable provider configuration.
 
 ### `AgentBuilder::new` takes a `ProviderConfig`
 

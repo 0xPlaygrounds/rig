@@ -95,10 +95,19 @@ impl fmt::Debug for Authenticator {
 
 pub use crate::providers::internal::auth::AuthError;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AuthContext {
     pub api_key: String,
     pub api_base: Option<String>,
+}
+
+impl fmt::Debug for AuthContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthContext")
+            .field("api_key", &"******")
+            .field("api_base", &self.api_base)
+            .finish()
+    }
 }
 
 impl Authenticator {
@@ -163,7 +172,20 @@ impl Authenticator {
 
 #[cfg(test)]
 mod tests {
-    use super::{DeviceCodePrompt, DeviceCodePrompter};
+    use super::{AuthContext, DeviceCodePrompt, DeviceCodePrompter};
+
+    #[test]
+    fn auth_context_debug_redacts_api_key() {
+        let debug = format!(
+            "{:?}",
+            AuthContext {
+                api_key: "copilot-auth-secret".to_string(),
+                api_base: Some("https://example.test".to_string()),
+            }
+        );
+        assert!(!debug.contains("copilot-auth-secret"));
+        assert!(debug.contains("https://example.test"));
+    }
 
     #[test]
     fn channel_prompter_hands_the_prompt_back_as_data() {

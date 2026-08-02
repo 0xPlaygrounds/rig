@@ -171,9 +171,7 @@ async fn send_streaming_cache_probe(
         .completion_request(prompt)
         .preamble(preamble)
         .tools(tools)
-        .additional_params(json!({
-            "tool_choice": { "type": "none" }
-        }))
+        .tool_choice(ToolChoice::None)
         .temperature(0.0)
         .max_tokens(16)
         .stream()

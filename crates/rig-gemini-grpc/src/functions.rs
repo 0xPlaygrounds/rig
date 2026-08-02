@@ -8,85 +8,14 @@
 //! that handle.
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
-use rig_core::providers::descriptor::{ApiKeyLocation, ProviderDescriptor};
 use rig_core::streaming::CompletionStream;
-use serde::{Deserialize, Serialize};
 use tonic::transport::{ClientTlsConfig, Endpoint};
 
 use crate::Client;
 
-/// Default Gemini gRPC endpoint.
-pub const DEFAULT_ENDPOINT: &str = "https://generativelanguage.googleapis.com";
-
-/// Gemini gRPC's capability sheet.
-///
-/// `supports_response_format` is false because `create_grpc_request` drops
-/// `output_schema` (and `tool_choice`/`additional_params`) during request
-/// conversion. The streaming flags are OpenAI-wire concepts that do not
-/// apply to the gRPC transport.
-pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("gemini-grpc")
-    .with_tools(true)
-    .with_max_embedding_documents(100);
-
-/// Plain-data Gemini gRPC provider configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct ConnectionConfig {
-    /// gRPC endpoint URL (`None` uses [`DEFAULT_ENDPOINT`]).
-    pub endpoint: Option<String>,
-    /// Credential location.
-    pub api_key: ApiKeyLocation,
-}
-
-/// Plain-data Gemini gRPC completion configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct Config {
-    /// Reusable channel-construction data.
-    #[serde(flatten)]
-    pub connection: ConnectionConfig,
-    /// Model identifier requests are built for.
-    pub model: String,
-}
-
-impl Config {
-    /// Config for `model` reading `GEMINI_API_KEY` from the environment.
-    pub fn new(model: impl Into<String>) -> Self {
-        Self {
-            connection: ConnectionConfig {
-                endpoint: None,
-                api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
-            },
-            model: model.into(),
-        }
-    }
-
-    /// Config for `model` with an explicit API key.
-    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
-        self.connection.api_key = ApiKeyLocation::Inline(key.into());
-        self
-    }
-
-    /// Override the gRPC endpoint URL.
-    pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
-        self.connection.endpoint = Some(endpoint.into());
-        self
-    }
-}
-
-impl std::ops::Deref for Config {
-    type Target = ConnectionConfig;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for Config {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
+pub use rig_core::providers::gemini_grpc::{
+    Config, ConnectionConfig, DEFAULT_ENDPOINT, DESCRIPTOR, EmbeddingConfig,
+};
 
 /// Build a connected [`Client`] (tonic channel + API-key interceptor) from
 /// `cfg`.
@@ -155,80 +84,6 @@ pub async fn open_stream(
 // Embeddings
 // ================================================================
 
-/// Plain-data Gemini gRPC embeddings configuration.
-///
-/// A sibling of [`Config`]: the same channel-construction fields plus the
-/// embedding model identifier and its optional `output_dimensionality`.
-/// [`Self::client_config`] projects the connection half so the host runtime
-/// can share its cached channel machinery.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct EmbeddingConfig {
-    /// Reusable channel-construction data.
-    #[serde(flatten)]
-    pub connection: ConnectionConfig,
-    /// Embedding model identifier requests are built for.
-    pub model: String,
-    /// Requested `output_dimensionality` (`None` sends none; the classic
-    /// model defaults to 768).
-    pub ndims: Option<usize>,
-}
-
-impl EmbeddingConfig {
-    /// Config for `model` reading `GEMINI_API_KEY` from the environment.
-    pub fn new(model: impl Into<String>) -> Self {
-        Self {
-            connection: ConnectionConfig {
-                endpoint: None,
-                api_key: ApiKeyLocation::Env("GEMINI_API_KEY".to_string()),
-            },
-            model: model.into(),
-            ndims: None,
-        }
-    }
-
-    /// Config for `model` with an explicit API key.
-    pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
-        self.connection.api_key = ApiKeyLocation::Inline(key.into());
-        self
-    }
-
-    /// Override the gRPC endpoint URL.
-    pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
-        self.connection.endpoint = Some(endpoint.into());
-        self
-    }
-
-    /// Request `ndims`-sized embeddings.
-    pub fn with_ndims(mut self, ndims: usize) -> Self {
-        self.ndims = Some(ndims);
-        self
-    }
-
-    /// The channel-construction half of this config as a [`Config`], for
-    /// sharing a host runtime's cached [`client_from_config`] machinery.
-    pub fn client_config(&self) -> Config {
-        Config {
-            connection: self.connection.clone(),
-            model: self.model.clone(),
-        }
-    }
-}
-
-impl std::ops::Deref for EmbeddingConfig {
-    type Target = ConnectionConfig;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for EmbeddingConfig {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
-
 /// Embed `texts` with `model`, one `EmbedContent` RPC per document (the
 /// gRPC embedding API is single-document). Gemini gRPC reports no
 /// embedding usage. The first RPC failure aborts the batch.
@@ -273,6 +128,7 @@ pub async fn embed_batches(
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+    use rig_core::providers::ApiKeyLocation;
 
     #[test]
     fn config_defaults_to_env_key_and_default_endpoint() {

@@ -37,6 +37,12 @@ pub enum ImageGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
+impl From<crate::json_utils::RequestOverlayError> for ImageGenerationError {
+    fn from(error: crate::json_utils::RequestOverlayError) -> Self {
+        Self::RequestError(Box::new(error))
+    }
+}
+
 crate::provider_response::impl_provider_response_helpers!(ImageGenerationError);
 
 /// A unified response for a model image generation, returning both the image and the raw response.

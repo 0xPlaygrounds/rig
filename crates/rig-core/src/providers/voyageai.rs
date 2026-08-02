@@ -173,10 +173,9 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct EmbeddingConfig {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location.
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Embedding model identifier requests are built for.
         pub model: String,
         /// Dimensionality of the vectors this model returns.
@@ -193,9 +192,9 @@ pub mod functions {
         /// [`model_dimensions_from_identifier`](super::model_dimensions_from_identifier),
         /// the same lookup the classic `make` used for a known model.
         pub ndims: Option<usize>,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
     }
+
+    crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
 
     impl EmbeddingConfig {
         /// Config for `model` reading `VOYAGE_API_KEY` from the environment.
@@ -203,11 +202,12 @@ pub mod functions {
             let model = model.into();
             let ndims = super::model_dimensions_from_identifier(&model);
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL,
+                    ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                ),
                 model,
                 ndims,
-                extra_headers: Vec::new(),
             }
         }
 
@@ -331,14 +331,11 @@ pub mod functions {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     #[non_exhaustive]
     pub struct RerankConfig {
-        /// API base URL (defaults to [`DEFAULT_BASE_URL`]).
-        pub base_url: String,
-        /// Credential location.
-        pub api_key: ApiKeyLocation,
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
         /// Reranker model identifier requests are built for.
         pub model: String,
-        /// Extra headers attached to every request.
-        pub extra_headers: Vec<(String, String)>,
         /// Number of top results to return (provider default when `None`).
         pub top_k: Option<usize>,
         /// Whether reranked documents ride back in the response.
@@ -347,14 +344,17 @@ pub mod functions {
         pub truncation: Option<bool>,
     }
 
+    crate::providers::client::impl_http_connection_config!(RerankConfig);
+
     impl RerankConfig {
         /// Config for `model` reading `VOYAGE_API_KEY` from the environment.
         pub fn new(model: impl Into<String>) -> Self {
             Self {
-                base_url: DEFAULT_BASE_URL.to_string(),
-                api_key: ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL,
+                    ApiKeyLocation::Env("VOYAGE_API_KEY".to_string()),
+                ),
                 model: model.into(),
-                extra_headers: Vec::new(),
                 top_k: None,
                 return_documents: false,
                 truncation: None,
@@ -481,6 +481,33 @@ pub mod functions {
         }
     }
 
+    /// Build the complete HTTP `/rerank` request. Pure except for credential
+    /// resolution.
+    pub fn build_rerank_request(
+        cfg: &RerankConfig,
+        query: &str,
+        documents: &[String],
+    ) -> Result<http::Request<Vec<u8>>, crate::rerank::RerankError> {
+        let body = build_rerank_body(
+            &cfg.model,
+            cfg.top_k,
+            cfg.return_documents,
+            cfg.truncation,
+            query,
+            documents,
+        )?;
+        let url = format!("{}/rerank", cfg.base_url.trim_end_matches('/'));
+        crate::providers::openai::functions::bearer_post(
+            url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            true,
+        )?
+        .body(body)
+        .map_err(crate::http_client::Error::from)
+        .map_err(Into::into)
+    }
+
     /// Rerank `documents` against `query` with Voyage AI's `/rerank`
     /// endpoint.
     ///
@@ -492,23 +519,7 @@ pub mod functions {
         query: &str,
         documents: Vec<String>,
     ) -> Result<crate::rerank::RerankResponse, crate::rerank::RerankError> {
-        let body = build_rerank_body(
-            &cfg.model,
-            cfg.top_k,
-            cfg.return_documents,
-            cfg.truncation,
-            query,
-            &documents,
-        )?;
-        let url = format!("{}/rerank", cfg.base_url.trim_end_matches('/'));
-        let req = crate::providers::openai::functions::bearer_post(
-            url,
-            &cfg.api_key,
-            &cfg.extra_headers,
-            true,
-        )?
-        .body(body)
-        .map_err(crate::http_client::Error::from)?;
+        let req = build_rerank_request(cfg, query, &documents)?;
         let (status, body) = rt.send_bytes(req).await?;
         parse_rerank_response(status, &body)
     }
@@ -570,6 +581,79 @@ pub struct RerankApiData {
 }
 #[cfg(test)]
 mod tests {
+    use super::functions::{EmbeddingConfig, RerankConfig};
+
+    const INLINE_SECRET: &str = "voyage-inline-sentinel";
+    const HEADER_SECRET: &str = "voyage-header-sentinel";
+
+    fn configs_with_secrets() -> (EmbeddingConfig, RerankConfig) {
+        let mut embedding = EmbeddingConfig::new(super::VOYAGE_3_5).with_api_key(INLINE_SECRET);
+        embedding
+            .extra_headers
+            .push(("x-voyage-secret".to_string(), HEADER_SECRET.to_string()));
+
+        let mut rerank = RerankConfig::new(super::RERANK_2_5).with_api_key(INLINE_SECRET);
+        rerank
+            .extra_headers
+            .push(("x-voyage-secret".to_string(), HEADER_SECRET.to_string()));
+        (embedding, rerank)
+    }
+
+    #[test]
+    fn connection_config_redacts_embedding_and_rerank_secrets() {
+        let (embedding, rerank) = configs_with_secrets();
+
+        for debug in [format!("{embedding:?}"), format!("{rerank:?}")] {
+            assert!(!debug.contains(INLINE_SECRET));
+            assert!(!debug.contains(HEADER_SECRET));
+            assert!(debug.contains("x-voyage-secret"));
+        }
+    }
+
+    #[test]
+    fn connection_config_serde_and_wire_requests_preserve_secret_values() {
+        let (embedding, rerank) = configs_with_secrets();
+
+        let embedding_json = serde_json::to_string(&embedding).expect("serialize embedding");
+        let rerank_json = serde_json::to_string(&rerank).expect("serialize rerank");
+        assert!(embedding_json.contains(INLINE_SECRET));
+        assert!(embedding_json.contains(HEADER_SECRET));
+        assert!(rerank_json.contains(INLINE_SECRET));
+        assert!(rerank_json.contains(HEADER_SECRET));
+        assert_eq!(
+            serde_json::from_str::<EmbeddingConfig>(&embedding_json).expect("embedding round trip"),
+            embedding
+        );
+        assert_eq!(
+            serde_json::from_str::<RerankConfig>(&rerank_json).expect("rerank round trip"),
+            rerank
+        );
+
+        let embedding_request =
+            super::functions::build_embedding_request(&embedding, &["document".to_string()])
+                .expect("embedding request");
+        let rerank_request =
+            super::functions::build_rerank_request(&rerank, "query", &["document".to_string()])
+                .expect("rerank request");
+
+        for request in [&embedding_request, &rerank_request] {
+            assert_eq!(
+                request
+                    .headers()
+                    .get(http::header::AUTHORIZATION)
+                    .and_then(|value| value.to_str().ok()),
+                Some("Bearer voyage-inline-sentinel")
+            );
+            assert_eq!(
+                request
+                    .headers()
+                    .get("x-voyage-secret")
+                    .and_then(|value| value.to_str().ok()),
+                Some(HEADER_SECRET)
+            );
+        }
+    }
+
     #[test]
     fn rerank_body_carries_query_documents_and_options() {
         let body = super::functions::build_rerank_body(

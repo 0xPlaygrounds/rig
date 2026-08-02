@@ -1069,7 +1069,6 @@ pub mod functions {
         request: crate::transcription::TranscriptionRequest,
     ) -> Result<crate::http_client::MultipartForm, crate::transcription::TranscriptionError> {
         use crate::http_client::{MultipartForm, multipart::Part};
-        use crate::transcription::TranscriptionError;
 
         let mut body =
             MultipartForm::new().part(Part::bytes("file", request.data).filename(request.filename));
@@ -1079,13 +1078,11 @@ pub mod functions {
         if let Some(ref temperature) = request.temperature {
             body = body.text("temperature", temperature.to_string());
         }
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
+        if let Some(params) = crate::json_utils::validated_additional_params(
+            request.additional_params.as_ref(),
+            &["file", "prompt", "temperature"],
+            "Azure transcription form",
+        )? {
             for (key, value) in params {
                 body = body.text(key.to_owned(), value.to_string());
             }

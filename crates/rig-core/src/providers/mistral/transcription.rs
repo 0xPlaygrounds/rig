@@ -106,12 +106,12 @@ pub(crate) fn build_transcription_form(
         body = body.text("temperature", temperature.to_string());
     }
 
-    if let Some(ref additional_params) = request.additional_params {
-        for (key, value) in additional_params.as_object().ok_or_else(|| {
-            TranscriptionError::RequestError(
-                "Additional Parameters to Mistral Transcription should be a map".into(),
-            )
-        })? {
+    if let Some(params) = crate::json_utils::validated_additional_params(
+        request.additional_params.as_ref(),
+        &["model", "file", "language", "temperature"],
+        "Mistral transcription form",
+    )? {
+        for (key, value) in params {
             body = body.text(key.to_owned(), value.to_string());
         }
     }

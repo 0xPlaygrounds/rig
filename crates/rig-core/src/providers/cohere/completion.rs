@@ -547,6 +547,19 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        crate::json_utils::validated_additional_params(
+            req.additional_params.as_ref(),
+            &[
+                "model",
+                "messages",
+                "documents",
+                "temperature",
+                "tools",
+                "tool_choice",
+                "stream",
+            ],
+            "Cohere completion request",
+        )?;
         let documents = req.documents.clone();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Cohere");

@@ -22,6 +22,15 @@ fn streaming_tool_params() -> serde_json::Value {
         .expect("Gemini additional params should serialize")
 }
 
+fn streaming_tool_params_with_canonical_max_tokens() -> serde_json::Value {
+    let config = GenerationConfig {
+        max_output_tokens: None,
+        ..GenerationConfig::default()
+    };
+    serde_json::to_value(AdditionalParameters::default().with_config(config))
+        .expect("Gemini additional params should serialize")
+}
+
 #[tokio::test]
 async fn streaming_tools_smoke() {
     super::super::support::with_gemini_cassette(
@@ -144,7 +153,7 @@ async fn example_streaming_with_tools() {
                 .max_tokens(1024)
                 .tool(Adder)
                 .tool(Subtract)
-                .additional_params(streaming_tool_params())
+                .additional_params(streaming_tool_params_with_canonical_max_tokens())
                 .build();
 
             let mut stream = agent.runner("Calculate 2 - 5").max_turns(3).stream_run();

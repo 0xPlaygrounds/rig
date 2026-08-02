@@ -21,9 +21,16 @@ pub(crate) fn build_transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, TranscriptionError> {
     // Handle Gemini specific parameters
-    let additional_params = request
-        .additional_params
-        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut additional_params = request.additional_params.unwrap_or(Value::Null);
+    let reserved = request.temperature.is_some().then_some("temperature");
+    crate::json_utils::validated_additional_params(
+        Some(&additional_params),
+        reserved.as_slice(),
+        "Gemini transcription generationConfig",
+    )?;
+    if additional_params.is_null() {
+        additional_params = Value::Object(Map::new());
+    }
     let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
 
     // Set temperature from completion_request or additional_params
@@ -158,6 +165,37 @@ mod tests {
             temperature: None,
             additional_params: None,
         }
+    }
+
+    #[test]
+    fn transcription_generation_config_rejects_only_temperature_collision() {
+        let mut colliding = transcription_request();
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(serde_json::json!({
+            "temperature": 0.9,
+            "topP": 0.8
+        }));
+        let error =
+            build_transcription_body(colliding).expect_err("temperature collision must fail");
+        assert!(matches!(error, TranscriptionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = transcription_request();
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(serde_json::json!({"topP": 0.8}));
+        let body = build_transcription_body(passthrough)
+            .expect("unrelated generation option should be accepted");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["generationConfig"]["temperature"], 0.2);
+        assert_eq!(value["generationConfig"]["topP"], 0.8);
+    }
+
+    #[test]
+    fn transcription_treats_null_additional_params_as_no_extensions() {
+        let mut request = transcription_request();
+        request.additional_params = Some(Value::Null);
+
+        build_transcription_body(request).expect("null should mean no extensions");
     }
 
     #[tokio::test]

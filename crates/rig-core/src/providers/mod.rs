@@ -2,10 +2,12 @@
 //!
 //! - Anthropic
 //! - Azure OpenAI
+//! - AWS Bedrock configuration (transport fulfillment lives in `rig-bedrock`)
 //! - ChatGPT and GitHub Copilot auth-backed clients
 //! - Cohere
 //! - DeepSeek
 //! - Gemini
+//! - Gemini gRPC configuration (transport fulfillment lives in `rig-gemini-grpc`)
 //! - Groq
 //! - Hugging Face
 //! - Hyperbolic
@@ -121,12 +123,14 @@ pub use verify::VerifyError;
 
 pub mod anthropic;
 pub mod azure;
+pub mod bedrock;
 pub mod chatgpt;
 pub mod cohere;
 pub mod copilot;
 pub mod deepseek;
 pub mod doubleword;
 pub mod gemini;
+pub mod gemini_grpc;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;

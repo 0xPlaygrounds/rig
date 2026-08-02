@@ -65,16 +65,53 @@ pub(crate) fn create_request_body(
     full_history.extend(chat_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
-    let mut additional_params_payload = additional_params
-        .take()
-        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut additional_params_payload = additional_params.take().unwrap_or(Value::Null);
+    crate::json_utils::validated_additional_params(
+        Some(&additional_params_payload),
+        &[],
+        "Gemini generateContent request",
+    )?;
+    if additional_params_payload.is_null() {
+        additional_params_payload = Value::Object(Map::new());
+    }
     let mut additional_tools =
         extract_tools_from_additional_params(&mut additional_params_payload)?;
 
+    if let Some(raw_generation_config) = additional_params_payload.get("generationConfig") {
+        let mut reserved = Vec::new();
+        if temperature.is_some() {
+            reserved.push("temperature");
+        }
+        if max_tokens.is_some() {
+            reserved.push("maxOutputTokens");
+        }
+        if output_schema.is_some() {
+            reserved.extend(["responseMimeType", "responseJsonSchema"]);
+        }
+        crate::json_utils::validated_additional_params(
+            Some(raw_generation_config),
+            &reserved,
+            "Gemini generationConfig",
+        )?;
+    }
+
     let AdditionalParameters {
         mut generation_config,
+        safety_settings,
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
+    crate::json_utils::validated_additional_params(
+        additional_params.as_ref(),
+        &[
+            "contents",
+            "generationConfig",
+            "safetySettings",
+            "tools",
+            "toolConfig",
+            "systemInstruction",
+        ],
+        "Gemini generateContent request",
+    )?;
 
     // Apply output_schema to generation_config, creating one if needed
     if let Some(schema) = output_schema {
@@ -135,7 +172,7 @@ pub(crate) fn create_request_body(
             })
             .collect::<Result<Vec<_>, _>>()?,
         generation_config,
-        safety_settings: None,
+        safety_settings,
         tools,
         tool_config,
         system_instruction,
@@ -442,7 +479,11 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub generation_config: Option<GenerationConfig>,
+        /// Optional provider-native safety policy for this request.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub safety_settings: Option<Vec<SafetySetting>>,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Value>,
@@ -2070,14 +2111,14 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     pub struct CodeExecution {}
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct SafetySetting {
         pub category: HarmCategory,
         pub threshold: HarmBlockThreshold,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum HarmBlockThreshold {
         HarmBlockThresholdUnspecified,
@@ -2102,6 +2143,97 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["systemInstruction", "contents"] {
+            let mut request = CompletionRequest::from_prompt("Hello");
+            request.additional_params = Some(json!({ (key): "override" }));
+
+            let error =
+                create_request_body(request).expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "cachedContent": "cachedContents/example"
+        }));
+
+        let request = create_request_body(request).expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["cachedContent"], "cachedContents/example");
+    }
+
+    #[test]
+    fn request_rejects_non_object_additional_params_at_the_overlay_boundary() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!(["not", "an", "object"]));
+
+        let error = create_request_body(request)
+            .expect_err("non-object extensions must fail before provider deserialization");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("must be a JSON object"));
+    }
+
+    #[test]
+    fn request_treats_null_additional_params_as_no_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(Value::Null);
+
+        create_request_body(request).expect("null should mean no extensions");
+    }
+
+    #[test]
+    fn generation_config_rejects_only_nested_canonical_collisions() {
+        let mut colliding = CompletionRequest::from_prompt("Hello");
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(json!({
+            "generationConfig": {"temperature": 0.9, "topP": 0.8}
+        }));
+
+        let error =
+            create_request_body(colliding).expect_err("nested canonical field collision must fail");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = CompletionRequest::from_prompt("Hello");
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(json!({
+            "generationConfig": {"topP": 0.8}
+        }));
+        let request = create_request_body(passthrough)
+            .expect("unrelated nested provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(value["generationConfig"]["temperature"], 0.2);
+        assert_eq!(value["generationConfig"]["topP"], 0.8);
+    }
+
+    #[test]
+    fn request_promotes_provider_safety_settings_into_the_typed_shape() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "safetySettings": [{
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_ONLY_HIGH"
+            }]
+        }));
+
+        let request = create_request_body(request)
+            .expect("provider-native safety settings should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(
+            value["safetySettings"][0]["category"],
+            "HARM_CATEGORY_HARASSMENT"
+        );
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {

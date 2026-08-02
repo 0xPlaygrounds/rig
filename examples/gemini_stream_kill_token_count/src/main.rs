@@ -304,6 +304,7 @@ fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
             }),
             ..Default::default()
         }),
+        safety_settings: None,
         additional_params: None,
     };
     Ok(serde_json::to_value(&params)?)

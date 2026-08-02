@@ -1417,6 +1417,10 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
+        openai::completion::validate_additional_params(
+            req.additional_params.as_ref(),
+            req.output_schema.is_some(),
+        )?;
 
         let mut full_history: Vec<Message> = Vec::new();
 
@@ -1477,7 +1481,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
-            max_tokens: None,
+            max_tokens: req.max_tokens,
             tools,
             tool_choice,
             additional_params,
@@ -1579,6 +1583,18 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    #[test]
+    fn openrouter_request_serializes_generic_max_tokens() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+
+        let request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(serialized["max_tokens"], 64);
     }
 
     #[test]

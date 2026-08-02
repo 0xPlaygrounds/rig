@@ -62,6 +62,19 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
         let mut additional_tools =
             extract_tools_from_additional_params(&mut additional_params_payload)?;
+        crate::json_utils::validated_additional_params(
+            Some(&additional_params_payload),
+            &[
+                "model",
+                "input",
+                "temperature",
+                "max_output_tokens",
+                "tools",
+                "tool_choice",
+                "stream",
+            ],
+            "xAI Responses request",
+        )?;
         let mut tools = req
             .tools
             .into_iter()

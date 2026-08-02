@@ -294,7 +294,6 @@ pub fn build_transcription_form(
     request: crate::transcription::TranscriptionRequest,
 ) -> Result<crate::http_client::MultipartForm, crate::transcription::TranscriptionError> {
     use crate::http_client::{MultipartForm, multipart::Part};
-    use crate::transcription::TranscriptionError;
 
     let mut body = MultipartForm::new()
         .text("model", model.to_string())
@@ -309,13 +308,11 @@ pub fn build_transcription_form(
     if let Some(ref temperature) = request.temperature {
         body = body.text("temperature", temperature.to_string());
     }
-    if let Some(ref additional_params) = request.additional_params {
-        let params = additional_params.as_object().ok_or_else(|| {
-            TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "additional transcription parameters must be a JSON object",
-            )))
-        })?;
+    if let Some(params) = crate::json_utils::validated_additional_params(
+        request.additional_params.as_ref(),
+        &["model", "file", "language", "prompt", "temperature"],
+        "OpenAI transcription form",
+    )? {
         for (key, value) in params {
             body = body.text(key.to_owned(), value.to_string());
         }
@@ -741,9 +738,8 @@ pub(crate) fn compatible_typed_request(
 /// parameters (`stream: true` and, when `descriptor.stream_include_usage`,
 /// `stream_options.include_usage`).
 ///
-/// `merge` is shallow, so `include_usage` is inserted *into* any
-/// caller-supplied `stream_options` rather than merged over it: the caller's
-/// keys survive and the usage chunk is still requested.
+/// Provider-native `stream_options` remain available, but callers cannot
+/// replace the request-owned `include_usage` setting.
 pub(crate) fn compatible_body_value<T>(
     typed: &T,
     descriptor: &ProviderDescriptor,
@@ -757,11 +753,20 @@ where
         if descriptor.stream_include_usage {
             match body.get_mut("stream_options") {
                 Some(serde_json::Value::Object(options)) => {
-                    options
-                        .entry("include_usage")
-                        .or_insert(serde_json::Value::Bool(true));
+                    if options.contains_key("include_usage") {
+                        return Err(crate::json_utils::RequestOverlayError::Collision {
+                            context: "OpenAI-compatible streaming options",
+                            key: "include_usage".to_string(),
+                        }
+                        .into());
+                    }
+                    options.insert("include_usage".to_string(), serde_json::Value::Bool(true));
                 }
-                Some(_) => {}
+                Some(_) => {
+                    return Err(CompletionError::RequestError(
+                        "OpenAI-compatible `stream_options` must be a JSON object".into(),
+                    ));
+                }
                 None => {
                     body = merge(body, json!({"stream_options": {"include_usage": true}}));
                 }
@@ -940,6 +945,36 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&streaming).expect("json");
         assert_eq!(value["stream"], true);
         assert_eq!(value["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn streaming_preserves_unrelated_provider_stream_options() {
+        let cfg = Config::new("gpt-4o").with_api_key("k");
+        let mut request = sample_request();
+        request.additional_params = Some(serde_json::json!({
+            "stream_options": {"custom_option": true}
+        }));
+
+        let body = build_request_body(&cfg, &request, true).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+
+        assert_eq!(value["stream_options"]["custom_option"], true);
+        assert_eq!(value["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn streaming_rejects_include_usage_collision() {
+        let cfg = Config::new("gpt-4o").with_api_key("k");
+        let mut request = sample_request();
+        request.additional_params = Some(serde_json::json!({
+            "stream_options": {"include_usage": false}
+        }));
+
+        let error = build_request_body(&cfg, &request, true)
+            .expect_err("include_usage must remain request-owned");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("include_usage"));
     }
 
     #[test]

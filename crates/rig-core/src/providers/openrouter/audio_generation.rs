@@ -24,23 +24,23 @@ pub(crate) fn build_audio_generation_body(
         ("model".to_string(), json!(model)),
         ("input".to_string(), json!(request.text)),
         ("voice".to_string(), json!(request.voice)),
-        ("response_format".to_string(), json!("mp3")),
         ("speed".to_string(), json!(request.speed)),
     ]
     .into_iter()
     .collect();
 
-    if let Some(ref additional_params) = request.additional_params {
-        let params = additional_params.as_object().ok_or_else(|| {
-            AudioGenerationError::RequestError(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "additional audio generation parameters must be a JSON object",
-            )))
-        })?;
+    if let Some(params) = crate::json_utils::validated_additional_params(
+        request.additional_params.as_ref(),
+        &["model", "input", "voice", "speed"],
+        "OpenRouter audio-generation request",
+    )? {
         for (k, v) in params {
             body_map.insert(k.clone(), v.clone());
         }
     }
+    body_map
+        .entry("response_format".to_string())
+        .or_insert_with(|| json!("mp3"));
 
     Ok(serde_json::to_vec(&serde_json::Value::Object(body_map))?)
 }
@@ -68,6 +68,30 @@ mod tests {
     use super::*;
     use crate::providers::openrouter::functions;
     use crate::test_utils::RecordingHttpClient;
+
+    #[test]
+    fn audio_generation_allows_provider_native_response_format() {
+        let mut request = AudioGenerationRequest::new("hello", "alloy");
+        request.additional_params = Some(serde_json::json!({"response_format": "pcm"}));
+
+        let body = build_audio_generation_body(GPT_4O_MINI_TTS, &request)
+            .expect("provider-native response format should override the fallback");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+
+        assert_eq!(value["response_format"], "pcm");
+    }
+
+    #[test]
+    fn audio_generation_still_rejects_request_owned_collisions() {
+        let mut request = AudioGenerationRequest::new("hello", "alloy");
+        request.additional_params = Some(serde_json::json!({"voice": "echo"}));
+
+        let error = build_audio_generation_body(GPT_4O_MINI_TTS, &request)
+            .expect_err("request-owned voice must not be replaced");
+
+        assert!(matches!(error, AudioGenerationError::RequestError(_)));
+        assert!(error.to_string().contains("voice"));
+    }
 
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {

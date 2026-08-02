@@ -24,13 +24,9 @@ pub struct ClientBuilder {
 
 impl Default for ClientBuilder {
     fn default() -> Self {
-        Self {
-            connection: ConnectionConfig {
-                region: Some(DEFAULT_AWS_REGION.to_string()),
-                profile: None,
-                endpoint_url: None,
-            },
-        }
+        let mut connection = ConnectionConfig::default();
+        connection.region = Some(DEFAULT_AWS_REGION.to_string());
+        Self { connection }
     }
 }
 
@@ -94,23 +90,19 @@ impl Client {
 
     /// A lazy client using a named AWS profile.
     pub fn with_profile_name(profile: impl Into<String>) -> Self {
+        let mut connection = ConnectionConfig::default();
+        connection.profile = Some(profile.into());
         Self {
-            connection: ConnectionConfig {
-                region: None,
-                profile: Some(profile.into()),
-                endpoint_url: None,
-            },
+            connection,
             aws_client: Arc::new(OnceCell::new()),
         }
     }
 
     /// Materialize completion configuration for `model`.
     pub fn config(&self, model: impl Into<String>) -> Config {
-        Config {
-            connection: self.connection.clone(),
-            model: model.into(),
-            prompt_caching: false,
-        }
+        let mut config = Config::new(model);
+        config.connection = self.connection.clone();
+        config
     }
 
     /// Materialize embedding configuration for `model`.

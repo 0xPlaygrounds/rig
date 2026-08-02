@@ -1419,6 +1419,35 @@ pub struct CompletionRequest {
     pub additional_params: Option<serde_json::Value>,
 }
 
+pub(crate) const RESERVED_REQUEST_KEYS: &[&str] = &[
+    "model",
+    "messages",
+    "tools",
+    "tool_choice",
+    "temperature",
+    "max_tokens",
+    "stream",
+];
+
+pub(crate) fn validate_additional_params(
+    additional_params: Option<&serde_json::Value>,
+    owns_response_format: bool,
+) -> Result<(), CompletionError> {
+    crate::json_utils::validated_additional_params(
+        additional_params,
+        RESERVED_REQUEST_KEYS,
+        "OpenAI-compatible chat-completions request",
+    )?;
+    if owns_response_format {
+        crate::json_utils::validated_additional_params(
+            additional_params,
+            &["response_format"],
+            "OpenAI-compatible chat-completions request",
+        )?;
+    }
+    Ok(())
+}
+
 /// Shared helper for provider `finalize_request_body` hooks whose APIs take
 /// message `content` as a plain string: flattens a content-part array to the
 /// concatenation of its text parts. When `only_if_all_text` is set, arrays
@@ -1585,6 +1614,8 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             ..
         } = req;
 
+        validate_additional_params(additional_params.as_ref(), output_schema.is_some())?;
+
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
@@ -1736,6 +1767,95 @@ mod tests {
     use crate::providers::openai::api::ApiResponse;
     use crate::telemetry::ProviderResponseExt;
     use std::collections::HashMap;
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["model", "messages"] {
+            let mut request = CoreCompletionRequest::from_prompt("Hello");
+            request.additional_params = Some(serde_json::json!({ (key): "override" }));
+
+            let error = CompletionRequest::try_from(OpenAIRequestParams {
+                model: "gpt-test".to_string(),
+                request,
+                strict_tools: false,
+                tool_result_array_content: false,
+                supports_response_format: true,
+                supports_tools: true,
+            })
+            .expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let mut request = CoreCompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(serde_json::json!({
+            "reasoning_effort": "high"
+        }));
+
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-test".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn request_preserves_provider_native_response_format_without_output_schema() {
+        let mut request = CoreCompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(serde_json::json!({
+            "response_format": { "type": "json_object" }
+        }));
+
+        let request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-test".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("provider-native response format should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["response_format"]["type"], "json_object");
+    }
+
+    #[test]
+    fn request_rejects_response_format_when_output_schema_owns_it() {
+        let mut request = CoreCompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(serde_json::json!({
+            "response_format": { "type": "json_object" }
+        }));
+        request.output_schema = Some(
+            serde_json::from_value(serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }))
+            .expect("schema should deserialize"),
+        );
+
+        let error = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-test".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect_err("request-owned response format collision must fail");
+
+        assert!(error.to_string().contains("response_format"));
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {

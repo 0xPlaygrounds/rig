@@ -1696,9 +1696,12 @@ enum OutputFormat {
 }
 
 /// Configuration for the model's output format.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct OutputConfig {
-    format: OutputFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<OutputFormat>,
+    #[serde(flatten)]
+    additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2215,6 +2218,23 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             &mut additional_params_payload,
         )?;
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
+        let mut output_config =
+            extract_output_config_from_additional_params(&mut additional_params_payload)?;
+        crate::json_utils::validated_additional_params(
+            Some(&additional_params_payload),
+            &[
+                "model",
+                "messages",
+                "max_tokens",
+                "system",
+                "temperature",
+                "tool_choice",
+                "tools",
+                "cache_control",
+                "stream",
+            ],
+            "Anthropic Messages request",
+        )?;
 
         // Convert system prompt to array format for cache_control support
         // System instructions arrive only as canonical `Message::System`
@@ -2230,17 +2250,27 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        if let Some(schema) = req.output_schema {
+            if output_config
+                .as_ref()
+                .and_then(|config| config.format.as_ref())
+                .is_some()
+            {
+                return Err(crate::json_utils::RequestOverlayError::Collision {
+                    context: "Anthropic Messages request",
+                    key: "output_config.format".to_string(),
+                }
+                .into());
+            }
+
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
-                    schema: schema_value,
-                },
-            })
-        } else {
-            None
-        };
+            output_config
+                .get_or_insert_with(OutputConfig::default)
+                .format = Some(OutputFormat::JsonSchema {
+                schema: schema_value,
+            });
+        }
 
         Ok(Self {
             model: model.to_string(),
@@ -2260,6 +2290,30 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             },
         })
     }
+}
+
+fn extract_output_config_from_additional_params(
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<OutputConfig>, CompletionError> {
+    let Some(raw_output_config) = additional_params
+        .as_object_mut()
+        .and_then(|params| params.remove("output_config"))
+    else {
+        return Ok(None);
+    };
+
+    if raw_output_config.is_null() {
+        return Ok(None);
+    }
+
+    serde_json::from_value(raw_output_config)
+        .map(Some)
+        .map_err(|error| {
+            CompletionError::RequestError(
+                format!("Invalid Anthropic `additional_params.output_config` payload: {error}")
+                    .into(),
+            )
+        })
 }
 
 pub(super) fn extract_tools_from_additional_params(
@@ -2316,6 +2370,112 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    fn build_request_with_additional_params(
+        additional_params: serde_json::Value,
+    ) -> Result<AnthropicCompletionRequest, CompletionError> {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.additional_params = Some(additional_params);
+        AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+    }
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["system", "messages"] {
+            let error = build_request_with_additional_params(json!({ (key): "override" }))
+                .expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let request = build_request_with_additional_params(json!({
+            "metadata": {"user_id": "request-user"}
+        }))
+        .expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["metadata"]["user_id"], "request-user");
+    }
+
+    #[test]
+    fn request_preserves_provider_native_output_config_leaves() {
+        let request = build_request_with_additional_params(json!({
+            "output_config": {"effort": "medium"}
+        }))
+        .expect("provider-native output configuration should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["output_config"]["effort"], "medium");
+        assert!(value["output_config"].get("format").is_none());
+    }
+
+    #[test]
+    fn typed_output_schema_merges_with_provider_native_output_config() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.output_schema = Some(
+            serde_json::from_value(json!({
+                "type": "object",
+                "properties": {"answer": {"type": "string"}}
+            }))
+            .expect("schema should deserialize"),
+        );
+        request.additional_params = Some(json!({
+            "output_config": {"effort": "low"}
+        }));
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .expect("distinct output_config leaves should merge");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["output_config"]["effort"], "low");
+        assert_eq!(value["output_config"]["format"]["type"], "json_schema");
+    }
+
+    #[test]
+    fn typed_output_schema_rejects_only_output_format_collision() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.output_schema = Some(
+            serde_json::from_value(json!({"type": "object"})).expect("schema should deserialize"),
+        );
+        request.additional_params = Some(json!({
+            "output_config": {
+                "format": {
+                    "type": "json_schema",
+                    "schema": {"type": "string"}
+                }
+            }
+        }));
+
+        let error = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .expect_err("two owners of output_config.format must collide");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("output_config.format"));
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {

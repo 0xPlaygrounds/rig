@@ -71,11 +71,11 @@ impl Client {
 
         let channel = endpoint.connect().await?;
 
+        let connection = crate::functions::Config::new("")
+            .with_api_key(api_key.clone())
+            .connection;
         Ok(Self {
-            connection: crate::functions::ConnectionConfig {
-                endpoint: None,
-                api_key: rig_core::providers::ApiKeyLocation::Inline(api_key.clone()),
-            },
+            connection,
             api_key,
             channel,
         })
@@ -125,10 +125,9 @@ impl Client {
 
     /// Materialize completion configuration for `model`.
     pub fn config(&self, model: impl Into<String>) -> crate::functions::Config {
-        crate::functions::Config {
-            connection: self.connection.clone(),
-            model: model.into(),
-        }
+        let mut config = crate::functions::Config::new(model);
+        config.connection = self.connection.clone();
+        config
     }
 
     /// Materialize embedding configuration sharing this channel connection.

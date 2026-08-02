@@ -1,7 +1,6 @@
 use crate::audio_generation::{
     AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
-use crate::json_utils::merge_inplace;
 use bytes::Bytes;
 use serde_json::json;
 
@@ -22,15 +21,23 @@ pub(crate) fn build_audio_generation_body(
         request.voice.as_str()
     };
 
-    let mut body = json!({
+    let body = json!({
         "text": request.text,
         "voice_id": voice,
-        "language": "en",
+        "speed": request.speed,
     });
-
-    if let Some(additional_params) = request.additional_params.clone() {
-        merge_inplace(&mut body, additional_params);
-    }
+    let mut body = crate::json_utils::merge_additional_params(
+        body,
+        request.additional_params.clone(),
+        &["text", "voice_id", "speed"],
+        "xAI audio-generation request",
+    )?;
+    body.as_object_mut()
+        .ok_or(crate::json_utils::RequestOverlayError::CanonicalNotObject {
+            context: "xAI audio-generation request",
+        })?
+        .entry("language".to_string())
+        .or_insert_with(|| json!("en"));
 
     Ok(serde_json::to_vec(&body)?)
 }
@@ -56,6 +63,43 @@ pub(crate) fn parse_audio_generation_response(
 mod tests {
     use super::*;
     use crate::providers::xai::functions;
+
+    #[test]
+    fn audio_generation_allows_provider_native_language() {
+        let mut request = AudioGenerationRequest::new("hola", "eve");
+        request.additional_params = Some(serde_json::json!({"language": "es-MX"}));
+
+        let body = build_audio_generation_body(&request)
+            .expect("provider-native language should override the fallback");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+
+        assert_eq!(value["language"], "es-MX");
+    }
+
+    #[test]
+    fn audio_generation_defaults_language_when_omitted() {
+        let request = AudioGenerationRequest::new("hello", "eve");
+        let body = build_audio_generation_body(&request).expect("request should serialize");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+
+        assert_eq!(value["language"], "en");
+    }
+
+    #[test]
+    fn audio_generation_serializes_generic_speed() {
+        let request = AudioGenerationRequest::new("hello", "eve").with_speed(1.2);
+        let body = build_audio_generation_body(&request).expect("request should serialize");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("valid JSON");
+
+        let speed = value["speed"].as_f64().expect("speed should be numeric");
+        assert_eq!(speed, f64::from(1.2_f32));
+
+        let colliding = request.with_additional_params(serde_json::json!({"speed": 0.8}));
+        let error = build_audio_generation_body(&colliding)
+            .expect_err("request-owned speed must not be replaced");
+        assert!(matches!(error, AudioGenerationError::RequestError(_)));
+        assert!(error.to_string().contains("speed"));
+    }
 
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {

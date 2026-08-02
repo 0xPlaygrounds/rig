@@ -6,7 +6,10 @@
 //! Adding a provider fails to compile until every fulfilment site handles
 //! it: that is the feature, which is also why the enum is deliberately
 //! **not** `#[non_exhaustive]` — external hosts matching provider configs
-//! get the same compile-time guarantee.
+//! get the same compile-time guarantee. Cargo features never change that
+//! vocabulary: Bedrock and Gemini gRPC keep lightweight configs in
+//! `rig-core`, and missing transport features fail only when fulfillment is
+//! attempted.
 //!
 //! Live transports live in [`Runtime`], not in configs: a serialized
 //! `ProviderConfig` resumes anywhere, and handles (HTTP client, AWS client,
@@ -16,6 +19,11 @@
 //! [`AgentRun`](crate::agent::run::AgentRun) +
 //! [`prepare_request`](crate::agent::prepare::prepare_request) protocol
 //! directly instead.
+//!
+//! [`PROVIDER_SURFACES`] and both config enums are generated from one
+//! registry containing descriptors, completion/embedding fulfillment paths,
+//! and feature requirements. FastEmbed is deliberately absent because loaded
+//! local weights are runtime state, not resumable serde configuration.
 
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use rig_core::embeddings::EmbeddingError;
@@ -23,129 +31,709 @@ use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::descriptor::ProviderDescriptor;
 use rig_core::streaming::CompletionStream;
 
-/// One row per bundled in-core provider: `(Variant, module, feature-less)`.
-/// Adding a provider is one row here plus its `functions` module; the
-/// compiler walks you through every match this macro does not generate.
-macro_rules! for_each_builtin_provider {
+/// A compile-time description of one bundled provider surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderSurface {
+    /// Public enum variant name.
+    pub variant: &'static str,
+    /// Provider capability sheet.
+    pub descriptor: &'static ProviderDescriptor,
+    /// Whether the provider fulfills completion requests.
+    pub completion: bool,
+    /// Whether the provider fulfills embedding requests.
+    pub embedding: bool,
+    /// Cargo feature required to fulfill non-HTTP operations, if any.
+    pub fulfillment_feature: Option<&'static str>,
+}
+
+#[cfg(not(all(feature = "bedrock", feature = "gemini-grpc")))]
+#[derive(Debug, thiserror::Error)]
+#[error("provider `{provider}` fulfillment requires the rig-agent `{feature}` Cargo feature")]
+struct ProviderFeatureUnavailable {
+    provider: &'static str,
+    feature: &'static str,
+}
+
+#[cfg(not(all(feature = "bedrock", feature = "gemini-grpc")))]
+fn completion_feature_unavailable(
+    provider: &'static str,
+    feature: &'static str,
+) -> CompletionError {
+    CompletionError::RequestError(Box::new(ProviderFeatureUnavailable { provider, feature }))
+}
+
+#[cfg(not(all(feature = "bedrock", feature = "gemini-grpc")))]
+fn embedding_feature_unavailable(provider: &'static str, feature: &'static str) -> EmbeddingError {
+    EmbeddingError::ProviderError(ProviderFeatureUnavailable { provider, feature }.to_string())
+}
+
+macro_rules! capability_present {
+    () => {
+        false
+    };
+    ($config:path) => {
+        true
+    };
+}
+
+macro_rules! config_model {
+    (Http, $cfg:expr) => {
+        &$cfg.model
+    };
+    (Bedrock, $cfg:expr) => {
+        &$cfg.model
+    };
+    (GeminiGrpc, $cfg:expr) => {
+        &$cfg.model
+    };
+    (Mock, $cfg:expr) => {
+        "mock"
+    };
+}
+
+macro_rules! complete_dispatch {
+    (Http, $complete:path, $cfg:expr, $rt:expr, $request:expr) => {
+        $complete($cfg, &$rt.http, $request).await
+    };
+    (Bedrock, $complete:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        #[cfg(feature = "bedrock")]
+        {
+            let client = $rt.bedrock_client($cfg).await;
+            $complete(&client, &$cfg.model, $cfg.prompt_caching, $request).await
+        }
+        #[cfg(not(feature = "bedrock"))]
+        {
+            let _ = ($cfg, $rt, $request);
+            Err(completion_feature_unavailable("aws_bedrock", "bedrock"))
+        }
+    }};
+    (GeminiGrpc, $complete:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        #[cfg(feature = "gemini-grpc")]
+        {
+            let client = $rt.gemini_grpc_client($cfg).await?;
+            $complete(&client, &$cfg.model, $request).await
+        }
+        #[cfg(not(feature = "gemini-grpc"))]
+        {
+            let _ = ($cfg, $rt, $request);
+            Err(completion_feature_unavailable("gemini-grpc", "gemini-grpc"))
+        }
+    }};
+    (Mock, $complete:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        let _ = $rt;
+        $complete($cfg, &$request).await
+    }};
+}
+
+macro_rules! stream_dispatch {
+    (Http, $open_stream:path, $cfg:expr, $rt:expr, $request:expr) => {
+        $open_stream($cfg, &$rt.http, $request).await
+    };
+    (Bedrock, $open_stream:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        #[cfg(feature = "bedrock")]
+        {
+            let client = $rt.bedrock_client($cfg).await;
+            $open_stream(&client, &$cfg.model, $cfg.prompt_caching, $request).await
+        }
+        #[cfg(not(feature = "bedrock"))]
+        {
+            let _ = ($cfg, $rt, $request);
+            Err(completion_feature_unavailable("aws_bedrock", "bedrock"))
+        }
+    }};
+    (GeminiGrpc, $open_stream:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        #[cfg(feature = "gemini-grpc")]
+        {
+            let client = $rt.gemini_grpc_client($cfg).await?;
+            $open_stream(&client, &$cfg.model, $request).await
+        }
+        #[cfg(not(feature = "gemini-grpc"))]
+        {
+            let _ = ($cfg, $rt, $request);
+            Err(completion_feature_unavailable("gemini-grpc", "gemini-grpc"))
+        }
+    }};
+    (Mock, $open_stream:path, $cfg:expr, $rt:expr, $request:expr) => {{
+        let _ = $rt;
+        $open_stream($cfg, &$request).await
+    }};
+}
+
+macro_rules! embed_dispatch {
+    (Http, $embed:path, $cfg:expr, $rt:expr, $texts:expr) => {
+        $embed($cfg, &$rt.http, $texts).await
+    };
+    (Bedrock, $embed:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        #[cfg(feature = "bedrock")]
+        {
+            let client = $rt.bedrock_client(&$cfg.client_config()).await;
+            $embed(&client, &$cfg.model, $cfg.ndims, $texts).await
+        }
+        #[cfg(not(feature = "bedrock"))]
+        {
+            let _ = ($cfg, $rt, $texts);
+            Err(embedding_feature_unavailable("aws_bedrock", "bedrock"))
+        }
+    }};
+    (GeminiGrpc, $embed:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        #[cfg(feature = "gemini-grpc")]
+        {
+            let client = $rt
+                .gemini_grpc_client(&$cfg.client_config())
+                .await
+                .map_err(|error| EmbeddingError::ProviderError(error.to_string()))?;
+            $embed(&client, &$cfg.model, $cfg.ndims, $texts).await
+        }
+        #[cfg(not(feature = "gemini-grpc"))]
+        {
+            let _ = ($cfg, $rt, $texts);
+            Err(embedding_feature_unavailable("gemini-grpc", "gemini-grpc"))
+        }
+    }};
+    (Mock, $embed:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        let _ = $rt;
+        $embed($cfg, &$texts)
+    }};
+}
+
+macro_rules! embed_batches_dispatch {
+    (Http, $embed_batches:path, $cfg:expr, $rt:expr, $texts:expr) => {
+        $embed_batches($cfg, &$rt.http, $texts).await
+    };
+    (Bedrock, $embed_batches:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        #[cfg(feature = "bedrock")]
+        {
+            let client = $rt.bedrock_client(&$cfg.client_config()).await;
+            $embed_batches(&client, &$cfg.model, $cfg.ndims, $texts).await
+        }
+        #[cfg(not(feature = "bedrock"))]
+        {
+            let _ = ($cfg, $rt, $texts);
+            Err(embedding_feature_unavailable("aws_bedrock", "bedrock"))
+        }
+    }};
+    (GeminiGrpc, $embed_batches:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        #[cfg(feature = "gemini-grpc")]
+        {
+            let client = $rt
+                .gemini_grpc_client(&$cfg.client_config())
+                .await
+                .map_err(|error| EmbeddingError::ProviderError(error.to_string()))?;
+            $embed_batches(&client, &$cfg.model, $cfg.ndims, $texts).await
+        }
+        #[cfg(not(feature = "gemini-grpc"))]
+        {
+            let _ = ($cfg, $rt, $texts);
+            Err(embedding_feature_unavailable("gemini-grpc", "gemini-grpc"))
+        }
+    }};
+    (Mock, $embed_batches:path, $cfg:expr, $rt:expr, $texts:expr) => {{
+        let _ = $rt;
+        let counts: Vec<usize> = $texts.iter().map(Vec::len).collect();
+        let flat: Vec<String> = $texts.into_iter().flatten().collect();
+        let response = $embed_batches($cfg, &flat)?;
+        let groups = rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
+    }};
+}
+
+/// The single provider-capability registry.
+///
+/// Each row declares the stable public variant, capability descriptor,
+/// completion and embedding config/fulfillment paths, and any Cargo feature
+/// needed for fulfillment. Empty capability tuples omit that provider from
+/// the corresponding enum without creating a second hand-maintained list.
+macro_rules! provider_surface_registry {
     ($apply:ident) => {
         $apply! {
-            (Anthropic, anthropic),
-            (Azure, azure),
-            (ChatGpt, chatgpt),
-            (Cohere, cohere),
-            (Copilot, copilot),
-            (DeepSeek, deepseek),
-            (Doubleword, doubleword),
-            (Gemini, gemini),
-            (Groq, groq),
-            (HuggingFace, huggingface),
-            (Hyperbolic, hyperbolic),
-            (Llamafile, llamafile),
-            (Minimax, minimax),
-            (Mira, mira),
-            (Mistral, mistral),
-            (Moonshot, moonshot),
-            (Ollama, ollama),
-            (OpenAi, openai),
-            (OpenRouter, openrouter),
-            (Perplexity, perplexity),
-            (Together, together),
-            (Xai, xai),
-            (XiaomiMimo, xiaomimimo),
-            (Zai, zai),
+            Anthropic {
+                descriptor: rig_core::providers::anthropic::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::anthropic::functions::Config,
+                    rig_core::providers::anthropic::functions::complete,
+                    rig_core::providers::anthropic::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Azure {
+                descriptor: rig_core::providers::azure::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::azure::functions::Config,
+                    rig_core::providers::azure::functions::complete,
+                    rig_core::providers::azure::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::azure::functions::EmbeddingConfig,
+                    rig_core::providers::azure::functions::embed,
+                    rig_core::providers::azure::functions::embed_batches,
+                    Http
+                )
+            },
+            Bedrock {
+                descriptor: rig_core::providers::bedrock::DESCRIPTOR,
+                feature: Some("bedrock"),
+                completion: (
+                    rig_core::providers::bedrock::Config,
+                    rig_bedrock::functions::complete_with_options,
+                    rig_bedrock::functions::open_stream_with_options,
+                    Bedrock
+                ),
+                embedding: (
+                    rig_core::providers::bedrock::EmbeddingConfig,
+                    rig_bedrock::functions::embed,
+                    rig_bedrock::functions::embed_batches,
+                    Bedrock
+                )
+            },
+            ChatGpt {
+                descriptor: rig_core::providers::chatgpt::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::chatgpt::functions::Config,
+                    rig_core::providers::chatgpt::functions::complete,
+                    rig_core::providers::chatgpt::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Cohere {
+                descriptor: rig_core::providers::cohere::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::cohere::functions::Config,
+                    rig_core::providers::cohere::functions::complete,
+                    rig_core::providers::cohere::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::cohere::functions::EmbeddingConfig,
+                    rig_core::providers::cohere::functions::embed,
+                    rig_core::providers::cohere::functions::embed_batches,
+                    Http
+                )
+            },
+            Copilot {
+                descriptor: rig_core::providers::copilot::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::copilot::functions::Config,
+                    rig_core::providers::copilot::functions::complete,
+                    rig_core::providers::copilot::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::copilot::functions::EmbeddingConfig,
+                    rig_core::providers::copilot::functions::embed,
+                    rig_core::providers::copilot::functions::embed_batches,
+                    Http
+                )
+            },
+            DeepSeek {
+                descriptor: rig_core::providers::deepseek::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::deepseek::functions::Config,
+                    rig_core::providers::deepseek::functions::complete,
+                    rig_core::providers::deepseek::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Doubleword {
+                descriptor: rig_core::providers::doubleword::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::doubleword::functions::Config,
+                    rig_core::providers::doubleword::functions::complete,
+                    rig_core::providers::doubleword::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::doubleword::functions::EmbeddingConfig,
+                    rig_core::providers::doubleword::functions::embed,
+                    rig_core::providers::doubleword::functions::embed_batches,
+                    Http
+                )
+            },
+            Gemini {
+                descriptor: rig_core::providers::gemini::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::gemini::functions::Config,
+                    rig_core::providers::gemini::functions::complete,
+                    rig_core::providers::gemini::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::gemini::functions::EmbeddingConfig,
+                    rig_core::providers::gemini::functions::embed,
+                    rig_core::providers::gemini::functions::embed_batches,
+                    Http
+                )
+            },
+            GeminiInteractions {
+                descriptor: rig_core::providers::gemini::interactions_api::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::gemini::interactions_api::functions::Config,
+                    rig_core::providers::gemini::interactions_api::functions::complete,
+                    rig_core::providers::gemini::interactions_api::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            GeminiGrpc {
+                descriptor: rig_core::providers::gemini_grpc::DESCRIPTOR,
+                feature: Some("gemini-grpc"),
+                completion: (
+                    rig_core::providers::gemini_grpc::Config,
+                    rig_gemini_grpc::functions::complete,
+                    rig_gemini_grpc::functions::open_stream,
+                    GeminiGrpc
+                ),
+                embedding: (
+                    rig_core::providers::gemini_grpc::EmbeddingConfig,
+                    rig_gemini_grpc::functions::embed,
+                    rig_gemini_grpc::functions::embed_batches,
+                    GeminiGrpc
+                )
+            },
+            Groq {
+                descriptor: rig_core::providers::groq::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::groq::functions::Config,
+                    rig_core::providers::groq::functions::complete,
+                    rig_core::providers::groq::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            HuggingFace {
+                descriptor: rig_core::providers::huggingface::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::huggingface::functions::Config,
+                    rig_core::providers::huggingface::functions::complete,
+                    rig_core::providers::huggingface::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Hyperbolic {
+                descriptor: rig_core::providers::hyperbolic::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::hyperbolic::functions::Config,
+                    rig_core::providers::hyperbolic::functions::complete,
+                    rig_core::providers::hyperbolic::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Llamafile {
+                descriptor: rig_core::providers::llamafile::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::llamafile::functions::Config,
+                    rig_core::providers::llamafile::functions::complete,
+                    rig_core::providers::llamafile::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::llamafile::functions::EmbeddingConfig,
+                    rig_core::providers::llamafile::functions::embed,
+                    rig_core::providers::llamafile::functions::embed_batches,
+                    Http
+                )
+            },
+            Minimax {
+                descriptor: rig_core::providers::minimax::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::minimax::functions::Config,
+                    rig_core::providers::minimax::functions::complete,
+                    rig_core::providers::minimax::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Mira {
+                descriptor: rig_core::providers::mira::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::mira::functions::Config,
+                    rig_core::providers::mira::functions::complete,
+                    rig_core::providers::mira::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Mistral {
+                descriptor: rig_core::providers::mistral::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::mistral::functions::Config,
+                    rig_core::providers::mistral::functions::complete,
+                    rig_core::providers::mistral::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::mistral::functions::EmbeddingConfig,
+                    rig_core::providers::mistral::functions::embed,
+                    rig_core::providers::mistral::functions::embed_batches,
+                    Http
+                )
+            },
+            Mock {
+                descriptor: MOCK_DESCRIPTOR,
+                feature: None,
+                completion: (
+                    MockScript,
+                    MockScript::next_response,
+                    MockScript::next_stream,
+                    Mock
+                ),
+                embedding: (
+                    MockEmbedder,
+                    MockEmbedder::next_response,
+                    MockEmbedder::next_response,
+                    Mock
+                )
+            },
+            Moonshot {
+                descriptor: rig_core::providers::moonshot::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::moonshot::functions::Config,
+                    rig_core::providers::moonshot::functions::complete,
+                    rig_core::providers::moonshot::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Ollama {
+                descriptor: rig_core::providers::ollama::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::ollama::functions::Config,
+                    rig_core::providers::ollama::functions::complete,
+                    rig_core::providers::ollama::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::ollama::functions::EmbeddingConfig,
+                    rig_core::providers::ollama::functions::embed,
+                    rig_core::providers::ollama::functions::embed_batches,
+                    Http
+                )
+            },
+            OpenAi {
+                descriptor: rig_core::providers::openai::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::openai::functions::Config,
+                    rig_core::providers::openai::functions::complete,
+                    rig_core::providers::openai::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::openai::functions::EmbeddingConfig,
+                    rig_core::providers::openai::functions::embed,
+                    rig_core::providers::openai::functions::embed_batches,
+                    Http
+                )
+            },
+            OpenAiResponses {
+                descriptor: rig_core::providers::openai::responses_api::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::openai::responses_api::functions::Config,
+                    rig_core::providers::openai::responses_api::functions::complete,
+                    rig_core::providers::openai::responses_api::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            OpenRouter {
+                descriptor: rig_core::providers::openrouter::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::openrouter::functions::Config,
+                    rig_core::providers::openrouter::functions::complete,
+                    rig_core::providers::openrouter::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::openrouter::functions::EmbeddingConfig,
+                    rig_core::providers::openrouter::functions::embed,
+                    rig_core::providers::openrouter::functions::embed_batches,
+                    Http
+                )
+            },
+            Perplexity {
+                descriptor: rig_core::providers::perplexity::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::perplexity::functions::Config,
+                    rig_core::providers::perplexity::functions::complete,
+                    rig_core::providers::perplexity::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Together {
+                descriptor: rig_core::providers::together::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::together::functions::Config,
+                    rig_core::providers::together::functions::complete,
+                    rig_core::providers::together::functions::open_stream,
+                    Http
+                ),
+                embedding: (
+                    rig_core::providers::together::functions::EmbeddingConfig,
+                    rig_core::providers::together::functions::embed,
+                    rig_core::providers::together::functions::embed_batches,
+                    Http
+                )
+            },
+            VoyageAi {
+                descriptor: rig_core::providers::voyageai::functions::DESCRIPTOR,
+                feature: None,
+                completion: (),
+                embedding: (
+                    rig_core::providers::voyageai::functions::EmbeddingConfig,
+                    rig_core::providers::voyageai::functions::embed,
+                    rig_core::providers::voyageai::functions::embed_batches,
+                    Http
+                )
+            },
+            Xai {
+                descriptor: rig_core::providers::xai::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::xai::functions::Config,
+                    rig_core::providers::xai::functions::complete,
+                    rig_core::providers::xai::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            XiaomiMimo {
+                descriptor: rig_core::providers::xiaomimimo::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::xiaomimimo::functions::Config,
+                    rig_core::providers::xiaomimimo::functions::complete,
+                    rig_core::providers::xiaomimimo::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            },
+            Zai {
+                descriptor: rig_core::providers::zai::functions::DESCRIPTOR,
+                feature: None,
+                completion: (
+                    rig_core::providers::zai::functions::Config,
+                    rig_core::providers::zai::functions::complete,
+                    rig_core::providers::zai::functions::open_stream,
+                    Http
+                ),
+                embedding: ()
+            }
         }
     };
 }
 
-macro_rules! define_provider_config {
-    ($(($variant:ident, $module:ident),)*) => {
-        /// A bundled provider selection as plain serde configuration.
+macro_rules! define_provider_surfaces {
+    (
+        $(
+            $variant:ident {
+                descriptor: $descriptor:path,
+                feature: $feature:expr,
+                completion: (
+                    $(
+                        $completion_config:path,
+                        $complete:path,
+                        $open_stream:path,
+                        $completion_kind:ident
+                    )?
+                ),
+                embedding: (
+                    $(
+                        $embedding_config:path,
+                        $embed:path,
+                        $embed_batches:path,
+                        $embedding_kind:ident
+                    )?
+                )
+            }
+        ),* $(,)?
+    ) => {
+        /// All bundled provider surfaces, generated from the registry.
+        pub const PROVIDER_SURFACES: &[ProviderSurface] = &[
+            $(
+                ProviderSurface {
+                    variant: stringify!($variant),
+                    descriptor: &$descriptor,
+                    completion: capability_present!($($completion_config)?),
+                    embedding: capability_present!($($embedding_config)?),
+                    fulfillment_feature: $feature,
+                },
+            )*
+        ];
+
+        /// A bundled completion-provider selection as plain serde config.
         ///
-        /// Deliberately exhaustive (no `#[non_exhaustive]`): a new provider
-        /// must fail to compile in every matching host rather than fall
-        /// through a wildcard arm.
-        ///
-        /// # Configs may carry credentials
-        ///
-        /// A provider config is connection data, and connection data
-        /// includes secrets: `api_key` may be
-        /// [`ApiKeyLocation::Inline`](rig_core::providers::descriptor::ApiKeyLocation),
-        /// and `extra_headers` can include an `authorization` /
-        /// `x-api-key` / `api-key` header. `Debug` redacts inline API keys and
-        /// every extra-header value, while serde stays faithful by design
-        /// (resuming a serialized config requires the real values) — treat
-        /// serialized configs as secrets.
+        /// The closed enum is feature-stable: variants whose transport needs
+        /// an optional Cargo feature remain serializable and matchable without
+        /// it; fulfillment returns a clear boundary error until enabled.
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub enum ProviderConfig {
             $(
-                #[doc = concat!("The `", stringify!($module), "` provider.")]
-                $variant(rig_core::providers::$module::functions::Config),
+                $(
+                    #[doc = concat!("The `", stringify!($variant), "` completion provider.")]
+                    $variant($completion_config),
+                )?
             )*
-            /// The canonical OpenAI client speaking the Responses API
-            /// (`openai::responses_api::functions`). Hand-written because its
-            /// module path doesn't fit the one-module-per-row macro shape;
-            /// the chat-completions face stays on [`Self::OpenAi`].
-            OpenAiResponses(rig_core::providers::openai::responses_api::functions::Config),
-            /// Gemini's Interactions API
-            /// (`gemini::interactions_api::functions`). Hand-written for the
-            /// same reason as [`Self::OpenAiResponses`]: it is a second,
-            /// incompatible surface on a provider whose macro row already
-            /// carries the `generateContent` config, and it authenticates with
-            /// an `x-goog-api-key` header rather than a `?key=` query
-            /// parameter. The `generateContent` face stays on [`Self::Gemini`].
-            GeminiInteractions(
-                rig_core::providers::gemini::interactions_api::functions::Config,
-            ),
-            /// AWS Bedrock (Converse API over the AWS SDK).
-            #[cfg(feature = "bedrock")]
-            Bedrock(rig_bedrock::functions::Config),
-            /// Gemini over gRPC (tonic).
-            #[cfg(feature = "gemini-grpc")]
-            GeminiGrpc(rig_gemini_grpc::functions::Config),
-            /// Scripted responses for tests — the successor to the deleted
-            /// `MockCompletionModel`. Clone SHARES the turn cursor;
-            /// deserialize resets it.
-            #[cfg(any(test, feature = "test-utils"))]
-            Mock(MockScript),
         }
 
         impl ProviderConfig {
             /// The provider's capability sheet.
             pub fn descriptor(&self) -> &'static ProviderDescriptor {
                 match self {
-                    $(Self::$variant(_) => &rig_core::providers::$module::functions::DESCRIPTOR,)*
-                    Self::OpenAiResponses(_) => {
-                        &rig_core::providers::openai::responses_api::functions::DESCRIPTOR
-                    }
-                    Self::GeminiInteractions(_) => {
-                        &rig_core::providers::gemini::interactions_api::functions::DESCRIPTOR
-                    }
-                    #[cfg(feature = "bedrock")]
-                    Self::Bedrock(_) => &rig_bedrock::functions::DESCRIPTOR,
-                    #[cfg(feature = "gemini-grpc")]
-                    Self::GeminiGrpc(_) => &rig_gemini_grpc::functions::DESCRIPTOR,
-                    #[cfg(any(test, feature = "test-utils"))]
-                    Self::Mock(_) => &MOCK_DESCRIPTOR,
+                    $(
+                        $(
+                            Self::$variant(cfg) => {
+                                let _: &$completion_config = cfg;
+                                &$descriptor
+                            },
+                        )?
+                    )*
                 }
             }
 
             /// The model identifier this configuration targets.
             pub fn model(&self) -> &str {
                 match self {
-                    $(Self::$variant(cfg) => &cfg.model,)*
-                    Self::OpenAiResponses(cfg) => &cfg.model,
-                    Self::GeminiInteractions(cfg) => &cfg.model,
-                    #[cfg(feature = "bedrock")]
-                    Self::Bedrock(cfg) => &cfg.model,
-                    #[cfg(feature = "gemini-grpc")]
-                    Self::GeminiGrpc(cfg) => &cfg.model,
-                    #[cfg(any(test, feature = "test-utils"))]
-                    Self::Mock(_) => "mock",
+                    $(
+                        $(
+                            Self::$variant(cfg) => {
+                                let _: &$completion_config = cfg;
+                                config_model!($completion_kind, cfg)
+                            },
+                        )?
+                    )*
                 }
             }
         }
 
-        /// Fulfil a completion request for any bundled provider.
+        /// Fulfill a completion request for any bundled provider.
         pub async fn complete(
             provider: &ProviderConfig,
             rt: &Runtime,
@@ -153,41 +741,18 @@ macro_rules! define_provider_config {
         ) -> Result<CompletionResponse, CompletionError> {
             match provider {
                 $(
-                    ProviderConfig::$variant(cfg) => {
-                        rig_core::providers::$module::functions::complete(cfg, &rt.http, request)
-                            .await
-                    }
+                    $(
+                        ProviderConfig::$variant(cfg) => {
+                            complete_dispatch!(
+                                $completion_kind,
+                                $complete,
+                                cfg,
+                                rt,
+                                request
+                            )
+                        },
+                    )?
                 )*
-                ProviderConfig::OpenAiResponses(cfg) => {
-                    rig_core::providers::openai::responses_api::functions::complete(
-                        cfg, &rt.http, request,
-                    )
-                    .await
-                }
-                ProviderConfig::GeminiInteractions(cfg) => {
-                    rig_core::providers::gemini::interactions_api::functions::complete(
-                        cfg, &rt.http, request,
-                    )
-                    .await
-                }
-                #[cfg(feature = "bedrock")]
-                ProviderConfig::Bedrock(cfg) => {
-                    let client = rt.bedrock_client(cfg).await;
-                    rig_bedrock::functions::complete_with_options(
-                        &client,
-                        &cfg.model,
-                        cfg.prompt_caching,
-                        request,
-                    )
-                    .await
-                }
-                #[cfg(feature = "gemini-grpc")]
-                ProviderConfig::GeminiGrpc(cfg) => {
-                    let client = rt.gemini_grpc_client(cfg).await?;
-                    rig_gemini_grpc::functions::complete(&client, &cfg.model, request).await
-                }
-                #[cfg(any(test, feature = "test-utils"))]
-                ProviderConfig::Mock(script) => script.next_response(&request).await,
             }
         }
 
@@ -199,105 +764,143 @@ macro_rules! define_provider_config {
         ) -> Result<CompletionStream, CompletionError> {
             match provider {
                 $(
-                    ProviderConfig::$variant(cfg) => {
-                        rig_core::providers::$module::functions::open_stream(
-                            cfg, &rt.http, request,
-                        )
-                        .await
-                    }
+                    $(
+                        ProviderConfig::$variant(cfg) => {
+                            stream_dispatch!(
+                                $completion_kind,
+                                $open_stream,
+                                cfg,
+                                rt,
+                                request
+                            )
+                        },
+                    )?
                 )*
-                ProviderConfig::OpenAiResponses(cfg) => {
-                    rig_core::providers::openai::responses_api::functions::open_stream(
-                        cfg, &rt.http, request,
-                    )
-                    .await
-                }
-                ProviderConfig::GeminiInteractions(cfg) => {
-                    rig_core::providers::gemini::interactions_api::functions::open_stream(
-                        cfg, &rt.http, request,
-                    )
-                    .await
-                }
-                #[cfg(feature = "bedrock")]
-                ProviderConfig::Bedrock(cfg) => {
-                    let client = rt.bedrock_client(cfg).await;
-                    rig_bedrock::functions::open_stream_with_options(
-                        &client,
-                        &cfg.model,
-                        cfg.prompt_caching,
-                        request,
-                    )
-                    .await
-                }
-                #[cfg(feature = "gemini-grpc")]
-                ProviderConfig::GeminiGrpc(cfg) => {
-                    let client = rt.gemini_grpc_client(cfg).await?;
-                    rig_gemini_grpc::functions::open_stream(&client, &cfg.model, request).await
-                }
-                #[cfg(any(test, feature = "test-utils"))]
-                ProviderConfig::Mock(script) => script.next_stream(&request).await,
             }
         }
 
-        // One `From` per provider config, so callers hand a config straight to
-        // `AgentBuilder::new` without naming the variant. Each provider owns a
-        // distinct `Config` type, so the impls cannot overlap; a provider that
-        // ever aliased another's config would fail to compile here, which is
-        // the right place to find out.
         $(
-            impl From<rig_core::providers::$module::functions::Config> for ProviderConfig {
-                fn from(config: rig_core::providers::$module::functions::Config) -> Self {
-                    Self::$variant(config)
+            $(
+                impl From<$completion_config> for ProviderConfig {
+                    fn from(config: $completion_config) -> Self {
+                        Self::$variant(config)
+                    }
+                }
+            )?
+        )*
+
+        /// A bundled embedding-provider selection as plain serde config.
+        ///
+        /// FastEmbed remains an explicit exception: loaded local weights are
+        /// runtime state rather than resumable serde configuration.
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        pub enum EmbedderConfig {
+            $(
+                $(
+                    #[doc = concat!("The `", stringify!($variant), "` embedding provider.")]
+                    $variant($embedding_config),
+                )?
+            )*
+        }
+
+        impl EmbedderConfig {
+            /// The provider's capability sheet.
+            pub fn descriptor(&self) -> &'static ProviderDescriptor {
+                match self {
+                    $(
+                        $(
+                            Self::$variant(cfg) => {
+                                let _: &$embedding_config = cfg;
+                                &$descriptor
+                            },
+                        )?
+                    )*
                 }
             }
+
+            /// The embedding model identifier this configuration targets.
+            pub fn model(&self) -> &str {
+                match self {
+                    $(
+                        $(
+                            Self::$variant(cfg) => {
+                                let _: &$embedding_config = cfg;
+                                config_model!($embedding_kind, cfg)
+                            },
+                        )?
+                    )*
+                }
+            }
+        }
+
+        /// Embed `texts` with any bundled embedding provider.
+        pub async fn embed(
+            provider: &EmbedderConfig,
+            rt: &Runtime,
+            texts: Vec<String>,
+        ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
+            match provider {
+                $(
+                    $(
+                        EmbedderConfig::$variant(cfg) => {
+                            embed_dispatch!($embedding_kind, $embed, cfg, rt, texts)
+                        },
+                    )?
+                )*
+            }
+        }
+
+        /// Embed caller-defined batches while preserving batch order.
+        pub async fn embed_batches(
+            provider: &EmbedderConfig,
+            rt: &Runtime,
+            texts: Vec<Vec<String>>,
+        ) -> Result<
+            (
+                Vec<rig_core::OneOrMany<rig_core::embeddings::Embedding>>,
+                rig_core::completion::Usage,
+            ),
+            EmbeddingError,
+        > {
+            match provider {
+                $(
+                    $(
+                        EmbedderConfig::$variant(cfg) => {
+                            embed_batches_dispatch!(
+                                $embedding_kind,
+                                $embed_batches,
+                                cfg,
+                                rt,
+                                texts
+                            )
+                        },
+                    )?
+                )*
+            }
+        }
+
+        $(
+            $(
+                impl From<$embedding_config> for EmbedderConfig {
+                    fn from(config: $embedding_config) -> Self {
+                        Self::$variant(config)
+                    }
+                }
+            )?
         )*
     };
 }
 
-for_each_builtin_provider!(define_provider_config);
-
-impl From<rig_core::providers::openai::responses_api::functions::Config> for ProviderConfig {
-    fn from(config: rig_core::providers::openai::responses_api::functions::Config) -> Self {
-        Self::OpenAiResponses(config)
-    }
-}
-
-impl From<rig_core::providers::gemini::interactions_api::functions::Config> for ProviderConfig {
-    fn from(config: rig_core::providers::gemini::interactions_api::functions::Config) -> Self {
-        Self::GeminiInteractions(config)
-    }
-}
-
-#[cfg(feature = "bedrock")]
-impl From<rig_bedrock::functions::Config> for ProviderConfig {
-    fn from(config: rig_bedrock::functions::Config) -> Self {
-        Self::Bedrock(config)
-    }
-}
-
-#[cfg(feature = "gemini-grpc")]
-impl From<rig_gemini_grpc::functions::Config> for ProviderConfig {
-    fn from(config: rig_gemini_grpc::functions::Config) -> Self {
-        Self::GeminiGrpc(config)
-    }
-}
-
-#[cfg(any(test, feature = "test-utils"))]
-impl From<MockScript> for ProviderConfig {
-    fn from(script: MockScript) -> Self {
-        Self::Mock(script)
-    }
-}
+provider_surface_registry!(define_provider_surfaces);
 
 /// List the models available to `provider`'s credentials.
 ///
-/// Model listing is an *optional* provider capability: only the arms whose
-/// upstream API exposes a listing endpoint (and whose `functions` face has a
-/// `list_models` free function) are dispatched; every other provider returns
+/// Model listing is an optional provider capability: only arms whose upstream
+/// API exposes a listing endpoint are dispatched. Every other provider returns
 /// a [`ModelListingError::RequestError`](rig_core::model::ModelListingError)
-/// naming itself. Unlike [`complete`]/[`open_stream`], the wildcard arm is
-/// deliberate — a newly added provider defaults to "listing unsupported"
-/// rather than failing to compile.
+/// naming itself. Unlike completion and embedding fulfillment, the wildcard
+/// is deliberate: listing support is outside the capability registry and a new
+/// provider defaults to "unsupported".
 pub async fn list_models(
     provider: &ProviderConfig,
     rt: &Runtime,
@@ -327,149 +930,12 @@ pub async fn list_models(
     }
 }
 
-/// One row per bundled in-core embedding provider:
-/// `(Variant, module)` where the module's `functions` face carries an
-/// `EmbeddingConfig` plus free `embed`/`embed_batches` functions.
-macro_rules! for_each_builtin_embedder {
-    ($apply:ident) => {
-        $apply! {
-            (Azure, azure),
-            (Cohere, cohere),
-            (Copilot, copilot),
-            (Doubleword, doubleword),
-            (Gemini, gemini),
-            (Ollama, ollama),
-            (OpenAi, openai),
-            (VoyageAi, voyageai),
-        }
-    };
-}
-
-macro_rules! define_embedder_config {
-    ($(($variant:ident, $module:ident),)*) => {
-        /// A bundled embedding-provider selection as plain serde
-        /// configuration — the embeddings sibling of [`ProviderConfig`],
-        /// with the same exhaustive-match contract (deliberately not
-        /// `#[non_exhaustive]`).
-        ///
-        /// FastEmbed (`rig-fastembed`) deliberately has no arm: it runs
-        /// local model weights whose loaded handle cannot honestly be
-        /// serde configuration, and giving it an arm would require a new
-        /// weights cache in [`Runtime`]. Drive
-        /// `rig_fastembed::functions::embed` directly instead.
-        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-        pub enum EmbedderConfig {
-            $(
-                #[doc = concat!("The `", stringify!($module), "` embedding provider.")]
-                $variant(rig_core::providers::$module::functions::EmbeddingConfig),
-            )*
-            /// AWS Bedrock (InvokeModel over the AWS SDK).
-            #[cfg(feature = "bedrock")]
-            Bedrock(rig_bedrock::functions::EmbeddingConfig),
-            /// Gemini over gRPC (tonic).
-            #[cfg(feature = "gemini-grpc")]
-            GeminiGrpc(rig_gemini_grpc::functions::EmbeddingConfig),
-            /// Scripted embeddings for tests. Clone SHARES the call
-            /// cursor; deserialize resets it.
-            #[cfg(any(test, feature = "test-utils"))]
-            Mock(MockEmbedder),
-        }
-
-        impl EmbedderConfig {
-            /// The provider's capability sheet.
-            pub fn descriptor(&self) -> &'static ProviderDescriptor {
-                match self {
-                    $(Self::$variant(_) => &rig_core::providers::$module::functions::DESCRIPTOR,)*
-                    #[cfg(feature = "bedrock")]
-                    Self::Bedrock(_) => &rig_bedrock::functions::DESCRIPTOR,
-                    #[cfg(feature = "gemini-grpc")]
-                    Self::GeminiGrpc(_) => &rig_gemini_grpc::functions::DESCRIPTOR,
-                    #[cfg(any(test, feature = "test-utils"))]
-                    Self::Mock(_) => &MOCK_DESCRIPTOR,
-                }
-            }
-
-            /// The embedding model identifier this configuration targets.
-            pub fn model(&self) -> &str {
-                match self {
-                    $(Self::$variant(cfg) => &cfg.model,)*
-                    #[cfg(feature = "bedrock")]
-                    Self::Bedrock(cfg) => &cfg.model,
-                    #[cfg(feature = "gemini-grpc")]
-                    Self::GeminiGrpc(cfg) => &cfg.model,
-                    #[cfg(any(test, feature = "test-utils"))]
-                    Self::Mock(_) => "mock",
-                }
-            }
-        }
-
-        /// Embed `texts` with any bundled embedding provider.
-        ///
-        /// Chunking to each provider's `max_embedding_documents` happens
-        /// inside the provider's free function; embeddings come back in
-        /// input order with summed usage.
-        pub async fn embed(
-            provider: &EmbedderConfig,
-            rt: &Runtime,
-            texts: Vec<String>,
-        ) -> Result<rig_core::embeddings::EmbeddingResponse, EmbeddingError> {
-            match provider {
-                $(
-                    EmbedderConfig::$variant(cfg) => {
-                        rig_core::providers::$module::functions::embed(cfg, &rt.http, texts).await
-                    }
-                )*
-                #[cfg(feature = "bedrock")]
-                EmbedderConfig::Bedrock(cfg) => {
-                    let client = rt.bedrock_client(&cfg.client_config()).await;
-                    rig_bedrock::functions::embed(&client, &cfg.model, cfg.ndims, texts).await
-                }
-                #[cfg(feature = "gemini-grpc")]
-                EmbedderConfig::GeminiGrpc(cfg) => {
-                    let client = rt
-                        .gemini_grpc_client(&cfg.client_config())
-                        .await
-                        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-                    rig_gemini_grpc::functions::embed(&client, &cfg.model, cfg.ndims, texts).await
-                }
-                #[cfg(any(test, feature = "test-utils"))]
-                EmbedderConfig::Mock(script) => script.next_response(&texts),
-            }
-        }
-
-        /// Embed caller-defined batches with any bundled embedding
-        /// provider, returning one order-aligned
-        /// [`rig_core::OneOrMany`] group per input batch plus summed usage.
-        pub async fn embed_batches(
-            provider: &EmbedderConfig,
-            rt: &Runtime,
-            texts: Vec<Vec<String>>,
-        ) -> Result<
-            (
-                Vec<rig_core::OneOrMany<rig_core::embeddings::Embedding>>,
-                rig_core::completion::Usage,
-            ),
-            EmbeddingError,
-        > {
-            let counts: Vec<usize> = texts.iter().map(Vec::len).collect();
-            let flat: Vec<String> = texts.into_iter().flatten().collect();
-            let response = embed(provider, rt, flat).await?;
-            let groups =
-                rig_core::embeddings::batching::group_batches(&counts, response.embeddings)?;
-            Ok((groups, response.usage))
-        }
-    };
-}
-
-for_each_builtin_embedder!(define_embedder_config);
-
 /// Scripted embedding responses for tests — the embeddings sibling of
 /// [`MockScript`].
 ///
 /// Plain data plus an interior-mutable call cursor: `clone` SHARES the
 /// cursor (so a session and a test observing it stay in step), and
 /// deserialize RESETS it (`#[serde(skip)]`).
-#[cfg(any(test, feature = "test-utils"))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockEmbedder {
     /// One response per expected embed call, in order: the vectors for that
@@ -483,7 +949,6 @@ pub struct MockEmbedder {
     requests: std::sync::Arc<std::sync::Mutex<Vec<Vec<String>>>>,
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 impl MockEmbedder {
     /// A script answering each embed call with the next vector set.
     pub fn from_responses(responses: Vec<Vec<Vec<f64>>>) -> Self {
@@ -552,7 +1017,6 @@ impl MockEmbedder {
 
 /// The mock provider's capability sheet: everything on, so scripted tests
 /// exercise every request shape.
-#[cfg(any(test, feature = "test-utils"))]
 pub static MOCK_DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("mock")
     .with_tools(true)
     .with_response_format(true)
@@ -770,7 +1234,6 @@ struct GeminiGrpcCache {
 /// Plain data plus an interior-mutable turn cursor: `clone` SHARES the
 /// cursor (so a session and a test observing it stay in step), and
 /// deserialize RESETS it (`#[serde(skip)]`).
-#[cfg(any(test, feature = "test-utils"))]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MockStreamError {
     /// Number of converted provider items yielded before the error.
@@ -779,7 +1242,6 @@ pub struct MockStreamError {
     pub message: String,
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 impl MockStreamError {
     /// Create a scripted midstream provider error.
     pub fn new(after_items: usize, message: impl Into<String>) -> Self {
@@ -790,7 +1252,6 @@ impl MockStreamError {
     }
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockScript {
     /// One normalized response per expected model call, in order.
@@ -824,7 +1285,6 @@ pub struct MockScript {
     requests: std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>,
 }
 
-#[cfg(any(test, feature = "test-utils"))]
 impl MockScript {
     /// A script answering each model call with the next response.
     pub fn from_responses(responses: Vec<CompletionResponse>) -> Self {
@@ -1114,6 +1574,130 @@ mod conversion_tests {
             ProviderConfig::from(interactions),
             ProviderConfig::GeminiInteractions(_)
         ));
+
+        let bedrock = rig_core::providers::bedrock::Config::new("bedrock-model");
+        assert!(matches!(
+            ProviderConfig::from(bedrock),
+            ProviderConfig::Bedrock(_)
+        ));
+
+        let grpc = rig_core::providers::gemini_grpc::Config::new("grpc-model");
+        assert!(matches!(
+            ProviderConfig::from(grpc),
+            ProviderConfig::GeminiGrpc(_)
+        ));
+    }
+
+    #[test]
+    fn missing_in_core_embedders_are_generated_with_from_conversions() {
+        assert!(matches!(
+            EmbedderConfig::from(
+                rig_core::providers::llamafile::functions::EmbeddingConfig::new("llama")
+            ),
+            EmbedderConfig::Llamafile(_)
+        ));
+        assert!(matches!(
+            EmbedderConfig::from(
+                rig_core::providers::mistral::functions::EmbeddingConfig::new("mistral")
+            ),
+            EmbedderConfig::Mistral(_)
+        ));
+        assert!(matches!(
+            EmbedderConfig::from(
+                rig_core::providers::openrouter::functions::EmbeddingConfig::new("openrouter")
+            ),
+            EmbedderConfig::OpenRouter(_)
+        ));
+        assert!(matches!(
+            EmbedderConfig::from(
+                rig_core::providers::together::functions::EmbeddingConfig::new("together")
+            ),
+            EmbedderConfig::Together(_)
+        ));
+    }
+
+    #[test]
+    fn generated_surface_census_is_unique_and_complete() {
+        let variants: std::collections::HashSet<_> = PROVIDER_SURFACES
+            .iter()
+            .map(|surface| surface.variant)
+            .collect();
+        assert_eq!(variants.len(), PROVIDER_SURFACES.len());
+        assert_eq!(
+            PROVIDER_SURFACES
+                .iter()
+                .filter(|surface| surface.completion)
+                .count(),
+            29
+        );
+        assert_eq!(
+            PROVIDER_SURFACES
+                .iter()
+                .filter(|surface| surface.embedding)
+                .count(),
+            15
+        );
+        assert_eq!(
+            PROVIDER_SURFACES
+                .iter()
+                .find(|surface| surface.variant == "Bedrock")
+                .and_then(|surface| surface.fulfillment_feature),
+            Some("bedrock")
+        );
+        assert_eq!(
+            PROVIDER_SURFACES
+                .iter()
+                .find(|surface| surface.variant == "GeminiGrpc")
+                .and_then(|surface| surface.fulfillment_feature),
+            Some("gemini-grpc")
+        );
+    }
+
+    #[test]
+    fn feature_backed_variants_round_trip_without_transport_features() {
+        for provider in [
+            ProviderConfig::Bedrock(rig_core::providers::bedrock::Config::new("bedrock-model")),
+            ProviderConfig::GeminiGrpc(rig_core::providers::gemini_grpc::Config::new("grpc-model")),
+        ] {
+            let model = provider.model().to_string();
+            let descriptor = provider.descriptor().name;
+            let json = serde_json::to_string(&provider).expect("serialize stable provider variant");
+            let round_trip: ProviderConfig =
+                serde_json::from_str(&json).expect("deserialize stable provider variant");
+            assert_eq!(round_trip.model(), model);
+            assert_eq!(round_trip.descriptor().name, descriptor);
+        }
+
+        for provider in [
+            EmbedderConfig::Bedrock(rig_core::providers::bedrock::EmbeddingConfig::new(
+                "bedrock-embed",
+            )),
+            EmbedderConfig::GeminiGrpc(rig_core::providers::gemini_grpc::EmbeddingConfig::new(
+                "grpc-embed",
+            )),
+        ] {
+            let model = provider.model().to_string();
+            let json = serde_json::to_string(&provider).expect("serialize stable embedder variant");
+            let round_trip: EmbedderConfig =
+                serde_json::from_str(&json).expect("deserialize stable embedder variant");
+            assert_eq!(round_trip.model(), model);
+        }
+    }
+
+    #[test]
+    fn voyage_outer_embedder_debug_redacts_connection_secrets() {
+        let mut config = rig_core::providers::voyageai::functions::EmbeddingConfig::new("voyage-3")
+            .with_api_key("outer-api-secret");
+        config.extra_headers.push((
+            "x-private-token".to_string(),
+            "outer-header-secret".to_string(),
+        ));
+        let provider = EmbedderConfig::from(config);
+        let debug = format!("{provider:?}");
+
+        assert!(debug.contains("x-private-token"));
+        assert!(!debug.contains("outer-api-secret"));
+        assert!(!debug.contains("outer-header-secret"));
     }
 
     /// The `impl Into<ProviderConfig>` seam must not change the built agent:
@@ -1136,6 +1720,147 @@ mod conversion_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const EMBEDDING_RESPONSE: &str = r#"{
+        "object": "list",
+        "model": "test-embedder",
+        "usage": {"prompt_tokens": 1, "total_tokens": 1},
+        "data": [{"object": "embedding", "index": 0, "embedding": [0.1, 0.2]}]
+    }"#;
+
+    const MODEL_LIST_RESPONSE: &str = r#"{
+        "data": [{"id": "gpt-test", "created": 123, "owned_by": "test-org"}]
+    }"#;
+
+    #[tokio::test]
+    async fn model_listing_dispatch_remains_available_outside_the_registry() {
+        let client = rig_core::test_utils::RecordingHttpClient::new(MODEL_LIST_RESPONSE);
+        let runtime = Runtime::with_http(HttpRuntime::recording(client.clone()));
+        let provider = ProviderConfig::OpenAi(
+            rig_core::providers::openai::functions::Config::new("gpt-test")
+                .with_api_key("test-key"),
+        );
+
+        let models = list_models(&provider, &runtime)
+            .await
+            .expect("OpenAI model-list dispatch should succeed");
+
+        assert_eq!(models.data.len(), 1);
+        assert_eq!(models.data[0].id, "gpt-test");
+        let requests = client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0].uri.ends_with("/models"),
+            "unexpected URI: {}",
+            requests[0].uri
+        );
+
+        let unsupported = ProviderConfig::Mock(MockScript::default());
+        let error = list_models(&unsupported, &Runtime::new())
+            .await
+            .expect_err("mock has no model-listing capability");
+
+        assert!(error.to_string().contains("mock"));
+    }
+
+    async fn assert_no_network_embedding_dispatch(
+        provider: EmbedderConfig,
+        expected_uri_suffix: &str,
+    ) {
+        let client = rig_core::test_utils::RecordingHttpClient::new(EMBEDDING_RESPONSE);
+        let runtime = Runtime::with_http(HttpRuntime::recording(client.clone()));
+
+        let response = embed(&provider, &runtime, vec!["hello".to_string()])
+            .await
+            .expect("generated embedding dispatch should succeed");
+
+        assert_eq!(response.embeddings.len(), 1);
+        let requests = client.requests();
+        assert_eq!(requests.len(), 1);
+        assert!(
+            requests[0].uri.ends_with(expected_uri_suffix),
+            "unexpected URI: {}",
+            requests[0].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn generated_missing_embedder_dispatch_reaches_each_request_builder() {
+        assert_no_network_embedding_dispatch(
+            rig_core::providers::llamafile::functions::EmbeddingConfig::new("llama").into(),
+            "/v1/embeddings",
+        )
+        .await;
+        assert_no_network_embedding_dispatch(
+            rig_core::providers::mistral::functions::EmbeddingConfig::new("mistral")
+                .with_api_key("test-key")
+                .into(),
+            "/v1/embeddings",
+        )
+        .await;
+        assert_no_network_embedding_dispatch(
+            rig_core::providers::openrouter::functions::EmbeddingConfig::new("openrouter")
+                .with_api_key("test-key")
+                .into(),
+            "/api/v1/embeddings",
+        )
+        .await;
+        assert_no_network_embedding_dispatch(
+            rig_core::providers::together::functions::EmbeddingConfig::new("together")
+                .with_api_key("test-key")
+                .into(),
+            "/v1/embeddings",
+        )
+        .await;
+    }
+
+    #[cfg(not(feature = "bedrock"))]
+    #[tokio::test]
+    async fn bedrock_variant_fails_at_fulfillment_boundary_when_feature_is_disabled() {
+        let provider = ProviderConfig::Bedrock(rig_core::providers::bedrock::Config::new("model"));
+        let error = complete(
+            &provider,
+            &Runtime::new(),
+            CompletionRequest::from_prompt("hello"),
+        )
+        .await
+        .expect_err("disabled transport must fail before fulfillment");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("bedrock"));
+
+        let embedder = EmbedderConfig::Bedrock(rig_core::providers::bedrock::EmbeddingConfig::new(
+            "embed-model",
+        ));
+        let error = embed(&embedder, &Runtime::new(), vec!["hello".to_string()])
+            .await
+            .expect_err("disabled transport must fail before fulfillment");
+        assert!(error.to_string().contains("bedrock"));
+    }
+
+    #[cfg(not(feature = "gemini-grpc"))]
+    #[tokio::test]
+    async fn gemini_grpc_variant_fails_at_fulfillment_boundary_when_feature_is_disabled() {
+        let provider =
+            ProviderConfig::GeminiGrpc(rig_core::providers::gemini_grpc::Config::new("model"));
+        let error = open_stream(
+            &provider,
+            &Runtime::new(),
+            CompletionRequest::from_prompt("hello"),
+        )
+        .await
+        .err()
+        .expect("disabled transport must fail before fulfillment");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("gemini-grpc"));
+
+        let embedder = EmbedderConfig::GeminiGrpc(
+            rig_core::providers::gemini_grpc::EmbeddingConfig::new("embed-model"),
+        );
+        let error = embed(&embedder, &Runtime::new(), vec!["hello".to_string()])
+            .await
+            .expect_err("disabled transport must fail before fulfillment");
+        assert!(error.to_string().contains("gemini-grpc"));
+    }
 
     /// A seeded Bedrock client must survive requests for configs that share
     /// its connection details but differ in per-request knobs (model,

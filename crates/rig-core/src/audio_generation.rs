@@ -42,6 +42,12 @@ pub enum AudioGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
+impl From<crate::json_utils::RequestOverlayError> for AudioGenerationError {
+    fn from(error: crate::json_utils::RequestOverlayError) -> Self {
+        Self::RequestError(Box::new(error))
+    }
+}
+
 crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
 
 pub struct AudioGenerationResponse<T> {

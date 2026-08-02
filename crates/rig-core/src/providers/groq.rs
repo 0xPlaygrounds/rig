@@ -467,21 +467,38 @@ pub mod functions {
         options: CompletionModelOptions,
         stream: bool,
     ) -> Result<Vec<u8>, CompletionError> {
-        let mut typed =
-            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
         // Groq's provider-native tools (`browser_search`, `code_interpreter`,
         // ...) arrive via `additional_params.tools`. Left in place they would
         // clobber the function-tool array on serialization, so fold them into
         // `compound_custom.enabled_tools` (deduplicated by tool type).
-        if let Some(map) = typed
+        // Extract them before the shared OpenAI-compatible collision check:
+        // this is a typed provider extension, not permission to override the
+        // canonical function-tool field.
+        let mut request = request.clone();
+        let native_tools = request
             .additional_params
             .as_mut()
             .and_then(Value::as_object_mut)
-            && let Some(raw_tools) = map.remove("tools")
-        {
-            let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            .and_then(|map| map.remove("tools"))
+            .map(|raw_tools| {
+                serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+                    CompletionError::RequestError(
+                        format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+                    )
+                })
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let mut typed =
+            openai_functions::compatible_typed_request(model, &request, &DESCRIPTOR, options)?;
+        if !native_tools.is_empty() {
+            let additional_params = typed
+                .additional_params
+                .get_or_insert_with(|| Value::Object(serde_json::Map::new()));
+            let map = additional_params.as_object_mut().ok_or_else(|| {
                 CompletionError::RequestError(
-                    format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
+                    "Groq additional parameters must serialize as an object".into(),
                 )
             })?;
             super::apply_native_tools_to_additional_params(map, native_tools);

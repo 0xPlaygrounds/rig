@@ -587,15 +587,18 @@ pub mod functions {
         model: &str,
         request: &crate::image_generation::ImageGenerationRequest,
     ) -> Result<Vec<u8>, crate::image_generation::ImageGenerationError> {
-        let mut body = serde_json::json!({
+        let body = serde_json::json!({
             "model_name": model,
             "prompt": request.prompt,
             "height": request.height,
             "width": request.width,
         });
-        if let Some(params) = request.additional_params.clone() {
-            crate::json_utils::merge_inplace(&mut body, params);
-        }
+        let body = crate::json_utils::merge_additional_params(
+            body,
+            request.additional_params.clone(),
+            &["model_name", "prompt", "height", "width"],
+            "Hyperbolic image-generation request",
+        )?;
         Ok(serde_json::to_vec(&body)?)
     }
 

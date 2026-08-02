@@ -49,6 +49,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     let generation_config = GenerationConfig {
+        temperature: None,
         thinking_config: Some(ThinkingConfig {
             thinking_budget: None,
             thinking_level: Some(ThinkingLevel::Medium),

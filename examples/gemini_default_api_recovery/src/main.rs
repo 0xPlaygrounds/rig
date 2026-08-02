@@ -221,6 +221,7 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
             }),
             ..Default::default()
         }),
+        safety_settings: None,
         additional_params: None,
     };
 

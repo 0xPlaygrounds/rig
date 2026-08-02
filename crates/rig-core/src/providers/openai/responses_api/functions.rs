@@ -13,9 +13,8 @@
 //! response parsing through [`super::CompletionResponse`]`::try_into`, and
 //! streaming through the sans-IO SSE machinery in [`super::streaming`].
 //!
-//! WebSocket mode is the third entry point:
-//! [`websocket::connect`](super::websocket::connect) takes the same
-//! [`Config`].
+//! WebSocket mode is the third entry point: `websocket::connect`, available
+//! with the `websocket` feature, takes the same [`Config`].
 //!
 //! The chat-completions flavored OpenAI face lives in
 //! [`super::super::functions`] (`openai::functions`).
