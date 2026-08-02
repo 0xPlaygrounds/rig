@@ -109,8 +109,7 @@ struct StreamingCompletionChunk<U = Usage> {
     model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<U>,
-    /// Some OpenAI-compatible gateways (e.g. OpenCode Go) report the request
-    /// cost in a dedicated chunk as a string; others send a number.
+    /// Some gateways report cost as a string, others as a number.
     #[serde(default, deserialize_with = "deserialize_cost")]
     cost: Option<f64>,
 }

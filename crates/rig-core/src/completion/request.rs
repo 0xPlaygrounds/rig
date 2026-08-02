@@ -254,10 +254,6 @@ where
 
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
-///
-/// `Eq` is implemented manually: the only non-integer field is `cost`, which
-/// providers report as a finite decimal (never NaN/±inf), so derived
-/// `PartialEq` is reflexive in practice.
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
     /// The number of input ("prompt") tokens used in a given request.
@@ -276,10 +272,7 @@ pub struct Usage {
     /// The number of tokens spent on internal reasoning / "thoughts" by reasoning-capable
     /// models (e.g. Gemini thinking, Anthropic extended thinking, OpenAI o-series).
     pub reasoning_tokens: u64,
-    /// Provider-reported cost (USD) for the request, when the provider
-    /// supplies it. Some OpenAI-compatible gateways (e.g. OpenCode Go) emit a
-    /// `cost` field alongside usage; most providers report nothing and this
-    /// stays `None`.
+    /// Provider-reported request cost (USD), if the provider supplies it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
 }
