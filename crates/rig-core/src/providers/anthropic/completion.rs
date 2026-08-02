@@ -251,6 +251,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
+        cost: None,
         };
 
         Ok(completion::CompletionResponse {

@@ -1835,6 +1835,7 @@ mod tests {
             cache_creation_input_tokens: 4,
             tool_use_prompt_tokens: 12,
             reasoning_tokens: 5,
+        cost: None,
         });
 
         // Scoped-subscriber tests must not run concurrently; see

@@ -265,6 +265,7 @@ impl GetTokenUsage for Usage {
                 .and_then(|details| details.reasoning_tokens)
                 .map(u64::from)
                 .unwrap_or(0),
+        cost: None,
         }
     }
 }

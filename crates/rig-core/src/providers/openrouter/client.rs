@@ -135,6 +135,7 @@ impl GetTokenUsage for Usage {
             cache_creation_input_tokens: cache_creation,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
+        cost: None,
         }
     }
 }

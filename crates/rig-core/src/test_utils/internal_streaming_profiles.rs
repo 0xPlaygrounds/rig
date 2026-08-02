@@ -16,6 +16,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<MockResponse, ()>
         response_model: None,
         choice: Some(choice),
         usage: None,
+    cost: None,
     }
 }
 
@@ -71,7 +72,11 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _cost: Option<f64>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }
@@ -134,7 +139,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _cost: Option<f64>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 
@@ -176,7 +185,11 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        _usage: Self::Usage,
+        _cost: Option<f64>,
+    ) -> Self::FinalResponse {
         MockResponse::new()
     }
 }

@@ -104,6 +104,7 @@ pub(crate) struct CompatibleChunk<U, D> {
     pub(crate) response_model: Option<String>,
     pub(crate) choice: Option<CompatibleChoice<D>>,
     pub(crate) usage: Option<U>,
+    pub(crate) cost: Option<f64>,
 }
 
 pub(crate) type NormalizedCompatibleChunk<U, D> =
@@ -128,6 +129,7 @@ pub(crate) fn normalize_first_choice_chunk<U, D, Choice, ToolCall, F>(
     response_id: Option<String>,
     response_model: Option<String>,
     usage: Option<U>,
+    cost: Option<f64>,
     choices: &[Choice],
     map_choice: F,
 ) -> CompatibleChunk<U, D>
@@ -142,6 +144,7 @@ where
         response_model,
         choice,
         usage,
+        cost,
     }
 }
 
@@ -162,7 +165,7 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(&self, usage: Self::Usage, cost: Option<f64>) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -231,6 +234,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_cost = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -268,6 +272,10 @@ where
 
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
+                    }
+
+                    if let Some(cost) = chunk.cost {
+                        final_cost = Some(cost);
                     }
 
                     let Some(choice) = chunk.choice else {
@@ -387,7 +395,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, final_cost),
         ));
     }
     .instrument(instrument_span);
