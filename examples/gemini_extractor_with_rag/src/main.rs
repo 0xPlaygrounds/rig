@@ -158,7 +158,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // Prompt the model and print the response
     let response: QuestionnaireResponses = agent
         .extractor(APPLICANT_INFO)
-        .classic()
         .preamble(preamble)
         .contexts(context)
         .run()

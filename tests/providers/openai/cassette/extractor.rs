@@ -13,7 +13,6 @@ async fn extractor_smoke() {
         let agent = client.agent(openai::GPT_4O).build();
         let response = agent
             .extractor(EXTRACTOR_TEXT)
-            .classic()
             .run_with_usage::<SmokePerson>()
             .await
             .expect("extractor request should succeed");

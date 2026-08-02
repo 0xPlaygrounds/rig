@@ -20,7 +20,6 @@ where
 {
     let mut runner = agent
         .extractor(prompt)
-        .classic()
         .history(options.history)
         .retries(options.retries);
     if let Some(preamble) = options.preamble {

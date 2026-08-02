@@ -119,19 +119,16 @@ async fn batch_multi_extract_chain() -> Result<()> {
                         let (names, topics, sentiment) = futures::try_join!(
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(names_options.retries)
                                 .preamble(names_options.preamble.expect("preamble should exist"))
                                 .run::<Names>(),
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(topics_options.retries)
                                 .preamble(topics_options.preamble.expect("preamble should exist"))
                                 .run::<Topics>(),
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(sentiment_options.retries)
                                 .preamble(
                                     sentiment_options.preamble.expect("preamble should exist"),

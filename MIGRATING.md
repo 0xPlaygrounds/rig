@@ -349,7 +349,7 @@ Extraction gained a fluent runner at `agent.extractor(prompt)`. It is not
 generic over the extracted type — pick that at the terminal:
 
 ```rust
-let person: Person = agent.extractor("Alice is 30.").classic().retries(2).run().await?;
+let person: Person = agent.extractor("Alice is 30.").retries(2).run().await?;
 ```
 
 Document embedding gained `EmbeddingJob`, which takes the provider closure only
@@ -742,10 +742,51 @@ let person = outcome.value;          // was `.data`
 
 `ExtractOptions::classic_extractor()` reproduces the old builder exactly
 (output tool `submit`, the extraction preamble, `ToolChoice::Required`,
-prompt-repeating retries), so recorded exchanges keep replaying;
-`ExtractOptions::new()` is the leaner default. `ExtractionResponse<T>` is
-now `ExtractionOutcome<T>`. Extraction has no hook stack — port hook-driven
+prompt-repeating retries), so recorded exchanges keep replaying. It is also the
+default for `agent.extractor(prompt)`; `ExtractOptions::new()` remains the
+leaner default for the low-level free functions. `ExtractionResponse<T>` is now
+`ExtractionOutcome<T>`. Extraction has no hook stack — port hook-driven
 extractors to `agent.runner(..).output_tool(..)`.
+
+#### The fluent extraction runner now defaults to the classic protocol
+
+`ExtractionRunner::classic()` is gone. Existing calls should simply delete
+`.classic()`; the resulting runner has the same protocol configuration, and
+later fluent setters consistently override it instead of depending on setter
+order.
+
+This is a silent behavior change for code that already called
+`agent.extractor(prompt).run()` without `.classic()`: that source still
+compiles, but these runner defaults change:
+
+| Field | Previous runner default | New runner default |
+| --- | --- | --- |
+| `output_tool_name` | no override | `Some("submit")` |
+| `output_tool_description` | no override | `Some("Submit the structured data you extracted from the provided text.")` |
+| `augment_output_preamble` | no override | `Some(false)` |
+| `preamble` | no override | `Some(CLASSIC_EXTRACTOR_PREAMBLE)` |
+| `tool_choice` | no override | `Some(ToolChoice::Required)` |
+| `max_turns` | preserve the agent value, or use the two-call extraction seed when unset | `Some(1)` |
+| `ignore_unhandled_invalid_tool_calls` | `false` | `true` |
+| `repeat_prompt_on_retry` | `false` | `true` |
+
+To recover the previous lean runner behavior, use the low-level function with
+`ExtractOptions::new()` explicitly:
+
+```rust
+use std::sync::Arc;
+use rig::extract::{ExtractOptions, extract_with_options};
+
+let outcome = extract_with_options::<Person>(
+    agent.config.clone(),
+    agent.provider.clone(),
+    Arc::clone(&agent.rt),
+    prompt,
+    ExtractOptions::new(),
+)
+.await?;
+let person = outcome.value;
+```
 
 ### One driver: the classic engine is deleted (single-architecture R5)
 

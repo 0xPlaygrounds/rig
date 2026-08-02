@@ -13,7 +13,6 @@ async fn extractor_smoke() {
             .agent(deepseek::DEEPSEEK_V4_FLASH)
             .build()
             .extractor(EXTRACTOR_TEXT)
-            .classic()
             .run::<SmokePerson>()
             .await
             .expect("extractor request should succeed");

@@ -40,7 +40,6 @@ async fn main() -> Result<()> {
     loop {
         let next_number: Counter = agent
             .extractor(current_number.to_string())
-            .classic()
             .preamble(preamble.clone())
             .run()
             .await?;

@@ -72,19 +72,16 @@ async fn batch_multi_extract_chain() -> Result<()> {
                         let (names, topics, sentiment) = futures::try_join!(
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(2)
                                 .preamble(names_preamble)
                                 .run::<Names>(),
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(2)
                                 .preamble(topics_preamble)
                                 .run::<Topics>(),
                             agent
                                 .extractor(text)
-                                .classic()
                                 .retries(2)
                                 .preamble(sentiment_preamble)
                                 .run::<Sentiment>(),

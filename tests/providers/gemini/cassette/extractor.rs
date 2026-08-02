@@ -33,7 +33,6 @@ async fn extractor_smoke() {
             .additional_params(serialize_params(additional_params))
             .build()
             .extractor(EXTRACTOR_TEXT)
-            .classic()
             .run_with_usage::<SmokePerson>()
             .await
             .expect("extractor request should succeed");
@@ -81,7 +80,6 @@ async fn extractor_with_additional_params() {
                 .additional_params(serialize_params(params))
                 .build()
                 .extractor("Hello my name is John Doe! I am a software engineer.")
-                .classic()
                 .run::<Person>()
                 .await
                 .expect("extract should succeed");

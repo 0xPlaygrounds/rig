@@ -30,7 +30,6 @@ where
 {
     agent
         .extractor(prompt)
-        .classic()
         .history(options.history)
         .retries(options.retries)
         .run_with_usage::<T>()

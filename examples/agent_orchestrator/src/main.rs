@@ -35,12 +35,7 @@ where
     let preamble = classic.preamble.clone().unwrap_or_default();
     let preamble =
         format!("{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{role}");
-    Ok(agent
-        .extractor(text)
-        .classic()
-        .preamble(preamble)
-        .run::<T>()
-        .await?)
+    Ok(agent.extractor(text).preamble(preamble).run::<T>().await?)
 }
 
 #[tokio::main]

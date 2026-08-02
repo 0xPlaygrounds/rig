@@ -474,7 +474,7 @@ impl Agent {
     ///     name: String,
     /// }
     ///
-    /// let person: Person = agent.extractor("Alice is 30.").classic().run().await?;
+    /// let person: Person = agent.extractor("Alice is 30.").run().await?;
     /// # let _ = person;
     /// # Ok(())
     /// # }

@@ -39,7 +39,6 @@ impl ReasoningAgent {
         let extracted = self
             .chain_of_thought_agent
             .extractor(prompt)
-            .classic()
             .preamble(self.chain_of_thought_preamble.clone())
             .run::<ChainOfThoughtSteps>()
             .await

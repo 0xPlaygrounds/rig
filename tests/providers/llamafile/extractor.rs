@@ -17,7 +17,6 @@ async fn extractor_smoke() {
         .agent(&support::model_name())
         .build()
         .extractor(EXTRACTOR_TEXT)
-        .classic()
         .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");

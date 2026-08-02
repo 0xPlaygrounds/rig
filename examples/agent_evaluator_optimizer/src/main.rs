@@ -74,7 +74,6 @@ async fn main() -> Result<(), anyhow::Error> {
     loop {
         let eval_result: Evaluation = evaluator_agent
             .extractor(format!("{TASK}\n\n{response}"))
-            .classic()
             .preamble(evaluator_preamble.clone())
             .run()
             .await?;

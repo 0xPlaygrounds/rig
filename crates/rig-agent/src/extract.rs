@@ -101,6 +101,9 @@ impl ExtractOptions {
     }
 
     /// The deleted `ExtractorBuilder<T>`'s exact configuration.
+    ///
+    /// This is the default protocol for [`ExtractionRunner`] and remains the
+    /// explicit preset for low-level [`extract_with_options`] callers.
     pub fn classic_extractor() -> Self {
         Self {
             output_tool_name: Some(CLASSIC_SUBMIT_TOOL_NAME.to_string()),
@@ -297,7 +300,6 @@ where
 ///
 /// let person: Person = agent
 ///     .extractor("Alice is 30.")
-///     .classic()
 ///     .retries(2)
 ///     .run()
 ///     .await?;
@@ -315,7 +317,8 @@ pub struct ExtractionRunner {
 }
 
 impl ExtractionRunner {
-    /// Builds a runner from explicit parts.
+    /// Builds a runner from explicit parts using the classic extraction
+    /// protocol. Fluent setters override that preset field by field.
     pub fn new(
         config: AgentConfig,
         provider: ProviderConfig,
@@ -327,21 +330,8 @@ impl ExtractionRunner {
             provider,
             rt,
             prompt: prompt.into(),
-            options: ExtractOptions::new(),
+            options: ExtractOptions::classic_extractor(),
         }
-    }
-
-    /// Adopts the deleted `ExtractorBuilder<T>`'s exact configuration.
-    ///
-    /// History and the retry budget are preserved, so this composes in any
-    /// order with [`Self::history`] and [`Self::retries`].
-    pub fn classic(mut self) -> Self {
-        let history = std::mem::take(&mut self.options.history);
-        let retries = self.options.retries;
-        self.options = ExtractOptions::classic_extractor();
-        self.options.history = history;
-        self.options.retries = retries;
-        self
     }
 
     /// Sets the deserialization-failure retry budget (attempts = `retries + 1`).
@@ -660,12 +650,11 @@ mod tests {
         )
     }
 
-    /// `.classic()` on the runner must produce byte-identical requests to
-    /// passing `ExtractOptions::classic_extractor()` to the free function —
-    /// otherwise the fluent surface would silently diverge from recorded
-    /// cassettes.
+    /// The runner default must produce byte-identical requests to passing
+    /// `ExtractOptions::classic_extractor()` to the free function — otherwise
+    /// the fluent surface would silently diverge from recorded cassettes.
     #[tokio::test]
-    async fn runner_classic_matches_the_free_function_request() {
+    async fn runner_default_matches_the_explicit_classic_request() {
         let via_runner_script = MockScript::from_responses(vec![submit_response("Ada")]);
         let runner_probe = via_runner_script.clone();
         let runner_value = ExtractionRunner::new(
@@ -674,7 +663,6 @@ mod tests {
             Arc::new(Runtime::new()),
             "Hello, my name is Ada.",
         )
-        .classic()
         .run::<Person>()
         .await
         .expect("runner extraction succeeds");
@@ -710,40 +698,84 @@ mod tests {
         );
     }
 
-    /// `.classic()` must not discard history or retries set around it, in
-    /// either order.
     #[test]
-    fn classic_preserves_history_and_retries_in_any_order() {
-        let runner = || {
-            ExtractionRunner::new(
-                AgentConfig::new(),
-                ProviderConfig::Mock(MockScript::from_responses(vec![])),
-                Arc::new(Runtime::new()),
-                "prompt",
-            )
-        };
+    fn runner_default_matches_classic_preset_field_by_field() {
+        let runner = ExtractionRunner::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(MockScript::from_responses(vec![])),
+            Arc::new(Runtime::new()),
+            "prompt",
+        );
+        let actual = runner.options();
+        let expected = ExtractOptions::classic_extractor();
 
-        let before = runner()
-            .history([Message::from("earlier")])
-            .retries(3)
-            .classic();
-        let after = runner()
-            .classic()
-            .history([Message::from("earlier")])
-            .retries(3);
+        assert_eq!(actual.history, expected.history);
+        assert_eq!(actual.retries, expected.retries);
+        assert_eq!(actual.output_tool_name, expected.output_tool_name);
+        assert_eq!(
+            actual.output_tool_description,
+            expected.output_tool_description
+        );
+        assert_eq!(
+            actual.augment_output_preamble,
+            expected.augment_output_preamble
+        );
+        assert_eq!(actual.preamble, expected.preamble);
+        assert_eq!(actual.tool_choice, expected.tool_choice);
+        assert_eq!(actual.max_turns, expected.max_turns);
+        assert_eq!(
+            actual.ignore_unhandled_invalid_tool_calls,
+            expected.ignore_unhandled_invalid_tool_calls
+        );
+        assert_eq!(
+            actual.repeat_prompt_on_retry,
+            expected.repeat_prompt_on_retry
+        );
+    }
 
-        for configured in [before, after] {
-            let options = configured.options();
-            assert_eq!(options.retries, 3);
-            assert_eq!(options.history.len(), 1);
-            // …while still carrying the classic preset.
-            assert_eq!(
-                options.output_tool_name.as_deref(),
-                Some(CLASSIC_SUBMIT_TOOL_NAME)
-            );
-            assert_eq!(options.tool_choice, Some(ToolChoice::Required));
-            assert!(options.repeat_prompt_on_retry);
-        }
+    #[test]
+    fn extract_options_new_remains_lean() {
+        let options = ExtractOptions::new();
+
+        assert!(options.history.is_empty());
+        assert_eq!(options.retries, 0);
+        assert!(options.output_tool_name.is_none());
+        assert!(options.output_tool_description.is_none());
+        assert!(options.augment_output_preamble.is_none());
+        assert!(options.preamble.is_none());
+        assert!(options.tool_choice.is_none());
+        assert!(options.max_turns.is_none());
+        assert!(!options.ignore_unhandled_invalid_tool_calls);
+        assert!(!options.repeat_prompt_on_retry);
+    }
+
+    #[tokio::test]
+    async fn classic_preset_keeps_the_effective_model_call_budget_at_one() {
+        let script = MockScript::from_responses(vec![
+            CompletionResponse::new(
+                OneOrMany::one(AssistantContent::text("not structured output")),
+                Usage::new(),
+                "mock",
+            ),
+            submit_response("Ada"),
+        ]);
+        let probe = script.clone();
+
+        let result = extract_with_options::<Person>(
+            AgentConfig::new(),
+            ProviderConfig::Mock(script),
+            Arc::new(Runtime::new()),
+            "Hello, my name is Ada.",
+            ExtractOptions::classic_extractor(),
+        )
+        .await;
+
+        assert!(result.is_err(), "a second model call must not be available");
+        assert_eq!(
+            probe.requests().len(),
+            1,
+            "the classic preset must override the temporary two-call seed"
+        );
     }
 
     /// One runner value, cloned, extracting two *different* payload types —
@@ -764,8 +796,7 @@ mod tests {
             ])),
             Arc::new(Runtime::new()),
             "Hello, my name is Ada.",
-        )
-        .classic();
+        );
 
         let as_person = runner.clone().run::<Person>().await.expect("Person");
         let as_name = runner.run::<Name>().await.expect("Name");
@@ -786,7 +817,6 @@ mod tests {
             Arc::new(Runtime::new()),
             "Hello, my name is Ada.",
         )
-        .classic()
         .max_tokens(256)
         .temperature(0.1)
         .additional_params(serde_json::json!({ "custom": true }))

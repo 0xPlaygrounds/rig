@@ -29,7 +29,6 @@ async fn extractor_smoke() {
     let agent = agent(BEDROCK_COMPLETION_MODEL).build();
     let response = agent
         .extractor(EXTRACTOR_TEXT)
-        .classic()
         .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");
@@ -44,7 +43,6 @@ async fn extractor_with_chat_history_smoke() {
     let agent = agent(BEDROCK_COMPLETION_MODEL).build();
     let response = agent
         .extractor("The text is about Ada Lovelace, a mathematician.")
-        .classic()
         .history([Message::user(
             "Extract the person's name and job from the next message.",
         )])

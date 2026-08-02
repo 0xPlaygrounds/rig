@@ -99,7 +99,6 @@ where
 {
     Ok(agent
         .extractor(text)
-        .classic()
         .retries(options.retries)
         .preamble(options.preamble.clone().unwrap_or_default())
         .run::<T>()

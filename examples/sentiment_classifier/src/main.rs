@@ -26,7 +26,7 @@ struct DocumentSentiment {
 async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
     let agent = client.agent(openai::GPT_4).build();
-    let sentiment: DocumentSentiment = agent.extractor("I am happy").classic().run().await?;
+    let sentiment: DocumentSentiment = agent.extractor("I am happy").run().await?;
 
     println!("GPT-4: {sentiment:?}");
 

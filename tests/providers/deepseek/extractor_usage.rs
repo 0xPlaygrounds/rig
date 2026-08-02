@@ -23,7 +23,6 @@ where
 {
     let mut runner = agent
         .extractor(text)
-        .classic()
         .history(options.history)
         .retries(options.retries);
     if let Some(preamble) = options.preamble {

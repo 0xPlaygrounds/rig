@@ -28,12 +28,7 @@ async fn score(
     preamble: String,
     statement: &str,
 ) -> Result<DocumentScore, anyhow::Error> {
-    Ok(agent
-        .extractor(statement)
-        .classic()
-        .preamble(preamble)
-        .run()
-        .await?)
+    Ok(agent.extractor(statement).preamble(preamble).run().await?)
 }
 
 #[tokio::main]

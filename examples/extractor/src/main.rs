@@ -26,12 +26,11 @@ async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
     let agent = client.agent(openai::GPT_4).build();
 
-    let person: Person = agent.extractor(FIRST_INPUT).classic().run().await?;
+    let person: Person = agent.extractor(FIRST_INPUT).run().await?;
     println!("{}", serde_json::to_string_pretty(&person)?);
 
     let outcome = agent
         .extractor(SECOND_INPUT)
-        .classic()
         .run_with_usage::<Person>()
         .await?;
     println!("{}", serde_json::to_string_pretty(&outcome.value)?);

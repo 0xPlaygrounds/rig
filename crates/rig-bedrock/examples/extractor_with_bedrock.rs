@@ -23,7 +23,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let agent = client.agent(AMAZON_NOVA_LITE).build();
     let person: Person = agent
         .extractor("Hello my name is John Doe! I am a software engineer.")
-        .classic()
         .run()
         .await?;
 
