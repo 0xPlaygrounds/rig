@@ -32,10 +32,9 @@ where
 }
 
 // The shared `Adder`/`Subtract` fixtures advertise `"type": "number"` while
-// deserializing into `i32`. Cohere follows that schema literally and emits
-// `{"x":2.0,"y":5.0}`, which then fails to parse; providers that happen to emit
-// `2` never expose the mismatch. These local copies declare `"type": "integer"`
-// so the cassettes exercise Cohere's transport rather than that fixture gap.
+// deserializing into `i32`; Cohere follows that literally and emits
+// `{"x":2.0,"y":5.0}`, which then fails to parse. These copies declare
+// `"type": "integer"` instead.
 
 #[derive(Deserialize, Serialize)]
 pub(super) struct IntegerAdder;

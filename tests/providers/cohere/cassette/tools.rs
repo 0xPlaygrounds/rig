@@ -1,8 +1,4 @@
 //! Cassette-backed Cohere tool-calling coverage.
-//!
-//! Cohere returns tool call arguments as a JSON *string* and expects tool results
-//! back as `role: "tool"` messages keyed by `tool_call_id`, so the round trip
-//! exercises both halves of the provider's message conversion.
 
 use rig::completion::{
     AssistantContent, CompletionModel, Prompt, ToolDefinition, message::ToolChoice,
@@ -37,10 +33,6 @@ async fn tool_call_roundtrip() {
     .await;
 }
 
-/// `tool_choice` has to reach Cohere as the bare string `REQUIRED`. Rig's own
-/// `ToolChoice` serializes to a tagged object, which the API rejects with
-/// `parameter 'tool_choice' is of type object but should be of type string`.
-///
 /// Asserted on a single completion rather than through the agent loop: Cohere
 /// applies `REQUIRED` to every turn, so an agent configured this way is forced to
 /// keep calling tools and never reaches a final text answer.

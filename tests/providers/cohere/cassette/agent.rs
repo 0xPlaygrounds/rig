@@ -26,10 +26,6 @@ async fn completion_smoke() {
     .await;
 }
 
-/// Cohere reports two token counters, and they differ substantially: `billed_units`
-/// excludes the system overhead that `tokens` counts. Rig's `Usage` must track
-/// `usage.tokens`, so this asserts against the recorded response rather than against
-/// literals — it keeps meaning if the cassette is re-recorded.
 #[tokio::test]
 async fn usage_is_reported_from_token_counts() {
     with_cohere_cassette(
@@ -75,21 +71,16 @@ async fn usage_is_reported_from_token_counts() {
                 response.usage.input_tokens + response.usage.output_tokens
             );
 
-            // Guards the counter choice: if `Usage` were ever read from
-            // `billed_units`, the assertions above would still pass on a response
-            // where the two counters happen to agree, but not on a real one.
             assert_ne!(
                 tokens.input_tokens, billed.input_tokens,
                 "expected Cohere's two input counters to differ, so the assertions above are meaningful"
             );
 
-            // Reported beside the two counters and previously discarded.
             let cached = raw_usage
                 .cached_tokens
                 .expect("Cohere should report `usage.cached_tokens`");
             assert_eq!(response.usage.cached_input_tokens, cached as u64);
 
-            // The telemetry span reads the same mapping, so the two agree.
             assert_eq!(raw_usage.token_usage(), response.usage);
         },
     )

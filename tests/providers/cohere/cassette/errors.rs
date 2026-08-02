@@ -2,10 +2,7 @@
 //!
 //! Cohere reports failures as `{"id": ..., "message": ...}` rather than the
 //! `{"error": {...}}` envelope most providers use, so the raw body is the only
-//! place the reason for the failure appears. `CompletionModel::completion` used to
-//! box the transport error into `http_client::Error::Instance`, which hid the
-//! `InvalidStatusCodeWithMessage` that the `provider_response_*` helpers read from
-//! and left callers with no status and no body.
+//! place the reason for the failure appears.
 
 use axum::http;
 use rig::completion::{CompletionError, CompletionModel};

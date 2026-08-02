@@ -25,21 +25,21 @@ pub use embeddings::EmbeddingModel;
 // Cohere Completion Models
 // ================================================================
 
-/// `command-a-plus-05-2026` completion model (128k context)
+/// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";
-/// `command-a-03-2025` completion model (256k context)
+/// `command-a-03-2025` completion model
 pub const COMMAND_A_03_2025: &str = "command-a-03-2025";
-/// `command-a-reasoning-08-2025` completion model (256k context)
+/// `command-a-reasoning-08-2025` completion model
 pub const COMMAND_A_REASONING_08_2025: &str = "command-a-reasoning-08-2025";
-/// `command-a-vision-07-2025` multimodal completion model (128k context)
+/// `command-a-vision-07-2025` completion model
 pub const COMMAND_A_VISION_07_2025: &str = "command-a-vision-07-2025";
-/// `command-a-translate-08-2025` translation-focused completion model (8k context)
+/// `command-a-translate-08-2025` completion model
 pub const COMMAND_A_TRANSLATE_08_2025: &str = "command-a-translate-08-2025";
-/// `command-r7b-12-2024` completion model (128k context)
+/// `command-r7b-12-2024` completion model
 pub const COMMAND_R7B_12_2024: &str = "command-r7b-12-2024";
-/// `command-r-plus-08-2024` completion model (128k context)
+/// `command-r-plus-08-2024` completion model
 pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
-/// `command-r-08-2024` completion model (128k context)
+/// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
 
 /// `command-r-plus` completion model
@@ -84,11 +84,7 @@ pub const COMMAND_LIGHT_NIGHTLY: &str = "command-light-nightly";
 // Cohere Embedding Models
 // ================================================================
 
-/// `embed-v4.0` embedding model.
-///
-/// Cohere can return 256-, 512-, 1024-, or 1536-dimension vectors for this model, selected by
-/// the `output_dimension` request field. Rig does not send that field, so `embed-v4.0` always
-/// returns Cohere's 1536-dimension default.
+/// `embed-v4.0` embedding model
 pub const EMBED_V4: &str = "embed-v4.0";
 /// `embed-english-v3.0` embedding model
 pub const EMBED_ENGLISH_V3: &str = "embed-english-v3.0";

@@ -1,10 +1,4 @@
 //! Cassette-backed Cohere context-document coverage.
-//!
-//! Cohere takes retrieval context as a native `documents` array of `{id, data}`
-//! entries. Rig used to serialize its own `{id, text, ..}` shape straight onto the
-//! wire, which the API rejects with
-//! `documents[0].data is required and must have at least one field`, so every
-//! agent carrying context failed.
 
 use rig::completion::Prompt;
 use rig::prelude::*;

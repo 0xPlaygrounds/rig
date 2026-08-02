@@ -101,20 +101,10 @@ pub struct Usage {
     pub billed_units: Option<BilledUnits>,
     #[serde(default)]
     pub tokens: Option<Tokens>,
-    /// Input tokens served from Cohere's prompt cache. A subset of
-    /// `tokens.input_tokens`, and excluded from `billed_units.input_tokens`.
     #[serde(default)]
     pub cached_tokens: Option<f64>,
 }
 
-/// The canonical Cohere usage mapping.
-///
-/// Every surface that reports usage — the non-streaming response, the streaming
-/// final, and the telemetry span — goes through this so they cannot disagree.
-/// `tokens` is the counter Rig wants: it covers everything the model processed,
-/// whereas `billed_units` excludes what Cohere doesn't charge for (cached input
-/// and system overhead) and so understates real usage, often by an order of
-/// magnitude.
 impl GetTokenUsage for Usage {
     fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
@@ -123,9 +113,6 @@ impl GetTokenUsage for Usage {
             usage.input_tokens = tokens.input_tokens.unwrap_or_default() as u64;
             usage.output_tokens = tokens.output_tokens.unwrap_or_default() as u64;
             usage.total_tokens = usage.input_tokens + usage.output_tokens;
-
-            // Inside the guard: `cached_input_tokens` is a subset of `input_tokens`,
-            // so reporting it against a zeroed input count would be incoherent.
             usage.cached_input_tokens = self.cached_tokens.unwrap_or_default() as u64;
         }
 
@@ -547,13 +534,6 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub model: String,
 }
 
-/// Cohere's `tool_choice` is a bare string, not the tagged object Rig's
-/// [`ToolChoice`] serializes to.
-///
-/// The API accepts only `REQUIRED` and `NONE`. [`ToolChoice::Specific`] has no Cohere
-/// equivalent, and [`ToolChoice::Auto`] is rejected rather than mapped onto an omitted
-/// field, preserving the behavior this conversion replaced — even though omitting
-/// `tool_choice` is what lets the model decide.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CohereToolChoice {
@@ -702,9 +682,6 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async {
-            // Propagated as-is: boxing this into `http_client::Error::Instance`
-            // hides the `InvalidStatusCodeWithMessage` that
-            // `CompletionError::provider_response_{status,body}` read from.
             let response = self.client.send::<_, bytes::Bytes>(req).await?;
 
             let status = response.status();
@@ -857,8 +834,6 @@ mod tests {
         let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
     }
 
-    /// `tokens` and `billed_units` differ by an order of magnitude on real
-    /// responses, so reading the wrong one silently under-reports usage.
     #[test]
     fn usage_is_mapped_from_tokens_and_carries_cached_input() {
         let usage: Usage = serde_json::from_str(
@@ -877,8 +852,6 @@ mod tests {
         assert_eq!(mapped.cached_input_tokens, 112);
     }
 
-    /// The non-streaming response, the streaming final, and the telemetry span all
-    /// share one mapping; this pins them together.
     #[test]
     fn response_usage_matches_the_canonical_mapping() {
         let response: CompletionResponse = serde_json::from_str(
@@ -913,15 +886,11 @@ mod tests {
         let usage: Usage = serde_json::from_str("{}").expect("usage should deserialize");
         assert_eq!(usage.token_usage(), crate::completion::Usage::new());
 
-        // `cached_input_tokens` is a subset of `input_tokens`, so it is not reported
-        // when Cohere omits the counter it would be a subset of.
         let cached_only: Usage =
             serde_json::from_str(r#"{"cached_tokens": 512}"#).expect("usage should deserialize");
         assert_eq!(cached_only.token_usage(), crate::completion::Usage::new());
     }
 
-    /// Cohere's `ToolContent` union is discriminated by a `type` field, like every
-    /// other content union in the v2 chat schema.
     #[test]
     fn tool_result_content_is_type_tagged() {
         let text = serde_json::to_value(ToolResultContent::Text {
@@ -955,9 +924,6 @@ mod tests {
         );
     }
 
-    /// Cohere's `documents` entries are `{id, data}`; sending Rig's own
-    /// `{id, text, ..}` shape is rejected with
-    /// `documents[0].data is required and must have at least one field`.
     #[test]
     fn cohere_builder_request_serializes_documents_in_cohere_shape() {
         let request = crate::completion::CompletionRequestBuilder::new(
@@ -994,9 +960,6 @@ mod tests {
         );
     }
 
-    /// Cohere accepts `tool_choice` only as the bare strings `REQUIRED` / `NONE`;
-    /// anything object-shaped is rejected with
-    /// `parameter 'tool_choice' is of type object but should be of type string`.
     #[test]
     fn tool_choice_serializes_as_a_bare_cohere_string() {
         assert_eq!(
@@ -1035,8 +998,6 @@ mod tests {
         }
     }
 
-    /// `/v2/chat` has a top-level `max_tokens`; before it was carried on the request
-    /// struct, `.max_tokens(n)` was silently discarded and generations ran unbounded.
     #[test]
     fn max_tokens_is_forwarded_and_omitted_when_unset() {
         let capped = crate::completion::CompletionRequestBuilder::new(

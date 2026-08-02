@@ -4,7 +4,6 @@ mod streaming_tools;
 mod support;
 mod tools;
 
-/// Model used by every Cohere cassette scenario.
 const CASSETTE_MODEL: &str = rig::providers::cohere::COMMAND_A_03_2025;
 
 mod cassette {

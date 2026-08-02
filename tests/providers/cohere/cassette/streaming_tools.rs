@@ -1,8 +1,4 @@
 //! Cassette-backed Cohere streaming tool-call coverage.
-//!
-//! Cohere streams a tool call as `tool-call-start` (name plus the first argument
-//! fragment) followed by `tool-call-delta` fragments and a closing `tool-call-end`,
-//! so the provider has to buffer and re-assemble the argument JSON itself.
 
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;

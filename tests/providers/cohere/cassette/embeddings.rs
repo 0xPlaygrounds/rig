@@ -6,8 +6,6 @@ use rig::providers::cohere;
 use super::super::support::with_cohere_cassette;
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
 
-/// Cohere's embed endpoint takes an explicit `input_type`, and the dimension count
-/// is derived from the model identifier rather than reported by the response.
 #[tokio::test]
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
