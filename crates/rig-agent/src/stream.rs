@@ -16,21 +16,23 @@ use std::task::{Context, Poll};
 
 use futures::{Stream, StreamExt};
 
+use crate::agent::attempt::ModelCallAttempt;
 use crate::agent::hook::{
-    CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch, ToolCallAction,
-    ToolResultAction,
+    CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch, ResolvedToolCall,
+    ResolvedToolCallDisposition, ToolCallAction, ToolResultAction,
 };
-use crate::agent::prepare::{ToolCatalog, prepare_request};
+use crate::agent::prepare::ToolCatalog;
 use crate::agent::response::tool_result_output;
 use crate::agent::run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, PartialStreamedTurn, PendingToolCall,
     StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent,
+    ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span, record_usage_on_span,
 };
 use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse, UNKNOWN_AGENT_NAME};
-use crate::completion::{CompletionResponse, Message, PromptError, Usage};
+use crate::completion::{Message, PromptError, Usage};
 use rig_core::OneOrMany;
 use rig_core::message::{AssistantContent, ToolCall, UserContent};
 use rig_core::streaming::{
@@ -81,6 +83,8 @@ pub enum AgentStreamItem {
         content: OneOrMany<AssistantContent>,
         /// Usage reported for the turn.
         usage: Usage,
+        /// Provider-assigned message ID for this turn, when present.
+        message_id: Option<String>,
     },
     /// A turn was rolled back (hook retry or invalid-call recovery); its
     /// earlier deltas were provisional.
@@ -115,6 +119,8 @@ pub enum AgentStreamItem {
     ToolResultReady {
         /// The executed (or skipped) tool call, with effective arguments.
         call: ToolCall,
+        /// Stable Rig identity shared with the originating ToolCall event.
+        internal_call_id: String,
         /// The model-visible result content as provided.
         result: UserContent,
     },
@@ -226,14 +232,29 @@ fn _assert_agent_run_stream_accepts_worker_local_generator() {
 
 /// The in-flight provider stream plus its sans-IO assembler.
 struct ActiveTurn {
+    /// Request inputs and provisional run mutations owned until commit.
+    attempt: ModelCallAttempt,
     stream: CompletionStream,
     assembler: StreamedTurnAssembler,
-    turn: usize,
     /// The per-call `chat_streaming` span the provider stream is polled
     /// under, mirroring the classic streaming driver.
     chat_span: tracing::Span,
     /// Whether the provider already emitted its terminal record.
     provider_final_seen: bool,
+    /// Last committed terminal record before this provisional attempt. If the
+    /// attempt rolls back after yielding a final record, restore this value so
+    /// observation state does not point at a failed turn.
+    previous_last_final: Option<StreamFinal>,
+    /// A retry/skip decision is kept provisional until the discarded provider
+    /// stream reaches checked natural exhaustion.
+    recovery: Option<PendingStreamRecovery>,
+}
+
+struct PendingStreamRecovery {
+    run: AgentRun,
+    resolution: StreamedResolution,
+    turn: usize,
+    internal_call_id: String,
 }
 
 /// The host decision the stream is waiting for.
@@ -250,23 +271,20 @@ enum Pending {
     },
     /// `policy.surface_tool_calls`: pre-execution decisions in flight.
     ToolCallGate {
-        /// The calls as the model emitted them, for the
-        /// announce-before-execute items.
-        originals: Vec<PendingToolCall>,
         /// Calls not yet decided, in call order.
         remaining: VecDeque<PendingToolCall>,
         /// Calls already decided (rewrites/skips applied).
         decided: Vec<PendingToolCall>,
         /// The call surfaced and awaiting [`AgentStream::reply_tool_call`].
         current: Option<PendingToolCall>,
-        /// Ids skipped via [`ToolCallAction::Skip`].
-        skipped_ids: Vec<String>,
+        /// Rig identities skipped via [`ToolCallAction::Skip`].
+        skipped_internal_ids: Vec<String>,
     },
     Tools {
         calls: Vec<PendingToolCall>,
-        /// Ids skipped via [`ToolCallAction::Skip`] — these still surface
-        /// their (synthetic) result under `surface_tool_results`.
-        skipped_ids: Vec<String>,
+        /// Rig identities skipped via [`ToolCallAction::Skip`] — these still
+        /// surface their synthetic result under `surface_tool_results`.
+        skipped_internal_ids: Vec<String>,
     },
     /// `policy.surface_tool_results`: post-execution decisions in flight.
     ToolResultGate {
@@ -274,7 +292,7 @@ enum Pending {
         entries: Vec<ResultGateEntry>,
         /// Results without a matching call, passed through for the run to
         /// validate.
-        extras: Vec<UserContent>,
+        extras: Vec<ToolResultSubmission>,
         /// Index of the entry surfaced (when `awaiting`) or the next scan
         /// position.
         cursor: usize,
@@ -307,6 +325,9 @@ pub struct AgentStream {
     run: AgentRun,
     rt: Arc<Runtime>,
     next_patch: Option<RequestPatch>,
+    /// Exact logical attempt retained across preparation/open/stream failure
+    /// or cancellation until the next poll reissues it.
+    retry_attempt: Option<ModelCallAttempt>,
     pending: Pending,
     active: Option<ActiveTurn>,
     buffered: VecDeque<AgentStreamItem>,
@@ -364,6 +385,7 @@ impl AgentStream {
             run,
             rt,
             next_patch: None,
+            retry_attempt: None,
             pending: Pending::None,
             active: None,
             buffered: VecDeque::new(),
@@ -407,16 +429,20 @@ impl AgentStream {
         self.last_final.as_ref()
     }
 
-    /// Terminate the current provider stream early (the run state stays
-    /// consistent; the turn is abandoned on the next poll).
+    /// Terminate and abandon the current provider attempt immediately.
+    ///
+    /// Continuing to poll starts a fresh attempt with the retained request
+    /// patch. Already-observed deltas were provisional and may be repeated.
     pub fn close_turn(&mut self) {
-        if let Some(active) = &mut self.active {
-            active.stream.cancel();
-        }
+        self.abandon_active_turn();
     }
 
     /// Merge a per-turn request patch consumed by the next model call.
     pub fn patch_next_turn(&mut self, patch: RequestPatch) {
+        if let Some(attempt) = &mut self.retry_attempt {
+            attempt.merge_patch(patch);
+            return;
+        }
         self.next_patch = Some(match self.next_patch.take() {
             Some(existing) => existing.merge(patch),
             None => patch,
@@ -478,12 +504,20 @@ impl AgentStream {
 
     /// Advance the run machine when no provider stream is open.
     async fn begin_next_step(&mut self) -> Result<(), PromptError> {
+        let mut retry_attempt = self.retry_attempt.take();
+        if let Some(attempt) = &mut retry_attempt {
+            attempt.make_retryable(&mut self.run);
+        }
         match self.run.next_step()? {
             AgentRunStep::CallModel {
                 prompt,
                 history,
                 turn,
             } => {
+                if let Some(mut attempt) = retry_attempt {
+                    attempt.reissue(turn);
+                    return self.open_attempt(attempt).await;
+                }
                 if self.policy.surface_completion_calls {
                     self.pending = Pending::BeforeCall {
                         prompt: prompt.clone(),
@@ -498,16 +532,18 @@ impl AgentStream {
                 }
                 self.open_turn(prompt, history, turn).await
             }
-            AgentRunStep::CallTools { calls } => {
+            AgentRunStep::CallTools { mut calls } => {
+                for call in &mut calls {
+                    call.ensure_internal_call_id();
+                }
                 if self.policy.surface_tool_calls {
                     // Per-call decisions first; announce-before-execute
                     // items surface once the whole batch is decided.
                     self.pending = Pending::ToolCallGate {
-                        originals: calls.clone(),
                         remaining: calls.into(),
                         decided: Vec::new(),
                         current: None,
-                        skipped_ids: Vec::new(),
+                        skipped_internal_ids: Vec::new(),
                     };
                     return Ok(());
                 }
@@ -528,7 +564,7 @@ impl AgentStream {
                     .push_back(AgentStreamItem::ToolCallsReady(calls.clone()));
                 self.pending = Pending::Tools {
                     calls,
-                    skipped_ids: Vec::new(),
+                    skipped_internal_ids: Vec::new(),
                 };
                 Ok(())
             }
@@ -553,18 +589,24 @@ impl AgentStream {
         history: Vec<Message>,
         turn: usize,
     ) -> Result<(), PromptError> {
-        let patch = self.next_patch.take().unwrap_or_default();
-        let mut prepared = prepare_request(
+        let attempt = ModelCallAttempt::begin(prompt, history, turn, &mut self.next_patch);
+        self.open_attempt(attempt).await
+    }
+
+    async fn open_attempt(&mut self, mut attempt: ModelCallAttempt) -> Result<(), PromptError> {
+        let mut prepared = match attempt.prepare(
             &self.config,
             &self.tools,
             self.provider.descriptor().composes_native_output_with_tools,
-            prompt,
-            &history,
             self.run.output_tool_name(),
-            Some(&patch),
-        )?;
-        self.run
-            .set_output_tool_name(prepared.output_tool_name.clone());
+        ) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                attempt.make_retryable(&mut self.run);
+                self.retry_attempt = Some(attempt);
+                return Err(error.into());
+            }
+        };
         // The per-call `chat_streaming` span — identical shape to the classic
         // streaming driver's, parented into the ambient span tree.
         let chat_span = new_session_chat_streaming_span(
@@ -581,28 +623,37 @@ impl AgentStream {
             rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
             prepared.request.record_telemetry_content = false;
         }
-        let stream = match provider::open_stream(&self.provider, &self.rt, prepared.request)
+        attempt.mark_in_flight();
+        self.retry_attempt = Some(attempt);
+        let stream_result = provider::open_stream(&self.provider, &self.rt, prepared.request)
             .instrument(chat_span.clone())
-            .await
-        {
+            .await;
+        let Some(mut attempt) = self.retry_attempt.take() else {
+            self.run.abandon_pending_model_call();
+            return Err(self.run.cancel_error(
+                "model-call attempt ownership disappeared while provider stream was opening",
+            ));
+        };
+        let stream = match stream_result {
             Ok(stream) => stream,
             Err(error) => {
-                // Transient provider failure: return to the pre-call state so
-                // a later next_item() retries the call instead of wedging the
-                // run in AwaitingModel forever.
-                self.run.abandon_pending_model_call();
+                attempt.make_retryable(&mut self.run);
+                self.retry_attempt = Some(attempt);
                 return Err(PromptError::from(error));
             }
         };
+        let previous_last_final = self.last_final.take();
         self.active = Some(ActiveTurn {
+            attempt,
             stream,
             assembler: StreamedTurnAssembler::new(
                 prepared.executable_tool_names,
                 prepared.allowed_tool_names,
             ),
-            turn,
             chat_span,
             provider_final_seen: false,
+            previous_last_final,
+            recovery: None,
         });
         Ok(())
     }
@@ -610,6 +661,23 @@ impl AgentStream {
     /// Poll the open provider stream once, translating assembler events
     /// into buffered items or pending decisions.
     async fn poll_active_turn(&mut self) -> Result<(), PromptError> {
+        let result = self.poll_active_turn_once().await;
+        if result.is_err() {
+            self.abandon_active_turn();
+        }
+        result
+    }
+
+    /// Poll one item from the active attempt. The outer wrapper owns rollback
+    /// so every protocol, assembler, and provider error follows one path.
+    async fn poll_active_turn_once(&mut self) -> Result<(), PromptError> {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|active| active.recovery.is_some())
+        {
+            return self.poll_active_recovery_once().await;
+        }
         let Some(active) = &mut self.active else {
             return Ok(());
         };
@@ -662,14 +730,11 @@ impl AgentStream {
                                 .push_back(AgentStreamItem::InvalidToolCall(context));
                             return Ok(());
                         }
-                        StreamedTurnEvent::Completed { usage, emit_final } => {
+                        StreamedTurnEvent::Completed {
+                            usage: _,
+                            emit_final,
+                        } => {
                             saw_provider_final = true;
-                            // Per-call usage lands on this call's own
-                            // `chat_streaming` span (classic parity).
-                            record_usage_on_span(&chat_span, usage);
-                            let call = self.run.record_streamed_completion_call(usage)?;
-                            self.buffered
-                                .push_back(AgentStreamItem::CompletionCall(call));
                             if let StreamedAssistantContent::Final(final_record) = &item {
                                 self.last_final = Some(final_record.clone());
                                 if emit_final {
@@ -692,19 +757,33 @@ impl AgentStream {
                     return Ok(());
                 };
                 let ActiveTurn {
+                    attempt,
                     stream,
                     assembler,
-                    turn,
                     chat_span,
                     provider_final_seen: _,
+                    previous_last_final: _,
+                    recovery: _,
                 } = active;
-                let response = CompletionResponse::from(stream);
-                let streamed = assembler.finish(response.message_id, response.choice);
+                let response = match stream.into_response() {
+                    Ok(response) => response,
+                    Err(error) => {
+                        attempt.abandon(&mut self.run, &mut self.next_patch);
+                        return Err(PromptError::CompletionError(
+                            rig_core::completion::CompletionError::ResponseError(error.to_string()),
+                        ));
+                    }
+                };
+                let turn = attempt.turn();
+                let usage = response.usage;
+                let message_id = response.message_id.clone();
+                let streamed = assembler.finish(response.message_id, response.choice, usage);
                 // Exactly one CompletionCall item per model call: when the
                 // provider never yielded a terminal record, `streamed_turn`
                 // records the no-usage fallback and the item is surfaced here.
                 let recorded_calls = self.run.completion_calls().len();
-                self.run.streamed_turn(streamed)?;
+                attempt.commit_streamed(&mut self.run, &mut self.next_patch, streamed)?;
+                record_usage_on_span(&chat_span, usage);
                 if let Some(call) = self.run.completion_calls().get(recorded_calls).copied() {
                     self.buffered
                         .push_back(AgentStreamItem::CompletionCall(call));
@@ -724,19 +803,119 @@ impl AgentStream {
                     // completion call is this turn's (recorded from the
                     // stream's terminal event, or as a zero-usage fallback by
                     // `streamed_turn` when the provider reported none).
-                    let usage = self
-                        .run
-                        .completion_calls()
-                        .last()
-                        .map_or_else(Usage::new, |call| call.usage);
                     self.buffered.push_back(AgentStreamItem::TurnFinished {
                         turn,
                         content,
                         usage,
+                        message_id,
                     });
                 }
                 Ok(())
             }
+        }
+    }
+
+    /// Drain one item from a deliberately abandoned invalid-call turn. The
+    /// candidate recovery run remains provisional until checked natural EOF;
+    /// cancellation keeps this state on the driver, and any provider failure
+    /// rolls the original attempt back through the ordinary retry path.
+    async fn poll_active_recovery_once(&mut self) -> Result<(), PromptError> {
+        let Some(active) = &mut self.active else {
+            return Ok(());
+        };
+        let chat_span = active.chat_span.clone();
+        match active.stream.next().instrument(chat_span.clone()).await {
+            Some(Ok(StreamedAssistantContent::Final(final_record))) => {
+                self.last_final = Some(final_record);
+                Ok(())
+            }
+            Some(Ok(_)) => Ok(()),
+            Some(Err(error)) => Err(PromptError::from(error)),
+            None => {
+                let Some(active) = self.active.take() else {
+                    return Ok(());
+                };
+                let ActiveTurn {
+                    mut attempt,
+                    stream,
+                    assembler: _,
+                    chat_span,
+                    provider_final_seen: _,
+                    previous_last_final: _,
+                    recovery,
+                } = active;
+                let response = match stream.into_response() {
+                    Ok(response) => response,
+                    Err(error) => {
+                        attempt.make_retryable(&mut self.run);
+                        self.retry_attempt = Some(attempt);
+                        return Err(PromptError::CompletionError(
+                            rig_core::completion::CompletionError::ResponseError(error.to_string()),
+                        ));
+                    }
+                };
+                let Some(PendingStreamRecovery {
+                    mut run,
+                    resolution,
+                    turn,
+                    internal_call_id,
+                }) = recovery
+                else {
+                    attempt.make_retryable(&mut self.run);
+                    self.retry_attempt = Some(attempt);
+                    return Err(self.run.cancel_error(
+                        "invalid-call recovery drain lost its provisional transition",
+                    ));
+                };
+                let call = match run.record_streamed_completion_call(response.usage) {
+                    Ok(call) => call,
+                    Err(error) => {
+                        attempt.make_retryable(&mut self.run);
+                        self.retry_attempt = Some(attempt);
+                        return Err(error);
+                    }
+                };
+                attempt.commit_recovered(&mut run);
+                self.run = run;
+                record_usage_on_span(&chat_span, response.usage);
+
+                let StreamedResolution::TurnAbandoned {
+                    skipped_tool_result,
+                } = resolution
+                else {
+                    return Err(self.run.cancel_error(
+                        "invalid-call recovery drain completed without an abandoned turn",
+                    ));
+                };
+                if let Some(result) = skipped_tool_result {
+                    self.buffered.push_back(AgentStreamItem::User(
+                        StreamedUserContent::tool_result(result, internal_call_id),
+                    ));
+                }
+                self.buffered
+                    .push_back(AgentStreamItem::CompletionCall(call));
+                self.buffered
+                    .push_back(AgentStreamItem::ModelTurnRetried { turn });
+                Ok(())
+            }
+        }
+    }
+
+    /// Drop transport and assembler state, restore the attempt patch, and
+    /// return the run to the same pre-call state used by both drivers.
+    fn abandon_active_turn(&mut self) {
+        if let Some(mut active) = self.active.take() {
+            active.stream.cancel();
+            self.last_final = active.previous_last_final.take();
+            active.attempt.make_retryable(&mut self.run);
+            if let Some(later) = self.next_patch.take() {
+                active.attempt.merge_patch(later);
+            }
+            self.retry_attempt = Some(active.attempt);
+            // Decision inboxes and buffered observations created by this
+            // attempt are provisional just like its assembler state.
+            self.pending = Pending::None;
+            self.buffered.clear();
         }
     }
 
@@ -758,7 +937,7 @@ impl AgentStream {
             match self.next_item().await? {
                 Ok(AgentStreamItem::ToolCallsReady(calls)) => {
                     let batch = executor.execute_batch(&calls).await;
-                    if let Err(error) = self.provide_tool_results(batch.results) {
+                    if let Err(error) = self.provide_tool_results(batch.into_submissions()) {
                         return Some(Err(error));
                     }
                 }
@@ -845,9 +1024,18 @@ impl AgentStream {
                 .run
                 .cancel_error("resolve_invalid without a pending InvalidToolCall item"));
         };
-        let resolution = self
-            .run
-            .resolve_streamed_invalid_tool_call(&partial, &invalid, action)?;
+        // Retry/skip mutates history and retry accounting. Apply it to a
+        // candidate run first; the live run remains AwaitingModel until the
+        // discarded provider stream proves natural exhaustion.
+        let mut candidate_run = self.run.clone();
+        let resolution =
+            match candidate_run.resolve_streamed_invalid_tool_call(&partial, &invalid, action) {
+                Ok(resolution) => resolution,
+                Err(error) => {
+                    self.run = candidate_run;
+                    return Err(error);
+                }
+            };
         match &resolution {
             StreamedResolution::Repaired { .. } => {
                 if let Some(active) = &mut self.active {
@@ -871,45 +1059,28 @@ impl AgentStream {
                 Ok(())
             }
             StreamedResolution::TurnAbandoned {
-                skipped_tool_result,
+                skipped_tool_result: _,
             } => {
                 let turn = self.run.turn();
-                if let Some(result) = skipped_tool_result {
-                    self.buffered.push_back(AgentStreamItem::User(
-                        StreamedUserContent::tool_result(
-                            result.clone(),
-                            invalid.internal_call_id.clone(),
-                        ),
-                    ));
+                let Some(active) = &mut self.active else {
+                    return Err(self
+                        .run
+                        .cancel_error("invalid-call recovery lost its active provider attempt"));
+                };
+                let _ = active.assembler.resolve_pending_invalid(&resolution);
+                active.recovery = Some(PendingStreamRecovery {
+                    run: candidate_run,
+                    resolution,
+                    turn,
+                    internal_call_id: invalid.internal_call_id,
+                });
+                while self
+                    .active
+                    .as_ref()
+                    .is_some_and(|active| active.recovery.is_some())
+                {
+                    self.poll_active_turn().await?;
                 }
-                // Drain the abandoned provider stream for its usage record.
-                if let Some(mut active) = self.active.take() {
-                    let _ = active.assembler.resolve_pending_invalid(&resolution);
-                    let mut drained_usage = Usage::new();
-                    while let Some(item) = active.stream.next().await {
-                        if let Ok(StreamedAssistantContent::Final(final_record)) = item {
-                            drained_usage = final_record.usage;
-                            self.last_final = Some(final_record);
-                        }
-                    }
-                    match self.run.record_streamed_completion_call(drained_usage) {
-                        Ok(call) => {
-                            self.buffered
-                                .push_back(AgentStreamItem::CompletionCall(call));
-                        }
-                        Err(error) => {
-                            // The run rejected the record (e.g. one was
-                            // already recorded for this turn); the drained
-                            // usage is dropped rather than double-counted.
-                            tracing::debug!(
-                                %error,
-                                "dropping usage record for abandoned streamed turn"
-                            );
-                        }
-                    }
-                }
-                self.buffered
-                    .push_back(AgentStreamItem::ModelTurnRetried { turn });
                 Ok(())
             }
         }
@@ -924,11 +1095,10 @@ impl AgentStream {
     fn step_tool_call_gate(&mut self) -> Result<(), PromptError> {
         match std::mem::replace(&mut self.pending, Pending::None) {
             Pending::ToolCallGate {
-                originals,
                 mut remaining,
                 mut decided,
                 current: None,
-                skipped_ids,
+                skipped_internal_ids,
             } => {
                 while let Some(next) = remaining.pop_front() {
                     if next.preresolved_result.is_some() {
@@ -937,11 +1107,10 @@ impl AgentStream {
                     }
                     let call = next.clone();
                     self.pending = Pending::ToolCallGate {
-                        originals,
                         remaining,
                         decided,
                         current: Some(next),
-                        skipped_ids,
+                        skipped_internal_ids,
                     };
                     self.buffered
                         .push_back(AgentStreamItem::ToolCallPending { call });
@@ -949,10 +1118,21 @@ impl AgentStream {
                 }
                 // Announce-before-execute: the model's calls, in call order,
                 // right before the decision point.
-                for call in &originals {
+                for call in &decided {
+                    let mut announced_call = call
+                        .original_tool_call
+                        .as_deref()
+                        .cloned()
+                        .unwrap_or_else(|| call.tool_call.clone());
+                    // Argument rewrites are execution policy, so the
+                    // assistant item keeps provider arguments. Invalid-name
+                    // repair is different: consumers must see the executable
+                    // repaired name. Project only that name so a later
+                    // argument rewrite cannot leak into provider output.
+                    announced_call.function.name = call.tool_call.function.name.clone();
                     self.buffered.push_back(AgentStreamItem::Assistant(
                         StreamedAssistantContent::ToolCall {
-                            tool_call: call.tool_call.clone(),
+                            tool_call: announced_call,
                             internal_call_id: call
                                 .internal_call_id
                                 .clone()
@@ -964,7 +1144,7 @@ impl AgentStream {
                     .push_back(AgentStreamItem::ToolCallsReady(decided.clone()));
                 self.pending = Pending::Tools {
                     calls: decided,
-                    skipped_ids,
+                    skipped_internal_ids,
                 };
                 Ok(())
             }
@@ -985,44 +1165,64 @@ impl AgentStream {
     /// [`ToolCallAction::Stop`] cancels the run; calling without a pending
     /// [`AgentStreamItem::ToolCallPending`] item is a protocol violation.
     pub fn reply_tool_call(&mut self, action: ToolCallAction) -> Result<(), PromptError> {
+        let original_call = match &self.pending {
+            Pending::ToolCallGate {
+                current: Some(call),
+                ..
+            } => call.tool_call.clone(),
+            _ => {
+                return Err(self
+                    .run
+                    .cancel_error("reply_tool_call without a pending ToolCallPending item"));
+            }
+        };
+        self.reply_resolved_tool_call(ResolvedToolCall::from_action(original_call, action))
+    }
+
+    /// Apply one fully composed hook resolution without separating its
+    /// effective arguments from a terminal skip.
+    fn reply_resolved_tool_call(
+        &mut self,
+        resolution: ResolvedToolCall,
+    ) -> Result<(), PromptError> {
         match std::mem::replace(&mut self.pending, Pending::None) {
             Pending::ToolCallGate {
-                originals,
                 remaining,
                 mut decided,
                 current: Some(mut call),
-                mut skipped_ids,
+                mut skipped_internal_ids,
             } => {
-                match action {
-                    ToolCallAction::Run => decided.push(call),
-                    ToolCallAction::Rewrite(args) => {
-                        call.tool_call.function.arguments = args;
-                        decided.push(call);
-                    }
-                    ToolCallAction::Skip(reason) => {
+                let (effective_call, disposition) = resolution.into_parts();
+                call.original_tool_call
+                    .get_or_insert_with(|| Box::new(call.tool_call.clone()));
+                call.tool_call = effective_call;
+                match disposition {
+                    ResolvedToolCallDisposition::Run => decided.push(call),
+                    ResolvedToolCallDisposition::Skip(reason) => {
                         // Mirror run_single_tool: the skip becomes a
                         // `ToolResult::skipped` presentation delivered to
                         // the model without executing the body.
-                        let skipped = crate::tool::ToolResult::skipped(reason);
+                        let skipped = crate::tool::ToolResult::skipped(reason.clone());
                         let content = tool_result_output(
                             call.tool_call.id.clone(),
                             call.tool_call.call_id.clone(),
                             skipped.output().clone(),
                         );
-                        skipped_ids.push(call.tool_call.id.clone());
+                        skipped_internal_ids.push(call.ensure_internal_call_id().to_owned());
                         call.preresolved_result = Some(content);
+                        call.preresolved_disposition =
+                            Some(crate::agent::run::PreresolvedToolDisposition::Skipped { reason });
                         decided.push(call);
                     }
-                    ToolCallAction::Stop(reason) => {
+                    ResolvedToolCallDisposition::Stop(reason) => {
                         return Err(self.run.cancel_error(reason));
                     }
                 }
                 self.pending = Pending::ToolCallGate {
-                    originals,
                     remaining,
                     decided,
                     current: None,
-                    skipped_ids,
+                    skipped_internal_ids,
                 };
                 Ok(())
             }
@@ -1046,16 +1246,20 @@ impl AgentStream {
                 cursor,
                 awaiting: false,
             } => {
-                if let Some((index, call, result)) = entries
+                if let Some((index, call, internal_call_id, result)) = entries
                     .iter()
                     .enumerate()
                     .skip(cursor)
                     .find(|(_, entry)| entry.surface)
                     .and_then(|(index, entry)| {
-                        entry
-                            .result
-                            .as_ref()
-                            .map(|result| (index, entry.call.tool_call.clone(), result.clone()))
+                        entry.result.as_ref().map(|result| {
+                            (
+                                index,
+                                entry.call.tool_call.clone(),
+                                entry.internal_call_id.clone(),
+                                result.clone(),
+                            )
+                        })
                     })
                 {
                     self.pending = Pending::ToolResultGate {
@@ -1064,18 +1268,25 @@ impl AgentStream {
                         cursor: index,
                         awaiting: true,
                     };
-                    self.buffered
-                        .push_back(AgentStreamItem::ToolResultReady { call, result });
+                    self.buffered.push_back(AgentStreamItem::ToolResultReady {
+                        call,
+                        internal_call_id,
+                        result,
+                    });
                     return Ok(());
                 }
                 // Every decision answered: commit, then surface committed
                 // items in call order, mirroring the ungated path.
-                let results: Vec<UserContent> = entries
+                let submissions: Vec<ToolResultSubmission> = entries
                     .iter()
-                    .filter_map(|entry| entry.result.clone())
+                    .filter_map(|entry| {
+                        entry.result.clone().map(|result| {
+                            ToolResultSubmission::new(entry.internal_call_id.clone(), result)
+                        })
+                    })
                     .chain(extras)
                     .collect();
-                self.run.tool_results(results)?;
+                self.run.tool_result_submissions(submissions)?;
                 for entry in entries {
                     self.buffered
                         .push_back(AgentStreamItem::ToolExecutionCommitted {
@@ -1147,41 +1358,50 @@ impl AgentStream {
         }
     }
 
-    /// Answer [`AgentStreamItem::ToolCallsReady`]. Committed results and
-    /// execution markers surface on subsequent [`AgentStream::next_item`]
-    /// calls, in call order. Under `policy.surface_tool_results` the batch
-    /// is not committed yet: each result surfaces as
+    /// Answer [`AgentStreamItem::ToolCallsReady`] with identity-bearing
+    /// [`ToolResultSubmission`] records. Use each
+    /// [`PendingToolCall::internal_call_id`] as the join key; provider IDs may
+    /// duplicate and submissions may arrive in any order. Committed results
+    /// and execution markers surface on subsequent [`AgentStream::next_item`]
+    /// calls, in call order. Under `policy.surface_tool_results` the batch is
+    /// not committed yet: each result surfaces as
     /// [`AgentStreamItem::ToolResultReady`] first, and commits once every
     /// decision is answered.
-    pub fn provide_tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
-        let Pending::Tools { calls, skipped_ids } =
-            std::mem::replace(&mut self.pending, Pending::None)
+    pub fn provide_tool_results(
+        &mut self,
+        submissions: Vec<ToolResultSubmission>,
+    ) -> Result<(), PromptError> {
+        let Pending::Tools {
+            calls,
+            skipped_internal_ids,
+        } = std::mem::replace(&mut self.pending, Pending::None)
         else {
             return Err(self
                 .run
                 .cancel_error("provide_tool_results without a pending ToolCallsReady item"));
         };
         if self.policy.surface_tool_results {
-            // Pair results with calls by provider id as a multiset
-            // (mirroring `AgentRun::tool_results`): duplicate ids pair
-            // positionally. Results preresolved by invalid-call recovery
+            // Pair by stable Rig identity. Provider IDs are payload and may
+            // duplicate. Results preresolved by invalid-call recovery
             // pass through verbatim; gate skips do surface, exactly as
             // run_single_tool fires its tool-result hook for a hook skip.
-            let mut remaining: Vec<Option<UserContent>> = results.into_iter().map(Some).collect();
+            let mut remaining: Vec<Option<ToolResultSubmission>> =
+                submissions.into_iter().map(Some).collect();
             let mut entries = Vec::new();
             for call in calls {
                 let matched = remaining.iter_mut().find_map(|slot| {
-                    let is_match = slot.as_ref().is_some_and(|content| {
-                        matches!(
-                            content,
-                            UserContent::ToolResult(result) if result.id == call.tool_call.id
-                        )
+                    let is_match = slot.as_ref().is_some_and(|submission| {
+                        call.internal_call_id.as_deref()
+                            == Some(submission.internal_call_id.as_str())
                     });
                     if is_match { slot.take() } else { None }
                 });
                 let surface = matched.is_some()
                     && (call.preresolved_result.is_none()
-                        || skipped_ids.contains(&call.tool_call.id));
+                        || call
+                            .internal_call_id
+                            .as_ref()
+                            .is_some_and(|id| skipped_internal_ids.contains(id)));
                 let internal_call_id = call
                     .internal_call_id
                     .clone()
@@ -1189,11 +1409,11 @@ impl AgentStream {
                 entries.push(ResultGateEntry {
                     call,
                     internal_call_id,
-                    result: matched,
+                    result: matched.map(|submission| submission.result),
                     surface,
                 });
             }
-            let extras: Vec<UserContent> = remaining.into_iter().flatten().collect();
+            let extras: Vec<ToolResultSubmission> = remaining.into_iter().flatten().collect();
             self.pending = Pending::ToolResultGate {
                 entries,
                 extras,
@@ -1202,18 +1422,9 @@ impl AgentStream {
             };
             return Ok(());
         }
-        self.run.tool_results(results.clone())?;
-        // Post-commit surface items in call order. Results are consumed as a
-        // multiset (mirroring `AgentRun::tool_results`): duplicate provider
-        // tool-call ids within one turn each surface their own result exactly
-        // once, paired positionally.
-        let mut remaining: Vec<Option<rig_core::message::ToolResult>> = results
-            .into_iter()
-            .map(|content| match content {
-                UserContent::ToolResult(result) => Some(result),
-                _ => None,
-            })
-            .collect();
+        self.run.tool_result_submissions(submissions.clone())?;
+        // Post-commit surface items in call order, joined only by the unique
+        // Rig invocation identity.
         for call in &calls {
             let internal = call
                 .internal_call_id
@@ -1224,21 +1435,97 @@ impl AgentStream {
                     tool_call: call.tool_call.clone(),
                     internal_call_id: internal.clone(),
                 });
-            if let Some(result) = remaining.iter_mut().find_map(|slot| {
-                if slot
-                    .as_ref()
-                    .is_some_and(|result| result.id == call.tool_call.id)
-                {
-                    slot.take()
-                } else {
-                    None
-                }
-            }) {
+            if let Some(UserContent::ToolResult(result)) = submissions
+                .iter()
+                .find(|submission| submission.internal_call_id == internal)
+                .map(|submission| submission.result.clone())
+            {
                 self.buffered
                     .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(
                         result, internal,
                     )));
             }
+        }
+        Ok(())
+    }
+
+    /// Accept executor-owned records without rejoining results to calls by a
+    /// provider ID that is allowed to be duplicated.
+    fn provide_tool_execution_records(
+        &mut self,
+        records: &[crate::executor::ToolExecutionRecord],
+    ) -> Result<(), PromptError> {
+        let Pending::Tools {
+            calls,
+            skipped_internal_ids,
+        } = std::mem::replace(&mut self.pending, Pending::None)
+        else {
+            return Err(self.run.cancel_error(
+                "provide_tool_execution_records without a pending ToolCallsReady item",
+            ));
+        };
+        if calls.len() != records.len()
+            || calls.iter().zip(records).any(|(call, record)| {
+                call.internal_call_id.as_deref() != Some(record.internal_call_id.as_str())
+            })
+        {
+            return Err(self
+                .run
+                .cancel_error("tool execution records do not match the pending indexed batch"));
+        }
+
+        if self.policy.surface_tool_results {
+            let entries = calls
+                .into_iter()
+                .zip(records)
+                .map(|(call, record)| {
+                    let surface = call.preresolved_result.is_none()
+                        || skipped_internal_ids.contains(&record.internal_call_id);
+                    ResultGateEntry {
+                        call,
+                        internal_call_id: record.internal_call_id.clone(),
+                        result: Some(record.result.clone()),
+                        surface,
+                    }
+                })
+                .collect();
+            self.pending = Pending::ToolResultGate {
+                entries,
+                extras: Vec::new(),
+                cursor: 0,
+                awaiting: false,
+            };
+            return Ok(());
+        }
+
+        self.run.tool_result_submissions(
+            records
+                .iter()
+                .map(|record| {
+                    ToolResultSubmission::new(
+                        record.internal_call_id.clone(),
+                        record.result.clone(),
+                    )
+                })
+                .collect(),
+        )?;
+        for (call, record) in calls.iter().zip(records) {
+            self.buffered
+                .push_back(AgentStreamItem::ToolExecutionCommitted {
+                    tool_call: record.effective_call.clone(),
+                    internal_call_id: record.internal_call_id.clone(),
+                });
+            if let UserContent::ToolResult(result) = &record.result {
+                self.buffered
+                    .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(
+                        result.clone(),
+                        record.internal_call_id.clone(),
+                    )));
+            }
+            debug_assert_eq!(
+                call.internal_call_id.as_deref(),
+                Some(record.internal_call_id.as_str())
+            );
         }
         Ok(())
     }
@@ -1275,8 +1562,7 @@ impl AgentStream {
             // The in-flight batch's structured results and per-call spans, so
             // the post-execution decision point carries the classic
             // classification and records post-hook result telemetry.
-            let mut batch_raw_results: Vec<(String, crate::tool::ToolResult)> = Vec::new();
-            let mut batch_call_spans: Vec<(String, tracing::Span)> = Vec::new();
+            let mut batch_records: Vec<crate::executor::ToolExecutionRecord> = Vec::new();
             loop {
                 let item = match self.next_item().await {
                     None => break,
@@ -1297,14 +1583,16 @@ impl AgentStream {
                             break;
                         }
                     }
-                    AgentStreamItem::TurnFinished { turn, content, usage } => {
+                    AgentStreamItem::TurnFinished {
+                        turn,
+                        content,
+                        usage,
+                        message_id,
+                    } => {
                         // The provider's terminal record observation fires
                         // first, then the normalized per-turn verdict.
                         let observed_prompt =
                             turn_prompt.clone().unwrap_or_else(|| Message::from(""));
-                        let message_id = self
-                            .last_response()
-                            .and_then(|final_record| final_record.message_id.clone());
                         if let crate::agent::ObservationAction::Stop(reason) = hooks
                             .dispatch_stream_response_finish(
                                 turn,
@@ -1341,47 +1629,61 @@ impl AgentStream {
                         let internal_call_id = call
                             .internal_call_id
                             .clone()
-                            .unwrap_or_else(|| call.tool_call.id.clone());
-                        let (action, _salvaged) = hooks
+                            .unwrap_or_else(rig_core::id::generate);
+                        let resolution = hooks
                             .dispatch_tool_call(&call.tool_call, &internal_call_id)
                             .await;
-                        if let Err(error) = self.reply_tool_call(action) {
+                        if let Err(error) = self.reply_resolved_tool_call(resolution) {
                             yield Err(error);
                             break;
                         }
                     }
                     AgentStreamItem::ToolCallsReady(calls) => {
-                        let results = match &executor {
+                        match &executor {
                             Some(executor) => {
                                 let batch = executor.execute_batch(&calls).await;
-                                batch_raw_results = batch.raw_results;
-                                batch_call_spans = batch.call_spans;
-                                batch.results
-                            }
-                            None => match crate::session::preresolved_only_results(&calls) {
-                                Ok(results) => results,
-                                Err(error) => {
+                                batch_records = batch.records;
+                                if let Err(error) =
+                                    self.provide_tool_execution_records(&batch_records)
+                                {
                                     yield Err(error);
                                     break;
                                 }
-                            },
-                        };
-                        if let Err(error) = self.provide_tool_results(results) {
-                            yield Err(error);
-                            break;
+                                if !self.policy.surface_tool_results {
+                                    batch_records.clear();
+                                }
+                            }
+                            None => {
+                                let results = match crate::session::preresolved_only_results(&calls) {
+                                    Ok(results) => results,
+                                    Err(error) => {
+                                        yield Err(error);
+                                        break;
+                                    }
+                                };
+                                if let Err(error) = self.provide_tool_results(results) {
+                                    yield Err(error);
+                                    break;
+                                }
+                                batch_records.clear();
+                            }
                         }
                     }
-                    AgentStreamItem::ToolResultReady { call, result } => {
+                    AgentStreamItem::ToolResultReady {
+                        call,
+                        internal_call_id,
+                        result,
+                    } => {
                         // The executor's structured result when the body ran,
                         // so the classic classification (failed/skipped/
                         // denied, error kind, HTTP status) survives; otherwise
                         // reconstruct it from the committed content.
-                        let raw = batch_raw_results
+                        let execution = batch_records
                             .iter()
-                            .find(|(id, _)| *id == call.id)
-                            .map(|(_, structured)| structured.clone())
-                            .unwrap_or_else(|| crate::session::raw_tool_result(&result));
-                        let internal_call_id = call.id.clone();
+                            .find(|record| record.internal_call_id == internal_call_id);
+                        let raw = execution
+                            .map(|record| record.raw_result.clone())
+                            .unwrap_or_else(|| crate::executor::raw_tool_result(&result));
                         let action = hooks
                             .dispatch_tool_result(&call, &internal_call_id, &raw)
                             .await;
@@ -1389,8 +1691,7 @@ impl AgentStream {
                         // defers it for this driver), so a redaction rewrite is
                         // never preceded by the raw value.
                         if self.config.record_telemetry_content
-                            && let Some((_, span)) =
-                                batch_call_spans.iter().find(|(id, _)| *id == call.id)
+                            && let Some(span) = execution.and_then(|record| record.span.as_ref())
                         {
                             let rendered = match &action {
                                 ToolResultAction::Rewrite(output) => Some(output.render()),
@@ -1593,6 +1894,7 @@ mod tests {
                 turn: 1,
                 content: OneOrMany::one(AssistantContent::text("answer")),
                 usage: Usage::new(),
+                message_id: Some("msg_1".to_owned()),
             },
             AgentStreamItem::ModelTurnRetried { turn: 2 },
             AgentStreamItem::ToolExecutionCommitted {
@@ -1706,6 +2008,13 @@ mod gate_tests {
         )
     }
 
+    fn submission_for(call: &PendingToolCall, result: UserContent) -> ToolResultSubmission {
+        ToolResultSubmission::new(
+            call.internal_call_id.clone().expect("durable internal id"),
+            result,
+        )
+    }
+
     #[tokio::test]
     async fn stream_gate_rewrite_then_result_keep_commits_effective_call() {
         let policy = SessionPolicy {
@@ -1746,7 +2055,10 @@ mod gate_tests {
             serde_json::json!({"a": 7, "b": 8})
         );
         stream
-            .provide_tool_results(vec![tool_result_for(&ready.tool_call, "15")])
+            .provide_tool_results(vec![submission_for(
+                ready,
+                tool_result_for(&ready.tool_call, "15"),
+            )])
             .expect("results");
 
         match next(&mut stream).await {
@@ -1811,7 +2123,7 @@ mod gate_tests {
             .clone()
             .expect("skip preresolves the result");
         stream
-            .provide_tool_results(vec![preresolved])
+            .provide_tool_results(vec![submission_for(ready, preresolved)])
             .expect("results");
 
         // A gate skip still surfaces its (synthetic) result, exactly as the
@@ -2058,6 +2370,76 @@ mod migrated_streaming_tests {
         StreamedAssistantContent::Final(StreamFinal::new("mock", usage))
     }
 
+    #[tokio::test]
+    async fn close_after_complete_tool_call_discards_the_uncommitted_batch() {
+        let script = script(vec![
+            vec![
+                call_item("call_1", "add", json!({"a": 1, "b": 2})),
+                final_tokens(9),
+            ],
+            vec![text_item("recovered"), final_tokens(5)],
+        ]);
+        let mut driver = AgentStream::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(script),
+            Arc::new(Runtime::new()),
+            "go",
+        )
+        .with_tools(ToolCatalog::new(vec![ToolDefinition {
+            name: "add".to_string(),
+            description: "add".to_string(),
+            parameters: json!({"type": "object"}),
+        }]));
+
+        let AgentRunStep::CallModel {
+            prompt,
+            history,
+            turn,
+        } = driver.run.next_step().expect("first model call")
+        else {
+            panic!("expected CallModel");
+        };
+        driver
+            .open_turn(prompt, history, turn)
+            .await
+            .expect("stream opens");
+        driver
+            .poll_active_turn_once()
+            .await
+            .expect("complete tool call is provisional");
+        assert_eq!(
+            driver
+                .active
+                .as_ref()
+                .expect("active attempt")
+                .assembler
+                .partial_turn(None)
+                .pending_tool_calls
+                .len(),
+            1
+        );
+
+        driver.close_turn();
+        assert!(driver.active.is_none());
+        assert_eq!(driver.run.turn(), 0);
+        assert_eq!(driver.usage().total_tokens, 0);
+        assert!(driver.run_state().completion_calls().is_empty());
+        assert_eq!(driver.run_state().messages().len(), 1);
+
+        let mut saw_tool_gate = false;
+        let mut final_output = None;
+        while let Some(item) = driver.next_item().await {
+            match item.expect("retry succeeds") {
+                AgentStreamItem::ToolCallsReady(_) => saw_tool_gate = true,
+                AgentStreamItem::Final(response) => final_output = Some(response.output),
+                _ => {}
+            }
+        }
+        assert!(!saw_tool_gate);
+        assert_eq!(final_output.as_deref(), Some("recovered"));
+        assert_eq!(driver.usage().total_tokens, 5);
+    }
+
     /// A provider stream that emits visible assistant content *after* its
     /// terminal record is malformed; the classic streaming driver rejected it
     /// rather than silently folding the stray content in, and so does
@@ -2246,6 +2628,16 @@ mod migrated_streaming_tests {
             };
             assert_eq!(context.tool_name, "default_api");
             HookDecision::InvalidToolCall(InvalidToolCallAction::repair("add"))
+        })
+    }
+
+    fn rewrite_add_args_entry(arguments: serde_json::Value) -> HookEntry {
+        hook_entry("rewrite-add-args", move |event| {
+            let HookEvent::ToolCall { call, .. } = event else {
+                return HookDecision::Continue;
+            };
+            assert_eq!(call.function.name, "add");
+            HookDecision::ToolCall(ToolCallAction::rewrite(arguments.clone()))
         })
     }
 
@@ -2858,7 +3250,10 @@ mod migrated_streaming_tests {
             OneOrMany::one(ToolResultContent::text("3")),
         );
         let error = stream
-            .provide_tool_results(vec![mismatched])
+            .provide_tool_results(vec![ToolResultSubmission::new(
+                call.internal_call_id.clone().expect("durable internal id"),
+                mismatched,
+            )])
             .expect_err("the mismatched result must fail run-state commit");
         assert!(!format!("{error}").is_empty());
         assert_eq!(call.tool_call.id, "tool_call_1");
@@ -3280,6 +3675,45 @@ mod migrated_streaming_tests {
             content,
             ToolResultContent::Json { value } if value == &json!(5)
         )));
+        assert_eq!(collected.expect_final().output, "done");
+        assert_eq!(script.calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn repaired_name_with_argument_rewrite_announces_provider_arguments() {
+        let original_args = json!({"x": 2, "y": 3});
+        let rewritten_args = json!({"x": 20, "y": 30});
+        let script = script(vec![
+            vec![
+                call_item("tool_call_1", "default_api", original_args.clone()),
+                final_tokens(4),
+            ],
+            vec![text_item("done"), final_tokens(6)],
+        ]);
+        let agent = agent_builder(script.clone()).tool(MockAddTool).build();
+
+        let collected = collect(
+            agent
+                .runner("use the tool")
+                .add_hook(repair_default_api_entry())
+                .add_hook(rewrite_add_args_entry(rewritten_args.clone()))
+                .max_turns(3)
+                .stream_run(),
+        )
+        .await;
+
+        let announced = collected.tool_calls();
+        assert_eq!(announced.len(), 1);
+        assert_eq!(announced[0].function.name, "add");
+        assert_eq!(announced[0].function.arguments, original_args);
+
+        let committed = collected.items.iter().find_map(|item| match item {
+            AgentStreamItem::ToolExecutionCommitted { tool_call, .. } => Some(tool_call),
+            _ => None,
+        });
+        let committed = committed.expect("effective execution commit");
+        assert_eq!(committed.function.name, "add");
+        assert_eq!(committed.function.arguments, rewritten_args);
         assert_eq!(collected.expect_final().output, "done");
         assert_eq!(script.calls(), 2);
     }

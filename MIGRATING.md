@@ -280,6 +280,89 @@ association.
 The agent runtime is now *data-oriented*: providers are plain configuration,
 and the classic `Agent` lost its model type parameter.
 
+### Streaming, model calls, and tool batches are transactional
+
+`CompletionStream` no longer treats every stopped stream as a completed
+response. Drain it to natural EOF and use the checked conversion:
+
+```rust
+while let Some(item) = stream.next().await {
+    handle(item?);
+}
+assert_eq!(
+    stream.termination(),
+    Some(CompletionStreamTermination::Exhausted),
+);
+let response = stream.into_response()?;
+```
+
+The former `CompletionResponse::from(stream)` / `stream.into()` conversion is
+removed. `into_response()` returns `CompletionStreamFinalizationError` for a
+running, cancelled, or failed stream. `cancel()` still ends iteration normally,
+but `termination()` reports `Cancelled` and its partial aggregate cannot be
+finalized. Provider errors are yielded once and report `Failed`, even if their
+message contains the word “aborted.”
+
+Pausing is event-driven. Existing `stream.pause()` / `stream.resume()` calls
+still work; when another task or select branch must resume an already-pending
+read, clone `stream.pause_handle()` first and call `resume()` on that handle.
+The parked read is woken without polling the provider source in a loop.
+
+Both agent drivers now keep each provider call in a transactional attempt.
+Preparation, provider-open/unary failure, midstream failure, and
+`AgentStream::close_turn()` restore the request patch and model-call budget and
+discard provisional history, usage, output-tool selection, terminal metadata,
+and tool calls. This ownership survives cancellation of `advance()`,
+`next_item()`, or `reply_before_call()` while provider I/O is pending.
+Continuing reissues the same logical attempt and merges any newly supplied
+patch; an already-answered `BeforeModelCall` decision is not dispatched again,
+so append-only fields such as `extra_context` are not applied twice. Text/tool
+deltas already returned to the host were provisional and may be returned again
+by that retry. Streamed invalid-tool retry/skip history, usage, and events are
+also provisional until the abandoned provider stream reaches checked EOF; a
+later provider error rolls them back with the rest of the attempt.
+
+Current-turn metadata and tool identity now travel with their records:
+
+- `AgentStreamItem::TurnFinished` has `message_id: Option<String>`.
+- `AgentStream::last_response()` describes only the current/most recently
+  completed attempt; a successful turn with no provider terminal record leaves
+  it as `None` rather than retaining an older turn's record.
+- Blocking and streaming `ToolResultReady` variants have
+  `internal_call_id: String`.
+- `ToolBatchOutput` replaces parallel `results`, `raw_results`, and
+  `call_spans` fields with ordered `records: Vec<ToolExecutionRecord>`. Use
+  `batch.results()` for a cloned visible projection or
+  `batch.into_results()` when consuming only the visible projection. Use
+  `batch.submissions()` / `batch.into_submissions()` when answering a driver.
+- `AgentSession::provide_tool_results` and `AgentStream::provide_tool_results`
+  accept `Vec<ToolResultSubmission>`, not bare `UserContent`. Build each record
+  from the corresponding pending call's `internal_call_id`; submissions may be
+  reordered safely even when provider call IDs duplicate. At the lower-level
+  `AgentRun` boundary, use `tool_result_submissions` for the same protocol.
+  Rig validates both embedded provider correlation fields (`id` and `call_id`)
+  against the invocation selected by `internal_call_id`.
+  The `tool_results(Vec<UserContent>)` convenience remains only for batches
+  whose provider call IDs are unique and fails closed on ambiguous duplicates.
+- `ResolvedToolCall` now owns the complete effective call plus a normalized
+  `ResolvedToolCallDisposition` (`Run`, `Skip`, or `Stop`). Chained argument
+  rewrites therefore remain attached even when a later hook skips the call.
+
+Each `ToolExecutionRecord` keeps the batch index, unique Rig internal ID,
+original and effective call, structured result, visible result, and telemetry
+span together. Provider call IDs are payload and may repeat. Rig generates
+missing/duplicate internal IDs before storing the pending batch in `AgentRun`,
+so they survive serialization and resume. Pending calls also serialize the
+original call and a data-only pre-resolved skip disposition. Invalid-call
+recovery stores synthetic results positionally rather than by duplicate-prone
+provider IDs, preserving each call's `call_id`, reason, and classification.
+When recovery repairs a tool name, both unary and streamed execution retain the
+provider-emitted call as the record's `original_call` and the repaired call as
+its `effective_call`.
+Together these preserve rewrite-then-skip behavior when a `ToolCallsReady`
+inbox crosses a process boundary. Add `..` to exhaustive event-field patterns
+when you do not need the new identity fields.
+
 ### Fluent builders are back (without the models)
 
 The data-oriented rewrite replaced several builders with explicit struct
@@ -1100,8 +1183,8 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
   // after: borrow while the stream is live; consume it after EOF
   let partial = assembler.partial_turn(stream.message_id());
   // ... drain the stream to EOF ...
-  let response = CompletionResponse::from(stream);
-  let turn = assembler.finish(response.message_id, response.choice);
+  let response = stream.into_response()?;
+  let turn = assembler.finish(response.message_id, response.choice, response.usage);
   ```
 
   `partial_turn` still returns a fully owned, serializable rollback snapshot;

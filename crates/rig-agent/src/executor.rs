@@ -31,7 +31,7 @@ use indexmap::IndexMap;
 use tracing_futures::Instrument;
 
 use crate::agent::prepare::ToolCatalog;
-use crate::agent::run::PendingToolCall;
+use crate::agent::run::{PendingToolCall, PreresolvedToolDisposition, ToolResultSubmission};
 use crate::agent::telemetry::new_execute_tool_span;
 use crate::tool::router_support::{not_found, shape_result};
 use crate::tool::{PortableDynamicTool, ToolExecutionError, ToolResult};
@@ -52,36 +52,76 @@ pub struct ToolBatchError {
 
 /// The settled outcome of one tool-call batch.
 ///
-/// `results` always carries one shaped tool-result content per pending call,
-/// in call order — the exact answer for
-/// [`AgentSession::provide_tool_results`](crate::session::AgentSession::provide_tool_results).
-/// Execution failures are embedded in those results (model-visible, classic
-/// semantics); `first_error` additionally reports the lowest call-index
-/// failure for host observation.
+/// `records` is the single positional source for identity, structured outcome,
+/// model-visible presentation, and telemetry association. `first_error`
+/// additionally reports the lowest call-index failure for host observation.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct ToolBatchOutput {
-    /// One tool-result content per call, ordered by call index.
-    pub results: Vec<UserContent>,
+    /// One canonical execution record per call, ordered by batch index.
+    pub records: Vec<ToolExecutionRecord>,
     /// The lowest call-index failure, when any call failed.
     pub first_error: Option<ToolBatchError>,
-    /// The **structured** execution result for each call whose body ran,
-    /// keyed by the provider tool-call id: the classification
-    /// (`success`/`failed`/`skipped`/`denied`, error kind, HTTP status) that
-    /// the model-visible `results` content flattens away. A driver surfacing a
-    /// post-execution decision point hands this to its host so a policy can
-    /// inspect the outcome exactly as the classic tool-result hook could.
-    pub raw_results: Vec<(String, ToolResult)>,
-    /// The `execute_tool` span opened for each call whose body ran, keyed by
-    /// the provider tool-call id. A driver that lets a hook rewrite the
-    /// model-visible presentation records the rewritten value onto the
-    /// matching span, exactly as the classic driver did.
-    pub call_spans: Vec<(String, tracing::Span)>,
     /// Id of the last `execute_tool` span this batch opened, for drivers that
     /// keep a linear `follows_from` span chain (the blocking driver does; see
     /// [`ToolExecutor::execute_batch_following`]). `None` when no tool body
     /// ran or tracing is disabled.
     pub last_span_id: Option<u64>,
+}
+
+impl ToolBatchOutput {
+    /// Project model-visible results in batch order.
+    pub fn results(&self) -> Vec<UserContent> {
+        self.records
+            .iter()
+            .map(|record| record.result.clone())
+            .collect()
+    }
+
+    /// Consume the batch into model-visible results in batch order.
+    pub fn into_results(self) -> Vec<UserContent> {
+        self.records
+            .into_iter()
+            .map(|record| record.result)
+            .collect()
+    }
+
+    /// Project result submissions carrying each invocation's stable Rig ID.
+    pub fn submissions(&self) -> Vec<ToolResultSubmission> {
+        self.records
+            .iter()
+            .map(|record| {
+                ToolResultSubmission::new(record.internal_call_id.clone(), record.result.clone())
+            })
+            .collect()
+    }
+
+    /// Consume the batch into identity-bearing result submissions.
+    pub fn into_submissions(self) -> Vec<ToolResultSubmission> {
+        self.records
+            .into_iter()
+            .map(|record| ToolResultSubmission::new(record.internal_call_id, record.result))
+            .collect()
+    }
+}
+
+/// Canonical identity and outcome for one tool invocation.
+#[derive(Debug, Clone)]
+pub struct ToolExecutionRecord {
+    /// Zero-based position in the model-emitted batch.
+    pub batch_index: usize,
+    /// Rig-generated identity; unlike provider IDs this is unique per call.
+    pub internal_call_id: String,
+    /// Model-emitted call before transient hook rewrites.
+    pub original_call: ToolCall,
+    /// Call actually executed or reported after hook rewrites.
+    pub effective_call: ToolCall,
+    /// Structured execution or skip outcome.
+    pub raw_result: ToolResult,
+    /// Model-visible presentation paired with [`Self::raw_result`].
+    pub result: UserContent,
+    /// Per-call telemetry span, absent when no tool body ran.
+    pub span: Option<tracing::Span>,
 }
 
 /// An ordered registry of executable tools that answers `ToolCallsReady`
@@ -260,13 +300,35 @@ impl ToolExecutor {
         follows_from: Option<u64>,
     ) -> ToolBatchOutput {
         let concurrency = self.concurrency.min(calls.len()).max(1);
-
-        // One slot per call, prefilled with preresolved passthroughs so
-        // executed results land back in call order regardless of completion
-        // order (mirrors `dispatch_pending` / classic `drive_tool_calls`).
-        let mut slots: Vec<Option<UserContent>> = calls
+        let mut slots: Vec<Option<ToolExecutionRecord>> = calls
             .iter()
-            .map(|call| call.preresolved_result.clone())
+            .enumerate()
+            .map(|(batch_index, call)| {
+                call.preresolved_result.as_ref().map(|result| {
+                    let effective_call = call.tool_call.clone();
+                    ToolExecutionRecord {
+                        batch_index,
+                        internal_call_id: call
+                            .internal_call_id
+                            .clone()
+                            .unwrap_or_else(rig_core::id::generate),
+                        original_call: call
+                            .original_tool_call
+                            .as_deref()
+                            .cloned()
+                            .unwrap_or_else(|| effective_call.clone()),
+                        effective_call,
+                        raw_result: match &call.preresolved_disposition {
+                            Some(PreresolvedToolDisposition::Skipped { reason }) => {
+                                ToolResult::skipped(reason.clone())
+                            }
+                            None => raw_tool_result(result),
+                        },
+                        result: result.clone(),
+                        span: None,
+                    }
+                })
+            })
             .collect();
         let mut first_error: Option<ToolBatchError> = None;
 
@@ -282,7 +344,7 @@ impl ToolExecutor {
         // which also chained at prepare time rather than completion time).
         let mut chain = follows_from;
         let mut last_span_id = None;
-        let jobs: Vec<(usize, ToolCall, tracing::Span)> = calls
+        let jobs: Vec<(usize, PendingToolCall, tracing::Span)> = calls
             .iter()
             .enumerate()
             .filter(|(_, call)| call.preresolved_result.is_none())
@@ -298,26 +360,34 @@ impl ToolExecutor {
                     chain = Some(id.into_u64());
                     last_span_id = chain;
                 }
-                (index, call.tool_call.clone(), span)
+                (index, call.clone(), span)
             })
-            .collect();
-        let call_spans: Vec<(String, tracing::Span)> = jobs
-            .iter()
-            .map(|(_, tool_call, span)| (tool_call.id.clone(), span.clone()))
             .collect();
         let mut executed = stream::iter(jobs)
-            .map(|(index, tool_call, span)| async move {
-                let (content, result) = self.execute_one(&tool_call, span).await;
-                (index, tool_call, content, result)
+            .map(|(index, call, span)| async move {
+                let (content, result) = self.execute_one(&call.tool_call, span.clone()).await;
+                (index, call, span, content, result)
             })
             .buffer_unordered(concurrency);
-        let mut raw_results: Vec<(String, ToolResult)> = Vec::new();
-        while let Some((index, tool_call, content, result)) = executed.next().await {
+        while let Some((index, call, span, content, result)) = executed.next().await {
+            let effective_call = call.tool_call;
+            let original_call = call
+                .original_tool_call
+                .as_deref()
+                .cloned()
+                .unwrap_or_else(|| effective_call.clone());
             if let Some(slot) = slots.get_mut(index) {
-                *slot = Some(content);
+                *slot = Some(ToolExecutionRecord {
+                    batch_index: index,
+                    internal_call_id: call.internal_call_id.unwrap_or_else(rig_core::id::generate),
+                    original_call,
+                    effective_call: effective_call.clone(),
+                    raw_result: result.clone(),
+                    result: content,
+                    span: Some(span),
+                });
             }
             let error = result.error().cloned();
-            raw_results.push((tool_call.id.clone(), result));
             // Deterministic error selection: the lowest call-index failure
             // wins regardless of completion order.
             if let Some(error) = error
@@ -325,40 +395,46 @@ impl ToolExecutor {
             {
                 first_error = Some(ToolBatchError {
                     index,
-                    tool_name: tool_call.function.name.clone(),
+                    tool_name: effective_call.function.name.clone(),
                     error,
                 });
             }
         }
 
-        // Every slot is filled by construction (preresolved upfront, executed
-        // by index above); the fallback keeps this lint-clean and fail-safe.
-        let results = calls
+        // Every slot is filled by construction. The fallback remains
+        // positionally keyed and preserves the invocation identity.
+        let records = calls
             .iter()
+            .enumerate()
             .zip(slots)
-            .map(|(pending, slot)| {
+            .map(|((batch_index, pending), slot)| {
                 slot.unwrap_or_else(|| {
-                    shape_result(
-                        &pending.tool_call,
-                        &ToolResult::failed(ToolExecutionError::other(
-                            "tool result unavailable".to_string(),
-                        )),
-                    )
+                    let raw_result = ToolResult::failed(ToolExecutionError::other(
+                        "tool result unavailable".to_string(),
+                    ));
+                    let effective_call = pending.tool_call.clone();
+                    ToolExecutionRecord {
+                        batch_index,
+                        internal_call_id: pending
+                            .internal_call_id
+                            .clone()
+                            .unwrap_or_else(rig_core::id::generate),
+                        original_call: pending
+                            .original_tool_call
+                            .as_deref()
+                            .cloned()
+                            .unwrap_or_else(|| effective_call.clone()),
+                        effective_call: effective_call.clone(),
+                        result: shape_result(&effective_call, &raw_result),
+                        raw_result,
+                        span: None,
+                    }
                 })
             })
             .collect();
-        // Structured results in call order, matching `results`.
-        raw_results.sort_by_key(|(id, _)| {
-            calls
-                .iter()
-                .position(|call| call.tool_call.id == *id)
-                .unwrap_or(usize::MAX)
-        });
         ToolBatchOutput {
-            results,
+            records,
             first_error,
-            raw_results,
-            call_spans,
             last_span_id,
         }
     }
@@ -410,6 +486,23 @@ impl ToolExecutor {
         }
         .instrument(span)
         .await
+    }
+}
+
+/// Reconstruct the structured view available for host-provided or serialized
+/// pre-resolved content that has no live execution record.
+pub(crate) fn raw_tool_result(result: &UserContent) -> ToolResult {
+    match result {
+        UserContent::ToolResult(tool_result) => ToolResult::success(
+            crate::tool::ToolOutput::content(tool_result.content.clone()),
+        ),
+        other => {
+            let rendered = match serde_json::to_string(other) {
+                Ok(rendered) => rendered,
+                Err(error) => format!("tool result serialization failed: {error}"),
+            };
+            ToolResult::success(crate::tool::ToolOutput::text(rendered))
+        }
     }
 }
 
@@ -580,9 +673,69 @@ mod tests {
         let batch = executor.execute_batch(&calls).await;
 
         assert!(batch.first_error.is_none());
-        assert_eq!(batch.results.len(), 2);
-        let ids: Vec<&str> = batch.results.iter().map(result_id).collect();
+        assert_eq!(batch.records.len(), 2);
+        let ids: Vec<&str> = batch
+            .records
+            .iter()
+            .map(|record| result_id(&record.result))
+            .collect();
         assert_eq!(ids, vec!["call_0", "call_1"]);
+    }
+
+    #[tokio::test]
+    async fn duplicate_provider_ids_keep_identity_outcomes_and_order_positionally() {
+        let tool = PortableDynamicTool::new(
+            "echo_slot",
+            "echoes its slot",
+            serde_json::json!({"type": "object"}),
+            |args| async move {
+                if args.get("slot").and_then(serde_json::Value::as_u64) == Some(0) {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                }
+                Ok(ToolOutput::json(args))
+            },
+        );
+        let executor = ToolExecutor::new().register(tool).tool_concurrency(2);
+        let mut first = call("duplicate", "echo_slot", serde_json::json!({"slot": 0}));
+        first.internal_call_id = Some("internal-first".to_string());
+        let mut second = call("duplicate", "echo_slot", serde_json::json!({"slot": 1}));
+        second.internal_call_id = Some("internal-second".to_string());
+        let calls = vec![first, second];
+
+        let batch = executor.execute_batch(&calls).await;
+
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].batch_index, 0);
+        assert_eq!(batch.records[1].batch_index, 1);
+        assert_eq!(batch.records[0].internal_call_id, "internal-first");
+        assert_eq!(batch.records[1].internal_call_id, "internal-second");
+        assert_eq!(
+            batch.records[0].effective_call.function.arguments,
+            serde_json::json!({"slot": 0})
+        );
+        assert_eq!(
+            batch.records[1].effective_call.function.arguments,
+            serde_json::json!({"slot": 1})
+        );
+        for (index, record) in batch.records.iter().enumerate() {
+            assert_eq!(record.original_call.id, "duplicate");
+            assert_eq!(record.effective_call.id, "duplicate");
+            assert_eq!(result_id(&record.result), "duplicate");
+            assert_eq!(
+                serde_json::to_value(&record.result).expect("visible result serializes"),
+                serde_json::to_value(shape_result(&record.effective_call, &record.raw_result))
+                    .expect("paired raw result serializes"),
+                "raw and visible result diverged at slot {index}"
+            );
+            assert!(
+                record
+                    .raw_result
+                    .output()
+                    .render()
+                    .contains(&index.to_string()),
+                "raw result belongs to the wrong duplicate-id slot: {record:?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -601,7 +754,7 @@ mod tests {
         let batch = executor.execute_batch(&calls).await;
 
         // Both failures stay model-visible as results, in call order.
-        assert_eq!(batch.results.len(), 2);
+        assert_eq!(batch.records.len(), 2);
         let first_error = batch.first_error.expect("both calls failed");
         assert_eq!(first_error.index, 0);
         assert_eq!(first_error.tool_name, "boom_slow");
@@ -634,13 +787,74 @@ mod tests {
         let batch = executor.execute_batch(&calls).await;
 
         assert!(batch.first_error.is_none());
-        assert_eq!(batch.results.len(), 1);
+        assert_eq!(batch.records.len(), 1);
         // Verbatim passthrough, nothing executed.
         assert_eq!(
-            serde_json::to_value(&batch.results).expect("serializable"),
+            serde_json::to_value(batch.results()).expect("serializable"),
             serde_json::to_value(vec![preresolved]).expect("serializable"),
         );
         assert_eq!(executions.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn rewritten_skip_round_trip_preserves_identity_and_disposition() {
+        let executions = Arc::new(AtomicUsize::new(0));
+        let counter = executions.clone();
+        let counted = PortableDynamicTool::new(
+            "counted",
+            "counts executions",
+            serde_json::json!({"type": "object"}),
+            move |_args| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                async move { Ok(ToolOutput::json(serde_json::json!(null))) }
+            },
+        );
+        let executor = ToolExecutor::new().register(counted);
+
+        let original = ToolCall::new(
+            "duplicate".to_string(),
+            ToolFunction::new("counted".to_string(), serde_json::json!({"slot": 1})),
+        );
+        let effective = ToolCall::new(
+            "duplicate".to_string(),
+            ToolFunction::new("counted".to_string(), serde_json::json!({"slot": 2})),
+        );
+        let skipped = ToolResult::skipped("blocked after rewrite");
+        let pending = PendingToolCall {
+            tool_call: effective.clone(),
+            preresolved_result: Some(shape_result(&effective, &skipped)),
+            internal_call_id: Some("rig-stable-id".to_string()),
+            original_tool_call: Some(Box::new(original.clone())),
+            preresolved_disposition: Some(PreresolvedToolDisposition::Skipped {
+                reason: "blocked after rewrite".to_string(),
+            }),
+        };
+
+        let serialized = serde_json::to_string(&pending).expect("pending call serializes");
+        let restored: PendingToolCall =
+            serde_json::from_str(&serialized).expect("pending call deserializes");
+        let batch = executor.execute_batch(&[restored]).await;
+
+        assert_eq!(executions.load(Ordering::SeqCst), 0);
+        assert_eq!(batch.records.len(), 1);
+        let record = &batch.records[0];
+        assert_eq!(record.internal_call_id, "rig-stable-id");
+        assert_eq!(
+            record.original_call.function.arguments,
+            serde_json::json!({"slot": 1})
+        );
+        assert_eq!(
+            record.effective_call.function.arguments,
+            serde_json::json!({"slot": 2})
+        );
+        assert!(record.raw_result.is_skipped());
+        assert!(
+            record
+                .raw_result
+                .output()
+                .render()
+                .contains("blocked after rewrite")
+        );
     }
 
     #[tokio::test]
@@ -649,9 +863,9 @@ mod tests {
         let calls = vec![call("call_0", "nope", serde_json::json!({}))];
         let batch = executor.execute_batch(&calls).await;
 
-        assert_eq!(batch.results.len(), 1);
+        assert_eq!(batch.records.len(), 1);
         assert_eq!(
-            result_id(batch.results.first().expect("one result")),
+            result_id(&batch.records.first().expect("one result").result),
             "call_0"
         );
         // Identical shaping to the registry miss path.
@@ -660,7 +874,7 @@ mod tests {
             &not_found("nope"),
         );
         assert_eq!(
-            serde_json::to_value(&batch.results).expect("serializable"),
+            serde_json::to_value(batch.results()).expect("serializable"),
             serde_json::to_value(vec![expected]).expect("serializable"),
         );
         let first_error = batch.first_error.expect("miss is reported");

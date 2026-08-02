@@ -411,7 +411,9 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     )));
                 }
                 reasoning_blocks.push(AssistantContent::text(&text));
-                let response = CompletionResponse::from(stream);
+                let response = stream
+                    .into_response()
+                    .expect("drained stream should finalize");
                 stored_turns.push(StoredTurn {
                     user: user_message,
                     assistant: Message::Assistant {

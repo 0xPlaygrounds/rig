@@ -6,12 +6,14 @@ use std::sync::Arc;
 
 use rig::OneOrMany;
 use rig::agent::AgentConfig;
-use rig::completion::{CompletionResponse, FinishReason, Usage};
+use rig::completion::{CompletionResponse, Document, FinishReason, Usage};
 use rig::message::{AssistantContent, ToolCall, UserContent};
 use rig::provider::{MockScript, ProviderConfig, Runtime};
 use rig::session::{AgentSession, SessionEvent, SessionPolicy};
-use rig_agent::agent::hook::{InvalidToolCallAction, ModelTurnAction};
+use rig_agent::agent::hook::RequestPatch;
+use rig_agent::agent::hook::{CompletionCallAction, InvalidToolCallAction, ModelTurnAction};
 use rig_agent::agent::prepare::ToolCatalog;
+use rig_agent::agent::run::{PendingToolCall, ToolResultSubmission};
 use rig_core::completion::ToolDefinition;
 
 fn usage(total: u64) -> Usage {
@@ -64,6 +66,38 @@ fn session(script: MockScript) -> AgentSession {
     )
 }
 
+fn submission_for(call: &PendingToolCall, result: UserContent) -> ToolResultSubmission {
+    ToolResultSubmission::new(
+        call.internal_call_id.clone().expect("durable internal id"),
+        result,
+    )
+}
+
+fn retry_patch() -> RequestPatch {
+    RequestPatch::new()
+        .temperature(0.25)
+        .active_tools(["add"])
+        .additional_params(serde_json::json!({"retained": true, "shared": "old"}))
+        .history([rig::message::Message::user("retry history")])
+        .context(Document {
+            id: "retry-context".to_string(),
+            text: "retained once".to_string(),
+            additional_props: Default::default(),
+        })
+}
+
+fn assert_retry_patch(request: &rig::completion::CompletionRequest) {
+    assert_eq!(request.temperature, Some(0.25));
+    assert_eq!(request.tools.len(), 1);
+    assert_eq!(request.tools[0].name, "add");
+    assert_eq!(request.documents.len(), 1);
+    assert_eq!(request.documents[0].id, "retry-context");
+    assert_eq!(
+        request.chat_history.iter().next(),
+        Some(&rig::message::Message::user("retry history"))
+    );
+}
+
 fn tool_result_for(call: &ToolCall, content: &str) -> UserContent {
     UserContent::tool_result(
         call.id.clone(),
@@ -104,7 +138,10 @@ async fn tool_loop_round_trips_results_and_aggregates_usage() {
     assert_eq!(calls[0].tool_call.function.name, "add");
     assert!(calls[0].preresolved_result.is_none());
 
-    let results = vec![tool_result_for(&calls[0].tool_call, "3")];
+    let results = vec![submission_for(
+        &calls[0],
+        tool_result_for(&calls[0].tool_call, "3"),
+    )];
     session
         .provide_tool_results(results)
         .expect("results should be accepted");
@@ -117,6 +154,74 @@ async fn tool_loop_round_trips_results_and_aggregates_usage() {
     // Usage aggregates across both model calls (3 + 7).
     assert_eq!(done.usage.total_tokens, 10);
     assert_eq!(session.run_state().completion_calls().len(), 2);
+}
+
+#[tokio::test]
+async fn duplicate_provider_ids_use_submission_identity_when_results_arrive_reversed() {
+    let duplicate_turn = CompletionResponse::new(
+        OneOrMany::many(vec![
+            AssistantContent::tool_call("duplicate", "add", serde_json::json!({"a": 1, "b": 2})),
+            AssistantContent::tool_call("duplicate", "add", serde_json::json!({"a": 3, "b": 4})),
+        ])
+        .expect("two calls"),
+        usage(3),
+        "mock",
+    )
+    .with_finish_reason(FinishReason::ToolCalls);
+    let mut config = AgentConfig::new();
+    config.max_turns = Some(2);
+    let mut session = AgentSession::new(
+        config,
+        mock_provider(MockScript::from_responses(vec![
+            duplicate_turn,
+            text_response("done", 1),
+        ])),
+        Arc::new(Runtime::new()),
+        "add twice",
+    )
+    .with_tools(adder_catalog())
+    .with_policy(SessionPolicy {
+        surface_tool_results: true,
+        ..SessionPolicy::default()
+    });
+
+    let calls = match session.advance().await.expect("tool calls") {
+        SessionEvent::ToolCallsReady(calls) => calls,
+        other => panic!("expected ToolCallsReady, got {other:?}"),
+    };
+    let internal_ids = calls
+        .iter()
+        .map(|call| call.internal_call_id.clone().expect("durable internal id"))
+        .collect::<Vec<_>>();
+    assert_ne!(internal_ids[0], internal_ids[1]);
+    session
+        .provide_tool_results(vec![
+            submission_for(&calls[1], tool_result_for(&calls[1].tool_call, "7")),
+            submission_for(&calls[0], tool_result_for(&calls[0].tool_call, "3")),
+        ])
+        .expect("reverse-ordered submissions are accepted");
+
+    for (expected_internal_id, expected_text) in internal_ids.iter().zip(["3", "7"]) {
+        let (internal_call_id, result) = match session.advance().await.expect("result gate") {
+            SessionEvent::ToolResultReady {
+                internal_call_id,
+                result,
+                ..
+            } => (internal_call_id, result),
+            other => panic!("expected ToolResultReady, got {other:?}"),
+        };
+        assert_eq!(&internal_call_id, expected_internal_id);
+        let rendered = serde_json::to_string(&result).expect("result serializes");
+        assert!(rendered.contains(expected_text), "got {rendered}");
+        session
+            .reply_tool_result(rig_agent::agent::hook::ToolResultAction::keep())
+            .expect("keep result");
+    }
+
+    assert!(matches!(
+        session.advance().await.expect("final turn"),
+        SessionEvent::Done(_)
+    ));
 }
 
 #[tokio::test]
@@ -158,7 +263,7 @@ async fn invalid_tool_call_skip_flows_through_preresolved_results() {
         .clone()
         .expect("skipped call should carry a preresolved result");
     session
-        .provide_tool_results(vec![preresolved])
+        .provide_tool_results(vec![submission_for(&calls[0], preresolved)])
         .expect("preresolved result should be accepted");
 
     let done = match session.advance().await.expect("final advance") {
@@ -264,7 +369,10 @@ async fn suspend_and_resume_mid_tools_round_trips() {
     assert_eq!(resumed_calls[0].tool_call.id, calls[0].tool_call.id);
 
     resumed
-        .provide_tool_results(vec![tool_result_for(&resumed_calls[0].tool_call, "4")])
+        .provide_tool_results(vec![submission_for(
+            &resumed_calls[0],
+            tool_result_for(&resumed_calls[0].tool_call, "4"),
+        )])
         .expect("results should be accepted");
     let done = match resumed.advance().await.expect("final advance") {
         SessionEvent::Done(done) => done,
@@ -324,7 +432,7 @@ async fn resume_reconstitutes_pending_invalid_tool_call() {
         .clone()
         .expect("skipped call should carry a preresolved result");
     resumed
-        .provide_tool_results(vec![preresolved])
+        .provide_tool_results(vec![submission_for(&calls[0], preresolved)])
         .expect("preresolved result should be accepted");
     let done = match resumed.advance().await.expect("final advance") {
         SessionEvent::Done(done) => done,
@@ -356,6 +464,170 @@ async fn transient_provider_error_recovers_on_next_advance() {
         other => panic!("expected Done, got {other:?}"),
     };
     assert_eq!(done.output, "recovered");
+}
+
+#[tokio::test]
+async fn provider_failure_retains_and_merges_the_exact_request_patch() {
+    let script = MockScript::from_responses(vec![
+        text_response("unused", 0),
+        text_response("recovered", 5),
+    ])
+    .with_errors(vec![Some("boom".to_string())]);
+    let probe = script.clone();
+    let mut session = session(script).with_tools(adder_catalog());
+    session.patch_next_turn(retry_patch());
+
+    session
+        .advance()
+        .await
+        .expect_err("the first provider call must fail");
+    session.patch_next_turn(
+        RequestPatch::new()
+            .max_tokens(77)
+            .additional_params(serde_json::json!({"later": true, "shared": "new"})),
+    );
+
+    let done = match session.advance().await.expect("retry should succeed") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "recovered");
+
+    let requests = probe.requests();
+    assert_eq!(requests.len(), 2);
+    assert_retry_patch(&requests[0]);
+    assert_retry_patch(&requests[1]);
+    assert_eq!(requests[0].max_tokens, None);
+    assert_eq!(requests[1].max_tokens, Some(77));
+    assert_eq!(
+        requests[1].additional_params,
+        Some(serde_json::json!({
+            "retained": true,
+            "later": true,
+            "shared": "new"
+        }))
+    );
+}
+
+#[tokio::test]
+async fn cancelled_provider_future_reissues_the_exact_answered_attempt() {
+    let script = MockScript::from_responses(vec![
+        text_response("unused", 0),
+        text_response("recovered", 5),
+    ])
+    .with_pending(vec![true, false]);
+    let probe = script.clone();
+    let mut session = session(script)
+        .with_tools(adder_catalog())
+        .with_policy(SessionPolicy {
+            surface_completion_calls: true,
+            ..SessionPolicy::default()
+        });
+
+    let event = session.advance().await.expect("before-call event");
+    assert!(matches!(event, SessionEvent::BeforeModelCall { .. }));
+    session
+        .reply_before_call(CompletionCallAction::Patch(retry_patch()))
+        .expect("patch decision");
+
+    tokio::time::timeout(std::time::Duration::from_millis(20), session.advance())
+        .await
+        .expect_err("the scripted provider operation remains pending");
+    assert_eq!(probe.calls(), 1);
+    assert_eq!(session.run_state().messages().len(), 1);
+    assert_eq!(session.run_state().completion_calls().len(), 0);
+
+    session.patch_next_turn(
+        RequestPatch::new()
+            .max_tokens(77)
+            .additional_params(serde_json::json!({"later": true, "shared": "new"})),
+    );
+    let done = match session.advance().await.expect("cancelled call retries") {
+        SessionEvent::Done(done) => done,
+        other => panic!("answered BeforeModelCall must not replay, got {other:?}"),
+    };
+    assert_eq!(done.output, "recovered");
+    assert_eq!(session.run_state().turn(), 1);
+
+    let requests = probe.requests();
+    assert_eq!(requests.len(), 2);
+    assert_retry_patch(&requests[0]);
+    assert_retry_patch(&requests[1]);
+    assert_eq!(requests[1].max_tokens, Some(77));
+    assert_eq!(
+        requests[1].additional_params,
+        Some(serde_json::json!({
+            "retained": true,
+            "later": true,
+            "shared": "new"
+        }))
+    );
+}
+
+#[tokio::test]
+async fn preparation_failure_is_retryable_and_retains_the_patch() {
+    let script = MockScript::from_responses(vec![text_response("recovered", 5)]);
+    let probe = script.clone();
+    let mut session = session(script);
+    session.patch_next_turn(retry_patch());
+
+    let error = session
+        .advance()
+        .await
+        .expect_err("active_tools must reject a tool absent from the catalog");
+    assert!(error.to_string().contains("active_tools"));
+    assert_eq!(probe.calls(), 0, "preparation fails before provider IO");
+
+    session.tools = adder_catalog();
+    let done = match session
+        .advance()
+        .await
+        .expect("corrected retry should succeed")
+    {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, "recovered");
+    let requests = probe.requests();
+    assert_eq!(requests.len(), 1);
+    assert_retry_patch(&requests[0]);
+}
+
+#[tokio::test]
+async fn failed_attempt_does_not_commit_a_provisional_output_tool() {
+    let output = tool_call_response(
+        "out_1",
+        "final_result",
+        serde_json::json!({"answer": "recovered"}),
+    );
+    let script = MockScript::from_responses(vec![text_response("unused", 0), output])
+        .with_errors(vec![Some("boom".to_string())]);
+    let mut config = AgentConfig::new();
+    config.output_schema = Some(rig_core::schemars::json_schema!({
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"]
+    }));
+    config.output_mode = rig_agent::agent::run::OutputMode::Tool;
+    let mut session = AgentSession::new(
+        config,
+        mock_provider(script),
+        Arc::new(Runtime::new()),
+        "hello",
+    );
+
+    session
+        .advance()
+        .await
+        .expect_err("the first provider call must fail");
+    assert_eq!(session.run_state().output_tool_name(), None);
+
+    let done = match session.advance().await.expect("retry should succeed") {
+        SessionEvent::Done(done) => done,
+        other => panic!("expected Done, got {other:?}"),
+    };
+    assert_eq!(done.output, r#"{"answer":"recovered"}"#);
+    assert_eq!(session.run_state().output_tool_name(), Some("final_result"));
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{InvalidToolCallAction, ToolCallAction};
-use rig::completion::{CompletionResponse, PromptError, Usage};
+use rig::completion::{PromptError, Usage};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
@@ -127,8 +127,10 @@ async fn run_streamed_turn(
         run.record_streamed_completion_call(Usage::new())
             .expect("turns without provider usage still record a completion call");
     }
-    let response = CompletionResponse::from(stream);
-    let streamed_turn = assembler.finish(response.message_id, response.choice);
+    let response = stream
+        .into_response()
+        .expect("drained stream should finalize");
+    let streamed_turn = assembler.finish(response.message_id, response.choice, response.usage);
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }

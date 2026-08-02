@@ -97,7 +97,7 @@
 //! ```
 
 use rig_core::json_utils;
-use rig_core::message::{Message, ToolChoice};
+use rig_core::message::{Message, ToolCall, ToolChoice};
 
 use crate::{completion::Document, tool::ToolOutput};
 
@@ -674,6 +674,63 @@ pub struct ToolCallResolution {
     terminal: Option<ToolCallAction>,
 }
 
+/// Terminal disposition after all tool-call argument rewrites have been
+/// applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedToolCallDisposition {
+    /// Execute the effective call.
+    Run,
+    /// Return a synthetic skipped result without executing the call.
+    Skip(String),
+    /// Stop the run.
+    Stop(String),
+}
+
+/// Final tool-call hook resolution with the effective call kept inseparable
+/// from its terminal disposition.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedToolCall {
+    effective_call: ToolCall,
+    disposition: ResolvedToolCallDisposition,
+}
+
+impl ResolvedToolCall {
+    /// Resolve one host-supplied action against the current call arguments.
+    pub fn from_action(mut original_call: ToolCall, action: ToolCallAction) -> Self {
+        match action {
+            ToolCallAction::Run => Self {
+                effective_call: original_call,
+                disposition: ResolvedToolCallDisposition::Run,
+            },
+            ToolCallAction::Rewrite(effective_args) => {
+                original_call.function.arguments = effective_args;
+                Self {
+                    effective_call: original_call,
+                    disposition: ResolvedToolCallDisposition::Run,
+                }
+            }
+            ToolCallAction::Skip(reason) => Self {
+                effective_call: original_call,
+                disposition: ResolvedToolCallDisposition::Skip(reason),
+            },
+            ToolCallAction::Stop(reason) => Self {
+                effective_call: original_call,
+                disposition: ResolvedToolCallDisposition::Stop(reason),
+            },
+        }
+    }
+
+    /// Call that must be used for execution and result observation.
+    pub fn effective_call(&self) -> &ToolCall {
+        &self.effective_call
+    }
+
+    /// Consume the resolution into its effective call and disposition.
+    pub fn into_parts(self) -> (ToolCall, ResolvedToolCallDisposition) {
+        (self.effective_call, self.disposition)
+    }
+}
+
 impl ToolCallResolution {
     /// Start resolving a call with the model-emitted arguments.
     pub fn new(original_args: serde_json::Value) -> Self {
@@ -710,14 +767,18 @@ impl ToolCallResolution {
         }
     }
 
-    /// Finish: the effective action plus, for a terminal action, any
-    /// rewrite accumulated before it (the stack's "salvage" path).
-    pub fn finish(self) -> (ToolCallAction, Option<serde_json::Value>) {
-        match self.terminal {
-            Some(terminal) => (terminal, self.effective),
-            None => match self.effective {
-                Some(value) => (ToolCallAction::Rewrite(value), None),
-                None => (ToolCallAction::Run, None),
+    /// Finish with the effective call and terminal disposition in one value,
+    /// so a caller cannot discard a rewrite accumulated before Skip.
+    pub fn finish(self, mut original_call: ToolCall) -> ResolvedToolCall {
+        original_call.function.arguments = self.effective.unwrap_or(self.original);
+        ResolvedToolCall {
+            effective_call: original_call,
+            disposition: match self.terminal.unwrap_or(ToolCallAction::Run) {
+                ToolCallAction::Run | ToolCallAction::Rewrite(_) => {
+                    ResolvedToolCallDisposition::Run
+                }
+                ToolCallAction::Skip(reason) => ResolvedToolCallDisposition::Skip(reason),
+                ToolCallAction::Stop(reason) => ResolvedToolCallDisposition::Stop(reason),
             },
         }
     }
@@ -778,6 +839,16 @@ impl ToolResultResolution {
 mod protocol_helper_tests {
     use super::*;
 
+    fn tool_call(arguments: serde_json::Value) -> ToolCall {
+        ToolCall::new(
+            "call-1".to_string(),
+            rig_core::message::ToolFunction {
+                name: "tool".to_string(),
+                arguments,
+            },
+        )
+    }
+
     #[test]
     fn completion_fold_merges_patches_in_order_and_stops_first() {
         let folded = fold_completion_actions(vec![
@@ -799,28 +870,37 @@ mod protocol_helper_tests {
     }
 
     #[test]
-    fn tool_call_resolution_chains_rewrites_and_salvages_on_terminal() {
+    fn tool_call_resolution_chains_rewrites_into_terminal_disposition() {
         // Mirrors hook.rs `tool_call_rewrites_chain_in_registration_order`.
         let mut resolution = ToolCallResolution::new(serde_json::json!({"step": 0}));
         assert_eq!(resolution.args(), &serde_json::json!({"step": 0}));
         assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 1}))));
         assert_eq!(resolution.args(), &serde_json::json!({"step": 1}));
         assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 2}))));
-        let (action, salvage) = resolution.finish();
+        let resolved = resolution.finish(tool_call(serde_json::json!({"step": 0})));
         assert_eq!(
-            action,
-            ToolCallAction::rewrite(serde_json::json!({"step": 2}))
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"step": 2})
         );
-        assert!(salvage.is_none());
+        assert_eq!(
+            resolved.clone().into_parts().1,
+            ResolvedToolCallDisposition::Run
+        );
 
-        // Terminal skip keeps the accumulated rewrite (the salvage path).
+        // Terminal skip keeps the accumulated effective arguments.
         let mut resolution = ToolCallResolution::new(serde_json::json!({"step": 0}));
         assert!(resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 1}))));
         assert!(!resolution.apply(ToolCallAction::skip("policy")));
         assert!(!resolution.apply(ToolCallAction::rewrite(serde_json::json!({"step": 9}))));
-        let (action, salvage) = resolution.finish();
-        assert_eq!(action, ToolCallAction::skip("policy"));
-        assert_eq!(salvage, Some(serde_json::json!({"step": 1})));
+        let resolved = resolution.finish(tool_call(serde_json::json!({"step": 0})));
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"step": 1})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            ResolvedToolCallDisposition::Skip("policy".to_string())
+        );
     }
 
     #[test]

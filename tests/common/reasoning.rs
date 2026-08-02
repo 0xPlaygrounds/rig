@@ -131,7 +131,9 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<F>(
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
 
     assistant_content.push(AssistantContent::text(&streamed_text));
-    let response = completion::CompletionResponse::from(stream);
+    let response = stream
+        .into_response()
+        .expect("drained stream should finalize");
 
     let turn1_assistant = Message::Assistant {
         id: response.message_id,

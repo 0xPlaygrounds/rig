@@ -187,7 +187,7 @@ macro_rules! define_provider_config {
                     rig_gemini_grpc::functions::complete(&client, &cfg.model, request).await
                 }
                 #[cfg(any(test, feature = "test-utils"))]
-                ProviderConfig::Mock(script) => script.next_response(&request),
+                ProviderConfig::Mock(script) => script.next_response(&request).await,
             }
         }
 
@@ -235,7 +235,7 @@ macro_rules! define_provider_config {
                     rig_gemini_grpc::functions::open_stream(&client, &cfg.model, request).await
                 }
                 #[cfg(any(test, feature = "test-utils"))]
-                ProviderConfig::Mock(script) => script.next_stream(&request),
+                ProviderConfig::Mock(script) => script.next_stream(&request).await,
             }
         }
 
@@ -771,6 +771,26 @@ struct GeminiGrpcCache {
 /// cursor (so a session and a test observing it stay in step), and
 /// deserialize RESETS it (`#[serde(skip)]`).
 #[cfg(any(test, feature = "test-utils"))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MockStreamError {
+    /// Number of converted provider items yielded before the error.
+    pub after_items: usize,
+    /// Provider-error message yielded by the stream.
+    pub message: String,
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+impl MockStreamError {
+    /// Create a scripted midstream provider error.
+    pub fn new(after_items: usize, message: impl Into<String>) -> Self {
+        Self {
+            after_items,
+            message: message.into(),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockScript {
     /// One normalized response per expected model call, in order.
@@ -786,6 +806,16 @@ pub struct MockScript {
     /// failed attempt can be scripted ahead of a successful retry.
     #[serde(default)]
     pub errors: Vec<Option<String>>,
+    /// Per-call errors yielded after a configured number of provider stream
+    /// items. Unlike [`Self::errors`], these occur after a stream opened and
+    /// can exercise rollback after partial output.
+    #[serde(default)]
+    pub stream_errors: Vec<Option<MockStreamError>>,
+    /// Calls that remain pending until their provider future is cancelled,
+    /// index-aligned with model calls. Used to verify driver cancellation
+    /// ownership without wall-clock-dependent transport behavior.
+    #[serde(default)]
+    pub pending: Vec<bool>,
     #[serde(skip)]
     cursor: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// Requests observed so far. Like the cursor, `clone` SHARES the record
@@ -802,6 +832,8 @@ impl MockScript {
             responses,
             streams: Vec::new(),
             errors: Vec::new(),
+            stream_errors: Vec::new(),
+            pending: Vec::new(),
             cursor: std::sync::Arc::default(),
             requests: std::sync::Arc::default(),
         }
@@ -822,6 +854,19 @@ impl MockScript {
     /// scripted response or stream for that index.
     pub fn with_errors(mut self, errors: Vec<Option<String>>) -> Self {
         self.errors = errors;
+        self
+    }
+
+    /// Attach midstream provider errors, index-aligned with model calls.
+    pub fn with_stream_errors(mut self, errors: Vec<Option<MockStreamError>>) -> Self {
+        self.stream_errors = errors;
+        self
+    }
+
+    /// Mark selected provider operations as pending until their future is
+    /// dropped, index-aligned with model calls.
+    pub fn with_pending(mut self, pending: Vec<bool>) -> Self {
+        self.pending = pending;
         self
     }
 
@@ -861,11 +906,14 @@ impl MockScript {
             .map(|message| CompletionError::ProviderError(message.clone()))
     }
 
-    fn next_response(
+    async fn next_response(
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         let index = self.record_call(request);
+        if self.pending.get(index).copied().unwrap_or(false) {
+            return futures::future::pending().await;
+        }
         if let Some(error) = self.scripted_error(index) {
             return Err(error);
         }
@@ -876,13 +924,16 @@ impl MockScript {
         })
     }
 
-    fn next_stream(
+    async fn next_stream(
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionStream, CompletionError> {
         use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal};
 
         let index = self.record_call(request);
+        if self.pending.get(index).copied().unwrap_or(false) {
+            return futures::future::pending().await;
+        }
         if let Some(error) = self.scripted_error(index) {
             return Err(error);
         }
@@ -1008,8 +1059,16 @@ impl MockScript {
             items.push(RawStreamingChoice::FinalResponse(final_record));
             items
         };
+        let mut emitted: Vec<Result<RawStreamingChoice, CompletionError>> =
+            items.into_iter().map(Ok).collect();
+        if let Some(failure) = self.stream_errors.get(index).and_then(Option::as_ref) {
+            emitted.insert(
+                failure.after_items.min(emitted.len()),
+                Err(CompletionError::ProviderError(failure.message.clone())),
+            );
+        }
         Ok(CompletionStream::from_stream(futures::stream::iter(
-            items.into_iter().map(Ok),
+            emitted,
         )))
     }
 }
@@ -1204,7 +1263,8 @@ mod tests {
                 let script = script.clone();
                 std::thread::spawn(move || {
                     let request = CompletionRequest::from_prompt(format!("q{thread}"));
-                    let response = script.next_response(&request).expect("scripted response");
+                    let response = futures::executor::block_on(script.next_response(&request))
+                        .expect("scripted response");
                     let text = match response.choice.first() {
                         AssistantContent::Text(text) => text.text,
                         other => panic!("expected text, got {other:?}"),

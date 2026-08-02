@@ -47,7 +47,8 @@
 //!             # break;
 //!         }
 //!         AgentRunStep::CallTools { calls } => {
-//!             // Execute `calls`, then: run.tool_results(results)?;
+//!             // Execute each call, then submit its result with the call's
+//!             // `internal_call_id` via `run.tool_result_submissions(...)`.
 //!             # let _ = calls;
 //!         }
 //!         AgentRunStep::Done(response) => {
@@ -65,7 +66,7 @@ pub mod streamed;
 
 pub use output_mode::OutputMode;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -141,6 +142,21 @@ pub enum AgentRunStep {
     Done(PromptResponse),
 }
 
+/// Serializable pre-execution disposition retained with a pending call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum PreresolvedToolDisposition {
+    /// A tool-call hook deliberately skipped execution with this reason.
+    Skipped { reason: String },
+}
+
+/// One result resolved before tool execution, positionally aligned with its
+/// assistant content item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PreresolvedToolResult {
+    result: UserContent,
+    disposition: PreresolvedToolDisposition,
+}
+
 /// One tool call awaiting execution by the driver.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -157,6 +173,15 @@ pub struct PendingToolCall {
     /// tool-call deltas. Drivers generate a fresh ID when absent.
     #[serde(default)]
     pub internal_call_id: Option<String>,
+    /// Original model-emitted call retained while hook rewrites change
+    /// [`Self::tool_call`]. Serialized so forwarded/replayed inboxes keep the
+    /// original/effective distinction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) original_tool_call: Option<Box<ToolCall>>,
+    /// Data-only disposition for a pre-resolved hook decision. The visible
+    /// result carries presentation; this preserves hook/telemetry semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) preresolved_disposition: Option<PreresolvedToolDisposition>,
 }
 
 impl PendingToolCall {
@@ -167,6 +192,8 @@ impl PendingToolCall {
             tool_call,
             preresolved_result: None,
             internal_call_id: None,
+            original_tool_call: None,
+            preresolved_disposition: None,
         }
     }
 
@@ -175,6 +202,37 @@ impl PendingToolCall {
     pub fn with_preresolved_result(mut self, result: UserContent) -> Self {
         self.preresolved_result = Some(result);
         self
+    }
+
+    /// Return the stable Rig identity for this invocation, generating it once
+    /// when a non-streamed call first reaches a driver.
+    pub fn ensure_internal_call_id(&mut self) -> &str {
+        self.internal_call_id
+            .get_or_insert_with(rig_core::id::generate)
+    }
+}
+
+/// One host-supplied result tied to Rig's unique invocation identity.
+///
+/// Provider tool-call IDs are payload and may repeat within a batch. Drivers
+/// therefore accept results through this record instead of reconstructing an
+/// invocation from [`rig_core::message::ToolResult::id`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ToolResultSubmission {
+    /// The [`PendingToolCall::internal_call_id`] being answered.
+    pub internal_call_id: String,
+    /// The model-visible tool result for that invocation.
+    pub result: UserContent,
+}
+
+impl ToolResultSubmission {
+    /// Associate `result` with one pending Rig invocation.
+    pub fn new(internal_call_id: impl Into<String>, result: UserContent) -> Self {
+        Self {
+            internal_call_id: internal_call_id.into(),
+            result,
+        }
     }
 }
 
@@ -251,12 +309,16 @@ struct ResolvingState {
     original_choice: OneOrMany<AssistantContent>,
     /// Working copy of the assistant content; repairs rename tool calls here.
     items: Vec<AssistantContent>,
+    /// Original calls aligned with `items`; populated only where repair makes
+    /// the effective call differ from provider output.
+    original_calls: Vec<Option<ToolCall>>,
     /// Index of the next item to validate.
     next_index: usize,
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
-    /// Synthetic tool results for skipped tool calls, keyed by tool call ID.
-    skipped: BTreeMap<String, UserContent>,
+    /// Synthetic results positionally aligned with `items`. Provider IDs are
+    /// payload and may duplicate.
+    skipped: Vec<Option<PreresolvedToolResult>>,
     recovered: bool,
     any_skipped: bool,
     has_tool_calls: bool,
@@ -267,11 +329,14 @@ struct TurnState {
     message_id: Option<String>,
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
-    skipped: BTreeMap<String, UserContent>,
-    /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
-    /// emission order; empty for non-streamed turns.
+    /// Synthetic results positionally aligned with `items`.
+    skipped: Vec<Option<PreresolvedToolResult>>,
+    /// Original provider calls aligned with the tool-call subsequence.
+    original_tool_calls: Vec<Option<ToolCall>>,
+    /// Rig identities positionally aligned with the streamed tool-call
+    /// subsequence; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, String)>,
+    internal_call_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -694,7 +759,8 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
-                    mut internal_call_ids,
+                    original_tool_calls,
+                    internal_call_ids,
                 } = *turn_state;
                 let Some(choice) = OneOrMany::from_iter_optional(items.clone()) else {
                     return Err(PromptError::prompt_cancelled(
@@ -795,21 +861,40 @@ impl AgentRun {
                     // single per-run allowance an early stray turn could burn
                     // before the model genuinely needs to produce output (#1928).
                     self.output_retries = 0;
+                    let mut internal_call_ids = internal_call_ids.into_iter();
+                    let mut original_tool_calls = original_tool_calls.into_iter();
+                    let mut claimed_internal_ids = BTreeSet::new();
                     let calls: Vec<PendingToolCall> = items
                         .iter()
-                        .filter_map(|item| match item {
+                        .enumerate()
+                        .filter_map(|(item_index, item)| match item {
                             AssistantContent::ToolCall(tool_call) => {
-                                // Consume pairs positionally so duplicate
-                                // provider IDs within one turn stay
-                                // distinguishable.
-                                let internal_call_id = internal_call_ids
-                                    .iter()
-                                    .position(|(id, _)| *id == tool_call.id)
-                                    .map(|index| internal_call_ids.remove(index).1);
+                                let original_tool_call = original_tool_calls.next().flatten();
+                                // Identity is aligned by batch position;
+                                // provider IDs are payload and may duplicate.
+                                // Generate missing or duplicate Rig IDs before
+                                // storing ExecutingTools so serialization and
+                                // every resumed driver observe the same value.
+                                let internal_call_id = match internal_call_ids.next() {
+                                    Some(id) if claimed_internal_ids.insert(id.clone()) => id,
+                                    Some(_) | None => loop {
+                                        let id = rig_core::id::generate();
+                                        if claimed_internal_ids.insert(id.clone()) {
+                                            break id;
+                                        }
+                                    },
+                                };
+                                let preresolved =
+                                    skipped.get(item_index).and_then(|result| result.clone());
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
-                                    preresolved_result: skipped.get(&tool_call.id).cloned(),
-                                    internal_call_id,
+                                    preresolved_result: preresolved
+                                        .as_ref()
+                                        .map(|result| result.result.clone()),
+                                    internal_call_id: Some(internal_call_id),
+                                    original_tool_call: original_tool_call.map(Box::new),
+                                    preresolved_disposition: preresolved
+                                        .map(|result| result.disposition),
                                 })
                             }
                             _ => None,
@@ -853,6 +938,25 @@ impl AgentRun {
             RunState::ExecutingTools(calls) => {
                 // Idempotent, like Done: a process resuming a serialized run
                 // re-obtains the pending tool calls from the state itself.
+                // Repair legacy or manually constructed state before cloning
+                // it so every public result boundary has durable Rig identity.
+                let mut calls = calls;
+                let mut claimed = BTreeSet::new();
+                for call in &mut calls {
+                    let keep = call
+                        .internal_call_id
+                        .as_ref()
+                        .is_some_and(|id| claimed.insert(id.clone()));
+                    if !keep {
+                        loop {
+                            let id = rig_core::id::generate();
+                            if claimed.insert(id.clone()) {
+                                call.internal_call_id = Some(id);
+                                break;
+                            }
+                        }
+                    }
+                }
                 let step = AgentRunStep::CallTools {
                     calls: calls.clone(),
                 };
@@ -906,14 +1010,17 @@ impl AgentRun {
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
 
+        let skipped = vec![None; items.len()];
+        let original_calls = vec![None; items.len()];
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
             message_id: turn.message_id,
             original_choice: turn.choice,
             items,
+            original_calls,
             next_index: 0,
             executable_tool_names: turn.executable_tool_names,
             allowed_tool_names: turn.allowed_tool_names,
-            skipped: BTreeMap::new(),
+            skipped,
             recovered: false,
             any_skipped: false,
             has_tool_calls,
@@ -938,21 +1045,23 @@ impl AgentRun {
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map and
-    /// the streamed `internal_call_ids`.
+    /// ingestion paths converge here, differing only in the positional
+    /// `skipped` results and the streamed `internal_call_ids`.
     fn finalize_turn(
         &mut self,
         message_id: Option<String>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
-        skipped: BTreeMap<String, UserContent>,
-        internal_call_ids: Vec<(String, String)>,
+        skipped: Vec<Option<PreresolvedToolResult>>,
+        original_tool_calls: Vec<Option<ToolCall>>,
+        internal_call_ids: Vec<String>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
             items,
             has_tool_calls,
             skipped,
+            original_tool_calls,
             internal_call_ids,
         }));
     }
@@ -1069,6 +1178,15 @@ impl AgentRun {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
                 {
+                    let Some(original_slot) =
+                        resolving.original_calls.get_mut(resolving.next_index)
+                    else {
+                        self.state = RunState::ResolvingToolCalls(resolving);
+                        return Err(self.protocol_violation(
+                            "internal: repaired call lost its original positional slot",
+                        ));
+                    };
+                    *original_slot = Some(tool_call.clone());
                     tool_call.function.name = tool_name;
                 }
                 resolving.recovered = true;
@@ -1092,12 +1210,24 @@ impl AgentRun {
                     UserContent::tool_result_with_call_id(
                         tool_call.id.clone(),
                         call_id,
-                        OneOrMany::one(reason.into()),
+                        OneOrMany::one(reason.clone().into()),
                     )
                 } else {
-                    UserContent::tool_result(tool_call.id.clone(), OneOrMany::one(reason.into()))
+                    UserContent::tool_result(
+                        tool_call.id.clone(),
+                        OneOrMany::one(reason.clone().into()),
+                    )
                 };
-                resolving.skipped.insert(tool_call.id.clone(), user_content);
+                let Some(slot) = resolving.skipped.get_mut(resolving.next_index) else {
+                    self.state = RunState::ResolvingToolCalls(resolving);
+                    return Err(self.protocol_violation(
+                        "internal: invalid-call result lost its positional slot",
+                    ));
+                };
+                *slot = Some(PreresolvedToolResult {
+                    result: user_content,
+                    disposition: PreresolvedToolDisposition::Skipped { reason },
+                });
                 resolving.recovered = true;
                 resolving.any_skipped = true;
                 resolving.next_index += 1;
@@ -1140,65 +1270,151 @@ impl AgentRun {
         }
 
         resolving.items.remove(resolving.next_index);
+        resolving.skipped.remove(resolving.next_index);
+        resolving.original_calls.remove(resolving.next_index);
         resolving.has_tool_calls = resolving
             .items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
         if resolving.items.is_empty() {
             resolving.items.push(AssistantContent::text(""));
+            resolving.skipped.push(None);
+            resolving.original_calls.push(None);
         }
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }
 
-    /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
+    /// Feed unambiguous provider-ID-keyed tool results for the pending
+    /// [`AgentRunStep::CallTools`].
     ///
-    /// Results may be in any order; they are appended as a single user
-    /// message, matching what providers expect for parallel tool calls. Each
-    /// result must be a tool result answering one of the pending calls, and
-    /// every pending call must be answered — exactly what providers require
-    /// to accept the next request.
+    /// This convenience path is available only when provider call IDs are
+    /// unique within the batch. For duplicate provider IDs, use
+    /// [`Self::tool_result_submissions`] so each result carries Rig's unique
+    /// invocation identity.
     pub fn tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
         let RunState::ExecutingTools(pending) = &self.state else {
             return Err(
                 self.protocol_violation("tool_results called without a pending CallTools step")
             );
         };
-        // Match results against pending calls by tool call ID as a multiset,
-        // so duplicate provider IDs within one turn stay answerable.
-        let mut unanswered: Vec<String> = pending
+        let mut provider_ids = BTreeSet::new();
+        if pending
             .iter()
-            .map(|call| call.tool_call.id.clone())
-            .collect();
+            .any(|call| !provider_ids.insert(call.tool_call.id.clone()))
+        {
+            return Err(self.protocol_violation(
+                "tool_results cannot associate duplicate provider call IDs; use \
+                 tool_result_submissions with each PendingToolCall internal_call_id",
+            ));
+        }
+        let mut submissions = Vec::with_capacity(results.len());
+        for result in results {
+            let UserContent::ToolResult(tool_result) = result else {
+                return Err(self.protocol_violation(
+                    "tool_results received content that is not a tool result",
+                ));
+            };
+            let Some(call) = pending
+                .iter()
+                .find(|call| call.tool_call.id == tool_result.id)
+            else {
+                return Err(self.protocol_violation(&format!(
+                    "tool_results received a result for unknown tool call id `{}`",
+                    tool_result.id
+                )));
+            };
+            let Some(internal_call_id) = call.internal_call_id.clone() else {
+                return Err(self.protocol_violation(
+                    "pending tool call has no Rig internal identity; call next_step before submitting results",
+                ));
+            };
+            submissions.push(ToolResultSubmission::new(
+                internal_call_id,
+                UserContent::ToolResult(tool_result),
+            ));
+        }
+        self.tool_result_submissions(submissions)
+    }
 
-        if results.is_empty() {
+    /// Feed results keyed by Rig's unique invocation identity.
+    ///
+    /// Submissions may be in any order. They are validated by identity and
+    /// committed in submission order as one provider-compatible user message.
+    /// Every pending invocation must be answered exactly once, and the
+    /// embedded provider result `id` and `call_id` must still match that
+    /// invocation's provider correlation fields.
+    pub fn tool_result_submissions(
+        &mut self,
+        submissions: Vec<ToolResultSubmission>,
+    ) -> Result<(), PromptError> {
+        let RunState::ExecutingTools(pending) = &self.state else {
+            return Err(self.protocol_violation(
+                "tool_result_submissions called without a pending CallTools step",
+            ));
+        };
+        if submissions.is_empty() {
             self.state = RunState::Failed;
             return Err(PromptError::prompt_cancelled(
                 self.full_history(),
                 "tool execution produced no tool results",
             ));
         }
-        for result in &results {
-            let UserContent::ToolResult(tool_result) = result else {
+
+        let mut answered = BTreeSet::new();
+        let mut results = Vec::with_capacity(submissions.len());
+        for submission in submissions {
+            let UserContent::ToolResult(tool_result) = &submission.result else {
                 return Err(self.protocol_violation(
-                    "tool_results received content that is not a tool result",
+                    "tool_result_submissions received content that is not a tool result",
                 ));
             };
-            let Some(index) = unanswered.iter().position(|id| *id == tool_result.id) else {
+            let Some(call) = pending.iter().find(|call| {
+                call.internal_call_id.as_deref() == Some(submission.internal_call_id.as_str())
+            }) else {
                 return Err(self.protocol_violation(&format!(
-                    "tool_results received a result for unknown or already-answered tool call id `{}`",
-                    tool_result.id
+                    "tool_result_submissions received unknown Rig internal call id `{}`",
+                    submission.internal_call_id
                 )));
             };
-            unanswered.swap_remove(index);
+            if tool_result.id != call.tool_call.id {
+                return Err(self.protocol_violation(&format!(
+                    "tool result for Rig internal call id `{}` carries provider id `{}` instead of `{}`",
+                    submission.internal_call_id, tool_result.id, call.tool_call.id
+                )));
+            }
+            if tool_result.call_id != call.tool_call.call_id {
+                return Err(self.protocol_violation(&format!(
+                    "tool result for Rig internal call id `{}` carries provider call_id {:?} instead of {:?}",
+                    submission.internal_call_id, tool_result.call_id, call.tool_call.call_id
+                )));
+            }
+            if !answered.insert(submission.internal_call_id.clone()) {
+                return Err(self.protocol_violation(&format!(
+                    "tool_result_submissions answered Rig internal call id `{}` more than once",
+                    submission.internal_call_id
+                )));
+            }
+            results.push(submission.result);
+        }
+
+        let mut unanswered = Vec::new();
+        for call in pending {
+            let Some(internal_call_id) = &call.internal_call_id else {
+                return Err(self.protocol_violation(
+                    "pending tool call has no Rig internal identity; call next_step before submitting results",
+                ));
+            };
+            if !answered.contains(internal_call_id) {
+                unanswered.push(internal_call_id.clone());
+            }
         }
         if !unanswered.is_empty() {
             return Err(self.protocol_violation(&format!(
-                "tool_results left pending tool call id(s) unanswered: {unanswered:?}"
+                "tool_result_submissions left Rig internal call id(s) unanswered: {unanswered:?}"
             )));
         }
 
-        // `results` is non-empty (checked above), so construction succeeds.
         let Some(content) = OneOrMany::from_iter_optional(results) else {
             return Err(
                 self.protocol_violation("internal: tool results vanished during validation")
@@ -1248,6 +1464,7 @@ impl AgentRun {
         let ResolvingState {
             message_id,
             items,
+            original_calls,
             mut skipped,
             recovered,
             any_skipped,
@@ -1258,20 +1475,37 @@ impl AgentRun {
         // When any tool call was skipped, none of the turn's tool calls
         // execute: peers get a synthetic "not executed" result.
         if any_skipped {
-            for item in &items {
-                if let AssistantContent::ToolCall(tool_call) = item {
-                    skipped.entry(tool_call.id.clone()).or_insert_with(|| {
-                        tool_result_message(
+            for (item, slot) in items.iter().zip(&mut skipped) {
+                if let AssistantContent::ToolCall(tool_call) = item
+                    && slot.is_none()
+                {
+                    let reason = TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string();
+                    *slot = Some(PreresolvedToolResult {
+                        result: tool_result_message(
                             tool_call.id.clone(),
                             tool_call.call_id.clone(),
-                            TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                        )
+                            reason.clone(),
+                        ),
+                        disposition: PreresolvedToolDisposition::Skipped { reason },
                     });
                 }
             }
         }
 
-        self.finalize_turn(message_id, items, has_tool_calls, skipped, Vec::new());
+        let original_tool_calls = items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, AssistantContent::ToolCall(_)))
+            .map(|(index, _)| original_calls.get(index).cloned().flatten())
+            .collect();
+        self.finalize_turn(
+            message_id,
+            items,
+            has_tool_calls,
+            skipped,
+            original_tool_calls,
+            Vec::new(),
+        );
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1474,17 +1708,6 @@ impl AgentRun {
             );
         }
 
-        // Guarantee exactly one CompletionCall per model call: drivers that
-        // never learned usage (no record before the turn completed) still get
-        // the call recorded, with no reported usage.
-        if !self.streamed_completion_call_recorded {
-            // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
-            // so routing the no-usage fallback through `record_completion_call`
-            // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new());
-            self.streamed_completion_call_recorded = true;
-        }
-
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
             .iter()
@@ -1504,7 +1727,6 @@ impl AgentRun {
                 }
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
-                self.state = RunState::Failed;
                 return Err(unknown_tool_call_error(
                     tool_call.function.name.clone(),
                     turn.executable_tool_names.iter().cloned().collect(),
@@ -1514,11 +1736,21 @@ impl AgentRun {
             }
         }
 
+        // Commit usage only after the assembled turn validates. Older manual
+        // drivers may already have recorded the provider-final usage; the
+        // transactional driver carries it on `StreamedTurn` and records here.
+        if !self.streamed_completion_call_recorded {
+            self.record_completion_call(turn.usage);
+            self.streamed_completion_call_recorded = true;
+        }
+
+        let skipped = vec![None; items.len()];
         self.finalize_turn(
             turn.message_id,
             items,
             has_tool_calls,
-            BTreeMap::new(),
+            skipped,
+            turn.original_tool_calls,
             turn.internal_call_ids,
         );
         Ok(())
@@ -1593,6 +1825,16 @@ mod tests {
         ))
     }
 
+    fn tool_call_with_call_id(id: &str, call_id: &str, name: &str) -> AssistantContent {
+        AssistantContent::ToolCall(
+            ToolCall::new(
+                id.to_string(),
+                ToolFunction::new(name.to_string(), json!({"x": 1})),
+            )
+            .with_call_id(call_id.to_string()),
+        )
+    }
+
     fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
         ModelTurn::new(
             None,
@@ -1606,6 +1848,14 @@ mod tests {
     fn tool_result(id: &str, output: &str) -> UserContent {
         UserContent::tool_result(
             id.to_string(),
+            OneOrMany::one(ToolResultContent::text(output)),
+        )
+    }
+
+    fn tool_result_with_call_id(id: &str, call_id: &str, output: &str) -> UserContent {
+        UserContent::tool_result_with_call_id(
+            id.to_string(),
+            call_id.to_string(),
             OneOrMany::one(ToolResultContent::text(output)),
         )
     }
@@ -2061,8 +2311,8 @@ mod tests {
         assert_eq!(run.turn(), 1);
     }
 
-    #[test]
-    fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
+    #[tokio::test]
+    async fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
         let mut run = AgentRun::new("call something").max_turns(2);
 
         expect_call_model(&mut run);
@@ -2078,7 +2328,28 @@ mod tests {
 
         let calls = expect_call_tools(&mut run);
         assert_eq!(calls[0].tool_call.function.name, "add");
+        assert_eq!(
+            calls[0]
+                .original_tool_call
+                .as_deref()
+                .map(|call| call.function.name.as_str()),
+            Some("default_api")
+        );
         assert!(calls[0].preresolved_result.is_none());
+
+        let executor =
+            crate::executor::ToolExecutor::new().register(crate::tool::PortableDynamicTool::new(
+                "add",
+                "test repair audit",
+                json!({"type": "object"}),
+                |args| async move {
+                    Ok::<_, crate::tool::ToolExecutionError>(crate::tool::ToolOutput::json(args))
+                },
+            ));
+        let batch = executor.execute_batch(&calls).await;
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].original_call.function.name, "default_api");
+        assert_eq!(batch.records[0].effective_call.function.name, "add");
     }
 
     #[test]
@@ -2129,6 +2400,64 @@ mod tests {
         assert_eq!(calls.len(), 2);
         // Both the skipped call and its valid peer carry preresolved results.
         assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    }
+
+    #[test]
+    fn invalid_skip_keeps_duplicate_provider_ids_positionally_correlated() {
+        let mut run = AgentRun::new("call things").max_turns(2);
+
+        expect_call_model(&mut run);
+        let turn = ModelTurn::new(
+            None,
+            OneOrMany::many(vec![
+                tool_call_with_call_id("duplicate", "valid-call", "add"),
+                tool_call_with_call_id("duplicate", "invalid-call", "unknown"),
+            ])
+            .expect("two items"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add"]),
+        );
+        expect_needs_resolution(run.model_response(turn).expect("model response"));
+        expect_continue(
+            run.resolve_invalid_tool_call(InvalidToolCallAction::skip("invalid reason"))
+                .expect("skip should be accepted"),
+        );
+
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].tool_call.id, "duplicate");
+        assert_eq!(calls[1].tool_call.id, "duplicate");
+        assert_eq!(calls[0].tool_call.call_id.as_deref(), Some("valid-call"));
+        assert_eq!(calls[1].tool_call.call_id.as_deref(), Some("invalid-call"));
+
+        let Some(UserContent::ToolResult(valid_peer_result)) = &calls[0].preresolved_result else {
+            panic!("valid peer should have a positional synthetic result");
+        };
+        let Some(UserContent::ToolResult(invalid_result)) = &calls[1].preresolved_result else {
+            panic!("invalid call should retain its own synthetic result");
+        };
+        assert_eq!(valid_peer_result.call_id.as_deref(), Some("valid-call"));
+        assert_eq!(invalid_result.call_id.as_deref(), Some("invalid-call"));
+        assert!(
+            serde_json::to_string(valid_peer_result)
+                .expect("result serializes")
+                .contains(TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER)
+        );
+        assert!(
+            serde_json::to_string(invalid_result)
+                .expect("result serializes")
+                .contains("invalid reason")
+        );
+        assert!(matches!(
+            &calls[0].preresolved_disposition,
+            Some(PreresolvedToolDisposition::Skipped { reason })
+                if reason == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+        ));
+        assert!(matches!(
+            &calls[1].preresolved_disposition,
+            Some(PreresolvedToolDisposition::Skipped { reason }) if reason == "invalid reason"
+        ));
     }
 
     #[test]
@@ -2261,6 +2590,96 @@ mod tests {
                 .expect("model_response should succeed"),
         );
         assert_eq!(expect_done(&mut resumed).output, "done");
+    }
+
+    #[test]
+    fn unary_duplicate_provider_ids_keep_internal_ids_across_serde_resume() {
+        let mut run = AgentRun::new("add twice").max_turns(2);
+        expect_call_model(&mut run);
+        let turn = ModelTurn::new(
+            None,
+            OneOrMany::many(vec![
+                tool_call_with_call_id("duplicate", "provider-call-a", "add"),
+                tool_call_with_call_id("duplicate", "provider-call-b", "add"),
+            ])
+            .expect("two calls"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add"]),
+        );
+        expect_continue(run.model_response(turn).expect("model response"));
+
+        let before = expect_call_tools(&mut run);
+        let before_ids = before
+            .iter()
+            .map(|call| call.internal_call_id.clone().expect("internal id"))
+            .collect::<Vec<_>>();
+        assert_ne!(before_ids[0], before_ids[1]);
+
+        let serialized = serde_json::to_string(&run).expect("pending run serializes");
+        let mut restored: AgentRun =
+            serde_json::from_str(&serialized).expect("pending run deserializes");
+        let after = expect_call_tools(&mut restored);
+        let after_ids = after
+            .iter()
+            .map(|call| call.internal_call_id.clone().expect("internal id"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(after_ids, before_ids);
+        assert_eq!(after[0].tool_call.id, "duplicate");
+        assert_eq!(after[1].tool_call.id, "duplicate");
+        assert_eq!(
+            after[0].tool_call.call_id.as_deref(),
+            Some("provider-call-a")
+        );
+        assert_eq!(
+            after[1].tool_call.call_id.as_deref(),
+            Some("provider-call-b")
+        );
+
+        let legacy_error = restored
+            .tool_results(vec![
+                tool_result_with_call_id("duplicate", "provider-call-a", "3"),
+                tool_result_with_call_id("duplicate", "provider-call-b", "7"),
+            ])
+            .expect_err("legacy provider-ID joining must reject duplicate IDs");
+        assert!(matches!(legacy_error, PromptError::PromptCancelled { .. }));
+
+        let mismatch = restored
+            .tool_result_submissions(vec![
+                ToolResultSubmission::new(
+                    after_ids[1].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-a", "7"),
+                ),
+                ToolResultSubmission::new(
+                    after_ids[0].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-b", "3"),
+                ),
+            ])
+            .expect_err("swapped provider call_id values must be rejected");
+        assert!(matches!(mismatch, PromptError::PromptCancelled { .. }));
+
+        restored
+            .tool_result_submissions(vec![
+                ToolResultSubmission::new(
+                    after_ids[1].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-b", "7"),
+                ),
+                ToolResultSubmission::new(
+                    after_ids[0].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-a", "3"),
+                ),
+            ])
+            .expect("Rig identities make reverse-ordered duplicate-ID results unambiguous");
+        let Some(Message::User { content }) = restored.messages().last() else {
+            panic!("tool results should commit as one user message");
+        };
+        let rendered = content
+            .iter()
+            .map(|item| serde_json::to_string(item).expect("result serializes"))
+            .collect::<Vec<_>>();
+        assert!(rendered[0].contains('7'));
+        assert!(rendered[1].contains('3'));
     }
 
     #[test]

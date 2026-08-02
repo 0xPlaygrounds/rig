@@ -49,14 +49,16 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use crate::agent::attempt::ModelCallAttempt;
 use crate::agent::hook::{
-    CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch, ToolCallAction,
-    ToolResultAction,
+    CompletionCallAction, InvalidToolCallAction, ModelTurnAction, RequestPatch, ResolvedToolCall,
+    ResolvedToolCallDisposition, ToolCallAction, ToolResultAction,
 };
-use crate::agent::prepare::{ToolCatalog, prepare_request};
+use crate::agent::prepare::ToolCatalog;
 use crate::agent::response::tool_result_output;
 use crate::agent::run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
+    ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_span, record_usage_on_span,
@@ -152,6 +154,8 @@ pub enum SessionEvent {
     ToolResultReady {
         /// The executed (or skipped) tool call, with effective arguments.
         call: ToolCall,
+        /// Stable Rig identity shared with the originating ToolCall event.
+        internal_call_id: String,
         /// The model-visible result content as provided.
         result: UserContent,
     },
@@ -165,6 +169,7 @@ struct ResultGateEntry {
     /// The originating call for surfaced entries; `None` for results that
     /// pass through unsurfaced without a matching call.
     call: Option<ToolCall>,
+    internal_call_id: Option<String>,
     result: UserContent,
     /// Whether this entry surfaces as [`SessionEvent::ToolResultReady`].
     surface: bool,
@@ -201,16 +206,16 @@ enum Pending {
         /// The call surfaced and awaiting
         /// [`AgentSession::reply_tool_call`].
         current: Option<PendingToolCall>,
-        /// Ids skipped via [`ToolCallAction::Skip`] — these still surface
-        /// their (synthetic) result under `surface_tool_results`.
-        skipped_ids: Vec<String>,
+        /// Rig identities skipped via [`ToolCallAction::Skip`] — these still
+        /// surface their synthetic result under `surface_tool_results`.
+        skipped_internal_ids: Vec<String>,
     },
     Tools {
-        /// The decided batch, kept for result pairing under
-        /// `surface_tool_results` (empty otherwise).
+        /// The decided batch, kept as the indexed identity source until its
+        /// results commit.
         calls: Vec<PendingToolCall>,
-        /// Ids skipped via [`ToolCallAction::Skip`].
-        skipped_ids: Vec<String>,
+        /// Rig identities skipped via [`ToolCallAction::Skip`].
+        skipped_internal_ids: Vec<String>,
     },
     /// `policy.surface_tool_results`: post-execution decisions in flight.
     ToolResultGate {
@@ -239,6 +244,9 @@ pub struct AgentSession {
     run: AgentRun,
     rt: Arc<Runtime>,
     next_patch: Option<RequestPatch>,
+    /// A failed, interrupted, or cancelled provider operation retains the
+    /// exact logical attempt here until the next advance reissues it.
+    model_attempt: Option<ModelCallAttempt>,
     pending: Pending,
     last_response: Option<CompletionResponse>,
     /// The run-level `invoke_agent` span (created, or adopted from the
@@ -250,15 +258,9 @@ pub struct AgentSession {
     /// Id of the previous `chat` span, chaining per-call spans via
     /// `follows_from` exactly like the classic blocking driver.
     chat_chain_head: u64,
-    /// The in-flight tool batch's per-call `execute_tool` spans, held so a
-    /// rewritten tool-result presentation is recorded onto the same span the
-    /// classic driver recorded it on.
-    batch_call_spans: Vec<(String, tracing::Span)>,
-    /// The in-flight batch's **structured** execution results, keyed by
-    /// provider tool-call id, so the post-execution decision point carries the
-    /// classic classification (failed/skipped/denied, error kind, HTTP status)
-    /// instead of the flattened model-visible content.
-    batch_raw_results: Vec<(String, ToolResult)>,
+    /// Canonical positional identity, outcome, presentation, and span for the
+    /// in-flight tool batch.
+    batch_records: Vec<crate::executor::ToolExecutionRecord>,
     /// The in-flight turn's `chat` span, held so accepted-turn output
     /// telemetry lands on it once the host answers `TurnFinished` (a retried
     /// turn's provisional output is never recorded, matching the classic
@@ -307,13 +309,13 @@ impl AgentSession {
             run,
             rt,
             next_patch: None,
+            model_attempt: None,
             pending: Pending::None,
             last_response: None,
             agent_span,
             created_agent_span,
             chat_chain_head: 0,
-            batch_call_spans: Vec::new(),
-            batch_raw_results: Vec::new(),
+            batch_records: Vec::new(),
             turn_chat_span: None,
         }
     }
@@ -367,13 +369,13 @@ impl AgentSession {
             run,
             rt,
             next_patch: None,
+            model_attempt: None,
             pending,
             last_response: None,
             agent_span,
             created_agent_span,
             chat_chain_head: 0,
-            batch_call_spans: Vec::new(),
-            batch_raw_results: Vec::new(),
+            batch_records: Vec::new(),
             turn_chat_span: None,
         }
     }
@@ -410,6 +412,10 @@ impl AgentSession {
 
     /// Merge a per-turn request patch consumed by the next model call.
     pub fn patch_next_turn(&mut self, patch: RequestPatch) {
+        if let Some(attempt) = &mut self.model_attempt {
+            attempt.merge_patch(patch);
+            return;
+        }
         self.next_patch = Some(match self.next_patch.take() {
             Some(existing) => existing.merge(patch),
             None => patch,
@@ -482,6 +488,15 @@ impl AgentSession {
             return Ok(event);
         }
 
+        // A provider future can be dropped by timeout/select cancellation.
+        // The attempt lives on the session, so re-entry first returns
+        // AgentRun to its pre-call state and then reissues the same logical
+        // request without replaying its already-answered BeforeModelCall gate.
+        let mut retry_attempt = self.model_attempt.take();
+        if let Some(attempt) = &mut retry_attempt {
+            attempt.make_retryable(&mut self.run);
+        }
+
         loop {
             // Resume a pre-build pause answered by reply_before_call.
             let (step, before_call_answered) =
@@ -508,7 +523,10 @@ impl AgentSession {
                     history,
                     turn,
                 } => {
-                    if self.policy.surface_completion_calls && !before_call_answered {
+                    if self.policy.surface_completion_calls
+                        && !before_call_answered
+                        && retry_attempt.is_none()
+                    {
                         // Surface pre-build; reply_before_call resumes here.
                         self.pending = Pending::BeforeCall {
                             prompt: prompt.clone(),
@@ -522,18 +540,28 @@ impl AgentSession {
                         });
                     }
 
-                    let patch = self.next_patch.take().unwrap_or_default();
-                    let mut prepared = prepare_request(
+                    let mut attempt = match retry_attempt.take() {
+                        Some(mut attempt) => {
+                            attempt.reissue(turn);
+                            attempt
+                        }
+                        None => {
+                            ModelCallAttempt::begin(prompt, history, turn, &mut self.next_patch)
+                        }
+                    };
+                    let mut prepared = match attempt.prepare(
                         &self.config,
                         &self.tools,
                         self.provider.descriptor().composes_native_output_with_tools,
-                        prompt,
-                        &history,
                         self.run.output_tool_name(),
-                        Some(&patch),
-                    )?;
-                    self.run
-                        .set_output_tool_name(prepared.output_tool_name.clone());
+                    ) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {
+                            attempt.make_retryable(&mut self.run);
+                            self.model_attempt = Some(attempt);
+                            return Err(error.into());
+                        }
+                    };
 
                     let chat_span = self.next_chat_span(&prepared.request);
                     // Content telemetry is recorded onto the agent's own `chat`
@@ -544,21 +572,26 @@ impl AgentSession {
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                         prepared.request.record_telemetry_content = false;
                     }
-                    let response =
-                        match provider::complete(&self.provider, &self.rt, prepared.request)
+                    attempt.mark_in_flight();
+                    self.model_attempt = Some(attempt);
+                    let response_result =
+                        provider::complete(&self.provider, &self.rt, prepared.request)
                             .instrument(chat_span.clone())
-                            .await
-                        {
-                            Ok(response) => response,
-                            Err(error) => {
-                                // Transient provider failure: return to the
-                                // pre-call state so a later advance() retries
-                                // the call instead of wedging the run in
-                                // AwaitingModel forever.
-                                self.run.abandon_pending_model_call();
-                                return Err(error.into());
-                            }
-                        };
+                            .await;
+                    let Some(mut attempt) = self.model_attempt.take() else {
+                        self.run.abandon_pending_model_call();
+                        return Err(self.run.cancel_error(
+                            "model-call attempt ownership disappeared while provider IO was in flight",
+                        ));
+                    };
+                    let response = match response_result {
+                        Ok(response) => response,
+                        Err(error) => {
+                            attempt.make_retryable(&mut self.run);
+                            self.model_attempt = Some(attempt);
+                            return Err(error.into());
+                        }
+                    };
                     let model_turn = ModelTurn::new(
                         response.message_id.clone(),
                         response.choice.clone(),
@@ -567,9 +600,11 @@ impl AgentSession {
                         prepared.allowed_tool_names,
                     );
                     let usage = response.usage;
+                    let outcome =
+                        attempt.commit_unary(&mut self.run, &mut self.next_patch, model_turn)?;
                     self.last_response = Some(response);
 
-                    match self.run.model_response(model_turn)? {
+                    match outcome {
                         ModelTurnOutcome::Continue {
                             response_hook_suppressed,
                         } => {
@@ -599,24 +634,22 @@ impl AgentSession {
                         ModelTurnOutcome::TurnRetried => {}
                     }
                 }
-                AgentRunStep::CallTools { calls } => {
+                AgentRunStep::CallTools { mut calls } => {
+                    for call in &mut calls {
+                        call.ensure_internal_call_id();
+                    }
                     if self.policy.surface_tool_calls {
                         self.pending = Pending::ToolCallGate {
                             remaining: calls.into(),
                             decided: Vec::new(),
                             current: None,
-                            skipped_ids: Vec::new(),
+                            skipped_internal_ids: Vec::new(),
                         };
                         return self.next_tool_call_gate_event();
                     }
-                    let stored = if self.policy.surface_tool_results {
-                        calls.clone()
-                    } else {
-                        Vec::new()
-                    };
                     self.pending = Pending::Tools {
-                        calls: stored,
-                        skipped_ids: Vec::new(),
+                        calls: calls.clone(),
+                        skipped_internal_ids: Vec::new(),
                     };
                     return Ok(SessionEvent::ToolCallsReady(calls));
                 }
@@ -775,7 +808,7 @@ impl AgentSession {
                 mut remaining,
                 mut decided,
                 current: None,
-                skipped_ids,
+                skipped_internal_ids,
             } => {
                 while let Some(next) = remaining.pop_front() {
                     if next.preresolved_result.is_some() {
@@ -787,18 +820,13 @@ impl AgentSession {
                         remaining,
                         decided,
                         current: Some(next),
-                        skipped_ids,
+                        skipped_internal_ids,
                     };
                     return Ok(SessionEvent::ToolCallPending { call });
                 }
-                let stored = if self.policy.surface_tool_results {
-                    decided.clone()
-                } else {
-                    Vec::new()
-                };
                 self.pending = Pending::Tools {
-                    calls: stored,
-                    skipped_ids,
+                    calls: decided.clone(),
+                    skipped_internal_ids,
                 };
                 Ok(SessionEvent::ToolCallsReady(decided))
             }
@@ -821,34 +849,56 @@ impl AgentSession {
     /// [`ToolCallAction::Stop`] cancels the run; calling without a pending
     /// [`SessionEvent::ToolCallPending`] event is a protocol violation.
     pub fn reply_tool_call(&mut self, action: ToolCallAction) -> Result<(), PromptError> {
+        let original_call = match &self.pending {
+            Pending::ToolCallGate {
+                current: Some(call),
+                ..
+            } => call.tool_call.clone(),
+            _ => {
+                return Err(self
+                    .run
+                    .cancel_error("reply_tool_call without a pending ToolCallPending event"));
+            }
+        };
+        self.reply_resolved_tool_call(ResolvedToolCall::from_action(original_call, action))
+    }
+
+    /// Apply one fully composed hook resolution without separating its
+    /// effective arguments from a terminal skip.
+    fn reply_resolved_tool_call(
+        &mut self,
+        resolution: ResolvedToolCall,
+    ) -> Result<(), PromptError> {
         match std::mem::replace(&mut self.pending, Pending::None) {
             Pending::ToolCallGate {
                 remaining,
                 mut decided,
                 current: Some(mut call),
-                mut skipped_ids,
+                mut skipped_internal_ids,
             } => {
-                match action {
-                    ToolCallAction::Run => decided.push(call),
-                    ToolCallAction::Rewrite(args) => {
-                        call.tool_call.function.arguments = args;
-                        decided.push(call);
-                    }
-                    ToolCallAction::Skip(reason) => {
+                let (effective_call, disposition) = resolution.into_parts();
+                call.original_tool_call
+                    .get_or_insert_with(|| Box::new(call.tool_call.clone()));
+                call.tool_call = effective_call;
+                match disposition {
+                    ResolvedToolCallDisposition::Run => decided.push(call),
+                    ResolvedToolCallDisposition::Skip(reason) => {
                         // Mirror run_single_tool: the skip becomes a
                         // `ToolResult::skipped` presentation delivered to
                         // the model without executing the body.
-                        let skipped = ToolResult::skipped(reason);
+                        let skipped = ToolResult::skipped(reason.clone());
                         let content = tool_result_output(
                             call.tool_call.id.clone(),
                             call.tool_call.call_id.clone(),
                             skipped.output().clone(),
                         );
-                        skipped_ids.push(call.tool_call.id.clone());
+                        skipped_internal_ids.push(call.ensure_internal_call_id().to_owned());
                         call.preresolved_result = Some(content);
+                        call.preresolved_disposition =
+                            Some(crate::agent::run::PreresolvedToolDisposition::Skipped { reason });
                         decided.push(call);
                     }
-                    ToolCallAction::Stop(reason) => {
+                    ResolvedToolCallDisposition::Stop(reason) => {
                         return Err(self.run.cancel_error(reason));
                     }
                 }
@@ -856,7 +906,7 @@ impl AgentSession {
                     remaining,
                     decided,
                     current: None,
-                    skipped_ids,
+                    skipped_internal_ids,
                 };
                 Ok(())
             }
@@ -878,16 +928,22 @@ impl AgentSession {
                 cursor,
                 awaiting: false,
             } => {
-                if let Some((index, call, result)) = entries
+                if let Some((index, call, internal_call_id, result)) = entries
                     .iter()
                     .enumerate()
                     .skip(cursor)
                     .find(|(_, entry)| entry.surface)
                     .and_then(|(index, entry)| {
-                        entry
-                            .call
-                            .as_ref()
-                            .map(|call| (index, call.clone(), entry.result.clone()))
+                        entry.call.as_ref().and_then(|call| {
+                            entry.internal_call_id.as_ref().map(|internal_call_id| {
+                                (
+                                    index,
+                                    call.clone(),
+                                    internal_call_id.clone(),
+                                    entry.result.clone(),
+                                )
+                            })
+                        })
                     })
                 {
                     self.pending = Pending::ToolResultGate {
@@ -895,10 +951,23 @@ impl AgentSession {
                         cursor: index,
                         awaiting: true,
                     };
-                    return Ok(Some(SessionEvent::ToolResultReady { call, result }));
+                    return Ok(Some(SessionEvent::ToolResultReady {
+                        call,
+                        internal_call_id,
+                        result,
+                    }));
                 }
-                let results = entries.into_iter().map(|entry| entry.result).collect();
-                self.run.tool_results(results)?;
+                let mut submissions = Vec::with_capacity(entries.len());
+                for entry in entries {
+                    let Some(internal_call_id) = entry.internal_call_id else {
+                        return Err(self
+                            .run
+                            .cancel_error("tool-result gate lost the Rig invocation identity"));
+                    };
+                    submissions.push(ToolResultSubmission::new(internal_call_id, entry.result));
+                }
+                self.run.tool_result_submissions(submissions)?;
+                self.batch_records.clear();
                 Ok(None)
             }
             other => {
@@ -957,46 +1026,55 @@ impl AgentSession {
         }
     }
 
-    /// Answer [`SessionEvent::ToolCallsReady`] with one result per pending
-    /// call (any order). Under `policy.surface_tool_results` the batch is
-    /// not committed yet: each result surfaces as
+    /// Answer [`SessionEvent::ToolCallsReady`] with one identity-bearing
+    /// [`ToolResultSubmission`] per pending call (any order). Use each
+    /// [`PendingToolCall::internal_call_id`] as the join key; provider call
+    /// IDs may duplicate. Under `policy.surface_tool_results` the batch is not
+    /// committed yet: each result surfaces as
     /// [`SessionEvent::ToolResultReady`] on subsequent
     /// [`AgentSession::advance`] calls, and commits once every decision is
     /// answered.
-    pub fn provide_tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
+    pub fn provide_tool_results(
+        &mut self,
+        submissions: Vec<ToolResultSubmission>,
+    ) -> Result<(), PromptError> {
         match std::mem::replace(&mut self.pending, Pending::None) {
-            Pending::Tools { calls, skipped_ids } => {
+            Pending::Tools {
+                calls,
+                skipped_internal_ids,
+            } => {
                 if !self.policy.surface_tool_results {
-                    self.run.tool_results(results)?;
+                    self.run.tool_result_submissions(submissions)?;
                     return Ok(());
                 }
-                // Pair results with calls by provider id as a multiset
-                // (mirroring `AgentRun::tool_results` and the stream
-                // driver): duplicate ids pair positionally.
-                let mut remaining: Vec<Option<UserContent>> =
-                    results.into_iter().map(Some).collect();
+                // Rig identity is the join key. Provider IDs remain payload
+                // and may be duplicated or reordered by the host.
+                let mut remaining: Vec<Option<ToolResultSubmission>> =
+                    submissions.into_iter().map(Some).collect();
                 let mut entries = Vec::new();
                 for call in &calls {
                     let matched = remaining.iter_mut().find_map(|slot| {
-                        let is_match = slot.as_ref().is_some_and(|content| {
-                            matches!(
-                                content,
-                                UserContent::ToolResult(result) if result.id == call.tool_call.id
-                            )
+                        let is_match = slot.as_ref().is_some_and(|submission| {
+                            call.internal_call_id.as_deref()
+                                == Some(submission.internal_call_id.as_str())
                         });
                         if is_match { slot.take() } else { None }
                     });
-                    if let Some(result) = matched {
+                    if let Some(submission) = matched {
                         // Results preresolved by invalid-call recovery pass
                         // through verbatim (the classic driver fires no
                         // hooks for them); gate skips do surface, exactly
                         // as run_single_tool fires its tool-result hook
                         // for a hook skip.
                         let surface = call.preresolved_result.is_none()
-                            || skipped_ids.contains(&call.tool_call.id);
+                            || call
+                                .internal_call_id
+                                .as_ref()
+                                .is_some_and(|id| skipped_internal_ids.contains(id));
                         entries.push(ResultGateEntry {
                             call: Some(call.tool_call.clone()),
-                            result,
+                            internal_call_id: Some(submission.internal_call_id),
+                            result: submission.result,
                             surface,
                         });
                     }
@@ -1006,9 +1084,10 @@ impl AgentSession {
                     remaining
                         .into_iter()
                         .flatten()
-                        .map(|result| ResultGateEntry {
+                        .map(|submission| ResultGateEntry {
                             call: None,
-                            result,
+                            internal_call_id: Some(submission.internal_call_id),
+                            result: submission.result,
                             surface: false,
                         }),
                 );
@@ -1026,6 +1105,67 @@ impl AgentSession {
                     .cancel_error("provide_tool_results without a pending ToolCallsReady event"))
             }
         }
+    }
+
+    /// Accept executor-owned records without reconstructing invocation
+    /// identity from provider call IDs.
+    fn provide_tool_execution_records(
+        &mut self,
+        records: &[crate::executor::ToolExecutionRecord],
+    ) -> Result<(), PromptError> {
+        let Pending::Tools {
+            calls,
+            skipped_internal_ids,
+        } = std::mem::replace(&mut self.pending, Pending::None)
+        else {
+            return Err(self.run.cancel_error(
+                "provide_tool_execution_records without a pending ToolCallsReady event",
+            ));
+        };
+        if calls.len() != records.len()
+            || calls.iter().zip(records).any(|(call, record)| {
+                call.internal_call_id.as_deref() != Some(record.internal_call_id.as_str())
+            })
+        {
+            return Err(self
+                .run
+                .cancel_error("tool execution records do not match the pending indexed batch"));
+        }
+
+        if !self.policy.surface_tool_results {
+            return self.run.tool_result_submissions(
+                records
+                    .iter()
+                    .map(|record| {
+                        ToolResultSubmission::new(
+                            record.internal_call_id.clone(),
+                            record.result.clone(),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+
+        let entries = calls
+            .into_iter()
+            .zip(records)
+            .map(|(call, record)| {
+                let surface = call.preresolved_result.is_none()
+                    || skipped_internal_ids.contains(&record.internal_call_id);
+                ResultGateEntry {
+                    call: Some(record.effective_call.clone()),
+                    internal_call_id: Some(record.internal_call_id.clone()),
+                    result: record.result.clone(),
+                    surface,
+                }
+            })
+            .collect();
+        self.pending = Pending::ToolResultGate {
+            entries,
+            cursor: 0,
+            awaiting: false,
+        };
+        Ok(())
     }
 
     /// Drive to completion under the default policy.
@@ -1145,22 +1285,17 @@ impl AgentSession {
                     self.resolve_invalid(action)?;
                 }
                 SessionEvent::ToolCallPending { call } => {
-                    // The effective action already carries any chained
-                    // rewrite; a terminal `Skip`'s salvaged rewrite cannot be
-                    // applied through the single-action inbox and only
-                    // affects reporting, never execution (the body does not
-                    // run).
                     let internal_call_id = call
                         .internal_call_id
                         .clone()
-                        .unwrap_or_else(|| call.tool_call.id.clone());
-                    let (action, _salvaged) = hooks
+                        .unwrap_or_else(rig_core::id::generate);
+                    let resolution = hooks
                         .dispatch_tool_call(&call.tool_call, &internal_call_id)
                         .await;
-                    self.reply_tool_call(action)?;
+                    self.reply_resolved_tool_call(resolution)?;
                 }
                 SessionEvent::ToolCallsReady(calls) => {
-                    let results = match executor {
+                    match executor {
                         Some(executor) => {
                             // Chain the batch's tool spans onto this turn's
                             // chat span, and the next chat span onto the last
@@ -1174,28 +1309,39 @@ impl AgentSession {
                             if let Some(id) = batch.last_span_id {
                                 self.chat_chain_head = id;
                             }
-                            self.batch_call_spans = batch.call_spans;
-                            self.batch_raw_results = batch.raw_results;
-                            batch.results
+                            let records = batch.records;
+                            self.provide_tool_execution_records(&records)?;
+                            if self.policy.surface_tool_results {
+                                self.batch_records = records;
+                            } else {
+                                self.batch_records.clear();
+                            }
                         }
-                        None => preresolved_only_results(&calls)?,
-                    };
-                    self.provide_tool_results(results)?;
+                        None => {
+                            self.batch_records.clear();
+                            let results = preresolved_only_results(&calls)?;
+                            self.provide_tool_results(results)?;
+                        }
+                    }
                 }
-                SessionEvent::ToolResultReady { call, result } => {
+                SessionEvent::ToolResultReady {
+                    call,
+                    internal_call_id,
+                    result,
+                } => {
                     // The executor's structured result when the body ran (so
                     // `ToolResult::error()`/`is_skipped()`/`is_refused()`/
                     // `http_status()` read exactly as they did on the classic
                     // tool-result hook), falling back to reconstructing it
                     // from the committed content for host-provided or
                     // pre-resolved results.
-                    let raw = self
-                        .batch_raw_results
+                    let execution = self
+                        .batch_records
                         .iter()
-                        .find(|(id, _)| *id == call.id)
-                        .map(|(_, structured)| structured.clone())
-                        .unwrap_or_else(|| raw_tool_result(&result));
-                    let internal_call_id = call.id.clone();
+                        .find(|record| record.internal_call_id == internal_call_id);
+                    let raw = execution
+                        .map(|record| record.raw_result.clone())
+                        .unwrap_or_else(|| crate::executor::raw_tool_result(&result));
                     let action = hooks
                         .dispatch_tool_result(&call, &internal_call_id, &raw)
                         .await;
@@ -1204,8 +1350,7 @@ impl AgentSession {
                     // rewrite is never preceded by the raw value on the same
                     // span — exactly the classic ordering.
                     if self.config.record_telemetry_content
-                        && let Some((_, span)) =
-                            self.batch_call_spans.iter().find(|(id, _)| *id == call.id)
+                        && let Some(span) = execution.and_then(|record| record.span.as_ref())
                     {
                         let rendered = match &action {
                             ToolResultAction::Rewrite(output) => Some(output.render()),
@@ -1252,7 +1397,7 @@ impl AgentSession {
                 }
                 SessionEvent::ToolCallsReady(calls) => {
                     let batch = executor.execute_batch(&calls).await;
-                    self.provide_tool_results(batch.results)?;
+                    self.provide_tool_results(batch.into_submissions())?;
                 }
                 SessionEvent::ToolCallPending { .. } | SessionEvent::ToolResultReady { .. } => {
                     // Per-call gates are host decision points; this driver
@@ -1281,11 +1426,24 @@ impl AgentSession {
 /// host configuration error.
 pub(crate) fn preresolved_only_results(
     calls: &[PendingToolCall],
-) -> Result<Vec<UserContent>, PromptError> {
+) -> Result<Vec<ToolResultSubmission>, PromptError> {
     let mut results = Vec::with_capacity(calls.len());
     for call in calls {
         match &call.preresolved_result {
-            Some(content) => results.push(content.clone()),
+            Some(content) => {
+                let Some(internal_call_id) = &call.internal_call_id else {
+                    return Err(PromptError::CompletionError(
+                        rig_core::completion::CompletionError::ResponseError(
+                            "pending preresolved tool call has no Rig internal identity"
+                                .to_string(),
+                        ),
+                    ));
+                };
+                results.push(ToolResultSubmission::new(
+                    internal_call_id.clone(),
+                    content.clone(),
+                ));
+            }
             None => {
                 return Err(PromptError::CompletionError(
                     rig_core::completion::CompletionError::ResponseError(
@@ -1298,21 +1456,6 @@ pub(crate) fn preresolved_only_results(
         }
     }
     Ok(results)
-}
-
-/// Reconstruct the raw-result view the tool-result hook receives from the
-/// committed model-visible content: tool-result content blocks map back onto
-/// a successful [`ToolResult`] verbatim; any other content is rendered as
-/// text.
-pub(crate) fn raw_tool_result(result: &UserContent) -> ToolResult {
-    match result {
-        UserContent::ToolResult(tool_result) => ToolResult::success(
-            crate::tool::ToolOutput::content(tool_result.content.clone()),
-        ),
-        other => ToolResult::success(crate::tool::ToolOutput::text(
-            serde_json::to_string(other).unwrap_or_default(),
-        )),
-    }
 }
 
 #[cfg(test)]
@@ -1380,6 +1523,13 @@ mod tests {
         )
     }
 
+    fn submission_for(call: &PendingToolCall, result: UserContent) -> ToolResultSubmission {
+        ToolResultSubmission::new(
+            call.internal_call_id.clone().expect("durable internal id"),
+            result,
+        )
+    }
+
     fn tool_loop_script() -> MockScript {
         MockScript::from_responses(vec![
             tool_call_response("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
@@ -1416,7 +1566,10 @@ mod tests {
         );
         assert!(ready.preresolved_result.is_none());
 
-        let results = vec![tool_result_for(&ready.tool_call, "3")];
+        let results = vec![submission_for(
+            ready,
+            tool_result_for(&ready.tool_call, "3"),
+        )];
         session.provide_tool_results(results).expect("results");
         match session.advance().await.expect("advance") {
             SessionEvent::Done(done) => assert_eq!(done.output, "done"),
@@ -1481,7 +1634,7 @@ mod tests {
 
         // The host returns the preresolved content verbatim.
         session
-            .provide_tool_results(vec![preresolved])
+            .provide_tool_results(vec![submission_for(ready, preresolved)])
             .expect("results");
         match session.advance().await.expect("advance") {
             SessionEvent::Done(done) => assert_eq!(done.output, "done"),
@@ -1522,11 +1675,14 @@ mod tests {
         };
         let ready = calls.first().expect("one call");
         session
-            .provide_tool_results(vec![tool_result_for(&ready.tool_call, "raw secret")])
+            .provide_tool_results(vec![submission_for(
+                ready,
+                tool_result_for(&ready.tool_call, "raw secret"),
+            )])
             .expect("results");
 
         let (call, result) = match session.advance().await.expect("advance") {
-            SessionEvent::ToolResultReady { call, result } => (call, result),
+            SessionEvent::ToolResultReady { call, result, .. } => (call, result),
             other => panic!("expected ToolResultReady, got {other:?}"),
         };
         assert_eq!(call.id, "call_1");
@@ -1563,7 +1719,10 @@ mod tests {
         };
         let ready = calls.first().expect("one call");
         session
-            .provide_tool_results(vec![tool_result_for(&ready.tool_call, "3")])
+            .provide_tool_results(vec![submission_for(
+                ready,
+                tool_result_for(&ready.tool_call, "3"),
+            )])
             .expect("results");
         match session.advance().await.expect("advance") {
             SessionEvent::ToolResultReady { .. } => {}
@@ -7533,14 +7692,9 @@ mod classic_hook_tests {
 
         /// A compact string label for an outcome, e.g. `error:timeout`.
         ///
-        /// NOTE: the unified engine hands the tool-result hook a result
-        /// rebuilt from the committed `UserContent`
-        /// ([`crate::session::raw_tool_result`]), so the executor's
-        /// classification (error kind / skipped / refused) is currently
-        /// flattened to `success`. The label is kept so the classification
-        /// contract is still expressed; the assertions below pin what the
-        /// engine delivers today — the model-visible result text and the
-        /// non-fatality of tool failures.
+        /// Automatic execution carries the executor's structured result on
+        /// its positional record. Host-provided content without such a record
+        /// is reconstructed by `crate::executor::raw_tool_result`.
         fn outcome_label(result: &ToolResult) -> String {
             if result.is_skipped() {
                 "skipped".to_string()
@@ -7848,19 +8002,16 @@ mod classic_hook_tests {
             }
 
             for streaming in [false, true] {
-                let (args, _outcome) = run_surface(streaming).await;
-                // The tool must never execute: `MockAddTool` would produce a
-                // success result of "42" if it (wrongly) ran. What the
-                // skipped `ToolResult` *reports* is the model's original
-                // arguments — the unified engine's single-action inbox cannot
-                // carry a terminal `Skip`'s salvaged rewrite into reporting
-                // (see `AgentSession::drive`), so the classic
-                // "reports the rewritten args" behavior is not reproduced.
+                let (args, outcome) = run_surface(streaming).await;
+                // The tool must never execute: MockAddTool would produce a
+                // success result if it ran. The result observation retains
+                // both the effective rewrite and the structured skip outcome.
                 assert_eq!(
                     args,
-                    json!({}),
-                    "the skipped ToolResult reports the model's original args (streaming={streaming})"
+                    json!({ "x": 41, "y": 1 }),
+                    "the skipped ToolResult reports effective args (streaming={streaming})"
                 );
+                assert_eq!(outcome, "skipped");
             }
         }
 

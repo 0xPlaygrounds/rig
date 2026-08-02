@@ -169,6 +169,7 @@
 //! # Ok(())
 //! # }
 //! ```
+pub(crate) mod attempt;
 mod builder;
 mod completion;
 pub mod config;
@@ -190,9 +191,9 @@ pub use completion::Agent;
 pub use config::AgentConfig;
 pub use hook::{
     CompletionCallAction, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
-    ObservationAction, RequestPatch, RetryRequest, RunId, ToolCallAction, ToolCallResolution,
-    ToolResultAction, ToolResultResolution, fold_completion_actions, fold_invalid_resolutions,
-    fold_observation_actions,
+    ObservationAction, RequestPatch, ResolvedToolCall, ResolvedToolCallDisposition, RetryRequest,
+    RunId, ToolCallAction, ToolCallResolution, ToolResultAction, ToolResultResolution,
+    fold_completion_actions, fold_invalid_resolutions, fold_observation_actions,
 };
 pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use request::SessionRunner;

@@ -506,14 +506,13 @@ impl Hooks {
     /// short-circuits while preserving the rewrite accumulated before it,
     /// via [`ToolCallResolution`].
     ///
-    /// Returns the effective action plus, for a terminal action, any
-    /// rewrite salvaged before it (so the driver can report effective
-    /// arguments).
+    /// Returns one resolution containing both the effective call and the
+    /// terminal disposition.
     pub async fn dispatch_tool_call<'a>(
         &'a self,
         call: &'a ToolCall,
         internal_call_id: &'a str,
-    ) -> (ToolCallAction, Option<serde_json::Value>) {
+    ) -> crate::agent::ResolvedToolCall {
         let mut resolution = ToolCallResolution::new(call.function.arguments.clone());
         for entry in &self.entries {
             let mut current = call.clone();
@@ -532,7 +531,7 @@ impl Hooks {
                 break;
             }
         }
-        resolution.finish()
+        resolution.finish(call.clone())
     }
 
     /// Dispatch [`HookEvent::ToolResult`]: presentation rewrites chain into
@@ -959,11 +958,17 @@ mod tests {
             }
             HookDecision::Continue
         }));
-        let (action, salvaged) = hooks
+        let resolved = hooks
             .dispatch_tool_call(&tool_call(serde_json::json!({"a": 1})), "internal-1")
             .await;
-        assert_eq!(action, ToolCallAction::Rewrite(serde_json::json!({"a": 2})));
-        assert!(salvaged.is_none());
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"a": 2})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Run
+        );
         // The later entry saw the rewritten arguments.
         assert_eq!(
             seen.lock().expect("lock").as_slice(),
@@ -972,7 +977,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_call_terminal_skip_salvages_accumulated_rewrite() {
+    async fn tool_call_terminal_skip_retains_accumulated_rewrite() {
         let mut hooks = Hooks::new();
         hooks.add(entry("rewrite", |_| {
             HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 3})))
@@ -983,11 +988,17 @@ mod tests {
         hooks.add(entry("late", |_| {
             HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 9})))
         }));
-        let (action, salvaged) = hooks
+        let resolved = hooks
             .dispatch_tool_call(&tool_call(serde_json::json!({"a": 1})), "internal-1")
             .await;
-        assert_eq!(action, ToolCallAction::skip("blocked"));
-        assert_eq!(salvaged, Some(serde_json::json!({"a": 3})));
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"a": 3})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Skip("blocked".to_string())
+        );
     }
 
     #[tokio::test]
@@ -1058,11 +1069,17 @@ mod tests {
                 HookDecision::ToolCall(ToolCallAction::run())
             }));
         }
-        let (action, salvaged) = hooks
+        let resolved = hooks
             .dispatch_tool_call(&tool_call(serde_json::json!({})), "internal-1")
             .await;
-        assert_eq!(action, ToolCallAction::run());
-        assert_eq!(salvaged, None);
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Run
+        );
         assert_eq!(*log.lock().expect("log"), vec![1, 2]);
     }
 
@@ -1076,10 +1093,13 @@ mod tests {
         hooks.add(logging_entry(2, log.clone(), |_| {
             HookDecision::ToolCall(ToolCallAction::run())
         }));
-        let (action, _) = hooks
+        let resolved = hooks
             .dispatch_tool_call(&tool_call(serde_json::json!({})), "internal-1")
             .await;
-        assert!(matches!(action, ToolCallAction::Stop(_)));
+        assert!(matches!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Stop(_)
+        ));
         assert_eq!(*log.lock().expect("log"), vec![1], "entry 2 must not run");
     }
 

@@ -543,7 +543,9 @@ pub(crate) async fn completion_response_from_sse_body(
     }
 
     let stream_had_final_record = stream.final_record().is_some();
-    let mut normalized = completion::CompletionResponse::from(stream);
+    let mut normalized = stream
+        .into_response()
+        .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
 
     if choice_is_empty(&normalized.choice) {
         return Err(CompletionError::ResponseError(

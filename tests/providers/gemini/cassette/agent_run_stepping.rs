@@ -2,6 +2,8 @@
 //! turns: stepping protocol, multi-turn tool threading, parallel tool calls,
 //! and `max_turns` exhaustion.
 
+use std::collections::BTreeSet;
+
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice, UserContent};
@@ -118,6 +120,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
             )
             .max_turns(5);
             let mut executed_tools: Vec<String> = Vec::new();
+            let mut internal_call_ids = BTreeSet::new();
 
             let response = loop {
                 match run.next_step().expect("run should advance") {
@@ -147,9 +150,13 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                                 call.preresolved_result.is_none(),
                                 "no recovery happened, so no call should be preresolved"
                             );
+                            let internal_call_id = call
+                                .internal_call_id
+                                .as_ref()
+                                .expect("every pending call has durable Rig identity");
                             assert!(
-                                call.internal_call_id.is_none(),
-                                "non-streamed turns carry no internal call ids"
+                                internal_call_ids.insert(internal_call_id.clone()),
+                                "Rig internal call IDs remain unique across unary turns"
                             );
                             executed_tools.push(call.tool_call.function.name.clone());
                         }
