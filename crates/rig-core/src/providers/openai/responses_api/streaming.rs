@@ -552,7 +552,7 @@ pub(crate) async fn completion_response_from_sse_body(
             .map(Ok::<_, CompletionError>)
             .collect::<Vec<_>>(),
     );
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(Box::pin(stream));
+    let mut stream = crate::streaming::StreamingCompletionResponse::stream(stream);
 
     while let Some(item) = stream.next().await {
         item?;
@@ -729,7 +729,7 @@ pub(crate) fn stream_from_event_source_with_options(
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 /// An item message chunk from OpenAI's Responses API.

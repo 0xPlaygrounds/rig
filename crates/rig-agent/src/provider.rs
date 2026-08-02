@@ -1008,8 +1008,8 @@ impl MockScript {
             items.push(RawStreamingChoice::FinalResponse(final_record));
             items
         };
-        Ok(StreamingCompletionResponse::stream(Box::pin(
-            futures::stream::iter(items.into_iter().map(Ok)),
+        Ok(StreamingCompletionResponse::stream(futures::stream::iter(
+            items.into_iter().map(Ok),
         )))
     }
 }

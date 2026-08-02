@@ -131,7 +131,7 @@ pub(crate) async fn stream_converse(
                 Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
             })?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut finish_reason: Option<FinishReason> = None;
@@ -281,7 +281,7 @@ pub(crate) async fn stream_converse(
                     _ => {}
                 }
             }
-        }.instrument(span));
+        }.instrument(span);
 
         Ok(StreamingCompletionResponse::stream(stream))
     }

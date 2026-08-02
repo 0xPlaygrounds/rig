@@ -9,7 +9,7 @@ use crate::{
     OneOrMany,
     completion::{AssistantContent, CompletionError, CompletionRequest, CompletionResponse, Usage},
     message::{ToolCall, ToolFunction},
-    streaming::{StreamingCompletionResponse, StreamingResult},
+    streaming::StreamingCompletionResponse,
 };
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
@@ -286,7 +286,6 @@ impl MockCompletionModel {
                 yield event.into_raw_choice();
             }
         };
-        let stream: StreamingResult = Box::pin(stream);
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }

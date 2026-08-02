@@ -127,7 +127,7 @@ pub(crate) fn interaction_completion_stream(
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 /// Decode an Interactions SSE stream into raw [`InteractionSseEvent`]s.

@@ -10,9 +10,7 @@ use super::completion::{
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::Event;
 use crate::message::ReasoningContent;
-use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
-};
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::SpanCombinator;
 use std::collections::HashMap;
 
@@ -205,7 +203,7 @@ pub(super) fn stream_anthropic_sse(
     let stream = event_source;
 
     // Use our SSE decoder to directly handle Server-Sent Events format
-    let stream: StreamingResult = Box::pin(stream! {
+    let stream = stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
@@ -302,7 +300,7 @@ pub(super) fn stream_anthropic_sse(
                 final_response = final_response.with_model(response_model);
             }
             yield Ok(RawStreamingChoice::FinalResponse(final_response))
-        }.instrument(span));
+        }.instrument(span);
 
     streaming::StreamingCompletionResponse::stream(stream)
 }
@@ -504,22 +502,6 @@ mod tests {
     use crate::completion::request::Document as RigDocument;
     use async_stream::stream;
     use futures::StreamExt;
-
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
-        + Send
-        + 'static,
-    ) -> crate::streaming::StreamingResult {
-        Box::pin(stream)
-    }
-
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
-    ) -> crate::streaming::StreamingResult {
-        Box::pin(stream)
-    }
 
     #[test]
     fn test_streaming_tool_build_marks_final_combined_tool() {
@@ -1565,8 +1547,7 @@ mod tests {
             )));
         };
 
-        let mut stream =
-            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(raw_stream);
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =
@@ -1711,8 +1692,7 @@ mod tests {
             )));
         };
 
-        let mut stream =
-            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(raw_stream);
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =

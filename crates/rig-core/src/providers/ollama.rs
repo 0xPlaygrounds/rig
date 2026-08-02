@@ -1173,7 +1173,7 @@ pub mod functions {
             .instrument(span.clone())
             .await?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
-            Box::pin(stream.instrument(span)),
+            stream.instrument(span),
         ))
     }
 

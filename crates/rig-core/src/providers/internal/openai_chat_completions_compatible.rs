@@ -480,7 +480,7 @@ pub(crate) fn drive_compatible_stream(
     }
     .instrument(instrument_span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 fn record_usage(span: &tracing::Span, usage: &crate::completion::Usage) {

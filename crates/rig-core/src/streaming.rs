@@ -10,6 +10,7 @@ use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
+use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -283,19 +284,18 @@ impl From<RawStreamingToolCall> for ToolCall {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Provider stream of raw completion chunks on native targets.
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>> + Send>>;
+type BoxedRawCompletionStream =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>> + Send + 'static>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Provider stream of raw completion chunks on wasm targets.
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>>>>;
+type BoxedRawCompletionStream =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static>>;
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
 pub struct StreamingCompletionResponse {
-    pub(crate) inner: Abortable<StreamingResult>,
+    inner: Abortable<BoxedRawCompletionStream>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
     assistant_items: Vec<AssistantContent>,
@@ -314,8 +314,16 @@ pub struct StreamingCompletionResponse {
 
 impl StreamingCompletionResponse {
     /// Wrap a provider stream and initialize aggregation state.
-    pub fn stream(inner: StreamingResult) -> StreamingCompletionResponse {
+    ///
+    /// The response owns the stream's pinning and type erasure. Provider
+    /// implementations can pass their concrete stream directly; on browser
+    /// wasm that stream may remain worker-local and non-`Send`.
+    pub fn stream<S>(inner: S) -> Self
+    where
+        S: Stream<Item = Result<RawStreamingChoice, CompletionError>> + WasmCompatSend + 'static,
+    {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        let inner: BoxedRawCompletionStream = Box::pin(inner);
         let abortable_stream = Abortable::new(inner, abort_registration);
         let pause_control = PauseControl::new();
         Self {
@@ -337,7 +345,9 @@ impl StreamingCompletionResponse {
     pub fn cancel(&mut self) {
         self.abort_handle.abort();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let empty: StreamingResult = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
+        let empty: BoxedRawCompletionStream = Box::pin(futures::stream::empty::<
+            Result<RawStreamingChoice, CompletionError>,
+        >());
         self.inner = Abortable::new(empty, abort_registration);
         self.abort_handle = abort_handle;
     }
@@ -627,6 +637,27 @@ impl Stream for StreamingCompletionResponse {
     }
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[allow(dead_code)]
+fn _assert_streaming_completion_response_is_send() {
+    fn assert_send<T: Send>() {}
+
+    assert_send::<StreamingCompletionResponse>();
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[allow(dead_code)]
+fn _assert_streaming_completion_response_accepts_worker_local_stream() {
+    let worker_local = std::rc::Rc::new(());
+    let stream = futures::stream::once(async move {
+        std::future::pending::<()>().await;
+        drop(worker_local);
+        Ok(RawStreamingChoice::Message(String::new()))
+    });
+
+    let _response = StreamingCompletionResponse::stream(stream);
+}
+
 // Test module
 #[cfg(test)]
 mod tests {
@@ -643,22 +674,6 @@ mod tests {
         StreamFinal::new("mock", usage)
     }
 
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
-        + Send
-        + 'static,
-    ) -> StreamingResult {
-        Box::pin(stream)
-    }
-
-    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-    fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
-    ) -> StreamingResult {
-        Box::pin(stream)
-    }
-
     fn create_mock_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
@@ -670,7 +685,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(15)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     fn create_reasoning_stream() -> StreamingCompletionResponse {
@@ -686,7 +701,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(5)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     fn create_reasoning_only_stream() -> StreamingCompletionResponse {
@@ -698,7 +713,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(2)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     fn create_interleaved_stream() -> StreamingCompletionResponse {
@@ -721,7 +736,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     fn create_text_tool_text_stream() -> StreamingCompletionResponse {
@@ -738,7 +753,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     fn create_text_metadata_stream() -> StreamingCompletionResponse {
@@ -774,7 +789,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(stream)
     }
 
     #[tokio::test]
@@ -795,9 +810,9 @@ mod tests {
     #[tokio::test]
     async fn usage_is_zero_sentinel_before_final_response() {
         // A stream that never yields a FinalResponse reports the zero sentinel.
-        let stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
+        let stream = StreamingCompletionResponse::stream(stream! {
             yield Ok(RawStreamingChoice::Message("no final response".to_string()));
-        }));
+        });
         assert_eq!(stream.usage().total_tokens, 0);
     }
 
@@ -951,7 +966,7 @@ mod tests {
             yield Ok(RawStreamingChoice::Message("done".to_string()));
             yield Ok(RawStreamingChoice::FinalResponse(mock_final(1)));
         };
-        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+        let mut stream = StreamingCompletionResponse::stream(stream);
 
         let mut consumer_unknown = None;
         let mut consumer_text = String::new();

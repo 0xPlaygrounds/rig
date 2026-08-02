@@ -123,9 +123,7 @@ pub(crate) async fn stream(
         yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(streaming::StreamingCompletionResponse::stream(stream))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

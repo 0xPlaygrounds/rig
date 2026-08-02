@@ -199,7 +199,7 @@ pub(super) fn stream_cohere_sse(
             )))
         }.instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 #[cfg(test)]

@@ -377,9 +377,18 @@ let embeddings = EmbeddingJob::new()
 ```
 
 `embed_documents` and `default_concurrency` remain, so nothing forces the
-change. Tool registries similarly gained `ToolExecutor::builder()` with
-`.tool(..)` (typed, erased on the spot) and `.dynamic_tool(..)`/`.tools(..)`,
-ending in `.build()`.
+change. Tool registries use the concrete `ToolExecutor` directly: `.tool(..)`
+erases a typed tool on the spot, `.register(..)` adds one dynamic record, and
+`.register_all(..)` adds an ordered batch. The hollow `ToolExecutorBuilder` and
+its no-op `.build()` terminator are gone:
+
+| Before | After |
+| --- | --- |
+| `ToolExecutor::builder()` | `ToolExecutor::new()` |
+| `.tool(typed)` | `.tool(typed)` |
+| `.dynamic_tool(record)` | `.register(record)` |
+| `.dynamic_tools(records)` / `.tools(records)` | `.register_all(records)` |
+| `.build()` | delete |
 
 `VectorSearchRequest::new(..).with_*()` and the transcription,
 image-generation, and audio-generation request builders are unchanged.
@@ -1031,12 +1040,28 @@ provider-typed streaming final is the normalized `StreamFinal`. Consequences:
   `provider` and `model` metadata.
 - **`GetTokenUsage` is removed.** Usage is a plain field on
   `CompletionResponse` and `StreamFinal`; read `.usage` directly.
-- The streaming vocabulary lost its type parameters:
-  `RawStreamingChoice`/`StreamingResult`/`StreamingCompletionResponse`/
+- The retained streaming vocabulary lost its type parameters:
+  `RawStreamingChoice`/`StreamingCompletionResponse`/
   `StreamedAssistantContent`/`MultiTurnStreamItem` are all concrete, and
   `CompletionModel` no longer has `type Response`/`type StreamingResponse`.
   Provider-specific streaming-final aliases (deepseek, groq, mistral,
   openrouter, gemini, copilot) are removed with nothing to replace them.
+- The core `StreamingResult = Pin<Box<dyn Stream<...>>>` alias is removed.
+  Provider implementations no longer import or annotate that erased type and
+  no longer box solely for the response constructor:
+
+  ```rust
+  // before
+  let stream: StreamingResult = Box::pin(provider_stream);
+  StreamingCompletionResponse::stream(stream)
+
+  // after
+  StreamingCompletionResponse::stream(provider_stream)
+  ```
+
+  `StreamingCompletionResponse` owns the pinning and dynamic erasure privately.
+  Its constructor requires a native `Send` stream while retaining the existing
+  browser-wasm relaxation, so worker-local JavaScript execution remains valid.
 
 ### Completion requests are plain data with an optional bound facade
 

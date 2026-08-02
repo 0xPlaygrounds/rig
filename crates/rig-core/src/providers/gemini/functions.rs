@@ -202,10 +202,7 @@ pub async fn open_stream(
     );
     let req = build_request(cfg, &request, true)?;
     Ok(crate::streaming::StreamingCompletionResponse::stream(
-        Box::pin(super::streaming::generate_content_stream(
-            rt.sse_events(req, false),
-            span,
-        )),
+        super::streaming::generate_content_stream(rt.sse_events(req, false), span),
     ))
 }
 

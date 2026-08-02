@@ -86,7 +86,27 @@ pub struct ToolBatchOutput {
 
 /// An ordered registry of executable tools that answers `ToolCallsReady`
 /// batches for the session drivers. See the [module docs](self).
-#[derive(Debug, Clone, Default)]
+///
+/// Typed tools are erased into concrete [`PortableDynamicTool`] records at
+/// registration time; the executor itself remains concrete.
+///
+/// ```
+/// # use rig_agent::executor::ToolExecutor;
+/// # use rig_core::tool::PortableDynamicTool;
+/// # fn dynamic(name: &str) -> PortableDynamicTool {
+/// #     PortableDynamicTool::new(name.to_string(), "d", serde_json::json!({}), |args| async move {
+/// #         Ok(rig_core::tool::ToolOutput::json(args))
+/// #     })
+/// # }
+/// let executor = ToolExecutor::new()
+///     .register(dynamic("first"))
+///     .register_all([dynamic("second"), dynamic("third")])
+///     .tool_concurrency(4);
+///
+/// assert_eq!(executor.len(), 3);
+/// assert!(executor.get("second").is_some());
+/// ```
+#[derive(Debug, Clone)]
 pub struct ToolExecutor {
     tools: IndexMap<String, PortableDynamicTool>,
     concurrency: usize,
@@ -102,106 +122,13 @@ pub struct ToolExecutor {
     defer_result_telemetry: bool,
 }
 
-/// A fluent builder for [`ToolExecutor`].
-///
-/// [`Self::tool`] accepts a **typed** [`PortableTool`](rig_core::tool::PortableTool) and erases it into a
-/// concrete [`PortableDynamicTool`] record immediately — the type parameter is
-/// a method-level conversion, never stored. [`Self::build`] hands back a plain
-/// [`ToolExecutor`].
-///
-/// ```
-/// # use rig_agent::executor::ToolExecutor;
-/// # use rig_core::tool::PortableDynamicTool;
-/// # fn dynamic(name: &str) -> PortableDynamicTool {
-/// #     PortableDynamicTool::new(name.to_string(), "d", serde_json::json!({}), |a| async move {
-/// #         Ok(rig_core::tool::ToolOutput::json(a))
-/// #     })
-/// # }
-/// let executor = ToolExecutor::builder()
-///     .dynamic_tool(dynamic("first"))
-///     .dynamic_tools([dynamic("second"), dynamic("third")])
-///     .tool_concurrency(4)
-///     .build();
-///
-/// assert_eq!(executor.len(), 3);
-/// assert!(executor.get("second").is_some());
-/// ```
-#[derive(Debug, Clone, Default)]
-pub struct ToolExecutorBuilder {
-    executor: ToolExecutor,
-}
-
-impl ToolExecutorBuilder {
-    /// An empty builder (sequential execution by default).
-    pub fn new() -> Self {
-        Self {
-            executor: ToolExecutor::new(),
-        }
-    }
-
-    /// Registers a typed tool, erased to a record on the spot.
-    ///
-    /// Re-registering a name replaces it in place, preserving order.
-    pub fn tool<T>(mut self, tool: T) -> Self
-    where
-        T: rig_core::tool::PortableTool + 'static,
-    {
-        self.executor = self
-            .executor
-            .register(PortableDynamicTool::from_portable(tool));
-        self
-    }
-
-    /// Registers one runtime-defined tool record.
-    pub fn dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
-        self.executor = self.executor.register(tool);
-        self
-    }
-
-    /// Registers tool records, in order.
-    pub fn dynamic_tools(mut self, tools: impl IntoIterator<Item = PortableDynamicTool>) -> Self {
-        for tool in tools {
-            self.executor = self.executor.register(tool);
-        }
-        self
-    }
-
-    /// Alias for [`Self::dynamic_tools`], for symmetry with [`Self::tool`]
-    /// when you already hold records.
-    pub fn tools(self, tools: impl IntoIterator<Item = PortableDynamicTool>) -> Self {
-        self.dynamic_tools(tools)
-    }
-
-    /// Bound how many tools of one batch run concurrently (clamped to >= 1).
-    pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
-        self.executor = self.executor.tool_concurrency(concurrency);
-        self
-    }
-
-    /// Opt in or out of recording tool arguments and results on spans.
-    pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
-        self.executor = self.executor.record_content_telemetry(enabled);
-        self
-    }
-
-    /// Leave `gen_ai.tool.call.result` recording to the caller.
-    pub fn defer_result_telemetry(mut self, deferred: bool) -> Self {
-        self.executor = self.executor.defer_result_telemetry(deferred);
-        self
-    }
-
-    /// Builds the concrete executor.
-    pub fn build(self) -> ToolExecutor {
-        self.executor
+impl Default for ToolExecutor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl ToolExecutor {
-    /// Starts a fluent [`ToolExecutorBuilder`].
-    pub fn builder() -> ToolExecutorBuilder {
-        ToolExecutorBuilder::new()
-    }
-
     /// Create an empty executor (sequential execution by default).
     pub fn new() -> Self {
         Self {
@@ -214,7 +141,17 @@ impl ToolExecutor {
 
     /// Build an executor from an ordered set of tools.
     pub fn from_tools(tools: impl IntoIterator<Item = PortableDynamicTool>) -> Self {
-        tools.into_iter().fold(Self::new(), Self::register)
+        Self::new().register_all(tools)
+    }
+
+    /// Register a typed tool, erasing it to a concrete record immediately.
+    ///
+    /// Re-registering a name replaces it in place, preserving order.
+    pub fn tool<T>(self, tool: T) -> Self
+    where
+        T: rig_core::tool::PortableTool + 'static,
+    {
+        self.register(PortableDynamicTool::from_portable(tool))
     }
 
     /// Register a tool, replacing any earlier registration of the same name
@@ -222,6 +159,14 @@ impl ToolExecutor {
     pub fn register(mut self, tool: PortableDynamicTool) -> Self {
         self.tools.insert(tool.name().to_owned(), tool);
         self
+    }
+
+    /// Register tool records in iteration order.
+    ///
+    /// Each record follows [`Self::register`] semantics, including replacing a
+    /// duplicate name in place without changing its registration position.
+    pub fn register_all(self, tools: impl IntoIterator<Item = PortableDynamicTool>) -> Self {
+        tools.into_iter().fold(self, Self::register)
     }
 
     /// Bound how many tools of one batch run concurrently. Values are clamped
@@ -531,59 +476,29 @@ mod tests {
     }
 
     #[test]
-    fn builder_produces_the_same_executor_as_explicit_registration() {
-        let built = ToolExecutor::builder()
-            .dynamic_tool(echo_tool("first", "a", 0))
-            .dynamic_tools([echo_tool("second", "b", 0), echo_tool("third", "c", 0)])
-            .tool_concurrency(4)
-            .record_content_telemetry(true)
-            .defer_result_telemetry(true)
-            .build();
-
-        let explicit = ToolExecutor::new()
+    fn direct_configuration_preserves_registration_and_settings() {
+        let executor = ToolExecutor::new()
             .register(echo_tool("first", "a", 0))
-            .register(echo_tool("second", "b", 0))
-            .register(echo_tool("third", "c", 0))
+            .register_all([echo_tool("second", "b", 0), echo_tool("third", "c", 0)])
             .tool_concurrency(4)
             .record_content_telemetry(true)
             .defer_result_telemetry(true);
 
-        // Same registration order, same catalog…
-        assert_eq!(built.len(), explicit.len());
-        let built_names: Vec<String> = built
+        let names: Vec<String> = executor
             .catalog()
             .definitions
             .iter()
             .map(|d| d.name.clone())
             .collect();
-        let explicit_names: Vec<String> = explicit
-            .catalog()
-            .definitions
-            .iter()
-            .map(|d| d.name.clone())
-            .collect();
-        assert_eq!(built_names, ["first", "second", "third"]);
-        assert_eq!(built_names, explicit_names);
-        // …and the same knobs. Comparing these matters: a builder setter that
-        // forgot to write back would leave batches silently sequential while
-        // the name assertions above still passed.
-        assert_eq!(built.concurrency, explicit.concurrency);
-        assert_eq!(built.concurrency, 4);
-        assert_eq!(
-            built.record_telemetry_content,
-            explicit.record_telemetry_content
-        );
-        assert!(built.record_telemetry_content);
-        assert_eq!(
-            built.defer_result_telemetry,
-            explicit.defer_result_telemetry
-        );
-        assert!(built.defer_result_telemetry);
+        assert_eq!(names, ["first", "second", "third"]);
+        assert_eq!(executor.concurrency, 4);
+        assert!(executor.record_telemetry_content);
+        assert!(executor.defer_result_telemetry);
     }
 
     #[test]
     fn typed_tool_registration_matches_manual_erasure() {
-        let built = ToolExecutor::builder().tool(TypedEcho).build();
+        let built = ToolExecutor::new().tool(TypedEcho);
         let explicit = ToolExecutor::new().register(PortableDynamicTool::from_portable(TypedEcho));
 
         assert_eq!(built.len(), explicit.len());
@@ -596,11 +511,10 @@ mod tests {
 
     #[test]
     fn re_registering_a_name_replaces_in_place_preserving_order() {
-        let executor = ToolExecutor::builder()
-            .dynamic_tool(echo_tool("first", "a", 0))
-            .dynamic_tool(echo_tool("second", "b", 0))
-            .dynamic_tool(echo_tool("first", "replaced", 0))
-            .build();
+        let executor = ToolExecutor::new()
+            .register(echo_tool("first", "a", 0))
+            .register(echo_tool("second", "b", 0))
+            .register(echo_tool("first", "replaced", 0));
 
         assert_eq!(executor.len(), 2);
         let names: Vec<String> = executor
@@ -613,27 +527,20 @@ mod tests {
     }
 
     #[test]
-    fn tools_alias_matches_dynamic_tools() {
-        let names = |executor: &ToolExecutor| -> Vec<String> {
-            executor
-                .catalog()
-                .definitions
-                .iter()
-                .map(|d| d.name.clone())
-                .collect()
-        };
+    fn default_matches_new() {
+        let default = ToolExecutor::default();
+        let new = ToolExecutor::new();
 
-        let via_alias = ToolExecutor::builder()
-            .tools([echo_tool("a", "1", 0), echo_tool("b", "2", 0)])
-            .build();
-        let via_dynamic = ToolExecutor::builder()
-            .dynamic_tools([echo_tool("a", "1", 0), echo_tool("b", "2", 0)])
-            .build();
-
-        // Compare the ordered names, not just the count: a count-only check
-        // would pass even if the alias reversed or substituted the tools.
-        assert_eq!(names(&via_alias), names(&via_dynamic));
-        assert_eq!(names(&via_alias), ["a", "b"]);
+        assert_eq!(default.len(), new.len());
+        assert!(default.is_empty());
+        assert!(new.is_empty());
+        assert_eq!(default.concurrency, new.concurrency);
+        assert_eq!(default.concurrency, 1);
+        assert_eq!(
+            default.record_telemetry_content,
+            new.record_telemetry_content
+        );
+        assert_eq!(default.defer_result_telemetry, new.defer_result_telemetry);
     }
 
     fn failing_tool(name: &str, message: &'static str, delay_ms: u64) -> PortableDynamicTool {

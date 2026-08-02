@@ -83,9 +83,7 @@ use futures::Stream;
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{
-    RawStreamingChoice, StreamFinal, StreamingCompletionResponse, StreamingResult,
-};
+use rig_core::streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -523,10 +521,10 @@ pub(crate) async fn open_stream_request(
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult = Box::pin(CandleReceiverStream {
+            let stream = CandleReceiverStream {
                 receiver,
                 cancellation,
-            });
+            };
             cancel_on_drop.disarm();
             Ok(StreamingCompletionResponse::stream(stream))
         }
@@ -541,7 +539,7 @@ pub(crate) async fn open_stream_request(
             let final_response = StreamFinal::new("candle", response.token_usage())
                 .with_finish_reason(response.finish_reason.normalized());
             events.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
-            let stream: StreamingResult = Box::pin(futures::stream::iter(events));
+            let stream = futures::stream::iter(events);
             Ok(StreamingCompletionResponse::stream(stream))
         }
     }

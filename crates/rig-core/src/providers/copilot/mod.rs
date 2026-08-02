@@ -645,7 +645,7 @@ pub(crate) fn stream_copilot_responses_from_event_source(
         span,
     );
 
-    StreamingCompletionResponse::stream(Box::pin(stream))
+    StreamingCompletionResponse::stream(stream)
 }
 
 #[derive(Deserialize)]
