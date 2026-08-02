@@ -397,7 +397,10 @@ impl ToolEventRecorder {
                 calls
                     .lock()
                     .expect("calls lock should not be poisoned")
-                    .push((call.function.name, call.function.arguments.to_string()));
+                    .push((
+                        call.function.name.clone(),
+                        call.function.arguments.to_string(),
+                    ));
                 HookDecision::ToolCall(ToolCallAction::run())
             }
             HookEvent::ToolResult {
@@ -407,7 +410,7 @@ impl ToolEventRecorder {
                     .lock()
                     .expect("results lock should not be poisoned")
                     .push((
-                        call.function.name,
+                        call.function.name.clone(),
                         call.function.arguments.to_string(),
                         presentation.render(),
                     ));

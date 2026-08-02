@@ -8,6 +8,10 @@
 //! Backpressure is structural (stop calling `next_item`), and stopping is
 //! owning: drop or stop polling and the [`AgentRun`] state remains intact
 //! and serializable.
+//!
+//! [`AgentStream::drive`] consumes those decision items through hooks and a
+//! tool executor, returning an [`AgentRunStream`] of observation-only
+//! [`AgentRunItem`] values.
 
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -138,20 +142,57 @@ pub enum AgentStreamItem {
     Final(PromptResponse),
 }
 
+/// One observation emitted by a fully driven [`AgentRunStream`].
+///
+/// Unlike [`AgentStreamItem`], this enum contains no host decision requests:
+/// hooks have already been dispatched and tool calls have already been
+/// executed by [`AgentStream::drive`]. The deliberately exhaustive split
+/// makes a newly added host decision fail to compile in the driver instead of
+/// leaking into a driven stream.
+///
+/// Every payload is owned and serializable so observations can be persisted,
+/// forwarded over a wire, or replayed without borrowing session state.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum AgentRunItem {
+    /// A streamed assistant item: text/reasoning/tool-call deltas, complete
+    /// tool calls, and the provider's terminal [`StreamFinal`].
+    Assistant(StreamedAssistantContent),
+    /// Exactly one per provider call: the recorded completion-call entry.
+    CompletionCall(crate::agent::CompletionCall),
+    /// A turn was rolled back; its earlier deltas were provisional.
+    ModelTurnRetried {
+        /// One-based index of the retried model call.
+        turn: usize,
+    },
+    /// A tool call's result was committed to history.
+    ToolExecutionCommitted {
+        /// The executed tool call.
+        tool_call: ToolCall,
+        /// Rig correlation id for its stream items.
+        internal_call_id: String,
+    },
+    /// A committed tool result, in call order.
+    User(StreamedUserContent),
+    /// The final response; the stream ends after this item.
+    Final(PromptResponse),
+}
+
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type ErasedAgentRunStream =
-    Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + Send + 'static>>;
+    Pin<Box<dyn Stream<Item = Result<AgentRunItem, PromptError>> + Send + 'static>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 type ErasedAgentRunStream =
-    Pin<Box<dyn Stream<Item = Result<AgentStreamItem, PromptError>> + 'static>>;
+    Pin<Box<dyn Stream<Item = Result<AgentRunItem, PromptError>> + 'static>>;
 
 /// A fully driven agent run exposed as a stream of owned observation events.
 ///
 /// Unlike the host-driven [`AgentStream`], this stream dispatches hooks and
-/// executes tools for the caller. It is already pinned internally, so callers
-/// can use [`Self::next`] without importing [`StreamExt`], pinning it, or naming
-/// an `Unpin` bound. It remains a [`Stream`] for combinator interoperability.
+/// executes tools for the caller and yields [`AgentRunItem`] rather than the
+/// host protocol's [`AgentStreamItem`]. It is already pinned internally, so
+/// callers can use [`Self::next`] without importing [`StreamExt`], pinning it,
+/// or naming an `Unpin` bound. It remains a [`Stream`] for combinator
+/// interoperability.
 ///
 /// Call [`AgentRunStream::into_final_response`] when intermediate events are
 /// not needed and only the committed terminal response matters.
@@ -163,7 +204,7 @@ pub struct AgentRunStream {
 impl AgentRunStream {
     fn new<S>(stream: S) -> Self
     where
-        S: Stream<Item = Result<AgentStreamItem, PromptError>> + WasmCompatSend + 'static,
+        S: Stream<Item = Result<AgentRunItem, PromptError>> + WasmCompatSend + 'static,
     {
         Self {
             inner: Box::pin(stream),
@@ -176,7 +217,7 @@ impl AgentRunStream {
     /// The suspended generator remains stored in this handle when the
     /// temporary future returned here is dropped, so an in-flight hook or tool
     /// operation resumes on the next poll instead of being reconstructed.
-    pub async fn next(&mut self) -> Option<Result<AgentStreamItem, PromptError>> {
+    pub async fn next(&mut self) -> Option<Result<AgentRunItem, PromptError>> {
         StreamExt::next(&mut self.inner).await
     }
 
@@ -185,11 +226,11 @@ impl AgentRunStream {
     /// Intermediate assistant, tool, retry, and completion-call observations
     /// are discarded. Hooks are still dispatched and tools are still executed
     /// by the fully driven run. A yielded [`PromptError`] is returned
-    /// immediately; a stream that ends without [`AgentStreamItem::Final`]
+    /// immediately; a stream that ends without [`AgentRunItem::Final`]
     /// returns [`PromptError::StreamEndedWithoutFinalResponse`].
     pub async fn into_final_response(mut self) -> Result<PromptResponse, PromptError> {
         while let Some(item) = self.next().await {
-            if let AgentStreamItem::Final(response) = item? {
+            if let AgentRunItem::Final(response) = item? {
                 return Ok(response);
             }
         }
@@ -199,7 +240,7 @@ impl AgentRunStream {
 }
 
 impl Stream for AgentRunStream {
-    type Item = Result<AgentStreamItem, PromptError>;
+    type Item = Result<AgentRunItem, PromptError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().inner.as_mut().poll_next(cx)
@@ -224,7 +265,7 @@ fn _assert_agent_run_stream_accepts_worker_local_generator() {
     let stream = futures::stream::once(async move {
         std::future::pending::<()>().await;
         drop(worker_local);
-        Ok(AgentStreamItem::Final(PromptResponse::empty()))
+        Ok(AgentRunItem::Final(PromptResponse::empty()))
     });
 
     let _stream = AgentRunStream::new(stream);
@@ -398,7 +439,7 @@ impl AgentStream {
 
     /// Set the input chat history preceding the prompt.
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.run = std::mem::replace(&mut self.run, AgentRun::new("")).with_history(history);
+        self.run.set_history(history);
         self
     }
 
@@ -685,14 +726,11 @@ impl AgentStream {
         match active.stream.next().instrument(chat_span.clone()).await {
             Some(Ok(item)) => {
                 if active.provider_final_seen {
-                    // Malformed provider stream: visible assistant content
-                    // after the terminal record. Rejected exactly as the
-                    // classic streaming driver rejected it.
+                    // Any provider item after the terminal record violates the
+                    // stream protocol, including metadata-only items.
                     return Err(PromptError::CompletionError(
                         rig_core::completion::CompletionError::ResponseError(
-                            "provider stream emitted visible assistant content after its final \
-                             response"
-                                .to_string(),
+                            "provider stream emitted an item after its final response".to_string(),
                         ),
                     ));
                 }
@@ -1538,9 +1576,9 @@ impl AgentStream {
     ///
     /// The returned stream yields exactly what the deleted classic streaming
     /// surface yielded — assistant deltas and complete tool calls, per-call
-    /// [`AgentStreamItem::CompletionCall`] records, tool execution/result
-    /// items, [`AgentStreamItem::ModelTurnRetried`], and the terminal
-    /// [`AgentStreamItem::Final`]. Policy-gated decision items are consumed by
+    /// [`AgentRunItem::CompletionCall`] records, tool execution/result items,
+    /// [`AgentRunItem::ModelTurnRetried`], and the terminal
+    /// [`AgentRunItem::Final`]. Policy-gated decision items are consumed by
     /// the hook dispatch rather than surfaced, so a consumer sees a pure
     /// observation stream.
     ///
@@ -1757,14 +1795,34 @@ impl AgentStream {
                             let observation = hooks.dispatch_stream_finish(final_record).await;
                             if let crate::agent::ObservationAction::Stop(reason) = observation {
                                 let error = self.run_state().cancel_error(reason);
-                                yield Ok(AgentStreamItem::Assistant(content));
+                                yield Ok(AgentRunItem::Assistant(content));
                                 yield Err(error);
                                 break;
                             }
                         }
-                        yield Ok(AgentStreamItem::Assistant(content));
+                        yield Ok(AgentRunItem::Assistant(content));
                     }
-                    other => yield Ok(other),
+                    AgentStreamItem::CompletionCall(call) => {
+                        yield Ok(AgentRunItem::CompletionCall(call));
+                    }
+                    AgentStreamItem::ModelTurnRetried { turn } => {
+                        yield Ok(AgentRunItem::ModelTurnRetried { turn });
+                    }
+                    AgentStreamItem::ToolExecutionCommitted {
+                        tool_call,
+                        internal_call_id,
+                    } => {
+                        yield Ok(AgentRunItem::ToolExecutionCommitted {
+                            tool_call,
+                            internal_call_id,
+                        });
+                    }
+                    AgentStreamItem::User(content) => {
+                        yield Ok(AgentRunItem::User(content));
+                    }
+                    AgentStreamItem::Final(response) => {
+                        yield Ok(AgentRunItem::Final(response));
+                    }
                 }
             }
         })
@@ -1785,9 +1843,109 @@ mod tests {
         )
     }
 
+    fn host_item_kind(item: &AgentStreamItem) -> &'static str {
+        match item {
+            AgentStreamItem::Assistant(_) => "assistant",
+            AgentStreamItem::CompletionCall(_) => "completion_call",
+            AgentStreamItem::BeforeModelCall { .. } => "before_model_call",
+            AgentStreamItem::TurnFinished { .. } => "turn_finished",
+            AgentStreamItem::ModelTurnRetried { .. } => "model_turn_retried",
+            AgentStreamItem::InvalidToolCall(_) => "invalid_tool_call",
+            AgentStreamItem::ToolCallPending { .. } => "tool_call_pending",
+            AgentStreamItem::ToolCallsReady(_) => "tool_calls_ready",
+            AgentStreamItem::ToolResultReady { .. } => "tool_result_ready",
+            AgentStreamItem::ToolExecutionCommitted { .. } => "tool_execution_committed",
+            AgentStreamItem::User(_) => "user",
+            AgentStreamItem::Final(_) => "final",
+        }
+    }
+
+    fn run_item_kind(item: &AgentRunItem) -> &'static str {
+        match item {
+            AgentRunItem::Assistant(_) => "assistant",
+            AgentRunItem::CompletionCall(_) => "completion_call",
+            AgentRunItem::ModelTurnRetried { .. } => "model_turn_retried",
+            AgentRunItem::ToolExecutionCommitted { .. } => "tool_execution_committed",
+            AgentRunItem::User(_) => "user",
+            AgentRunItem::Final(_) => "final",
+        }
+    }
+
+    #[test]
+    fn host_and_driven_item_matches_are_deliberately_exhaustive() {
+        assert_eq!(
+            host_item_kind(&AgentStreamItem::ModelTurnRetried { turn: 1 }),
+            "model_turn_retried"
+        );
+        assert_eq!(
+            run_item_kind(&AgentRunItem::ModelTurnRetried { turn: 1 }),
+            "model_turn_retried"
+        );
+    }
+
+    #[test]
+    fn driven_observations_preserve_the_host_protocol_serde_shape() {
+        let assistant = StreamedAssistantContent::ToolCallDelta {
+            id: "tc_1".to_string(),
+            internal_call_id: "internal_tc_1".to_string(),
+            content: ToolCallDeltaContent::Name("add".to_string()),
+        };
+        let completion_call = crate::agent::CompletionCall::new(2, Usage::new());
+        let committed_call = tool_call("tc_1");
+        let user = StreamedUserContent::tool_result(
+            ToolResult {
+                id: "tc_1".to_string(),
+                call_id: None,
+                content: OneOrMany::one(ToolResultContent::text("3")),
+            },
+            "internal_tc_1".to_string(),
+        );
+        let response = PromptResponse::empty();
+
+        let pairs = [
+            (
+                AgentStreamItem::Assistant(assistant.clone()),
+                AgentRunItem::Assistant(assistant),
+            ),
+            (
+                AgentStreamItem::CompletionCall(completion_call),
+                AgentRunItem::CompletionCall(completion_call),
+            ),
+            (
+                AgentStreamItem::ModelTurnRetried { turn: 2 },
+                AgentRunItem::ModelTurnRetried { turn: 2 },
+            ),
+            (
+                AgentStreamItem::ToolExecutionCommitted {
+                    tool_call: committed_call.clone(),
+                    internal_call_id: "internal_tc_1".to_string(),
+                },
+                AgentRunItem::ToolExecutionCommitted {
+                    tool_call: committed_call,
+                    internal_call_id: "internal_tc_1".to_string(),
+                },
+            ),
+            (
+                AgentStreamItem::User(user.clone()),
+                AgentRunItem::User(user),
+            ),
+            (
+                AgentStreamItem::Final(response.clone()),
+                AgentRunItem::Final(response),
+            ),
+        ];
+
+        for (host, driven) in pairs {
+            assert_eq!(
+                serde_json::to_value(host).expect("serialize host item"),
+                serde_json::to_value(driven).expect("serialize driven item")
+            );
+        }
+    }
+
     fn assert_agent_run_stream_shape<T>()
     where
-        T: Stream<Item = Result<AgentStreamItem, PromptError>> + Unpin,
+        T: Stream<Item = Result<AgentRunItem, PromptError>> + Unpin,
     {
     }
 
@@ -1803,17 +1961,17 @@ mod tests {
     }
 
     mod inherent_next_without_stream_ext {
-        use crate::stream::{AgentRunStream, AgentStreamItem};
+        use crate::stream::{AgentRunItem, AgentRunStream};
 
         #[tokio::test]
         async fn polls_without_the_extension_trait_or_caller_pinning() {
             let mut stream = AgentRunStream::new(futures::stream::iter([Ok(
-                AgentStreamItem::ModelTurnRetried { turn: 2 },
+                AgentRunItem::ModelTurnRetried { turn: 2 },
             )]));
 
             assert!(matches!(
                 stream.next().await,
-                Some(Ok(AgentStreamItem::ModelTurnRetried { turn: 2 }))
+                Some(Ok(AgentRunItem::ModelTurnRetried { turn: 2 }))
             ));
             assert!(stream.next().await.is_none());
         }
@@ -1828,8 +1986,8 @@ mod tests {
             .with_output_tool_calls(2);
         let expected_json = serde_json::to_value(expected.clone()).expect("serialize response");
         let stream = AgentRunStream::new(futures::stream::iter([
-            Ok(AgentStreamItem::ModelTurnRetried { turn: 1 }),
-            Ok(AgentStreamItem::Final(expected)),
+            Ok(AgentRunItem::ModelTurnRetried { turn: 1 }),
+            Ok(AgentRunItem::Final(expected)),
         ]));
 
         let response = stream.into_final_response().await.expect("final response");
@@ -2194,7 +2352,7 @@ mod migrated_streaming_tests {
 
         loop {
             match stream.next().await {
-                Some(Ok(AgentStreamItem::Final(response))) => {
+                Some(Ok(AgentRunItem::Final(response))) => {
                     assert_eq!(response.output, "done");
                     break;
                 }
@@ -2222,7 +2380,7 @@ mod migrated_streaming_tests {
                     break;
                 }
                 Some(Err(error)) => panic!("unexpected terminal error: {error}"),
-                Some(Ok(AgentStreamItem::Final(_))) => {
+                Some(Ok(AgentRunItem::Final(_))) => {
                     panic!("driven run completed instead of yielding its hook error")
                 }
                 Some(Ok(_)) => {}
@@ -2274,7 +2432,7 @@ mod migrated_streaming_tests {
 
         let mut finals = 0;
         while let Some(item) = stream.next().await {
-            if matches!(item.expect("driven item"), AgentStreamItem::Final(_)) {
+            if matches!(item.expect("driven item"), AgentRunItem::Final(_)) {
                 finals += 1;
             }
         }
@@ -2440,14 +2598,10 @@ mod migrated_streaming_tests {
         assert_eq!(driver.usage().total_tokens, 5);
     }
 
-    /// A provider stream that emits visible assistant content *after* its
-    /// terminal record is malformed; the classic streaming driver rejected it
-    /// rather than silently folding the stray content in, and so does
-    /// [`AgentStream`]. (Restores the coverage of the deleted
-    /// `visible_assistant_items_after_final_are_rejected` /
-    /// `visible_item_after_non_emittable_final_is_rejected` pair.)
+    /// Any provider item after its terminal record is malformed and rejected
+    /// rather than being folded into the completed turn.
     #[tokio::test]
-    async fn visible_assistant_content_after_the_provider_final_is_rejected() {
+    async fn provider_item_after_the_final_is_rejected() {
         let agent = AgentBuilder::new(ProviderConfig::Mock(script(vec![vec![
             text_item("before the final"),
             final_tokens(7),
@@ -2467,7 +2621,7 @@ mod migrated_streaming_tests {
         assert!(
             error
                 .to_string()
-                .contains("visible assistant content after its final response"),
+                .contains("provider stream emitted an item after its final response"),
             "got {error}"
         );
     }
@@ -2493,7 +2647,7 @@ mod migrated_streaming_tests {
     /// Everything one driven stream produced, in order.
     #[derive(Default)]
     struct Collected {
-        items: Vec<AgentStreamItem>,
+        items: Vec<AgentRunItem>,
         error: Option<PromptError>,
     }
 
@@ -2502,7 +2656,7 @@ mod migrated_streaming_tests {
             self.items
                 .iter()
                 .filter_map(|item| match item {
-                    AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
+                    AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
                         tool_call,
                         ..
                     }) => Some(tool_call.clone()),
@@ -2515,7 +2669,7 @@ mod migrated_streaming_tests {
             self.items
                 .iter()
                 .filter_map(|item| match item {
-                    AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta {
+                    AgentRunItem::Assistant(StreamedAssistantContent::ToolCallDelta {
                         id,
                         internal_call_id,
                         content,
@@ -2529,7 +2683,7 @@ mod migrated_streaming_tests {
             self.items
                 .iter()
                 .filter_map(|item| match item {
-                    AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
+                    AgentRunItem::Assistant(StreamedAssistantContent::Text(text)) => {
                         Some(text.text.as_str())
                     }
                     _ => None,
@@ -2541,7 +2695,7 @@ mod migrated_streaming_tests {
             self.items
                 .iter()
                 .filter_map(|item| match item {
-                    AgentStreamItem::User(StreamedUserContent::ToolResult {
+                    AgentRunItem::User(StreamedUserContent::ToolResult {
                         tool_result,
                         internal_call_id,
                     }) => Some((tool_result.clone(), internal_call_id.clone())),
@@ -2554,7 +2708,7 @@ mod migrated_streaming_tests {
             self.items
                 .iter()
                 .filter_map(|item| match item {
-                    AgentStreamItem::CompletionCall(call) => Some(*call),
+                    AgentRunItem::CompletionCall(call) => Some(*call),
                     _ => None,
                 })
                 .collect()
@@ -2564,14 +2718,14 @@ mod migrated_streaming_tests {
             self.items.iter().any(|item| {
                 matches!(
                     item,
-                    AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))
+                    AgentRunItem::Assistant(StreamedAssistantContent::Final(_))
                 )
             })
         }
 
         fn final_response(&self) -> Option<&PromptResponse> {
             self.items.iter().find_map(|item| match item {
-                AgentStreamItem::Final(response) => Some(response),
+                AgentRunItem::Final(response) => Some(response),
                 _ => None,
             })
         }
@@ -2587,7 +2741,7 @@ mod migrated_streaming_tests {
     }
 
     async fn collect(
-        stream: impl futures::Stream<Item = Result<AgentStreamItem, PromptError>>,
+        stream: impl futures::Stream<Item = Result<AgentRunItem, PromptError>>,
     ) -> Collected {
         futures::pin_mut!(stream);
         let mut collected = Collected::default();
@@ -2705,7 +2859,7 @@ mod migrated_streaming_tests {
                 let HookEvent::InvalidToolCall(context) = event else {
                     return HookDecision::Continue;
                 };
-                contexts.lock().expect("mutex").push(context);
+                contexts.lock().expect("mutex").push((*context).clone());
                 HookDecision::InvalidToolCall(InvalidToolCallAction::fail())
             })
         }
@@ -2739,10 +2893,10 @@ mod migrated_streaming_tests {
                     return HookDecision::Continue;
                 };
                 deltas.lock().expect("mutex").push((
-                    tool_call_id,
-                    internal_call_id,
-                    tool_name,
-                    delta,
+                    tool_call_id.to_string(),
+                    internal_call_id.to_string(),
+                    tool_name.map(|name| name.to_string()),
+                    delta.to_string(),
                 ));
                 HookDecision::Observation(action.clone())
             })
@@ -2767,7 +2921,10 @@ mod migrated_streaming_tests {
                 else {
                     return HookDecision::Continue;
                 };
-                deltas.lock().expect("mutex").push((delta, aggregated));
+                deltas
+                    .lock()
+                    .expect("mutex")
+                    .push((delta.to_string(), aggregated.to_string()));
                 HookDecision::Observation(ObservationAction::continue_run())
             })
             .observing_deltas()
@@ -3140,13 +3297,13 @@ mod migrated_streaming_tests {
         assert_eq!(legacy, unreported);
 
         // The same record travels as a stream item.
-        let item = AgentStreamItem::CompletionCall(call);
-        let restored: AgentStreamItem =
+        let item = AgentRunItem::CompletionCall(call);
+        let restored: AgentRunItem =
             serde_json::from_str(&serde_json::to_string(&item).expect("serialize item"))
                 .expect("deserialize item");
         assert!(matches!(
             restored,
-            AgentStreamItem::CompletionCall(restored) if restored == call
+            AgentRunItem::CompletionCall(restored) if restored == call
         ));
     }
 
@@ -3157,7 +3314,7 @@ mod migrated_streaming_tests {
             CompletionCall::new(0, Usage::new()),
             CompletionCall::new(1, split_usage(3, 4)),
         ];
-        let item = AgentStreamItem::Final(response);
+        let item = AgentRunItem::Final(response);
         let value = serde_json::to_value(&item).expect("serialize final response");
         let final_value = value.get("Final").expect("final payload");
 
@@ -3708,7 +3865,7 @@ mod migrated_streaming_tests {
         assert_eq!(announced[0].function.arguments, original_args);
 
         let committed = collected.items.iter().find_map(|item| match item {
-            AgentStreamItem::ToolExecutionCommitted { tool_call, .. } => Some(tool_call),
+            AgentRunItem::ToolExecutionCommitted { tool_call, .. } => Some(tool_call),
             _ => None,
         });
         let committed = committed.expect("effective execution commit");

@@ -430,8 +430,13 @@ impl AgentRun {
 
     /// Set the input chat history preceding the prompt.
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.chat_history = Some(history);
+        self.set_history(history);
         self
+    }
+
+    /// Replace the input chat history preceding the prompt.
+    pub fn set_history(&mut self, history: Vec<Message>) {
+        self.chat_history = Some(history);
     }
 
     /// Set the total model-call budget, including the initial call and every

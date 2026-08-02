@@ -223,7 +223,7 @@ impl EventTap {
                 self.call_ids
                     .lock()
                     .expect("call_ids")
-                    .push(internal_call_id);
+                    .push(internal_call_id.to_string());
                 self.tally.bump();
                 HookDecision::ToolCall(ToolCallAction::run())
             }
@@ -234,7 +234,7 @@ impl EventTap {
                 self.result_ids
                     .lock()
                     .expect("result_ids")
-                    .push(internal_call_id);
+                    .push(internal_call_id.to_string());
                 HookDecision::ToolResult(ToolResultAction::keep())
             }
             HookEvent::TextDelta { turn, .. } => {
@@ -332,7 +332,7 @@ pub(crate) fn set_arg(
     let key = key.into();
     HookEntry::sync("set-arg", move |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == tool => {
-            let mut parsed = call.function.arguments;
+            let mut parsed = call.function.arguments.clone();
             if !parsed.is_object() {
                 parsed = json!({});
             }

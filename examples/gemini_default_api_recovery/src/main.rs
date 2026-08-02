@@ -12,7 +12,7 @@ use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::stream::{AgentRunStream, AgentStreamItem};
+use rig::stream::{AgentRunItem, AgentRunStream};
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
@@ -235,26 +235,23 @@ async fn consume_workspace_like_stream(
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text.text);
             }
-            AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(reasoning)) => {
                 observation.events.push("reasoning");
                 observation
                     .reasoning_text
                     .push_str(&reasoning.display_text());
             }
-            AgentStreamItem::Assistant(StreamedAssistantContent::ReasoningDelta {
-                reasoning,
-                ..
+            AgentRunItem::Assistant(StreamedAssistantContent::ReasoningDelta {
+                reasoning, ..
             }) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
-            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
-                tool_call, ..
-            }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
                 observation.events.push("tool_call");
                 observation.tool_calls.push(tool_call.function.name.clone());
                 let execution: JavaScriptProgram =
@@ -262,11 +259,11 @@ async fn consume_workspace_like_stream(
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. }) => {
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
-            AgentStreamItem::User(StreamedUserContent::ToolResult { tool_result, .. }) => {
+            AgentRunItem::User(StreamedUserContent::ToolResult { tool_result, .. }) => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
                     ToolResultContent::Json { value } => value.clone(),
@@ -285,14 +282,14 @@ async fn consume_workspace_like_stream(
                     serde_json::from_value(value).map_err(|error| error.to_string())?;
                 observation.executor_results.push(result);
             }
-            AgentStreamItem::CompletionCall(completion_call) => {
+            AgentRunItem::CompletionCall(completion_call) => {
                 observation.events.push("completion_call");
                 observation.completion_calls.push(format!(
                     "call_index={}, usage={:?}",
                     completion_call.call_index, completion_call.usage
                 ));
             }
-            AgentStreamItem::Final(final_response) => {
+            AgentRunItem::Final(final_response) => {
                 observation.events.push("final_response");
                 observation.final_response = Some(final_response);
                 return Ok(observation);

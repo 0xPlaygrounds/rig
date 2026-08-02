@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::agent::{PromptResponse, Text};
 use rig::prelude::*;
-use rig::stream::{AgentRunStream, AgentStreamItem};
+use rig::stream::{AgentRunItem, AgentRunStream};
 use rig::streaming::StreamedAssistantContent;
 
 use rig::{providers, tool::Tool};
@@ -167,18 +167,16 @@ async fn drain_to_stdout(mut stream: AgentRunStream) -> anyhow::Result<PromptRes
     print!("Response: ");
     while let Some(item) = stream.next().await {
         match item {
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
-                text, ..
-            }))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(Text { text, .. }))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
                 print!("{}", reasoning.display_text());
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(AgentStreamItem::Final(response)) => final_response = response,
-            Ok(AgentStreamItem::ModelTurnRetried { turn }) => {
+            Ok(AgentRunItem::Final(response)) => final_response = response,
+            Ok(AgentRunItem::ModelTurnRetried { turn }) => {
                 print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

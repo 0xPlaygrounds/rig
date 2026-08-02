@@ -520,7 +520,7 @@ fn rewrite_argument(key: impl Into<String>, value: serde_json::Value) -> HookEnt
         if call.function.name != CountingAdd::NAME {
             return HookDecision::ToolCall(ToolCallAction::run());
         }
-        let mut arguments = call.function.arguments;
+        let mut arguments = call.function.arguments.clone();
         let Some(object) = arguments.as_object_mut() else {
             return HookDecision::ToolCall(ToolCallAction::run());
         };
@@ -534,7 +534,7 @@ fn rewrite_argument(key: impl Into<String>, value: serde_json::Value) -> HookEnt
 fn observe_arguments(seen: Arc<Mutex<Vec<serde_json::Value>>>) -> HookEntry {
     hook_entry("observe-arguments", move |event| {
         if let HookEvent::ToolCall { call, .. } = event {
-            lock_recover(&seen).push(call.function.arguments);
+            lock_recover(&seen).push(call.function.arguments.clone());
         }
         HookDecision::ToolCall(ToolCallAction::run())
     })
@@ -1769,16 +1769,16 @@ where
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item? {
-            AgentStreamItem::Assistant(crate::streaming::StreamedAssistantContent::ToolCall {
+            AgentRunItem::Assistant(crate::streaming::StreamedAssistantContent::ToolCall {
                 internal_call_id,
                 ..
             }) => streamed_call_ids.push(internal_call_id),
-            AgentStreamItem::User(crate::streaming::StreamedUserContent::ToolResult {
+            AgentRunItem::User(crate::streaming::StreamedUserContent::ToolResult {
                 internal_call_id,
                 ..
             }) => streamed_result_ids.push(internal_call_id),
-            AgentStreamItem::CompletionCall(call) => completion_usage += call.usage,
-            AgentStreamItem::Final(response) => {
+            AgentRunItem::CompletionCall(call) => completion_usage += call.usage,
+            AgentRunItem::Final(response) => {
                 final_count += 1;
                 final_response = Some(response);
             }
@@ -2005,7 +2005,7 @@ where
     let mut final_response = None;
     let mut final_count = 0_usize;
     while let Some(item) = stream.next().await {
-        if let AgentStreamItem::Final(response) = item? {
+        if let AgentRunItem::Final(response) = item? {
             final_count += 1;
             final_response = Some(response);
         }
@@ -2055,7 +2055,7 @@ use crate::agent::Agent as SessionAgent;
 use crate::agent::AgentConfig;
 use crate::executor::ToolExecutor;
 use crate::hooks::{HookDecision, HookEntry, HookEvent, Hooks};
-use crate::stream::{AgentStream, AgentStreamItem};
+use crate::stream::{AgentRunItem, AgentStream, AgentStreamItem};
 use crate::tool::PortableDynamicTool;
 
 /// Plain-data configuration overrides a provider suite may apply to a
@@ -2702,7 +2702,7 @@ pub async fn hook_rewrites_and_request_patch_session(
             if call.function.name != CountingAdd::NAME {
                 return HookDecision::ToolCall(ToolCallAction::run());
             }
-            let mut arguments = call.function.arguments;
+            let mut arguments = call.function.arguments.clone();
             let Some(object) = arguments.as_object_mut() else {
                 return HookDecision::ToolCall(ToolCallAction::run());
             };
@@ -2911,7 +2911,7 @@ pub async fn invalid_tool_recovery_session(
         .with_executor(executor)
         .with_hooks(Hooks::new().with(hook_entry("capture_turn", move |event| {
             if let HookEvent::CompletionResponse { response, .. } = event {
-                *lock_recover(&capture_sink) = Some(response);
+                *lock_recover(&capture_sink) = Some((*response).clone());
             }
             HookDecision::Observation(ObservationAction::stop("captured conformance model turn"))
         })));

@@ -344,7 +344,10 @@ impl SessionRunner {
 
     /// Drive the agent loop, streaming assistant content, tool activity, and
     /// a final response, with this request's hooks dispatched and its
-    /// executor answering tool batches.
+    /// executor answering tool batches. Its item type is
+    /// [`AgentRunItem`](crate::stream::AgentRunItem), which contains only
+    /// observations; host decision requests remain exclusive to
+    /// [`AgentStreamItem`](crate::stream::AgentStreamItem).
     ///
     /// The concrete [`AgentRunStream`] is pinned internally, so callers can
     /// use its inherent `.next().await` without importing `StreamExt` or

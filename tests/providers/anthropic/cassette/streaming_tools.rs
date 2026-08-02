@@ -4,7 +4,7 @@ use rig::completion::PromptError;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
@@ -258,24 +258,23 @@ async fn collect_concurrent_tool_observation(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
+                tool_call, ..
             })) => {
                 tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
             }
-            Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => {
+            Ok(AgentRunItem::ToolExecutionCommitted { .. }) => {
                 observation.events.push("tool_execution_committed");
             }
-            Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { tool_result, .. })) => {
+            Ok(AgentRunItem::User(StreamedUserContent::ToolResult { tool_result, .. })) => {
                 observation
                     .streamed_tool_results
                     .push(tool_name_for_result(&tool_names_by_id, &tool_result.id));
                 observation.events.push("tool_result");
             }
-            Ok(AgentStreamItem::Final(response)) => {
+            Ok(AgentRunItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 if let Some(history) = response.messages() {
@@ -286,25 +285,25 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(_))) => {
                 observation.events.push("text");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. })) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(_))) => {
                 observation.events.push("reasoning");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::ReasoningDelta { .. })) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ReasoningDelta { .. })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Final(_))) => {
                 observation.events.push("stream_final");
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Unknown(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Unknown(_))) => {
                 observation.events.push("unknown");
             }
-            Ok(AgentStreamItem::CompletionCall(_)) => {}
+            Ok(AgentRunItem::CompletionCall(_)) => {}
             Ok(_) => {}
             Err(error) => {
                 observation.errors.push(streaming_error_to_string(error));

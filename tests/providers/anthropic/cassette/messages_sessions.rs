@@ -13,7 +13,7 @@ use rig::completion::{CompletionRequest, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
@@ -393,8 +393,8 @@ async fn usage_accumulates_across_streaming_multi_turn() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    AgentStreamItem::User(_) => saw_tool_result = true,
-                    AgentStreamItem::Final(response) => {
+                    AgentRunItem::User(_) => saw_tool_result = true,
+                    AgentRunItem::Final(response) => {
                         final_usage = Some(response.usage());
                     }
                     _ => {}

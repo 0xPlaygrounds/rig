@@ -23,7 +23,7 @@ use anyhow::{Result, anyhow};
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -108,27 +108,25 @@ async fn main() -> Result<()> {
 
     while let Some(item) = stream.next().await {
         match item? {
-            AgentStreamItem::Assistant(StreamedAssistantContent::Text(text)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 print!("{}", text.text);
                 io::stdout().flush()?;
                 printed_streamed_text = true;
             }
             // The tool call the *model emitted* (reported when the turn commits,
             // whether or not rig goes on to execute it).
-            AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
-                tool_call, ..
-            }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
             // Rig executed and atomically committed this tool call after its
             // batch settled. Live start/result observation belongs in hooks.
-            AgentStreamItem::ToolExecutionCommitted { tool_call, .. } => {
+            AgentRunItem::ToolExecutionCommitted { tool_call, .. } => {
                 println!("rig committed tool execution: {}", tool_call.function.name);
             }
-            AgentStreamItem::User(_) => {
+            AgentRunItem::User(_) => {
                 println!("tool result sent back to model");
             }
-            AgentStreamItem::CompletionCall(completion_call) => {
+            AgentRunItem::CompletionCall(completion_call) => {
                 if printed_streamed_text {
                     println!();
                     printed_streamed_text = false;
@@ -147,7 +145,7 @@ async fn main() -> Result<()> {
                     );
                 }
             }
-            AgentStreamItem::Final(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response);
             }
             _ => {}

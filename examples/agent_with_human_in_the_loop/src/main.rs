@@ -156,8 +156,8 @@ fn approval_hook() -> HookEntry {
         let HookEvent::ToolCall { call, .. } = event else {
             return HookDecision::Continue;
         };
-        let tool_name = call.function.name;
-        let args = call.function.arguments;
+        let tool_name = call.function.name.clone();
+        let args = call.function.arguments.clone();
 
         println!("\n⏸  The agent wants to run a tool — your approval is required:");
         println!("     tool: {tool_name}");

@@ -4,7 +4,7 @@
 use rig::{
     completion::{AssistantContent, PromptError, ToolDefinition},
     embeddings::Embedding,
-    stream::{AgentRunStream, AgentStreamItem},
+    stream::{AgentRunItem, AgentRunStream},
     streaming::{CompletionStream, StreamFinal, StreamedAssistantContent, StreamedUserContent},
     tool::PortableTool,
     tool::Tool,
@@ -466,7 +466,7 @@ pub(crate) async fn collect_stream_final_response(
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
-        if let AgentStreamItem::Final(response) = item? {
+        if let AgentRunItem::Final(response) = item? {
             final_response = Some(response.output().to_owned());
         }
     }
@@ -482,10 +482,10 @@ pub(crate) async fn collect_stream_final_response_and_provider_final(
 
     while let Some(item) = stream.next().await {
         match item? {
-            AgentStreamItem::Assistant(StreamedAssistantContent::Final(final_)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Final(final_)) => {
                 provider_final = Some(final_);
             }
-            AgentStreamItem::Final(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response.output().to_owned());
             }
             _ => {}
@@ -590,7 +590,7 @@ pub(crate) async fn collect_stream_observation(stream: &mut AgentRunStream) -> S
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(AgentStreamItem::Assistant(content)) => match content {
+            Ok(AgentRunItem::Assistant(content)) => match content {
                 StreamedAssistantContent::Text(text) => {
                     observation.all_streamed_text.push_str(&text.text);
                     observation.final_turn_text.push_str(&text.text);
@@ -621,12 +621,12 @@ pub(crate) async fn collect_stream_observation(stream: &mut AgentRunStream) -> S
                     observation.events.push("unknown");
                 }
             },
-            Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { .. })) => {
+            Ok(AgentRunItem::User(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
                 observation.events.push("tool_result");
             }
-            Ok(AgentStreamItem::Final(response)) => {
+            Ok(AgentRunItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 observation.events.push("final_response");

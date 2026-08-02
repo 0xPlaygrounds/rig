@@ -622,9 +622,9 @@ impl Agent {
     /// The fully driven streaming surface: this agent's hooks are dispatched
     /// and its executor answers tool batches, so the returned stream is a
     /// pure observation stream of assistant deltas, tool activity, per-call
-    /// records, and the terminal [`AgentStreamItem::Final`].
+    /// records, and the terminal [`AgentRunItem::Final`].
     ///
-    /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
+    /// [`AgentRunItem::Final`]: crate::stream::AgentRunItem::Final
     ///
     /// The concrete [`AgentRunStream`] is pinned internally, so callers can
     /// use its inherent `.next().await` without importing `StreamExt` or

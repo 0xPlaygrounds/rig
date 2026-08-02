@@ -116,8 +116,8 @@ fn approval_policy(auto_approve: HashSet<String>, max_auto_transfer: u64) -> Hoo
             return HookDecision::Continue;
         };
 
-        let tool_name = call.function.name;
-        let action = if auto_approve.contains(tool_name.as_str()) {
+        let tool_name = call.function.name.as_str();
+        let action = if auto_approve.contains(tool_name) {
             println!("[policy] auto-approve `{tool_name}` (safe)");
             ToolCallAction::run()
         } else if tool_name == TransferFunds::NAME {

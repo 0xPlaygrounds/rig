@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::providers::gemini;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -39,7 +39,7 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 .stream_run();
             let mut response = None;
             while let Some(item) = stream.next().await {
-                if let AgentStreamItem::Final(final_response) =
+                if let AgentRunItem::Final(final_response) =
                     item.expect("runner-driven multi-turn streaming should succeed")
                 {
                     response = Some(final_response.output);

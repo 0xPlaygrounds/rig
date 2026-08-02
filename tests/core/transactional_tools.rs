@@ -39,8 +39,8 @@ impl InvocationProbe {
                     call,
                     internal_call_id,
                 } => probe.calls.lock().expect("calls").push(Observation {
-                    internal_call_id,
-                    args: call.function.arguments,
+                    internal_call_id: internal_call_id.to_string(),
+                    args: call.function.arguments.clone(),
                     raw_result: None,
                 }),
                 HookEvent::ToolResult {
@@ -49,8 +49,8 @@ impl InvocationProbe {
                     result,
                     ..
                 } => probe.results.lock().expect("results").push(Observation {
-                    internal_call_id,
-                    args: call.function.arguments,
+                    internal_call_id: internal_call_id.to_string(),
+                    args: call.function.arguments.clone(),
                     raw_result: Some(result.output().render()),
                 }),
                 _ => {}
@@ -211,7 +211,7 @@ async fn duplicate_provider_ids_stay_positionally_paired_in_both_drivers() {
     futures::pin_mut!(stream);
     let mut final_output = None;
     while let Some(item) = stream.next().await {
-        if let rig::stream::AgentStreamItem::Final(response) = item.expect("streaming driver") {
+        if let rig::stream::AgentRunItem::Final(response) = item.expect("streaming driver") {
             final_output = Some(response.output);
         }
     }

@@ -21,7 +21,9 @@
 //!
 //! A callback answers with the decision variant matching the event it
 //! received; any other variant (including [`HookDecision::Continue`]) is
-//! treated as "no opinion" for that event.
+//! treated as "no opinion" for that event. A wrong-lane non-`Continue`
+//! decision emits a content-free diagnostic naming only the hook and the two
+//! protocol kinds.
 //!
 //! Constructors accept ordinary async closures. [`HookEntry`] remains a
 //! concrete record and privately erases only its callback field; callers never
@@ -65,10 +67,17 @@ use crate::completion::Usage;
 use crate::tool::{ToolOutput, ToolResult};
 
 /// Owned hook events — the superset of decision points both session drivers
-/// surface. Events carry owned data (no borrows) so callbacks can move them
-/// across await points; payloads that are not serializable (for example
-/// [`ToolResult`]) keep the enum itself non-serde by design.
-#[derive(Debug, Clone)]
+/// surface.
+///
+/// Events carry shared immutable payloads so callbacks can move them across
+/// await points without rebuilding the same history, response, result, or
+/// streamed text snapshot for every registered entry. Cloning an event is
+/// shallow. Payloads that are not serializable (for example [`ToolResult`])
+/// keep the enum itself non-serde by design.
+///
+/// The [`Debug`](std::fmt::Debug) representation intentionally reports only
+/// the event kind; use the typed fields to inspect content deliberately.
+#[derive(Clone)]
 #[non_exhaustive]
 pub enum HookEvent {
     /// A model call is about to be prepared. Answer with
@@ -77,9 +86,9 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// This turn's prompt message.
-        prompt: Message,
+        prompt: Arc<Message>,
         /// The history preceding it.
-        history: Vec<Message>,
+        history: Arc<[Message]>,
     },
     /// An accepted model turn awaits a verdict. Answer with
     /// [`HookDecision::ModelTurn`].
@@ -87,7 +96,7 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// Canonicalized assistant content parked for acceptance.
-        content: OneOrMany<AssistantContent>,
+        content: Arc<OneOrMany<AssistantContent>>,
         /// Usage reported for the turn.
         usage: Usage,
     },
@@ -97,18 +106,18 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// The prompt sent for this turn.
-        prompt: Message,
+        prompt: Arc<Message>,
         /// The provider response.
-        response: CompletionResponse,
+        response: Arc<CompletionResponse>,
     },
     /// Pre-execution decision point for one tool call. `call` carries the
     /// effective arguments, including rewrites from earlier entries. Answer
     /// with [`HookDecision::ToolCall`].
     ToolCall {
         /// The tool call about to execute.
-        call: ToolCall,
+        call: Arc<ToolCall>,
         /// Rig correlation id for this call.
-        internal_call_id: String,
+        internal_call_id: Arc<str>,
     },
     /// Post-execution decision point for one tool result. `presentation`
     /// carries the running presentation rewrite from earlier entries;
@@ -116,22 +125,22 @@ pub enum HookEvent {
     /// [`HookDecision::ToolResult`].
     ToolResult {
         /// The executed tool call (with effective arguments).
-        call: ToolCall,
+        call: Arc<ToolCall>,
         /// Rig correlation id for this call.
-        internal_call_id: String,
+        internal_call_id: Arc<str>,
         /// Immutable raw execution result.
-        result: ToolResult,
+        result: Arc<ToolResult>,
         /// Current model-visible presentation, including earlier rewrites.
-        presentation: ToolOutput,
+        presentation: Arc<ToolOutput>,
     },
     /// The model emitted an unknown or disallowed tool call. Answer with
     /// [`HookDecision::InvalidToolCall`].
-    InvalidToolCall(InvalidToolCallContext),
+    InvalidToolCall(Arc<InvalidToolCallContext>),
     /// The provider's terminal streaming record. Answer with
     /// [`HookDecision::Observation`].
     StreamFinish {
         /// The terminal stream record.
-        final_record: StreamFinal,
+        final_record: Arc<StreamFinal>,
     },
     /// A streamed turn's canonical response finished. Answer with
     /// [`HookDecision::Observation`].
@@ -139,13 +148,13 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// The prompt sent for this turn.
-        prompt: Message,
+        prompt: Arc<Message>,
         /// Canonical assistant content aggregated for this turn.
-        content: OneOrMany<AssistantContent>,
+        content: Arc<OneOrMany<AssistantContent>>,
         /// Usage reported for this turn.
         usage: Usage,
         /// Provider-assigned message id, when available.
-        message_id: Option<String>,
+        message_id: Option<Arc<str>>,
     },
     /// One streamed text delta. Opt in with
     /// [`HookEntry::observing_deltas`]. Answer with
@@ -154,9 +163,9 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// Newly received text.
-        delta: String,
+        delta: Arc<str>,
         /// Text accumulated for the turn so far.
-        aggregated: String,
+        aggregated: Arc<str>,
     },
     /// One streamed tool-call argument delta. Opt in with
     /// [`HookEntry::observing_deltas`]. Answer with
@@ -165,19 +174,76 @@ pub enum HookEvent {
         /// One-based model-call index.
         turn: usize,
         /// Provider tool-call id.
-        tool_call_id: String,
+        tool_call_id: Arc<str>,
         /// Rig correlation id.
-        internal_call_id: String,
+        internal_call_id: Arc<str>,
         /// Tool name, on the first delta of a call.
-        tool_name: Option<String>,
+        tool_name: Option<Arc<str>>,
         /// Newly received argument fragment.
-        delta: String,
+        delta: Arc<str>,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookEventKind {
+    BeforeModelCall,
+    ModelTurnFinished,
+    CompletionResponse,
+    ToolCall,
+    ToolResult,
+    InvalidToolCall,
+    StreamFinish,
+    StreamResponseFinish,
+    TextDelta,
+    ToolCallDelta,
+}
+
+impl HookEventKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BeforeModelCall => "before_model_call",
+            Self::ModelTurnFinished => "model_turn_finished",
+            Self::CompletionResponse => "completion_response",
+            Self::ToolCall => "tool_call",
+            Self::ToolResult => "tool_result",
+            Self::InvalidToolCall => "invalid_tool_call",
+            Self::StreamFinish => "stream_finish",
+            Self::StreamResponseFinish => "stream_response_finish",
+            Self::TextDelta => "text_delta",
+            Self::ToolCallDelta => "tool_call_delta",
+        }
+    }
+}
+
+impl HookEvent {
+    fn kind(&self) -> HookEventKind {
+        match self {
+            Self::BeforeModelCall { .. } => HookEventKind::BeforeModelCall,
+            Self::ModelTurnFinished { .. } => HookEventKind::ModelTurnFinished,
+            Self::CompletionResponse { .. } => HookEventKind::CompletionResponse,
+            Self::ToolCall { .. } => HookEventKind::ToolCall,
+            Self::ToolResult { .. } => HookEventKind::ToolResult,
+            Self::InvalidToolCall(_) => HookEventKind::InvalidToolCall,
+            Self::StreamFinish { .. } => HookEventKind::StreamFinish,
+            Self::StreamResponseFinish { .. } => HookEventKind::StreamResponseFinish,
+            Self::TextDelta { .. } => HookEventKind::TextDelta,
+            Self::ToolCallDelta { .. } => HookEventKind::ToolCallDelta,
+        }
+    }
+}
+
+impl std::fmt::Debug for HookEvent {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct(self.kind().as_str())
+            .finish_non_exhaustive()
+    }
 }
 
 /// Owned decisions — a thin wrapper over the existing serde decision
 /// vocabulary in [`crate::agent::hook`]. A variant that does not match the
-/// dispatched event is treated as [`HookDecision::Continue`].
+/// dispatched event is treated as [`HookDecision::Continue`]; a mismatched
+/// non-`Continue` value also emits a content-free protocol diagnostic.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum HookDecision {
     /// No opinion: defer to later entries / the event's default.
@@ -195,6 +261,65 @@ pub enum HookDecision {
     /// Answer for observation events ([`HookEvent::CompletionResponse`],
     /// [`HookEvent::StreamFinish`]).
     Observation(ObservationAction),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookDecisionKind {
+    Continue,
+    CompletionCall,
+    ModelTurn,
+    ToolCall,
+    ToolResult,
+    InvalidToolCall,
+    Observation,
+}
+
+impl HookDecisionKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Continue => "continue",
+            Self::CompletionCall => "completion_call",
+            Self::ModelTurn => "model_turn",
+            Self::ToolCall => "tool_call",
+            Self::ToolResult => "tool_result",
+            Self::InvalidToolCall => "invalid_tool_call",
+            Self::Observation => "observation",
+        }
+    }
+}
+
+impl HookDecision {
+    fn kind(&self) -> HookDecisionKind {
+        match self {
+            Self::Continue => HookDecisionKind::Continue,
+            Self::CompletionCall(_) => HookDecisionKind::CompletionCall,
+            Self::ModelTurn(_) => HookDecisionKind::ModelTurn,
+            Self::ToolCall(_) => HookDecisionKind::ToolCall,
+            Self::ToolResult(_) => HookDecisionKind::ToolResult,
+            Self::InvalidToolCall(_) => HookDecisionKind::InvalidToolCall,
+            Self::Observation(_) => HookDecisionKind::Observation,
+        }
+    }
+
+    fn matches_event(&self, event: HookEventKind) -> bool {
+        matches!(self, Self::Continue)
+            || matches!(
+                (event, self),
+                (HookEventKind::BeforeModelCall, Self::CompletionCall(_))
+                    | (HookEventKind::ModelTurnFinished, Self::ModelTurn(_))
+                    | (HookEventKind::ToolCall, Self::ToolCall(_))
+                    | (HookEventKind::ToolResult, Self::ToolResult(_))
+                    | (HookEventKind::InvalidToolCall, Self::InvalidToolCall(_))
+                    | (
+                        HookEventKind::CompletionResponse
+                            | HookEventKind::StreamFinish
+                            | HookEventKind::StreamResponseFinish
+                            | HookEventKind::TextDelta
+                            | HookEventKind::ToolCallDelta,
+                        Self::Observation(_)
+                    )
+            )
+    }
 }
 
 /// One named hook callback record.
@@ -343,7 +468,17 @@ impl HookEntry {
     }
 
     async fn dispatch(&self, event: HookEvent) -> HookDecision {
-        (self.callback)(event).await
+        let event_kind = event.kind();
+        let decision = (self.callback)(event).await;
+        if !decision.matches_event(event_kind) {
+            tracing::warn!(
+                hook_name = %self.name,
+                event_kind = event_kind.as_str(),
+                decision_kind = decision.kind().as_str(),
+                "hook returned a decision for a different event; treating it as no opinion"
+            );
+        }
+        decision
     }
 }
 
@@ -398,15 +533,17 @@ impl Hooks {
         prompt: &'a Message,
         history: &'a [Message],
     ) -> CompletionCallAction {
+        if self.entries.is_empty() {
+            return CompletionCallAction::Continue;
+        }
+        let event = HookEvent::BeforeModelCall {
+            turn,
+            prompt: Arc::new(prompt.clone()),
+            history: Arc::from(history.to_vec()),
+        };
         let mut actions = Vec::new();
         for entry in &self.entries {
-            let decision = entry
-                .dispatch(HookEvent::BeforeModelCall {
-                    turn,
-                    prompt: prompt.clone(),
-                    history: history.to_vec(),
-                })
-                .await;
+            let decision = entry.dispatch(event.clone()).await;
             let action = match decision {
                 HookDecision::CompletionCall(action) => action,
                 _ => CompletionCallAction::Continue,
@@ -428,14 +565,16 @@ impl Hooks {
         content: &'a OneOrMany<AssistantContent>,
         usage: Usage,
     ) -> ModelTurnAction {
+        if self.entries.is_empty() {
+            return ModelTurnAction::Continue;
+        }
+        let event = HookEvent::ModelTurnFinished {
+            turn,
+            content: Arc::new(content.clone()),
+            usage,
+        };
         for entry in &self.entries {
-            let decision = entry
-                .dispatch(HookEvent::ModelTurnFinished {
-                    turn,
-                    content: content.clone(),
-                    usage,
-                })
-                .await;
+            let decision = entry.dispatch(event.clone()).await;
             if let HookDecision::ModelTurn(action) = decision
                 && !matches!(action, ModelTurnAction::Continue)
             {
@@ -454,15 +593,17 @@ impl Hooks {
         prompt: &'a Message,
         response: &'a CompletionResponse,
     ) -> ObservationAction {
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
+        }
+        let event = HookEvent::CompletionResponse {
+            turn,
+            prompt: Arc::new(prompt.clone()),
+            response: Arc::new(response.clone()),
+        };
         let mut actions = Vec::new();
         for entry in &self.entries {
-            let decision = entry
-                .dispatch(HookEvent::CompletionResponse {
-                    turn,
-                    prompt: prompt.clone(),
-                    response: response.clone(),
-                })
-                .await;
+            let decision = entry.dispatch(event.clone()).await;
             let action = match decision {
                 HookDecision::Observation(action) => action,
                 _ => ObservationAction::Continue,
@@ -483,11 +624,13 @@ impl Hooks {
         &'a self,
         context: &'a InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let event = HookEvent::InvalidToolCall(Arc::new(context.clone()));
         let mut resolutions = Vec::new();
         for entry in &self.entries {
-            let decision = entry
-                .dispatch(HookEvent::InvalidToolCall(context.clone()))
-                .await;
+            let decision = entry.dispatch(event.clone()).await;
             let resolution = match decision {
                 HookDecision::InvalidToolCall(action) => Some(action),
                 _ => None,
@@ -513,20 +656,30 @@ impl Hooks {
         call: &'a ToolCall,
         internal_call_id: &'a str,
     ) -> crate::agent::ResolvedToolCall {
+        if self.entries.is_empty() {
+            return crate::agent::ResolvedToolCall::from_action(call.clone(), ToolCallAction::Run);
+        }
         let mut resolution = ToolCallResolution::new(call.function.arguments.clone());
+        let internal_call_id: Arc<str> = Arc::from(internal_call_id);
+        let mut effective_call = Arc::new(call.clone());
         for entry in &self.entries {
-            let mut current = call.clone();
-            current.function.arguments = resolution.args().clone();
             let decision = entry
                 .dispatch(HookEvent::ToolCall {
-                    call: current,
-                    internal_call_id: internal_call_id.to_owned(),
+                    call: Arc::clone(&effective_call),
+                    internal_call_id: Arc::clone(&internal_call_id),
                 })
                 .await;
             let action = match decision {
                 HookDecision::ToolCall(action) => action,
                 _ => ToolCallAction::Run,
             };
+            if let ToolCallAction::Rewrite(arguments) = &action
+                && effective_call.function.arguments != *arguments
+            {
+                let mut rewritten = (*effective_call).clone();
+                rewritten.function.arguments = arguments.clone();
+                effective_call = Arc::new(rewritten);
+            }
             if !resolution.apply(action) {
                 break;
             }
@@ -544,24 +697,32 @@ impl Hooks {
         internal_call_id: &'a str,
         result: &'a ToolResult,
     ) -> ToolResultAction {
+        if self.entries.is_empty() {
+            return ToolResultAction::Keep;
+        }
         let mut resolution = ToolResultResolution::new();
+        let call = Arc::new(call.clone());
+        let internal_call_id: Arc<str> = Arc::from(internal_call_id);
+        let result = Arc::new(result.clone());
+        let mut presentation = Arc::new(result.output().clone());
         for entry in &self.entries {
-            let presentation = resolution
-                .presentation()
-                .unwrap_or_else(|| result.output())
-                .clone();
             let decision = entry
                 .dispatch(HookEvent::ToolResult {
-                    call: call.clone(),
-                    internal_call_id: internal_call_id.to_owned(),
-                    result: result.clone(),
-                    presentation,
+                    call: Arc::clone(&call),
+                    internal_call_id: Arc::clone(&internal_call_id),
+                    result: Arc::clone(&result),
+                    presentation: Arc::clone(&presentation),
                 })
                 .await;
             let action = match decision {
                 HookDecision::ToolResult(action) => action,
                 _ => ToolResultAction::Keep,
             };
+            if let ToolResultAction::Rewrite(output) = &action
+                && presentation.as_ref() != output
+            {
+                presentation = Arc::new(output.clone());
+            }
             if !resolution.apply(action) {
                 break;
             }
@@ -575,24 +736,13 @@ impl Hooks {
         &'a self,
         final_record: &'a StreamFinal,
     ) -> ObservationAction {
-        let mut actions = Vec::new();
-        for entry in &self.entries {
-            let decision = entry
-                .dispatch(HookEvent::StreamFinish {
-                    final_record: final_record.clone(),
-                })
-                .await;
-            let action = match decision {
-                HookDecision::Observation(action) => action,
-                _ => ObservationAction::Continue,
-            };
-            let stop = !matches!(action, ObservationAction::Continue);
-            actions.push(action);
-            if stop {
-                break;
-            }
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
         }
-        fold_observation_actions(actions)
+        self.fold_observations(HookEvent::StreamFinish {
+            final_record: Arc::new(final_record.clone()),
+        })
+        .await
     }
 
     /// Dispatch [`HookEvent::StreamResponseFinish`]: the first non-`Continue`
@@ -605,12 +755,15 @@ impl Hooks {
         usage: Usage,
         message_id: Option<&'a str>,
     ) -> ObservationAction {
-        self.fold_observations(|| HookEvent::StreamResponseFinish {
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
+        }
+        self.fold_observations(HookEvent::StreamResponseFinish {
             turn,
-            prompt: prompt.clone(),
-            content: content.clone(),
+            prompt: Arc::new(prompt.clone()),
+            content: Arc::new(content.clone()),
             usage,
-            message_id: message_id.map(str::to_owned),
+            message_id: message_id.map(Arc::from),
         })
         .await
     }
@@ -623,10 +776,13 @@ impl Hooks {
         delta: &'a str,
         aggregated: &'a str,
     ) -> ObservationAction {
-        self.fold_delta_observations(|| HookEvent::TextDelta {
+        if !self.observes_deltas() {
+            return ObservationAction::Continue;
+        }
+        self.fold_delta_observations(HookEvent::TextDelta {
             turn,
-            delta: delta.to_owned(),
-            aggregated: aggregated.to_owned(),
+            delta: Arc::from(delta),
+            aggregated: Arc::from(aggregated),
         })
         .await
     }
@@ -641,23 +797,25 @@ impl Hooks {
         tool_name: Option<&'a str>,
         delta: &'a str,
     ) -> ObservationAction {
-        self.fold_delta_observations(|| HookEvent::ToolCallDelta {
+        if !self.observes_deltas() {
+            return ObservationAction::Continue;
+        }
+        self.fold_delta_observations(HookEvent::ToolCallDelta {
             turn,
-            tool_call_id: tool_call_id.to_owned(),
-            internal_call_id: internal_call_id.to_owned(),
-            tool_name: tool_name.map(str::to_owned),
-            delta: delta.to_owned(),
+            tool_call_id: Arc::from(tool_call_id),
+            internal_call_id: Arc::from(internal_call_id),
+            tool_name: tool_name.map(Arc::from),
+            delta: Arc::from(delta),
         })
         .await
     }
 
-    /// Shared observation fold: build the event per entry (events are owned,
-    /// so each entry gets its own copy), stop invoking after the first
-    /// non-`Continue`.
-    async fn fold_observations(&self, event: impl Fn() -> HookEvent) -> ObservationAction {
+    /// Shared observation fold: shallow-clone one owned event snapshot for
+    /// each entry and stop after the first non-`Continue`.
+    async fn fold_observations(&self, event: HookEvent) -> ObservationAction {
         let mut actions = Vec::new();
         for entry in &self.entries {
-            let decision = entry.dispatch(event()).await;
+            let decision = entry.dispatch(event.clone()).await;
             let action = match decision {
                 HookDecision::Observation(action) => action,
                 _ => ObservationAction::Continue,
@@ -672,10 +830,10 @@ impl Hooks {
     }
 
     /// [`Self::fold_observations`] restricted to delta-observing entries.
-    async fn fold_delta_observations(&self, event: impl Fn() -> HookEvent) -> ObservationAction {
+    async fn fold_delta_observations(&self, event: HookEvent) -> ObservationAction {
         let mut actions = Vec::new();
         for entry in self.entries.iter().filter(|entry| entry.observes_deltas) {
-            let decision = entry.dispatch(event()).await;
+            let decision = entry.dispatch(event.clone()).await;
             let action = match decision {
                 HookDecision::Observation(action) => action,
                 _ => ObservationAction::Continue,
@@ -752,6 +910,7 @@ fn _assert_wasm_hooks_can_return_local_futures() {
 mod tests {
     use super::*;
     use crate::agent::RequestPatch;
+    use std::io::Write;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -786,6 +945,30 @@ mod tests {
         .await;
     }
 
+    #[derive(Clone, Default)]
+    struct SharedLog(Arc<Mutex<Vec<u8>>>);
+
+    struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedLogWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("log lock").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for SharedLog {
+        type Writer = SharedLogWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            SharedLogWriter(Arc::clone(&self.0))
+        }
+    }
+
     #[tokio::test]
     async fn new_accepts_pin_free_multi_branch_callbacks() {
         let entry = HookEntry::new("pin-free", |event| async move {
@@ -799,8 +982,8 @@ mod tests {
             entry
                 .dispatch(HookEvent::BeforeModelCall {
                     turn: 1,
-                    prompt: Message::user("hello"),
-                    history: Vec::new(),
+                    prompt: Arc::new(Message::user("hello")),
+                    history: Arc::from(Vec::new()),
                 })
                 .await,
             HookDecision::Continue
@@ -842,7 +1025,9 @@ mod tests {
         let cloned = entry.clone();
         let event = || HookEvent::ModelTurnFinished {
             turn: 1,
-            content: OneOrMany::one(AssistantContent::text("contains runtime marker")),
+            content: Arc::new(OneOrMany::one(AssistantContent::text(
+                "contains runtime marker",
+            ))),
             usage: Usage::new(),
         };
         assert_eq!(
@@ -1296,16 +1481,243 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mismatched_decision_variants_are_treated_as_continue() {
+    async fn immutable_payloads_are_shared_across_entries() {
+        let histories: Arc<Mutex<Vec<Arc<[Message]>>>> = Arc::new(Mutex::new(Vec::new()));
+        let results: Arc<Mutex<Vec<Arc<ToolResult>>>> = Arc::new(Mutex::new(Vec::new()));
+        let finals: Arc<Mutex<Vec<Arc<StreamFinal>>>> = Arc::new(Mutex::new(Vec::new()));
+        let aggregated: Arc<Mutex<Vec<Arc<str>>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let make_probe = |name: &'static str| {
+            let histories = Arc::clone(&histories);
+            let results = Arc::clone(&results);
+            let finals = Arc::clone(&finals);
+            let aggregated = Arc::clone(&aggregated);
+            HookEntry::sync(name, move |event| {
+                match event {
+                    HookEvent::BeforeModelCall { history, .. } => {
+                        histories.lock().expect("histories").push(history);
+                    }
+                    HookEvent::ToolResult { result, .. } => {
+                        results.lock().expect("results").push(result);
+                    }
+                    HookEvent::StreamFinish { final_record } => {
+                        finals.lock().expect("finals").push(final_record);
+                    }
+                    HookEvent::TextDelta {
+                        aggregated: text, ..
+                    } => {
+                        aggregated.lock().expect("aggregated").push(text);
+                    }
+                    _ => {}
+                }
+                HookDecision::Continue
+            })
+            .observing_deltas()
+        };
+
+        let hooks = Hooks::new()
+            .with(make_probe("first"))
+            .with(make_probe("second"));
+        hooks
+            .dispatch_completion_call(
+                1,
+                &Message::user("prompt secret"),
+                &[Message::assistant("history secret")],
+            )
+            .await;
+        hooks
+            .dispatch_tool_result(
+                &tool_call(serde_json::json!({"secret": true})),
+                "internal-secret",
+                &ToolResult::success(ToolOutput::text("result secret")),
+            )
+            .await;
+        hooks
+            .dispatch_stream_finish(&StreamFinal::new("mock", Usage::new()))
+            .await;
+        hooks
+            .dispatch_text_delta(1, "delta secret", "aggregated secret")
+            .await;
+
+        let histories = histories.lock().expect("histories");
+        assert_eq!(histories.len(), 2);
+        assert!(Arc::ptr_eq(&histories[0], &histories[1]));
+        let results = results.lock().expect("results");
+        assert_eq!(results.len(), 2);
+        assert!(Arc::ptr_eq(&results[0], &results[1]));
+        let finals = finals.lock().expect("finals");
+        assert_eq!(finals.len(), 2);
+        assert!(Arc::ptr_eq(&finals[0], &finals[1]));
+        let aggregated = aggregated.lock().expect("aggregated");
+        assert_eq!(aggregated.len(), 2);
+        assert!(Arc::ptr_eq(&aggregated[0], &aggregated[1]));
+    }
+
+    #[tokio::test]
+    async fn shared_payloads_can_be_retained_across_await_points() {
+        let retained: Arc<Mutex<Option<Arc<[Message]>>>> = Arc::new(Mutex::new(None));
+        let observed: Arc<Mutex<Option<Arc<[Message]>>>> = Arc::new(Mutex::new(None));
+        let retained_sink = Arc::clone(&retained);
+        let observed_sink = Arc::clone(&observed);
+        let hooks = Hooks::new()
+            .with(HookEntry::new("async-retainer", move |event| {
+                let retained_sink = Arc::clone(&retained_sink);
+                async move {
+                    yield_once().await;
+                    if let HookEvent::BeforeModelCall { history, .. } = event {
+                        *retained_sink.lock().expect("retained") = Some(history);
+                    }
+                    HookDecision::Continue
+                }
+            }))
+            .with(HookEntry::sync("observer", move |event| {
+                if let HookEvent::BeforeModelCall { history, .. } = event {
+                    *observed_sink.lock().expect("observed") = Some(history);
+                }
+                HookDecision::Continue
+            }));
+
+        hooks
+            .dispatch_completion_call(
+                1,
+                &Message::user("prompt"),
+                &[Message::assistant("retained history")],
+            )
+            .await;
+
+        let retained = retained.lock().expect("retained").clone().expect("event");
+        let observed = observed.lock().expect("observed").clone().expect("event");
+        assert!(Arc::ptr_eq(&retained, &observed));
+        assert_eq!(retained.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn chained_rewrites_allocate_effective_projections_only_when_changed() {
+        let original_args = serde_json::json!({"a": 1});
+        let rewritten_args = serde_json::json!({"a": 2});
+        let calls: Arc<Mutex<Vec<Arc<ToolCall>>>> = Arc::new(Mutex::new(Vec::new()));
+        let call_probe = |name: &'static str, action: ToolCallAction| {
+            let calls = Arc::clone(&calls);
+            HookEntry::sync(name, move |event| {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                calls.lock().expect("calls").push(call);
+                HookDecision::ToolCall(action.clone())
+            })
+        };
+        let hooks = Hooks::new()
+            .with(call_probe("keep", ToolCallAction::run()))
+            .with(call_probe(
+                "same-rewrite",
+                ToolCallAction::rewrite(original_args.clone()),
+            ))
+            .with(call_probe(
+                "changed-rewrite",
+                ToolCallAction::rewrite(rewritten_args.clone()),
+            ))
+            .with(call_probe("after-rewrite", ToolCallAction::run()));
+
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(original_args), "internal-1")
+            .await;
+        assert_eq!(resolved.effective_call().function.arguments, rewritten_args);
+        {
+            let calls = calls.lock().expect("calls");
+            assert_eq!(calls.len(), 4);
+            assert!(Arc::ptr_eq(&calls[0], &calls[1]));
+            assert!(Arc::ptr_eq(&calls[1], &calls[2]));
+            assert!(!Arc::ptr_eq(&calls[2], &calls[3]));
+        }
+
+        let presentations: Arc<Mutex<Vec<Arc<ToolOutput>>>> = Arc::new(Mutex::new(Vec::new()));
+        let result_probe = |name: &'static str, action: ToolResultAction| {
+            let presentations = Arc::clone(&presentations);
+            HookEntry::sync(name, move |event| {
+                let HookEvent::ToolResult { presentation, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                presentations
+                    .lock()
+                    .expect("presentations")
+                    .push(presentation);
+                HookDecision::ToolResult(action.clone())
+            })
+        };
+        let hooks = Hooks::new()
+            .with(result_probe("keep", ToolResultAction::keep()))
+            .with(result_probe(
+                "same-rewrite",
+                ToolResultAction::rewrite("raw"),
+            ))
+            .with(result_probe(
+                "changed-rewrite",
+                ToolResultAction::rewrite("redacted"),
+            ))
+            .with(result_probe("after-rewrite", ToolResultAction::keep()));
+        let action = hooks
+            .dispatch_tool_result(
+                &tool_call(serde_json::json!({"a": 1})),
+                "internal-1",
+                &ToolResult::success(ToolOutput::text("raw")),
+            )
+            .await;
+        assert_eq!(action, ToolResultAction::rewrite("redacted"));
+        let presentations = presentations.lock().expect("presentations");
+        assert_eq!(presentations.len(), 4);
+        assert!(Arc::ptr_eq(&presentations[0], &presentations[1]));
+        assert!(Arc::ptr_eq(&presentations[1], &presentations[2]));
+        assert!(!Arc::ptr_eq(&presentations[2], &presentations[3]));
+    }
+
+    #[test]
+    fn hook_event_debug_reports_kind_without_payload_content() {
+        let event = HookEvent::TextDelta {
+            turn: 1,
+            delta: Arc::from("delta secret"),
+            aggregated: Arc::from("aggregated secret"),
+        };
+        let rendered = format!("{event:?}");
+        assert!(rendered.contains("text_delta"));
+        assert!(!rendered.contains("delta secret"));
+        assert!(!rendered.contains("aggregated secret"));
+    }
+
+    #[tokio::test]
+    async fn mismatched_decision_variants_are_ignored_with_a_safe_diagnostic() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let log = SharedLog::default();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(log.clone())
+            .finish();
+        let _default = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+
         let mut hooks = Hooks::new();
         // A tool-call answer to a model-turn event is ignored.
         hooks.add(entry("wrong", |_| {
-            HookDecision::ToolCall(ToolCallAction::stop("wrong lane"))
+            HookDecision::ToolCall(ToolCallAction::stop("wrong lane secret"))
         }));
-        let content = OneOrMany::one(AssistantContent::text("hi"));
+        let content = OneOrMany::one(AssistantContent::text("assistant payload secret"));
         assert_eq!(
             hooks.dispatch_model_turn(1, &content, Usage::new()).await,
             ModelTurnAction::Continue
         );
+
+        let rendered = String::from_utf8(log.0.lock().expect("log").clone()).expect("utf8 log");
+        assert!(rendered.contains("hook_name=wrong"));
+        assert!(rendered.contains("event_kind=\"model_turn_finished\""));
+        assert!(rendered.contains("decision_kind=\"tool_call\""));
+        assert!(!rendered.contains("assistant payload secret"));
+        assert!(!rendered.contains("wrong lane secret"));
+
+        let prior_len = log.0.lock().expect("log").len();
+        Hooks::new()
+            .with(entry("quiet", |_| HookDecision::Continue))
+            .dispatch_model_turn(1, &content, Usage::new())
+            .await;
+        assert_eq!(log.0.lock().expect("log").len(), prior_len);
     }
 }

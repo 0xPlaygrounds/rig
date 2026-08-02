@@ -30,7 +30,7 @@ impl ObservingHook {
     fn decide(&self, event: HookEvent) -> HookDecision {
         match event {
             HookEvent::BeforeModelCall { prompt, .. } => {
-                let Message::User { content } = prompt else {
+                let Message::User { content } = prompt.as_ref() else {
                     return HookDecision::CompletionCall(CompletionCallAction::stop(
                         "expected a user message",
                     ));

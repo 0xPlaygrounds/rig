@@ -14,7 +14,7 @@ use rig::completion::{PromptError, Usage};
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::providers::gemini;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::streaming::StreamedAssistantContent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
@@ -545,7 +545,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(AgentStreamItem::Final(_)) => saw_final = true,
+                    Ok(AgentRunItem::Final(_)) => saw_final = true,
                     Ok(_) => {}
                     Err(error) => {
                         prompt_error = Some(error);

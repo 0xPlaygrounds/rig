@@ -934,8 +934,8 @@ the runner's *type* was renamed:
 
 **Streaming call sites change.** The old surface was a future returning a
 stream of `MultiTurnStreamItem`; the new one is the concrete `AgentRunStream`
-of `AgentStreamItem`. Its inherent `next` method needs neither caller pinning
-nor a `StreamExt` import:
+of `AgentRunItem`. Its inherent `next` method needs neither caller pinning nor
+a `StreamExt` import:
 
 ```rust
 // before
@@ -959,7 +959,7 @@ executed for you.
 
 Item mapping:
 
-| `MultiTurnStreamItem` | `rig::stream::AgentStreamItem` |
+| `MultiTurnStreamItem` | `rig::stream::AgentRunItem` |
 | --- | --- |
 | `StreamAssistantItem(x)` | `Assistant(x)` |
 | `StreamUserItem(x)` | `User(x)` |
@@ -968,11 +968,13 @@ Item mapping:
 | `ModelTurnRetried { turn }` | same field |
 | `FinalResponse(r)` | `Final(r)` |
 
-`AgentStreamItem` carries additional decision variants
-(`BeforeModelCall`, `TurnFinished`, `InvalidToolCall`, `ToolCallPending`,
-`ToolCallsReady`, `ToolResultReady`) that a `stream_run()` stream never
-yields, so an exhaustive `match` needs a `_ => {}` arm. The stream's error
-type is now `PromptError` directly: `StreamingError::Completion(e)` was
+`AgentRunItem` deliberately contains only the six driven observations in the
+table. `AgentStreamItem` is the separate host protocol returned by
+`AgentStream::next_item`; it additionally carries `BeforeModelCall`,
+`TurnFinished`, `InvalidToolCall`, `ToolCallPending`, `ToolCallsReady`, and
+`ToolResultReady`, which the host must answer. Exhaustive `stream_run()`
+matches no longer need a wildcard for unreachable decisions. The stream's
+error type is now `PromptError` directly: `StreamingError::Completion(e)` was
 `PromptError::CompletionError(e)` and `StreamingError::Prompt(b)` was `*b`.
 
 `PromptResponse`, `CompletionCall`, and the shared history/tool-result
@@ -1016,6 +1018,17 @@ The decision vocabulary (`RequestPatch`, `ToolCallAction`,
 scratchpad are gone — capture your own state in the closure (`turn` is a
 field on the events that have it); and tool-call argument rewrites chain as
 `serde_json::Value` rather than JSON-encoded strings.
+
+`HookEvent` remains an owned value that an async callback may retain across
+await points, but immutable payload fields are now shared: messages,
+histories, content, calls, results, provider responses/finals, ids, and delta
+snapshots use `Arc<T>`, `Arc<[T]>`, or `Arc<str>`. Existing field access usually
+continues through `Arc` deref; code that moves a nested field must clone it or
+borrow it explicitly. For example, match a prompt with
+`let Message::User { content } = prompt.as_ref() else { … };`. Event `Debug`
+output is content-free. Returning a non-`Continue` decision variant for the
+wrong event is still semantically "no opinion," but now emits a warning with
+only the hook name and event/decision kinds.
 
 **Memory** is no longer wired into the agent. `ConversationMemory`,
 `MessageFilter`, `DemotionHook`, and `Compactor` are deleted along with

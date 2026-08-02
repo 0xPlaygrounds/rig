@@ -6,7 +6,8 @@
 //! [`SessionEvent::Done`](crate::session::SessionEvent::Done), and the
 //! streaming [`AgentStream`](crate::stream::AgentStream) surfaces it as the
 //! terminal [`AgentStreamItem::Final`](crate::stream::AgentStreamItem::Final)
-//! item.
+//! host item; a fully driven [`AgentRunStream`](crate::stream::AgentRunStream)
+//! emits it as [`AgentRunItem::Final`](crate::stream::AgentRunItem::Final).
 
 use rig_core::{
     OneOrMany,
@@ -58,12 +59,13 @@ where
 /// ([`AgentSession`]) and streaming ([`AgentStream`]) drivers so a call site
 /// reads identically whether it used `.run()` or `.stream_prompt()`.
 ///
-/// On the streaming driver this is the payload of the terminal
-/// [`AgentStreamItem::Final`] item.
+/// On the streaming driver this is the payload of the terminal host
+/// [`AgentStreamItem::Final`] or driven [`AgentRunItem::Final`] item.
 ///
 /// [`AgentSession`]: crate::session::AgentSession
 /// [`AgentStream`]: crate::stream::AgentStream
 /// [`AgentStreamItem::Final`]: crate::stream::AgentStreamItem::Final
+/// [`AgentRunItem::Final`]: crate::stream::AgentRunItem::Final
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // Serialize *and* deserialize both go through `PromptResponseRepr` so the two
 // directions agree on `content`'s wire shape (an `Option`). Routing only

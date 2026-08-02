@@ -10,7 +10,7 @@ use rig_core::message::Message;
 use crate::{
     agent::{Agent, Text},
     completion::{CompletionError, PromptError, Usage},
-    stream::AgentStreamItem,
+    stream::AgentRunItem,
     streaming::StreamedAssistantContent,
 };
 use std::io::{self, Write};
@@ -94,14 +94,13 @@ impl ChatBot {
             };
 
             match chunk {
-                Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
-                    text,
-                    ..
+                Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(Text {
+                    text, ..
                 }))) => {
                     print!("{}", text);
                     acc.push_str(&text);
                 }
-                Ok(AgentStreamItem::Final(final_response)) => {
+                Ok(AgentRunItem::Final(final_response)) => {
                     self.usage = final_response.usage();
                     messages = final_response.messages().map(|history| history.to_vec());
                 }

@@ -307,25 +307,23 @@ async fn stream_to_stdout(
     stream: &mut rig::stream::AgentRunStream,
 ) -> Result<rig::agent::PromptResponse, std::io::Error> {
     use rig::message::Text;
-    use rig::stream::AgentStreamItem;
+    use rig::stream::AgentRunItem;
     use rig::streaming::StreamedAssistantContent;
 
     let mut final_res = rig::agent::PromptResponse::empty();
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Text(Text {
-                text, ..
-            }))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(Text { text, .. }))) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
                 print!("{}", reasoning.display_text());
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(AgentStreamItem::Final(res)) => final_res = res,
-            Ok(AgentStreamItem::ModelTurnRetried { turn }) => {
+            Ok(AgentRunItem::Final(res)) => final_res = res,
+            Ok(AgentRunItem::ModelTurnRetried { turn }) => {
                 print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }

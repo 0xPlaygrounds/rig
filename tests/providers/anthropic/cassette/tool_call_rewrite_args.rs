@@ -105,7 +105,7 @@ impl Tool for GetWeather {
 fn pin_units_to_celsius() -> HookEntry {
     HookEntry::sync("pin-units-to-celsius", |event| match event {
         HookEvent::ToolCall { call, .. } if call.function.name == GetWeather::NAME => {
-            let mut value = call.function.arguments;
+            let mut value = call.function.arguments.clone();
             if !value.is_object() {
                 value = json!({});
             }

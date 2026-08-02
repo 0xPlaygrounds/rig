@@ -8,7 +8,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
@@ -88,13 +88,13 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming prompt should succeed") {
-            AgentStreamItem::Final(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response.output().to_owned());
                 final_history = response.messages().map(|history| history.to_vec());
                 break;
             }
-            AgentStreamItem::Assistant(_)
-            | AgentStreamItem::User(_) => {}
+            AgentRunItem::Assistant(_)
+            | AgentRunItem::User(_) => {}
             _ => {}
         }
     }

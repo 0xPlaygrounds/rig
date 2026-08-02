@@ -36,7 +36,7 @@
 //! but shared lifecycle actions have identical semantics on both surfaces.
 //! Streamed deltas are provisional until the model turn is accepted; a retry is
 //! surfaced as
-//! [`AgentStreamItem::ModelTurnRetried`](crate::stream::AgentStreamItem::ModelTurnRetried)
+//! [`AgentRunItem::ModelTurnRetried`](crate::stream::AgentRunItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example

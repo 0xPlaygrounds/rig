@@ -382,7 +382,7 @@ impl AgentSession {
 
     /// Set the input chat history preceding the prompt.
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.run = std::mem::replace(&mut self.run, AgentRun::new("")).with_history(history);
+        self.run.set_history(history);
         self
     }
 
@@ -1982,7 +1982,7 @@ mod classic_tests {
                         .contexts
                         .lock()
                         .expect("invalid tool context records mutex was poisoned")
-                        .push(context);
+                        .push((*context).clone());
                 }
                 HookDecision::Continue
             })
@@ -2942,7 +2942,7 @@ mod classic_hook_tests {
     };
     use crate::completion::{Message, PromptError, Usage};
     use crate::hooks::{HookDecision, HookEntry, HookEvent, Hooks};
-    use crate::stream::AgentStreamItem;
+    use crate::stream::AgentRunItem;
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockOperationArgs, MockSubtractTool, MockToolError,
@@ -3176,12 +3176,12 @@ mod classic_hook_tests {
     /// Drive a hook-driven stream to completion, panicking on any error, and
     /// return its final response.
     async fn drive_to_final_response(
-        stream: impl futures::Stream<Item = Result<AgentStreamItem, PromptError>>,
+        stream: impl futures::Stream<Item = Result<AgentRunItem, PromptError>>,
     ) -> crate::agent::PromptResponse {
         let mut stream = Box::pin(stream);
         let mut final_response = None;
         while let Some(item) = stream.next().await {
-            if let AgentStreamItem::Final(resp) =
+            if let AgentRunItem::Final(resp) =
                 item.unwrap_or_else(|err| panic!("stream item errored: {err}"))
             {
                 final_response = Some(resp);
@@ -3218,10 +3218,10 @@ mod classic_hook_tests {
                         prompt, response, ..
                     } => hook.blocking.lock().expect("blocking snapshots").push(
                         CanonicalResponseSnapshot {
-                            prompt,
-                            content: response.choice,
+                            prompt: (*prompt).clone(),
+                            content: response.choice.clone(),
                             usage: response.usage,
-                            message_id: response.message_id,
+                            message_id: response.message_id.clone(),
                         },
                     ),
                     HookEvent::StreamResponseFinish {
@@ -3232,17 +3232,17 @@ mod classic_hook_tests {
                         ..
                     } => hook.streaming.lock().expect("streaming snapshots").push(
                         CanonicalResponseSnapshot {
-                            prompt,
-                            content,
+                            prompt: (*prompt).clone(),
+                            content: (*content).clone(),
                             usage,
-                            message_id,
+                            message_id: message_id.map(|value| value.to_string()),
                         },
                     ),
                     HookEvent::ModelTurnFinished { content, .. } => hook
                         .committed
                         .lock()
                         .expect("committed snapshots")
-                        .push(content),
+                        .push((*content).clone()),
                     _ => {}
                 }
                 HookDecision::Continue
@@ -3270,10 +3270,10 @@ mod classic_hook_tests {
                 } => {
                     hook.snapshots.lock().expect("finish snapshots").push(
                         CanonicalResponseSnapshot {
-                            prompt,
-                            content,
+                            prompt: (*prompt).clone(),
+                            content: (*content).clone(),
                             usage,
-                            message_id,
+                            message_id: message_id.map(|value| value.to_string()),
                         },
                     );
                     if hook.stop.load(SeqCst) {
@@ -3437,11 +3437,11 @@ mod classic_hook_tests {
         let mut error = None;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))) => {
+                Ok(AgentRunItem::Assistant(StreamedAssistantContent::Final(_))) => {
                     provider_finals += 1
                 }
-                Ok(AgentStreamItem::ModelTurnRetried { .. }) => saw_retry = true,
-                Ok(AgentStreamItem::Final(_)) => saw_run_final = true,
+                Ok(AgentRunItem::ModelTurnRetried { .. }) => saw_retry = true,
+                Ok(AgentRunItem::Final(_)) => saw_run_final = true,
                 Ok(_) => {}
                 Err(err) => error = Some(err),
             }
@@ -3992,7 +3992,7 @@ mod classic_hook_tests {
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(AgentStreamItem::Final(_)) => saw_final = true,
+                    Ok(AgentRunItem::Final(_)) => saw_final = true,
                     Err(_) => saw_error = true,
                     _ => {}
                 }
@@ -4248,7 +4248,9 @@ mod classic_hook_tests {
             let HookEvent::InvalidToolCall(context) = event else {
                 return HookDecision::Continue;
             };
-            args.lock().expect("invalid args").push(context.args);
+            args.lock()
+                .expect("invalid args")
+                .push(context.args.clone());
             HookDecision::InvalidToolCall(InvalidToolCallAction::repair(replacement.clone()))
         })
     }
@@ -4761,7 +4763,7 @@ mod classic_hook_tests {
                 let HookEvent::ToolCall { call, .. } = event else {
                     return HookDecision::Continue;
                 };
-                let mut parsed = call.function.arguments;
+                let mut parsed = call.function.arguments.clone();
                 if !parsed.is_object() {
                     parsed = json!({});
                 }
@@ -5608,10 +5610,10 @@ mod classic_hook_tests {
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             while let Some(item) = stream.next().await {
                 match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                    AgentStreamItem::User(StreamedUserContent::ToolResult {
-                        tool_result, ..
-                    }) => streamed_result_ids.push(tool_result.id),
-                    AgentStreamItem::Final(resp) => final_response = Some(resp),
+                    AgentRunItem::User(StreamedUserContent::ToolResult { tool_result, .. }) => {
+                        streamed_result_ids.push(tool_result.id)
+                    }
+                    AgentRunItem::Final(resp) => final_response = Some(resp),
                     _ => {}
                 }
             }
@@ -5685,11 +5687,11 @@ mod classic_hook_tests {
             let mut markers = Vec::new();
             while let Some(item) = stream.next().await {
                 match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                    AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall { .. }) => {
+                    AgentRunItem::Assistant(StreamedAssistantContent::ToolCall { .. }) => {
                         markers.push("model-call")
                     }
-                    AgentStreamItem::ToolExecutionCommitted { .. } => markers.push("exec-commit"),
-                    AgentStreamItem::User(StreamedUserContent::ToolResult { .. }) => {
+                    AgentRunItem::ToolExecutionCommitted { .. } => markers.push("exec-commit"),
+                    AgentRunItem::User(StreamedUserContent::ToolResult { .. }) => {
                         markers.push("result")
                     }
                     _ => {}
@@ -5738,11 +5740,10 @@ mod classic_hook_tests {
         let mut exec_args = None;
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
-                    tool_call,
-                    ..
+                AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
+                    tool_call, ..
                 }) => model_args = Some(tool_call.function.arguments),
-                AgentStreamItem::ToolExecutionCommitted { tool_call, .. } => {
+                AgentRunItem::ToolExecutionCommitted { tool_call, .. } => {
                     exec_args = Some(tool_call.function.arguments)
                 }
                 _ => {}
@@ -5793,9 +5794,9 @@ mod classic_hook_tests {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
-                AgentStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
-                AgentStreamItem::User(StreamedUserContent::ToolResult { .. }) => results += 1,
-                AgentStreamItem::Final(resp) => final_response = Some(resp),
+                AgentRunItem::ToolExecutionCommitted { .. } => exec_commits += 1,
+                AgentRunItem::User(StreamedUserContent::ToolResult { .. }) => results += 1,
+                AgentRunItem::Final(resp) => final_response = Some(resp),
                 _ => {}
             }
         }
@@ -6447,13 +6448,12 @@ mod classic_hook_tests {
         let mut final_has_output = false;
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                AgentStreamItem::Assistant(StreamedAssistantContent::ToolCall {
-                    tool_call,
-                    ..
+                AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
+                    tool_call, ..
                 }) if tool_call.function.name == "final_result" => {
                     saw_complete_output_tool_call = true;
                 }
-                AgentStreamItem::Final(res) => {
+                AgentRunItem::Final(res) => {
                     final_has_output = res.output().contains("done");
                 }
                 _ => {}
@@ -6686,7 +6686,7 @@ mod classic_hook_tests {
         while let Some(item) = stream.next().await {
             match item {
                 Err(err) => stream_error = Some(format!("{err}")),
-                Ok(AgentStreamItem::Final(resp)) => {
+                Ok(AgentRunItem::Final(resp)) => {
                     panic!("aborted stream must not finalize, got: {}", resp.output())
                 }
                 Ok(_) => {}
@@ -7074,12 +7074,10 @@ mod classic_hook_tests {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                AgentStreamItem::ModelTurnRetried { turn } => retries.push(turn),
-                AgentStreamItem::CompletionCall(_) => completion_calls += 1,
-                AgentStreamItem::Assistant(StreamedAssistantContent::Final(_)) => {
-                    provider_finals += 1
-                }
-                AgentStreamItem::Final(response) => final_response = Some(response),
+                AgentRunItem::ModelTurnRetried { turn } => retries.push(turn),
+                AgentRunItem::CompletionCall(_) => completion_calls += 1,
+                AgentRunItem::Assistant(StreamedAssistantContent::Final(_)) => provider_finals += 1,
+                AgentRunItem::Final(response) => final_response = Some(response),
                 _ => {}
             }
         }
@@ -7152,8 +7150,8 @@ mod classic_hook_tests {
         let mut streaming = None;
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                AgentStreamItem::ModelTurnRetried { turn: 1 } => saw_retry = true,
-                AgentStreamItem::Final(response) => streaming = Some(response),
+                AgentRunItem::ModelTurnRetried { turn: 1 } => saw_retry = true,
+                AgentRunItem::Final(response) => streaming = Some(response),
                 _ => {}
             }
         }
@@ -7202,12 +7200,12 @@ mod classic_hook_tests {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                AgentStreamItem::ModelTurnRetried { turn } => retries.push(turn),
-                AgentStreamItem::CompletionCall(_) => completion_calls += 1,
-                AgentStreamItem::Assistant(StreamedAssistantContent::Final(_)) => {
+                AgentRunItem::ModelTurnRetried { turn } => retries.push(turn),
+                AgentRunItem::CompletionCall(_) => completion_calls += 1,
+                AgentRunItem::Assistant(StreamedAssistantContent::Final(_)) => {
                     provider_finals += 1;
                 }
-                AgentStreamItem::Final(response) => final_response = Some(response),
+                AgentRunItem::Final(response) => final_response = Some(response),
                 _ => {}
             }
         }
@@ -7358,7 +7356,7 @@ mod classic_hook_tests {
         let mut error = None;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(AgentStreamItem::ModelTurnRetried { turn: 1 }) => saw_rollback = true,
+                Ok(AgentRunItem::ModelTurnRetried { turn: 1 }) => saw_rollback = true,
                 Ok(_) => {}
                 Err(err) => error = Some(err),
             }
@@ -7451,15 +7449,13 @@ mod classic_hook_tests {
         let mut error = None;
         while let Some(item) = stream.next().await {
             match item {
-                Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => execution_commits += 1,
-                Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { .. })) => {
-                    tool_results += 1
-                }
-                Ok(AgentStreamItem::Assistant(StreamedAssistantContent::Final(_))) => {
+                Ok(AgentRunItem::ToolExecutionCommitted { .. }) => execution_commits += 1,
+                Ok(AgentRunItem::User(StreamedUserContent::ToolResult { .. })) => tool_results += 1,
+                Ok(AgentRunItem::Assistant(StreamedAssistantContent::Final(_))) => {
                     provider_finals += 1
                 }
-                Ok(AgentStreamItem::Final(_)) => agent_finals += 1,
-                Ok(AgentStreamItem::ModelTurnRetried { .. }) => retry_markers += 1,
+                Ok(AgentRunItem::Final(_)) => agent_finals += 1,
+                Ok(AgentRunItem::ModelTurnRetried { .. }) => retry_markers += 1,
                 Ok(_) => {}
                 Err(err) => error = Some(err),
             }
@@ -7952,7 +7948,7 @@ mod classic_hook_tests {
                         let HookEvent::ToolResult { call, result, .. } = event else {
                             return HookDecision::Continue;
                         };
-                        *probe.args.lock().expect("args") = Some(call.function.arguments);
+                        *probe.args.lock().expect("args") = Some(call.function.arguments.clone());
                         *probe.outcome.lock().expect("outcome") = Some(outcome_label(&result));
                         HookDecision::ToolResult(ToolResultAction::keep())
                     })

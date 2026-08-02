@@ -29,7 +29,7 @@ use rig::agent::{
 use rig::completion::Document;
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::providers::gemini;
-use rig::stream::AgentStreamItem;
+use rig::stream::AgentRunItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 
@@ -526,7 +526,7 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
             let mut final_text = String::new();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(AgentStreamItem::Assistant(content)) => match content {
+                    Ok(AgentRunItem::Assistant(content)) => match content {
                         StreamedAssistantContent::Text(_) => events.push("text"),
                         StreamedAssistantContent::ToolCall { .. } => events.push("tool_call"),
                         StreamedAssistantContent::ToolCallDelta { .. } => {
@@ -534,13 +534,13 @@ async fn streaming_lifecycle_ordering_and_medium_specific_events() {
                         }
                         _ => {}
                     },
-                    Ok(AgentStreamItem::ToolExecutionCommitted { .. }) => {
+                    Ok(AgentRunItem::ToolExecutionCommitted { .. }) => {
                         events.push("tool_execution_committed")
                     }
-                    Ok(AgentStreamItem::User(StreamedUserContent::ToolResult { .. })) => {
+                    Ok(AgentRunItem::User(StreamedUserContent::ToolResult { .. })) => {
                         events.push("tool_result")
                     }
-                    Ok(AgentStreamItem::Final(response)) => {
+                    Ok(AgentRunItem::Final(response)) => {
                         saw_final = true;
                         final_text = response.output().to_owned();
                         events.push("final_response");

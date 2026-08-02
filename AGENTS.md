@@ -173,8 +173,10 @@ Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
 Agent hooks are attach-and-forget **records**, not trait impls. A hook is a
 `HookEntry` (`rig::hooks`) wrapping a named async callback over owned
-`HookEvent` values, returning a `HookDecision`. `Hooks` is the ordered list;
-`AgentBuilder::add_hook` takes one `HookEntry`.
+`HookEvent` values, returning a `HookDecision`. Immutable event payloads use
+shared `Arc` handles so the owned event may cross await points without deep
+copies per entry. `Hooks` is the ordered list; `AgentBuilder::add_hook` takes
+one `HookEntry`.
 
 ```rust
 use rig::hooks::{HookDecision, HookEntry, HookEvent};
@@ -195,7 +197,8 @@ received; any other variant (including `Continue`) means "no opinion". The
 decision vocabulary itself — `RequestPatch`, `CompletionCallAction`,
 `ToolCallAction`, `ToolResultAction`, `InvalidToolCallAction`,
 `ObservationAction`, `ModelTurnAction` — is unchanged and still lives at
-`rig::agent::hook`.
+`rig::agent::hook`. A wrong-lane non-`Continue` decision emits a content-free
+warning containing only the hook name and event/decision kinds.
 
 There is no `HookContext` and no `Scratchpad`. Run identity and shared state
 are host-owned: capture them in the closure (see

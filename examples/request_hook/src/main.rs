@@ -49,7 +49,7 @@ use rig::providers::openai;
 fn logging_entry(run_id: RunId) -> HookEntry {
     HookEntry::sync("logging", move |event| match event {
         HookEvent::BeforeModelCall { turn, prompt, .. } => {
-            if let Message::User { content } = prompt {
+            if let Message::User { content } = prompt.as_ref() {
                 let prompt_text = content
                     .iter()
                     .filter_map(|c| match c {
