@@ -453,7 +453,9 @@ where
     /// per-tool side effects interleave even though the final history does not.
     ///
     /// For the streaming path: the driver emits *all* of a turn's `ToolCall`
-    /// stream items eagerly (in call order) when the model turn commits, then —
+    /// stream items eagerly (in call order) when the model turn commits, then a
+    /// live `ToolExecutionStarted` item per dispatched call as it actually
+    /// starts (call order when sequential, start order when concurrent), then —
     /// only after the whole tool batch settles successfully — surfaces the
     /// per-tool `ToolExecutionCommitted` and `ToolResult` stream items in **call
     /// order** (never completion order), for the tools whose body actually ran.
@@ -4617,10 +4619,11 @@ mod migrated_tests {
 
     /// The stream-item taxonomy and ordering: the driver emits *all* of a turn's
     /// **model** tool-call items ([`StreamedAssistantContent::ToolCall`], one per
-    /// call the model made) first, then — after the whole tool batch settles —
-    /// the per-tool **execution** items (`ToolExecutionCommitted` then the
-    /// `ToolResult`) in call order. This holds identically at every concurrency
-    /// (the batch is atomic on both the sequential and concurrent paths).
+    /// call the model made) first, then a live `ToolExecutionStarted` per call as
+    /// it dispatches, then — after the whole tool batch settles — the per-tool
+    /// **execution** items (`ToolExecutionCommitted` then the `ToolResult`) in
+    /// call order. This holds identically at every concurrency (the batch is
+    /// atomic on both the sequential and concurrent paths).
     #[tokio::test]
     async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
         async fn markers(concurrency: usize) -> Vec<&'static str> {
@@ -4649,6 +4652,7 @@ mod migrated_tests {
                     MultiTurnStreamItem::StreamAssistantItem(
                         StreamedAssistantContent::ToolCall { .. },
                     ) => markers.push("model-call"),
+                    MultiTurnStreamItem::ToolExecutionStarted { .. } => markers.push("exec-start"),
                     MultiTurnStreamItem::ToolExecutionCommitted { .. } => {
                         markers.push("exec-commit")
                     }
@@ -4661,11 +4665,13 @@ mod migrated_tests {
             markers
         }
 
-        // Both surfaces: all model tool calls first, then per-tool (start, result)
-        // in call order, surfaced atomically after the batch settles.
+        // All model tool calls first, then a live start per call, then —
+        // atomically after the batch settles — per-tool (commit, result).
         let expected = vec![
             "model-call",
             "model-call",
+            "exec-start",
+            "exec-start",
             "exec-commit",
             "result",
             "exec-commit",
@@ -4673,6 +4679,177 @@ mod migrated_tests {
         ];
         assert_eq!(markers(1).await, expected);
         assert_eq!(markers(4).await, expected);
+    }
+
+    /// A tool that completes only after the stream consumer releases its gate —
+    /// proving `ToolExecutionStarted` is live: the consumer must observe the
+    /// start while the tool body is still pending, or the run deadlocks.
+    #[derive(Clone)]
+    struct ConsumerGatedTool {
+        gate: Arc<tokio::sync::Notify>,
+    }
+
+    impl Tool for ConsumerGatedTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = MockOperationArgs;
+        type Output = i32;
+
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            self.gate.notified().await;
+            Ok(0)
+        }
+    }
+
+    /// `ToolExecutionStarted` is a **live** stream item: the gated tool
+    /// completes only when the consumer reacts to the start, so a driver that
+    /// surfaced it after execution (or not at all) would deadlock — the timeout
+    /// turns that into a clean failure. Also pins the `internal_call_id`
+    /// correlation across the model `ToolCall` item, the commit, and the result.
+    #[tokio::test]
+    async fn stream_emits_tool_execution_started_live_while_tool_runs() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(ConsumerGatedTool { gate: gate.clone() })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .stream()
+            .await;
+
+        let mut model_call_ids = Vec::new();
+        let mut started = Vec::new();
+        let mut committed_ids = Vec::new();
+        let mut result_ids = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(item) = stream.next().await {
+                match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                    MultiTurnStreamItem::StreamAssistantItem(
+                        StreamedAssistantContent::ToolCall {
+                            internal_call_id, ..
+                        },
+                    ) => model_call_ids.push(internal_call_id),
+                    MultiTurnStreamItem::ToolExecutionStarted {
+                        tool_name,
+                        internal_call_id,
+                    } => {
+                        assert!(
+                            committed_ids.is_empty() && result_ids.is_empty(),
+                            "a start item must precede every commit/result item"
+                        );
+                        started.push((tool_name, internal_call_id));
+                        // Receiving the start live is what unblocks the tool.
+                        gate.notify_one();
+                    }
+                    MultiTurnStreamItem::ToolExecutionCommitted {
+                        internal_call_id, ..
+                    } => committed_ids.push(internal_call_id),
+                    MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                        internal_call_id,
+                        ..
+                    }) => result_ids.push(internal_call_id),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("the start item must be surfaced while the tool is still running");
+
+        assert_eq!(started.len(), 1, "one start per executed tool call");
+        let (tool_name, started_id) = &started[0];
+        assert_eq!(tool_name, "add");
+        assert_eq!(model_call_ids, vec![started_id.clone()]);
+        assert_eq!(committed_ids, vec![started_id.clone()]);
+        assert_eq!(result_ids, vec![started_id.clone()]);
+    }
+
+    /// The concurrent tool path surfaces `ToolExecutionStarted` live as well:
+    /// every call is gated on its own start being consumed, so the batch can
+    /// only settle if each start reaches the consumer mid-execution. Starts
+    /// precede every commit/result item and pair with them one-to-one by id.
+    #[tokio::test]
+    async fn stream_emits_tool_execution_started_live_under_concurrency() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 0})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 0})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(ConsumerGatedTool { gate: gate.clone() })
+            .build()
+            .runner("go")
+            .max_turns(3)
+            .tool_concurrency(2)
+            .stream()
+            .await;
+
+        let mut started_ids = Vec::new();
+        let mut committed_ids = Vec::new();
+        let mut result_ids = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(item) = stream.next().await {
+                match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                    MultiTurnStreamItem::ToolExecutionStarted {
+                        internal_call_id, ..
+                    } => {
+                        assert!(
+                            committed_ids.is_empty() && result_ids.is_empty(),
+                            "every start item must precede the batch's commit/result items"
+                        );
+                        started_ids.push(internal_call_id);
+                        gate.notify_one();
+                    }
+                    MultiTurnStreamItem::ToolExecutionCommitted {
+                        internal_call_id, ..
+                    } => committed_ids.push(internal_call_id),
+                    MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                        internal_call_id,
+                        ..
+                    }) => result_ids.push(internal_call_id),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("start items must be surfaced while the concurrent tools are still running");
+
+        assert_eq!(started_ids.len(), 2, "one start per executed tool call");
+        // Starts pair with the (call-ordered) commit/result ids in any start order.
+        let mut paired = started_ids.clone();
+        paired.sort();
+        let mut committed_sorted = committed_ids.clone();
+        committed_sorted.sort();
+        assert_eq!(paired, committed_sorted);
+        assert_eq!(committed_ids, result_ids);
     }
 
     /// Terminates from the `x == 1` tool's result, but only *after* the slow
@@ -5389,12 +5566,14 @@ mod migrated_tests {
             .stream()
             .await;
 
+        let mut exec_starts = 0;
         let mut exec_commits = 0;
         let mut results = 0;
         let mut final_response = None;
         let mut stream = stream;
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
+                MultiTurnStreamItem::ToolExecutionStarted { .. } => exec_starts += 1,
                 MultiTurnStreamItem::ToolExecutionCommitted { .. } => exec_commits += 1,
                 MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. }) => {
                     results += 1
@@ -5405,6 +5584,10 @@ mod migrated_tests {
         }
 
         assert_eq!(calls.load(SeqCst), 0, "a skipped tool's body never runs");
+        assert_eq!(
+            exec_starts, 1,
+            "the call dispatched (its hook chain ran), so its start is surfaced"
+        );
         assert_eq!(
             exec_commits, 0,
             "a hook-skipped tool produces no execution-commit"

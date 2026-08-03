@@ -68,10 +68,39 @@ pub enum MultiTurnStreamItem<R> {
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
     /// `ToolCall` item.
     StreamAssistantItem(StreamedAssistantContent<R>),
+    /// Live notification that Rig has **started executing** a tool call:
+    /// emitted at the call's actual start moment — immediately before its
+    /// `ToolCall` hook chain runs — so a consumer can show in-flight tool
+    /// activity while the body (or a slow steering hook) is still running. The
+    /// real-time counterpart of
+    /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted), which follows
+    /// only after the whole batch settles.
+    ///
+    /// Per call, the complete [`StreamedAssistantContent::ToolCall`] item
+    /// precedes this (a batch's are emitted up front, in call order) and the
+    /// `ToolExecutionCommitted` + `ToolResult` items follow it, still atomically
+    /// after batch settle in call order — every pre-existing item keeps its
+    /// position. Starts surface in call order sequentially, in start order
+    /// under `tool_concurrency`.
+    ///
+    /// Reports that dispatch **began**, not that the body ran: a hook-skipped
+    /// call still surfaces a start (followed by its `ToolResult` but no
+    /// commit), a call preresolved by invalid-call recovery emits nothing, and
+    /// a terminated batch may leave starts whose commit/result never follow.
+    ToolExecutionStarted {
+        /// Name of the tool being executed.
+        tool_name: String,
+        /// Rig-generated id correlating this start with the model tool call
+        /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]), the
+        /// execution commit, and the resulting
+        /// [`StreamedUserContent::ToolResult`].
+        internal_call_id: String,
+    },
     /// Confirmation that Rig **executed and committed** a tool call. This is not
-    /// a real-time start notification: it is surfaced together with its
-    /// `ToolResult` only after the whole batch settles successfully. Use tool
-    /// hooks for live host-side start/result observation.
+    /// a real-time start notification — that is
+    /// [`ToolExecutionStarted`](Self::ToolExecutionStarted): it is surfaced
+    /// together with its `ToolResult` only after the whole batch settles
+    /// successfully.
     ///
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
@@ -331,8 +360,10 @@ where
     /// Execute up to `concurrency` of a turn's tool calls at once (1 by default,
     /// i.e. sequential). See [`AgentRunner::tool_concurrency`]: at any
     /// `concurrency` the stream emits the model's `ToolCall` items (call order),
-    /// then — atomically, after the whole tool batch settles successfully — the
-    /// per-tool `ToolExecutionCommitted` + `ToolResult` items in **call order** (not
+    /// then a live `ToolExecutionStarted` per call as it actually starts (call
+    /// order when sequential, start order when concurrent), then — atomically,
+    /// after the whole tool batch settles successfully — the per-tool
+    /// `ToolExecutionCommitted` + `ToolResult` items in **call order** (not
     /// completion order). The streamed message history is unchanged at any
     /// `concurrency`.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
@@ -679,7 +710,9 @@ where
 /// - The model tool-call events ([`StreamedAssistantContent::ToolCall`]) are
 ///   emitted up front — they report what the model emitted at turn commit.
 /// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+///   concurrently bounded by it), with outcomes **collected, not surfaced** —
+///   except the live [`ToolExecutionStarted`](MultiTurnStreamItem::ToolExecutionStarted)
+///   item, surfaced immediately as each dispatched call starts.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
@@ -798,6 +831,13 @@ where
                     }
                     continue;
                 }
+                // Live start: yielded before the tool future is even built.
+                if forward_items {
+                    yield Ok(MultiTurnStreamItem::ToolExecutionStarted {
+                        tool_name: tool_call.function.name.clone(),
+                        internal_call_id: internal_call_id.clone(),
+                    });
+                }
                 let outcome = run_single_tool(
                     runner,
                     hook_ctx,
@@ -834,9 +874,25 @@ where
             // runs) once any sibling terminates — avoiding the Semantic-Kernel
             // fail-open — while already-in-flight siblings are drained so the
             // lowest call-index terminator wins and no task is left detached.
+            enum BatchEvent<T> {
+                Started {
+                    tool_name: String,
+                    internal_call_id: String,
+                },
+                Settled(usize, Option<T>),
+            }
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let unordered = stream::iter(prepared.into_iter().enumerate())
-                .map(|(index, call)| {
+            let (started_tx, started_rx) = futures::channel::mpsc::unbounded();
+            let tasks: Vec<_> = prepared
+                .into_iter()
+                .enumerate()
+                .map(|(index, call)| (index, call, started_tx.clone()))
+                .collect();
+            // Each task owns one sender clone, so the channel — and the merged
+            // drain below — closes exactly when the last task settles.
+            drop(started_tx);
+            let unordered = stream::iter(tasks)
+                .map(|(index, call, started_tx)| {
                     let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
                     let tool_snapshot = &tool_snapshot;
                     let full_history_for_errors = &full_history_for_errors;
@@ -855,6 +911,13 @@ where
                         // `None` marks a dropped (never-started) sibling.
                         if terminating.load(std::sync::atomic::Ordering::SeqCst) {
                             return (index, None);
+                        }
+                        if forward_items {
+                            // A failed send means the drain is gone with the stream.
+                            let _ = started_tx.unbounded_send((
+                                tool_call.function.name.clone(),
+                                internal_call_id.clone(),
+                            ));
                         }
                         let outcome = run_single_tool(
                             runner,
@@ -883,9 +946,29 @@ where
                     .instrument(span)
                 })
                 .buffer_unordered(runner.concurrency);
-            futures::pin_mut!(unordered);
+            let merged = stream::select(
+                started_rx.map(|(tool_name, internal_call_id)| BatchEvent::Started {
+                    tool_name,
+                    internal_call_id,
+                }),
+                unordered.map(|(index, outcome)| BatchEvent::Settled(index, outcome)),
+            );
+            futures::pin_mut!(merged);
 
-            while let Some((index, outcome)) = unordered.next().await {
+            while let Some(event) = merged.next().await {
+                let (index, outcome) = match event {
+                    BatchEvent::Started {
+                        tool_name,
+                        internal_call_id,
+                    } => {
+                        yield Ok(MultiTurnStreamItem::ToolExecutionStarted {
+                            tool_name,
+                            internal_call_id,
+                        });
+                        continue;
+                    }
+                    BatchEvent::Settled(index, outcome) => (index, outcome),
+                };
                 // A dropped sibling records nothing.
                 let result = match outcome {
                     Some(result) => result,
@@ -2267,11 +2350,13 @@ mod migrated_tests {
             true,
         );
 
+        let mut saw_start = false;
         let mut saw_commit = false;
         let mut saw_result = false;
         let mut saw_error = false;
         while let Some(item) = stream.next().await {
             match item {
+                Ok(MultiTurnStreamItem::ToolExecutionStarted { .. }) => saw_start = true,
                 Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
                 Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                     ..
@@ -2284,6 +2369,11 @@ mod migrated_tests {
         assert!(
             saw_error,
             "the mismatched result must fail run-state commit"
+        );
+        assert!(
+            saw_start,
+            "the live start was surfaced before the batch failed to commit — \
+             a terminated batch may leave starts without commit/result items"
         );
         assert!(!saw_commit, "a failed run-state commit cannot be announced");
         assert!(!saw_result, "an uncommitted result cannot be surfaced");
