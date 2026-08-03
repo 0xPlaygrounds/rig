@@ -11,6 +11,13 @@
 //! `rig-core`, and missing transport features fail only when fulfillment is
 //! attempted.
 //!
+//! The deterministic [`ProviderConfig::Mock`] and [`EmbedderConfig::Mock`]
+//! variants are part of that stable production-visible serde vocabulary.
+//! Hosts that accept serialized provider configuration across an untrusted
+//! boundary must validate or allowlist variants and fields before fulfillment;
+//! a [`MockScript`] can deliberately leave selected operations pending until
+//! their futures are cancelled.
+//!
 //! Live transports live in [`Runtime`], not in configs: a serialized
 //! `ProviderConfig` resumes anywhere, and handles (HTTP client, AWS client,
 //! gRPC channel) are rebuilt on first use per process.
@@ -693,6 +700,8 @@ macro_rules! define_provider_surfaces {
         /// The closed enum is feature-stable: variants whose transport needs
         /// an optional Cargo feature remain serializable and matchable without
         /// it; fulfillment returns a clear boundary error until enabled.
+        /// The always-present [`ProviderConfig::Mock`] variant is likewise
+        /// production-visible and must be handled by exhaustive matches.
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub enum ProviderConfig {
             $(
@@ -793,6 +802,8 @@ macro_rules! define_provider_surfaces {
         ///
         /// FastEmbed remains an explicit exception: loaded local weights are
         /// runtime state rather than resumable serde configuration.
+        /// The deterministic [`EmbedderConfig::Mock`] variant remains present
+        /// in production builds and must be handled by exhaustive matches.
         #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
         pub enum EmbedderConfig {
             $(
@@ -930,12 +941,17 @@ pub async fn list_models(
     }
 }
 
-/// Scripted embedding responses for tests — the embeddings sibling of
-/// [`MockScript`].
+/// Scripted embedding responses for deterministic tests and host simulation —
+/// the embeddings sibling of [`MockScript`].
 ///
 /// Plain data plus an interior-mutable call cursor: `clone` SHARES the
 /// cursor (so a session and a test observing it stay in step), and
 /// deserialize RESETS it (`#[serde(skip)]`).
+///
+/// This type is the payload of the production-visible
+/// [`EmbedderConfig::Mock`] serde variant. Hosts that accept provider
+/// configuration across an untrusted boundary should validate or allowlist
+/// variants and fields before fulfillment.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockEmbedder {
     /// One response per expected embed call, in order: the vectors for that
@@ -1252,6 +1268,14 @@ impl MockStreamError {
     }
 }
 
+/// Scripted completion responses for deterministic tests and host simulation.
+///
+/// This type is the payload of the always-present, production-visible
+/// [`ProviderConfig::Mock`] serde variant. Its [`Self::pending`] entries can
+/// deliberately keep selected provider operations pending until the caller
+/// cancels their futures. Hosts that accept provider configuration across an
+/// untrusted boundary should validate or allowlist variants and fields before
+/// fulfillment.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct MockScript {
     /// One normalized response per expected model call, in order.
@@ -1273,8 +1297,11 @@ pub struct MockScript {
     #[serde(default)]
     pub stream_errors: Vec<Option<MockStreamError>>,
     /// Calls that remain pending until their provider future is cancelled,
-    /// index-aligned with model calls. Used to verify driver cancellation
-    /// ownership without wall-clock-dependent transport behavior.
+    /// index-aligned with model calls.
+    ///
+    /// A `true` entry intentionally prevents that call from completing on its
+    /// own. Validate this field before fulfillment when the script came from
+    /// an untrusted serialized source.
     #[serde(default)]
     pub pending: Vec<bool>,
     #[serde(skip)]
@@ -1325,6 +1352,9 @@ impl MockScript {
 
     /// Mark selected provider operations as pending until their future is
     /// dropped, index-aligned with model calls.
+    ///
+    /// A selected operation deliberately has no natural completion. The host
+    /// must cancel or drop its future.
     pub fn with_pending(mut self, pending: Vec<bool>) -> Self {
         self.pending = pending;
         self

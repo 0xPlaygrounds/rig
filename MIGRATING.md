@@ -850,9 +850,15 @@ matches or serde shape.
 `Together` variants and `From<EmbeddingConfig>` conversions. Both provider
 enums, their descriptor/model accessors, conversions, and fulfillment dispatch
 come from the same compile-time capability registry. The deterministic
-`MockScript`/`MockEmbedder` surface is always present for the same shape-stability
-reason. FastEmbed remains outside this vocabulary because loaded local weights
-cannot be serialized as resumable provider configuration.
+`MockScript`/`MockEmbedder` surface is also always present for the same
+shape-stability reason. `ProviderConfig::Mock` and `EmbedderConfig::Mock` are
+therefore production-visible enum and serde variants, not test-only feature
+arms, and exhaustive downstream matches must handle them. Mock scripts can
+deliberately leave selected provider operations pending until the caller
+cancels their futures. Hosts that deserialize provider configuration across an
+untrusted boundary must validate or allowlist provider variants and their
+fields before fulfillment. FastEmbed remains outside this vocabulary because
+loaded local weights cannot be serialized as resumable provider configuration.
 
 ### `AgentBuilder::new` takes a `ProviderConfig`
 
