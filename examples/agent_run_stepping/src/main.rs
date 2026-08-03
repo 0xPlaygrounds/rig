@@ -147,6 +147,9 @@ async fn main() -> Result<()> {
                     // driver could instead retry, repair, or skip here.
                     outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
+                if matches!(outcome, ModelTurnOutcome::Continue(_)) {
+                    run.continue_model_turn()?;
+                }
             }
             AgentRunStep::CallTools { .. } => {
                 // The whole run is serializable while tool calls are pending:

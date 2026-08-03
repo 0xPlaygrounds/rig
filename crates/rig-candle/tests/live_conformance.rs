@@ -99,13 +99,12 @@ async fn buffered_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
+    let model_attempt = prepared.model_attempt.clone();
     let response = rig_candle::functions::complete(model, prepared.request).await?;
-    Ok(ModelTurn::new(
+    Ok(model_attempt.into_model_turn(
         response.message_id.clone(),
         response.choice.clone(),
         response.usage,
-        prepared.executable_tool_names,
-        prepared.allowed_tool_names,
     ))
 }
 
@@ -114,6 +113,7 @@ async fn streamed_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
+    let model_attempt = prepared.model_attempt.clone();
     let mut stream = rig_candle::functions::open_stream(model, prepared.request).await?;
     let mut text = String::new();
     let mut contents: Vec<AssistantContent> = Vec::new();
@@ -134,13 +134,7 @@ async fn streamed_turn(
     }
     let choice = OneOrMany::many(contents)
         .map_err(|_| "stream produced neither text nor tool calls".to_string())?;
-    Ok(ModelTurn::new(
-        raw.message_id.clone(),
-        choice,
-        raw.usage,
-        prepared.executable_tool_names,
-        prepared.allowed_tool_names,
-    ))
+    Ok(model_attempt.into_model_turn(raw.message_id.clone(), choice, raw.usage))
 }
 
 /// Drive a full sans-IO agent run: prepare each turn's request, call the
@@ -171,15 +165,13 @@ async fn drive(
                     run.output_tool_name(),
                     None,
                 )?;
-                if run.output_tool_name().is_none() {
-                    run.set_output_tool_name(prepared.output_tool_name.clone());
-                }
                 let turn = if streaming {
                     streamed_turn(model, prepared).await?
                 } else {
                     buffered_turn(model, prepared).await?
                 };
                 run.model_response(turn)?;
+                run.continue_model_turn()?;
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::new();
@@ -770,6 +762,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
                     )?;
                     let turn = buffered_turn(&model, prepared).await?;
                     run.model_response(turn)?;
+                    run.continue_model_turn()?;
                 }
                 AgentRunStep::CallTools { .. } => {
                     return Err("request_patch: unexpected tool calls".into());

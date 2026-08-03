@@ -58,6 +58,8 @@ async fn hand_driven_single_turn_completes() {
                             ),
                             "unrecovered turns must not suppress the response hook"
                         );
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         panic!("tool-free run must not request tool execution: {calls:?}")
@@ -142,6 +144,8 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
@@ -226,6 +230,8 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         if first_tool_step.is_none() {
@@ -288,6 +294,8 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     Ok(AgentRunStep::CallTools { calls }) => {
                         run.tool_results(execute_pending_calls(&calls))

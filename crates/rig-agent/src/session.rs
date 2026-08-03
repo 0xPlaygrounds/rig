@@ -470,41 +470,42 @@ impl AgentSession {
                 .run
                 .cancel_error("advance called while an invalid tool call awaits resolution"));
         }
-        match &self.pending {
-            Pending::TurnReady(_) | Pending::TurnReply => {
-                return Err(self
-                    .run
-                    .cancel_error("advance called while a model turn awaits reply_turn"));
-            }
-            Pending::Tools { .. } => {
-                return Err(self
-                    .run
-                    .cancel_error("advance called while tool results are awaited"));
-            }
+        if matches!(self.pending, Pending::TurnReply) {
+            return Err(self
+                .run
+                .cancel_error("advance called while a model turn awaits reply_turn"));
+        }
+        if matches!(self.pending, Pending::Tools { .. }) {
+            return Err(self
+                .run
+                .cancel_error("advance called while tool results are awaited"));
+        }
+        if matches!(
+            self.pending,
             Pending::BeforeCall {
-                answered: false, ..
-            } => {
-                return Err(self.run.cancel_error(
-                    "advance called while a BeforeModelCall event awaits reply_before_call",
-                ));
+                answered: false,
+                ..
             }
+        ) {
+            return Err(self.run.cancel_error(
+                "advance called while a BeforeModelCall event awaits reply_before_call",
+            ));
+        }
+        if matches!(
+            self.pending,
             Pending::ToolCallGate {
-                current: Some(_), ..
-            } => {
-                return Err(self.run.cancel_error(
-                    "advance called while a ToolCallPending event awaits reply_tool_call",
-                ));
+                current: Some(_),
+                ..
             }
-            Pending::ToolResultGate { awaiting: true, .. } => {
-                return Err(self.run.cancel_error(
-                    "advance called while a ToolResultReady event awaits reply_tool_result",
-                ));
-            }
-            Pending::None
-            | Pending::BeforeCall { .. }
-            | Pending::Invalid { .. }
-            | Pending::ToolCallGate { .. }
-            | Pending::ToolResultGate { .. } => {}
+        ) {
+            return Err(self.run.cancel_error(
+                "advance called while a ToolCallPending event awaits reply_tool_call",
+            ));
+        }
+        if matches!(self.pending, Pending::ToolResultGate { awaiting: true, .. }) {
+            return Err(self.run.cancel_error(
+                "advance called while a ToolResultReady event awaits reply_tool_result",
+            ));
         }
 
         // Pre-execution gate: surface the next undecided call, or the
@@ -577,9 +578,13 @@ impl AgentSession {
                             attempt.reissue(turn);
                             attempt
                         }
-                        None => {
-                            ModelCallAttempt::begin(prompt, history, turn, &mut self.next_patch)
-                        }
+                        None => ModelCallAttempt::begin(
+                            prompt,
+                            history,
+                            turn,
+                            self.run.inherited_output_contract().cloned(),
+                            &mut self.next_patch,
+                        ),
                     };
                     let mut prepared = match attempt.prepare(
                         &self.config,
@@ -1294,10 +1299,6 @@ impl AgentSession {
         hooks: &'a crate::hooks::Hooks,
         executor: Option<&'a crate::executor::ToolExecutor>,
     ) -> Result<PromptResponse, PromptError> {
-        // The session surfaces the turn prompt on `BeforeModelCall` only; the
-        // response observation carries it too (classic parity), so keep the
-        // most recent one.
-        let mut turn_prompt: Option<Message> = None;
         loop {
             match self.advance().await? {
                 SessionEvent::BeforeModelCall {
@@ -1308,7 +1309,6 @@ impl AgentSession {
                     let action = hooks
                         .dispatch_completion_call(turn, &prompt, &history)
                         .await;
-                    turn_prompt = Some(prompt);
                     self.reply_before_call(action)?;
                 }
                 SessionEvent::TurnFinished {
@@ -1319,7 +1319,14 @@ impl AgentSession {
                     // Observation over the full provider response first
                     // (classic order: the response hook fires before the
                     // model-turn verdict).
-                    let observed_prompt = turn_prompt.clone().unwrap_or_else(|| Message::from(""));
+                    let observed_prompt = self
+                        .run
+                        .accepted_turn()
+                        .map(|accepted| accepted.prompt().clone())
+                        .ok_or_else(|| {
+                            self.run
+                                .cancel_error("accepted model turn lost its model-attempt prompt")
+                        })?;
                     if let Some(response) = self.last_response().cloned()
                         && let crate::agent::ObservationAction::Stop(reason) = hooks
                             .dispatch_completion_response(turn, &observed_prompt, &response)
@@ -1595,6 +1602,308 @@ mod tests {
         ])
     }
 
+    fn object_schema_requiring(field: &str) -> rig_core::schemars::Schema {
+        serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {(field): {"type": "string"}},
+            "required": [field],
+        }))
+        .expect("test schema")
+    }
+
+    fn advertised_output_schema(
+        request: &rig_core::completion::CompletionRequest,
+    ) -> serde_json::Value {
+        assert!(
+            request.output_schema.is_none(),
+            "Tool mode must not populate the provider-native schema field"
+        );
+        request
+            .tools
+            .iter()
+            .find(|tool| tool.name == "final_result")
+            .expect("synthetic output tool")
+            .parameters
+            .clone()
+    }
+
+    #[tokio::test]
+    async fn corrective_retry_inherits_the_violated_patched_tool_schema() {
+        let script = MockScript::from_responses(vec![
+            tool_call_response(
+                "first",
+                "final_result",
+                serde_json::json!({"baseline": "ok"}),
+            ),
+            tool_call_response(
+                "second",
+                "final_result",
+                serde_json::json!({"patched": "ok"}),
+            ),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.output_mode = crate::agent::run::OutputMode::Tool;
+        config.output_tool_name = Some("final_result".to_string());
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "structured prompt",
+        )
+        .with_policy(SessionPolicy {
+            surface_completion_calls: true,
+            ..SessionPolicy::default()
+        });
+
+        match session.advance().await.expect("first gate") {
+            SessionEvent::BeforeModelCall { .. } => session
+                .reply_before_call(CompletionCallAction::Patch(
+                    RequestPatch::new().output_schema(object_schema_requiring("patched")),
+                ))
+                .expect("patch first attempt"),
+            other => panic!("expected first BeforeModelCall, got {other:?}"),
+        }
+        match session.advance().await.expect("corrective gate") {
+            SessionEvent::BeforeModelCall { .. } => session
+                .reply_before_call(CompletionCallAction::Continue)
+                .expect("continue corrective attempt"),
+            other => panic!("expected corrective BeforeModelCall, got {other:?}"),
+        }
+        let response = match session.advance().await.expect("final response") {
+            SessionEvent::Done(response) => response,
+            other => panic!("expected Done, got {other:?}"),
+        };
+        assert_eq!(response.output, r#"{"patched":"ok"}"#);
+
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        for request in &requests {
+            let schema = advertised_output_schema(request);
+            assert_eq!(
+                schema.get("required"),
+                Some(&serde_json::json!(["patched"]))
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn patched_tool_schema_controls_plain_text_json_fallback_validation() {
+        let script = MockScript::from_responses(vec![
+            text_response(r#"{"baseline":"ok"}"#),
+            text_response(r#"{"patched":"ok"}"#),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.output_schema = Some(object_schema_requiring("baseline"));
+        config.output_mode = crate::agent::run::OutputMode::Tool;
+        config.output_tool_name = Some("final_result".to_string());
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "structured prompt",
+        )
+        .with_policy(SessionPolicy {
+            surface_completion_calls: true,
+            ..SessionPolicy::default()
+        });
+
+        let SessionEvent::BeforeModelCall { .. } = session.advance().await.expect("first gate")
+        else {
+            panic!("expected first BeforeModelCall");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Patch(
+                RequestPatch::new().output_schema(object_schema_requiring("patched")),
+            ))
+            .expect("patch first attempt");
+        let SessionEvent::BeforeModelCall { .. } =
+            session.advance().await.expect("corrective gate")
+        else {
+            panic!("baseline-valid text must fail the patched schema");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Continue)
+            .expect("continue corrective attempt");
+        let response = match session.advance().await.expect("final response") {
+            SessionEvent::Done(response) => response,
+            other => panic!("expected Done, got {other:?}"),
+        };
+        assert_eq!(response.output, r#"{"patched":"ok"}"#);
+        assert_eq!(script.requests().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn explicit_corrective_patch_replaces_the_inherited_tool_schema() {
+        let script = MockScript::from_responses(vec![
+            tool_call_response("first", "final_result", serde_json::json!({})),
+            tool_call_response(
+                "second",
+                "final_result",
+                serde_json::json!({"replacement": "ok"}),
+            ),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.output_schema = Some(object_schema_requiring("baseline"));
+        config.output_mode = crate::agent::run::OutputMode::Tool;
+        config.output_tool_name = Some("final_result".to_string());
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "structured prompt",
+        )
+        .with_policy(SessionPolicy {
+            surface_completion_calls: true,
+            ..SessionPolicy::default()
+        });
+
+        let SessionEvent::BeforeModelCall { .. } = session.advance().await.expect("first gate")
+        else {
+            panic!("expected first BeforeModelCall");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Patch(
+                RequestPatch::new().output_schema(object_schema_requiring("patched")),
+            ))
+            .expect("patch first attempt");
+        let SessionEvent::BeforeModelCall { .. } =
+            session.advance().await.expect("corrective gate")
+        else {
+            panic!("expected corrective BeforeModelCall");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Patch(
+                RequestPatch::new().output_schema(object_schema_requiring("replacement")),
+            ))
+            .expect("replace inherited contract");
+        assert!(matches!(
+            session.advance().await.expect("final response"),
+            SessionEvent::Done(_)
+        ));
+
+        let requests = script.requests();
+        assert_eq!(
+            advertised_output_schema(&requests[0]).get("required"),
+            Some(&serde_json::json!(["patched"]))
+        );
+        assert_eq!(
+            advertised_output_schema(&requests[1]).get("required"),
+            Some(&serde_json::json!(["replacement"]))
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_tool_loop_turn_returns_to_the_baseline_output_schema() {
+        let script = MockScript::from_responses(vec![
+            tool_call_response("add-call", "add", serde_json::json!({"a": 1, "b": 2})),
+            tool_call_response(
+                "output-call",
+                "final_result",
+                serde_json::json!({"baseline": "ok"}),
+            ),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.output_schema = Some(object_schema_requiring("baseline"));
+        config.output_mode = crate::agent::run::OutputMode::Tool;
+        config.output_tool_name = Some("final_result".to_string());
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "structured prompt",
+        )
+        .with_tools(adder_catalog())
+        .with_policy(SessionPolicy {
+            surface_completion_calls: true,
+            ..SessionPolicy::default()
+        });
+
+        let SessionEvent::BeforeModelCall { .. } = session.advance().await.expect("first gate")
+        else {
+            panic!("expected first BeforeModelCall");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Patch(
+                RequestPatch::new().output_schema(object_schema_requiring("patched")),
+            ))
+            .expect("patch first attempt");
+        let calls = match session.advance().await.expect("tool call") {
+            SessionEvent::ToolCallsReady(calls) => calls,
+            other => panic!("expected ToolCallsReady, got {other:?}"),
+        };
+        let call = calls.first().expect("one add call");
+        session
+            .provide_tool_results(vec![submission_for(
+                call,
+                tool_result_for(&call.tool_call, "3"),
+            )])
+            .expect("add result");
+        let SessionEvent::BeforeModelCall { .. } = session.advance().await.expect("second gate")
+        else {
+            panic!("expected second BeforeModelCall");
+        };
+        session
+            .reply_before_call(CompletionCallAction::Continue)
+            .expect("continue ordinary second turn");
+        assert!(matches!(
+            session.advance().await.expect("final response"),
+            SessionEvent::Done(_)
+        ));
+
+        let requests = script.requests();
+        assert_eq!(
+            advertised_output_schema(&requests[0]).get("required"),
+            Some(&serde_json::json!(["patched"]))
+        );
+        assert_eq!(
+            advertised_output_schema(&requests[1]).get("required"),
+            Some(&serde_json::json!(["baseline"]))
+        );
+    }
+
+    #[tokio::test]
+    async fn response_observation_uses_the_attempt_prompt_without_before_call_surfacing() {
+        let observed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed_by_hook = Arc::clone(&observed);
+        let hooks = crate::hooks::Hooks::new().with(crate::hooks::HookEntry::sync(
+            "capture-response-prompt",
+            move |event| {
+                if let crate::hooks::HookEvent::CompletionResponse { prompt, .. } = event {
+                    observed_by_hook
+                        .lock()
+                        .expect("observed prompts")
+                        .push((*prompt).clone());
+                }
+                crate::hooks::HookDecision::Continue
+            },
+        ));
+        let mut session = AgentSession::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(MockScript::from_responses(vec![text_response("done")])),
+            Arc::new(Runtime::new()),
+            "real attempt prompt",
+        )
+        .with_policy(SessionPolicy {
+            surface_completion_calls: false,
+            surface_model_turns: true,
+            ..SessionPolicy::default()
+        });
+
+        let response = session
+            .drive(&hooks, None)
+            .await
+            .expect("session should complete");
+        assert_eq!(response.output, "done");
+        assert_eq!(
+            *observed.lock().expect("observed prompts"),
+            [Message::user("real attempt prompt")]
+        );
+    }
+
     #[tokio::test]
     async fn surfaced_tool_call_approved_runs_unchanged() {
         let policy = SessionPolicy {
@@ -1633,6 +1942,68 @@ mod tests {
             SessionEvent::Done(done) => assert_eq!(done.output, "done"),
             other => panic!("expected Done, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn blocking_driver_commits_reverse_submissions_in_source_order() {
+        let first_turn = rig_core::completion::CompletionResponse::new(
+            OneOrMany::many(vec![
+                AssistantContent::tool_call("first", "add", serde_json::json!({"slot": 1})),
+                AssistantContent::tool_call("second", "add", serde_json::json!({"slot": 2})),
+            ])
+            .expect("two tool calls"),
+            usage(3),
+            "mock",
+        )
+        .with_finish_reason(FinishReason::ToolCalls);
+        let script = MockScript::from_responses(vec![first_turn, text_response("done")]);
+        let mut session = tool_session(script.clone(), SessionPolicy::default());
+
+        let calls = match session.advance().await.expect("tool calls") {
+            SessionEvent::ToolCallsReady(calls) => calls,
+            other => panic!("expected ToolCallsReady, got {other:?}"),
+        };
+        let submissions = calls
+            .iter()
+            .rev()
+            .map(|call| {
+                submission_for(
+                    call,
+                    tool_result_for(&call.tool_call, &format!("result-{}", call.tool_call.id)),
+                )
+            })
+            .collect();
+        session
+            .provide_tool_results(submissions)
+            .expect("reverse submissions are identity joined");
+        assert!(matches!(
+            session.advance().await.expect("final response"),
+            SessionEvent::Done(_)
+        ));
+
+        let requests = script.requests();
+        let results = requests[1]
+            .chat_history
+            .iter()
+            .find_map(|message| match message {
+                Message::User { content }
+                    if content
+                        .iter()
+                        .all(|item| matches!(item, UserContent::ToolResult(_))) =>
+                {
+                    Some(content)
+                }
+                _ => None,
+            })
+            .expect("tool result message");
+        let ids = results
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(result.id.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["first", "second"]);
     }
 
     #[tokio::test]

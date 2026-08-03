@@ -132,6 +132,7 @@ async fn run_streamed_turn(
         .expect("drained stream should finalize");
     let streamed_turn = assembler.finish(response.message_id, response.choice, response.usage);
     run.streamed_turn(streamed_turn)?;
+    run.continue_model_turn()?;
     Ok(TurnEnd::Finished)
 }
 

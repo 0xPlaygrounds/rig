@@ -195,7 +195,7 @@ pub use hook::{
     RunId, ToolCallAction, ToolCallResolution, ToolResultAction, ToolResultResolution,
     fold_completion_actions, fold_invalid_resolutions, fold_observation_actions,
 };
-pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
+pub use prepare::{PreparedModelAttempt, PreparedRequest, ToolCatalog, prepare_request};
 pub use request::SessionRunner;
 pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::message::Text;

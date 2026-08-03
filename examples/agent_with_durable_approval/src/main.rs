@@ -201,6 +201,9 @@ async fn main() -> Result<()> {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
                     outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
+                if matches!(outcome, ModelTurnOutcome::Continue(_)) {
+                    run.continue_model_turn()?;
+                }
             }
 
             AgentRunStep::CallTools { .. } => {

@@ -322,14 +322,40 @@ by that retry. Streamed invalid-tool retry/skip history, usage, and events are
 also provisional until the abandoned provider stream reaches checked EOF; a
 later provider error rolls them back with the rest of the attempt.
 
+Each provider operation now gets a fresh attempt identity, including a
+refunded reissue of the same logical request. The attempt owns the real prompt
+and the effective Tool-mode output contract until commit. Consequently,
+response hooks receive the real prompt without relying on a surfaced
+`BeforeModelCall`, streamed text aggregation cannot leak across reissues, and
+Tool-mode validation uses the schema actually advertised as the synthetic
+tool's parameters. `CompletionRequest::output_schema` remains `None` in Tool
+mode. A corrective structured-output retry inherits the violated contract by
+default; a new `RequestPatch::output_schema` replaces it, while an ordinary
+tool-loop continuation returns to the configured baseline.
+
 Current-turn metadata and tool identity now travel with their records:
 
+- `PreparedRequest::output_tool_contract` replaces the former
+  `output_tool_name` field and carries both the synthetic tool name and the
+  schema advertised as its parameters. Hand-written drivers must retain
+  `PreparedRequest::model_attempt` while provider I/O is in flight and consume
+  its `into_model_turn` or `into_streamed_turn` method when feeding the
+  response to `AgentRun`; construct streaming aggregation through its
+  `streamed_turn_assembler` method as well. This atomically carries the
+  prepared prompt, attempt identity, schema, and validation name sets instead
+  of reconstructing them from the run's baseline configuration. Callers that
+  only inspect the name can map `output_tool_contract.as_ref()` to its
+  `output_tool_name`.
 - `AgentStreamItem::TurnFinished` has `message_id: Option<String>`.
 - `ModelTurnOutcome::Continue` carries an `AcceptedModelTurn` containing the
   canonical post-resolution content, turn index, message ID, usage, and
-  medium-specific response-observation suppression flag. Both drivers use this
-  record for their one normalized `ModelTurnFinished` verdict before tool
-  preflight, including after invalid-call repair.
+  medium-specific response-observation suppression flag, plus accessors for
+  the committed attempt prompt, identity, and Tool-mode contract. Both drivers
+  use this record for their one normalized `ModelTurnFinished` verdict before
+  tool preflight, including after invalid-call repair. `AgentRun` now stores
+  “verdict required” and “ready to advance” as distinct states: call
+  `continue_model_turn` before `next_step`; checkpoints before the verdict
+  resurface it once, while checkpoints after it advance without redispatch.
 - `AgentStream::last_response()` describes only the current/most recently
   completed attempt; a successful turn with no provider terminal record leaves
   it as `None` rather than retaining an older turn's record.
@@ -343,7 +369,11 @@ Current-turn metadata and tool identity now travel with their records:
 - `AgentSession::provide_tool_results` and `AgentStream::provide_tool_results`
   accept `Vec<ToolResultSubmission>`, not bare `UserContent`. Build each record
   from the corresponding pending call's `internal_call_id`; submissions may be
-  reordered safely even when provider call IDs duplicate. At the lower-level
+  reordered safely even when provider call IDs duplicate. Rig joins by that
+  identity and commits the model-visible result message in the pending calls'
+  source order, not host submission order. Rig's executor was already
+  source-ordered; this wire-visible change matters to manual hosts submitting
+  out of order through `provide_tool_results`. At the lower-level
   `AgentRun` boundary, use `tool_result_submissions` for the same protocol.
   Rig validates both embedded provider correlation fields (`id` and `call_id`)
   against the invocation selected by `internal_call_id`.
@@ -371,6 +401,16 @@ its `effective_call`.
 Together these preserve rewrite-then-skip behavior when a `ToolCallsReady`
 inbox crosses a process boundary. Add `..` to exhaustive event-field patterns
 when you do not need the new identity fields.
+
+Unknown tools are classified before executable jobs and tracing spans are
+created. They retain the registry's model-visible not-found result, but emit no
+`ToolExecutionCommitted`, open no `execute_tool` span, and do not contribute to
+`ToolBatchOutput::last_span_id`. For live executor outcomes and policy skips,
+`ToolExecutionRecord::raw_result` is the authoritative structured outcome. If
+a host supplies pre-resolved content, or a serialized pre-resolved call is
+replayed without a live execution record, Rig can only reconstruct a lossy
+success-shaped `raw_result`; use `ToolInvocationDisposition` as the execution
+provenance rather than inferring execution from that reconstructed status.
 
 ### Fluent builders are back (without the models)
 
@@ -416,9 +456,11 @@ Ollama, OpenRouter, xAI, and Bedrock all agree — with a placement conversion
 test per provider outside the replay claim (for example
 `system_messages_land_in_system_instruction_not_contents` in
 `rig-vertexai` and `rig-gemini-grpc`). Recorded response payloads are unchanged.
-The only fixture-file exception is four OpenRouter request matchers whose
-`when.body` objects gain the now-forwarded `max_tokens` field (6 insertions and
-6 deletions); every other cassette is unchanged.
+The fixture diff spans five files (7 insertions and 7 deletions): four
+OpenRouter request matchers whose `when.body` objects gain the now-forwarded
+`max_tokens` field, plus the Gemini hand-driven parallel-tool cassette whose
+two `functionResponse` parts now follow the model-emitted call order rather
+than the host's reverse submission order. Every other cassette is unchanged.
 
 Collapsing to one representation also closed a data-loss bug: Gemini's
 Interactions API used to prefer a scalar preamble and *discard* the history

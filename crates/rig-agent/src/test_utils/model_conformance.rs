@@ -1460,6 +1460,7 @@ where
             "valid repair did not continue",
         ));
     }
+    repaired.continue_model_turn()?;
     let AgentRunStep::CallTools { calls } = repaired.next_step()? else {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -1485,6 +1486,7 @@ where
     ) {
         return Err(ScenarioError::contract(SCENARIO, "skip did not continue"));
     }
+    skipped.continue_model_turn()?;
     let AgentRunStep::CallTools { calls } = skipped.next_step()? else {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -3000,6 +3002,7 @@ pub async fn invalid_tool_recovery_session(
             "valid repair did not continue",
         ));
     }
+    repaired.continue_model_turn()?;
     let AgentRunStep::CallTools { calls } = repaired.next_step()? else {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -3025,6 +3028,7 @@ pub async fn invalid_tool_recovery_session(
     ) {
         return Err(ScenarioError::contract(SCENARIO, "skip did not continue"));
     }
+    skipped.continue_model_turn()?;
     let AgentRunStep::CallTools { calls } = skipped.next_step()? else {
         return Err(ScenarioError::contract(
             SCENARIO,

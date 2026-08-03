@@ -294,6 +294,23 @@ struct ActiveTurn {
     recovery: Option<PendingStreamRecovery>,
 }
 
+#[derive(Default)]
+struct AttemptTextAggregation {
+    attempt_id: Option<String>,
+    text: String,
+}
+
+impl AttemptTextAggregation {
+    fn push(&mut self, attempt_id: &str, delta: &str) -> &str {
+        if self.attempt_id.as_deref() != Some(attempt_id) {
+            self.attempt_id = Some(attempt_id.to_owned());
+            self.text.clear();
+        }
+        self.text.push_str(delta);
+        &self.text
+    }
+}
+
 struct PendingStreamRecovery {
     run: AgentRun,
     resolution: StreamedResolution,
@@ -470,6 +487,13 @@ impl AgentStream {
         &self.run
     }
 
+    fn current_attempt_id(&self) -> Option<&str> {
+        self.active
+            .as_ref()
+            .map(|active| active.attempt.attempt_id())
+            .or_else(|| self.run.accepted_turn().map(|turn| turn.attempt_id()))
+    }
+
     /// The last provider terminal record, for observation parity.
     pub fn last_response(&self) -> Option<&StreamFinal> {
         self.last_final.as_ref()
@@ -635,7 +659,13 @@ impl AgentStream {
         history: Vec<Message>,
         turn: usize,
     ) -> Result<(), PromptError> {
-        let attempt = ModelCallAttempt::begin(prompt, history, turn, &mut self.next_patch);
+        let attempt = ModelCallAttempt::begin(
+            prompt,
+            history,
+            turn,
+            self.run.inherited_output_contract().cloned(),
+            &mut self.next_patch,
+        );
         self.open_attempt(attempt).await
     }
 
@@ -1620,12 +1650,10 @@ impl AgentStream {
         // Only entries that opted in observe the hot-path deltas.
         let observes_deltas = hooks.observes_deltas();
         AgentRunStream::new(async_stream::stream! {
-            // The turn prompt surfaced on `BeforeModelCall`, replayed into the
-            // response-finish observation (classic parity).
-            let mut turn_prompt: Option<Message> = None;
-            // Aggregated text for the in-flight turn, matching the classic
-            // assembler's `aggregated_text()`.
-            let mut aggregated = String::new();
+            // Aggregation is keyed by provider-operation identity, so a
+            // refunded/reissued attempt resets even when BeforeModelCall is
+            // not surfaced again.
+            let mut aggregation = AttemptTextAggregation::default();
             // The in-flight batch's structured results and per-call spans, so
             // the post-execution decision point carries the classic
             // classification and records post-hook result telemetry.
@@ -1641,10 +1669,8 @@ impl AgentStream {
                 };
                 match item {
                     AgentStreamItem::BeforeModelCall { prompt, history, turn } => {
-                        aggregated.clear();
                         let action =
                             hooks.dispatch_completion_call(turn, &prompt, &history).await;
-                        turn_prompt = Some(prompt);
                         if let Err(error) = self.reply_before_call(action).await {
                             yield Err(error);
                             break;
@@ -1658,8 +1684,16 @@ impl AgentStream {
                     } => {
                         // The provider's terminal record observation fires
                         // first, then the normalized per-turn verdict.
-                        let observed_prompt =
-                            turn_prompt.clone().unwrap_or_else(|| Message::from(""));
+                        let Some(observed_prompt) = self
+                            .run_state()
+                            .accepted_turn()
+                            .map(|accepted| accepted.prompt().clone())
+                        else {
+                            yield Err(self.run_state().cancel_error(
+                                "accepted streamed turn lost its model-attempt prompt",
+                            ));
+                            break;
+                        };
                         if let crate::agent::ObservationAction::Stop(reason) = hooks
                             .dispatch_stream_response_finish(
                                 turn,
@@ -1781,9 +1815,17 @@ impl AgentStream {
                             let turn = self.run_state().turn();
                             let observation = match &content {
                                 StreamedAssistantContent::Text(text) => {
-                                    aggregated.push_str(&text.text);
+                                    let Some(attempt_id) =
+                                        self.current_attempt_id().map(str::to_owned)
+                                    else {
+                                        yield Err(self.run_state().cancel_error(
+                                            "streamed text delta lost its model-attempt identity",
+                                        ));
+                                        break;
+                                    };
+                                    let aggregated = aggregation.push(&attempt_id, &text.text);
                                     hooks
-                                        .dispatch_text_delta(turn, &text.text, &aggregated)
+                                        .dispatch_text_delta(turn, &text.text, aggregated)
                                         .await
                                 }
                                 StreamedAssistantContent::ToolCallDelta {
@@ -1816,7 +1858,14 @@ impl AgentStream {
                                 break;
                             }
                         } else if let StreamedAssistantContent::Text(text) = &content {
-                            aggregated.push_str(&text.text);
+                            let Some(attempt_id) = self.current_attempt_id().map(str::to_owned)
+                            else {
+                                yield Err(self.run_state().cancel_error(
+                                    "streamed text delta lost its model-attempt identity",
+                                ));
+                                break;
+                            };
+                            aggregation.push(&attempt_id, &text.text);
                         }
                         // The provider's terminal record also drives the
                         // stream-finish observation.
@@ -1870,6 +1919,14 @@ mod tests {
             id.to_string(),
             ToolFunction::new("add".to_string(), json!({"a": 1, "b": 2})),
         )
+    }
+
+    #[test]
+    fn text_aggregation_is_scoped_to_provider_attempt_identity() {
+        let mut aggregation = AttemptTextAggregation::default();
+        assert_eq!(aggregation.push("attempt-a", "stale "), "stale ");
+        assert_eq!(aggregation.push("attempt-a", "text"), "stale text");
+        assert_eq!(aggregation.push("attempt-b", "fresh"), "fresh");
     }
 
     fn host_item_kind(item: &AgentStreamItem) -> &'static str {
@@ -2281,6 +2338,78 @@ mod gate_tests {
             }
         }
         assert!(stream.next_item().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn streaming_driver_commits_reverse_submissions_in_source_order() {
+        let script = MockScript::from_responses(Vec::new()).with_streams(vec![
+            vec![
+                StreamedAssistantContent::ToolCall {
+                    tool_call: ToolCall::new(
+                        "first".to_string(),
+                        ToolFunction::new("add".to_string(), serde_json::json!({"slot": 1})),
+                    ),
+                    internal_call_id: "internal-first".to_string(),
+                },
+                StreamedAssistantContent::ToolCall {
+                    tool_call: ToolCall::new(
+                        "second".to_string(),
+                        ToolFunction::new("add".to_string(), serde_json::json!({"slot": 2})),
+                    ),
+                    internal_call_id: "internal-second".to_string(),
+                },
+                StreamedAssistantContent::Final(StreamFinal::new("mock", usage(3))),
+            ],
+            vec![
+                StreamedAssistantContent::Text(Text::new("done")),
+                StreamedAssistantContent::Final(StreamFinal::new("mock", usage(5))),
+            ],
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(3);
+        let mut stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script),
+            Arc::new(Runtime::new()),
+            "hello",
+        )
+        .with_tools(ToolCatalog::new(vec![ToolDefinition {
+            name: "add".to_string(),
+            description: "Adds two numbers".to_string(),
+            parameters: serde_json::json!({"type": "object"}),
+        }]));
+
+        let calls = match next_decision(&mut stream).await {
+            AgentStreamItem::ToolCallsReady(calls) => calls,
+            other => panic!("expected ToolCallsReady, got {other:?}"),
+        };
+        stream
+            .provide_tool_results(
+                calls
+                    .iter()
+                    .rev()
+                    .map(|call| {
+                        submission_for(
+                            call,
+                            tool_result_for(
+                                &call.tool_call,
+                                &format!("result-{}", call.tool_call.id),
+                            ),
+                        )
+                    })
+                    .collect(),
+            )
+            .expect("reverse submissions are identity joined");
+
+        let mut result_ids = Vec::new();
+        while result_ids.len() < 2 {
+            if let AgentStreamItem::User(StreamedUserContent::ToolResult { tool_result, .. }) =
+                next(&mut stream).await
+            {
+                result_ids.push(tool_result.id);
+            }
+        }
+        assert_eq!(result_ids, ["first", "second"]);
     }
 
     #[tokio::test]
@@ -4389,6 +4518,156 @@ mod migrated_streaming_tests {
     }
 
     #[tokio::test]
+    async fn streamed_response_observation_uses_attempt_prompt_without_before_call_surfacing() {
+        let prompts: Arc<Mutex<Vec<Message>>> = Arc::new(Mutex::new(Vec::new()));
+        let prompts_by_hook = Arc::clone(&prompts);
+        let hooks = crate::hooks::Hooks::new().with(hook_entry(
+            "capture-stream-response-prompt",
+            move |event| {
+                if let HookEvent::StreamResponseFinish { prompt, .. } = event {
+                    prompts_by_hook
+                        .lock()
+                        .expect("stream response prompts")
+                        .push((*prompt).clone());
+                }
+                HookDecision::Continue
+            },
+        ));
+        let stream = AgentStream::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(script(vec![vec![text_item("done"), final_tokens(1)]])),
+            Arc::new(Runtime::new()),
+            "real streaming prompt",
+        )
+        .with_policy(SessionPolicy {
+            surface_completion_calls: false,
+            surface_model_turns: true,
+            ..SessionPolicy::default()
+        })
+        .drive(hooks, None);
+
+        let collected = collect(stream).await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        assert_eq!(collected.expect_final().output, "done");
+        assert_eq!(
+            *prompts.lock().expect("stream response prompts"),
+            [Message::user("real streaming prompt")]
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_stream_drive_resets_delta_aggregation_without_completion_gate() {
+        let aggregated: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let aggregated_by_hook = Arc::clone(&aggregated);
+        let hooks = crate::hooks::Hooks::new().with(
+            hook_entry("capture-attempt-aggregation", move |event| {
+                if let HookEvent::TextDelta { aggregated, .. } = event {
+                    aggregated_by_hook
+                        .lock()
+                        .expect("aggregated deltas")
+                        .push(aggregated.to_string());
+                }
+                HookDecision::Continue
+            })
+            .observing_deltas(),
+        );
+        let executor =
+            crate::executor::ToolExecutor::new().register(crate::tool::PortableDynamicTool::new(
+                "add",
+                "add",
+                json!({"type": "object"}),
+                |args| async move {
+                    Ok::<_, crate::tool::ToolExecutionError>(crate::tool::ToolOutput::json(args))
+                },
+            ));
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        let stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script(vec![
+                vec![
+                    text_item("first-attempt"),
+                    call_item("call-1", "add", json!({"a": 1, "b": 2})),
+                    final_tokens(2),
+                ],
+                vec![text_item("second-attempt"), final_tokens(2)],
+            ])),
+            Arc::new(Runtime::new()),
+            "go",
+        )
+        .with_tools(executor.catalog())
+        .with_policy(SessionPolicy {
+            surface_completion_calls: false,
+            surface_model_turns: true,
+            ..SessionPolicy::default()
+        })
+        .drive(hooks, Some(executor));
+
+        let collected = collect(stream).await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        assert_eq!(
+            *aggregated.lock().expect("aggregated deltas"),
+            ["first-attempt".to_string(), "second-attempt".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn direct_stream_drive_resets_delta_aggregation_after_retry_without_completion_gate() {
+        let aggregated: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let aggregated_by_hook = Arc::clone(&aggregated);
+        let hooks = crate::hooks::Hooks::new().with(
+            hook_entry("retry-and-capture-aggregation", move |event| match event {
+                HookEvent::TextDelta { aggregated, .. } => {
+                    aggregated_by_hook
+                        .lock()
+                        .expect("aggregated deltas")
+                        .push(aggregated.to_string());
+                    HookDecision::Continue
+                }
+                HookEvent::InvalidToolCall(_) => HookDecision::InvalidToolCall(
+                    InvalidToolCallAction::retry("use an available tool"),
+                ),
+                _ => HookDecision::Continue,
+            })
+            .observing_deltas(),
+        );
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.max_invalid_tool_call_retries = 1;
+        let stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script(vec![
+                vec![
+                    text_item("provisional"),
+                    call_item("bad-call", "default_api", json!({})),
+                    final_tokens(2),
+                ],
+                vec![text_item("retried"), final_tokens(2)],
+            ])),
+            Arc::new(Runtime::new()),
+            "go",
+        )
+        .with_tools(ToolCatalog::new(vec![ToolDefinition {
+            name: "add".to_string(),
+            description: "add".to_string(),
+            parameters: json!({"type": "object"}),
+        }]))
+        .with_policy(SessionPolicy {
+            surface_completion_calls: false,
+            surface_model_turns: true,
+            ..SessionPolicy::default()
+        })
+        .drive(hooks, None);
+
+        let collected = collect(stream).await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        assert_eq!(
+            *aggregated.lock().expect("aggregated deltas"),
+            ["provisional".to_string(), "retried".to_string()]
+        );
+    }
+
+    #[tokio::test]
     async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         let delta_hook = RecordedToolCallDeltas::default();
         let add_calls = Arc::new(AtomicU32::new(0));
@@ -5399,6 +5678,70 @@ mod migrated_streaming_tests {
             }),
             "the output-tool call must not survive as an orphan tool_use: {history:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn streamed_corrective_retry_inherits_the_patched_tool_schema() {
+        let script = script(vec![
+            vec![
+                call_item("first", "final_result", json!({})),
+                final_tokens(2),
+            ],
+            vec![
+                call_item("second", "final_result", json!({"patched": "ok"})),
+                final_tokens(2),
+            ],
+        ]);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_by_hook = Arc::clone(&calls);
+        let patch = hook_entry("patch-first-output-schema", move |event| {
+            if matches!(event, HookEvent::BeforeModelCall { .. })
+                && calls_by_hook.fetch_add(1, Ordering::SeqCst) == 0
+            {
+                return HookDecision::CompletionCall(CompletionCallAction::Patch(
+                    RequestPatch::new().output_schema(
+                        serde_json::from_value(json!({
+                            "type": "object",
+                            "properties": {"patched": {"type": "string"}},
+                            "required": ["patched"],
+                        }))
+                        .expect("test schema"),
+                    ),
+                ));
+            }
+            HookDecision::Continue
+        });
+        let agent = agent_builder(script.clone())
+            .output_mode(crate::agent::run::OutputMode::Tool)
+            .build();
+
+        let collected = collect(
+            agent
+                .runner("return structured output")
+                .add_hook(patch)
+                .max_turns(2)
+                .stream_run(),
+        )
+        .await;
+
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        assert_eq!(collected.expect_final().output, r#"{"patched":"ok"}"#);
+        let requests = script.requests();
+        assert_eq!(requests.len(), 2);
+        for request in &requests {
+            assert!(request.output_schema.is_none());
+            let schema = request
+                .tools
+                .iter()
+                .find(|tool| tool.name == "final_result")
+                .expect("synthetic output tool")
+                .parameters
+                .clone();
+            assert_eq!(
+                schema.get("required"),
+                Some(&serde_json::json!(["patched"]))
+            );
+        }
     }
 
     // ---------- telemetry ----------

@@ -11,8 +11,11 @@ use rig_core::completion::{CompletionError, Message};
 
 use super::config::AgentConfig;
 use super::hook::RequestPatch;
-use super::prepare::{PreparedRequest, ToolCatalog, prepare_request};
-use super::run::{AcceptedModelTurn, AgentRun, ModelTurn, ModelTurnOutcome, StreamedTurn};
+use super::prepare::{PreparedRequest, ToolCatalog, prepare_request_with_inherited_output};
+use super::run::{
+    AcceptedModelTurn, AgentRun, ModelAttemptContext, ModelTurn, ModelTurnOutcome, StreamedTurn,
+    ToolOutputContract,
+};
 use crate::completion::PromptError;
 
 /// Provisional state shared by the blocking and streaming model-call drivers.
@@ -22,11 +25,10 @@ use crate::completion::PromptError;
 /// back together, including across cancellation of the future currently
 /// borrowing the driver.
 pub(crate) struct ModelCallAttempt {
-    prompt: Message,
+    context: ModelAttemptContext,
     history: Vec<Message>,
     patch: RequestPatch,
     turn: usize,
-    output_tool_name: Option<String>,
     phase: ModelCallAttemptPhase,
 }
 
@@ -43,14 +45,18 @@ impl ModelCallAttempt {
         prompt: Message,
         history: Vec<Message>,
         turn: usize,
+        inherited_output_contract: Option<ToolOutputContract>,
         next_patch: &mut Option<RequestPatch>,
     ) -> Self {
         Self {
-            prompt,
+            context: ModelAttemptContext {
+                attempt_id: rig_core::id::generate(),
+                prompt,
+                output_contract: inherited_output_contract,
+            },
             history,
             patch: next_patch.take().unwrap_or_default(),
             turn,
-            output_tool_name: None,
             phase: ModelCallAttemptPhase::Preparing,
         }
     }
@@ -77,7 +83,12 @@ impl ModelCallAttempt {
     /// Re-enter preparation after AgentRun reissued the logical model call.
     pub(crate) fn reissue(&mut self, turn: usize) {
         self.turn = turn;
+        self.context.attempt_id = rig_core::id::generate();
         self.phase = ModelCallAttemptPhase::Preparing;
+    }
+
+    pub(crate) fn attempt_id(&self) -> &str {
+        &self.context.attempt_id
     }
 
     /// Prepare the provider request without mutating durable run state.
@@ -88,16 +99,18 @@ impl ModelCallAttempt {
         composes_native_output_with_tools: bool,
         committed_output_tool: Option<&str>,
     ) -> Result<PreparedRequest, CompletionError> {
-        let prepared = prepare_request(
+        let prepared = prepare_request_with_inherited_output(
             config,
             catalog,
             composes_native_output_with_tools,
-            self.prompt.clone(),
+            self.context.prompt.clone(),
             &self.history,
             committed_output_tool,
+            self.context.output_contract.as_ref(),
+            Some(self.context.attempt_id.as_str()),
             Some(&self.patch),
         )?;
-        self.output_tool_name = prepared.output_tool_name.clone();
+        self.context = prepared.model_attempt.attempt_context.clone();
         Ok(prepared)
     }
 
@@ -110,11 +123,8 @@ impl ModelCallAttempt {
         next_patch: &mut Option<RequestPatch>,
         turn: ModelTurn,
     ) -> Result<ModelTurnOutcome, PromptError> {
-        match run.model_response(turn) {
-            Ok(outcome) => {
-                run.set_output_tool_name(self.output_tool_name);
-                Ok(outcome)
-            }
+        match run.model_response(turn.with_attempt_context(self.context.clone())) {
+            Ok(outcome) => Ok(outcome),
             Err(error) => {
                 self.abandon(run, next_patch);
                 Err(error)
@@ -130,11 +140,10 @@ impl ModelCallAttempt {
         next_patch: &mut Option<RequestPatch>,
         turn: StreamedTurn,
     ) -> Result<AcceptedModelTurn, PromptError> {
+        let mut turn = turn;
+        turn.attempt_context = Some(self.context.clone());
         match run.streamed_turn(turn) {
-            Ok(accepted) => {
-                run.set_output_tool_name(self.output_tool_name);
-                Ok(accepted)
-            }
+            Ok(accepted) => Ok(accepted),
             Err(error) => {
                 self.abandon(run, next_patch);
                 Err(error)
@@ -145,7 +154,12 @@ impl ModelCallAttempt {
     /// Promote provisional metadata after invalid-call recovery deliberately
     /// commits the provider attempt's usage while abandoning its turn.
     pub(crate) fn commit_recovered(self, run: &mut AgentRun) {
-        run.set_output_tool_name(self.output_tool_name);
+        run.inherit_output_contract(self.context.output_contract.clone());
+        run.set_output_tool_name(
+            self.context
+                .output_contract
+                .map(|contract| contract.output_tool_name),
+        );
     }
 
     /// Restore the retry patch and refund the pending model call.
@@ -157,5 +171,27 @@ impl ModelCallAttempt {
             });
         }
         run.abandon_pending_model_call();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reissued_provider_operation_gets_a_fresh_attempt_identity() {
+        let mut next_patch = None;
+        let mut attempt = ModelCallAttempt::begin(
+            Message::user("prompt"),
+            Vec::new(),
+            1,
+            None,
+            &mut next_patch,
+        );
+        let first = attempt.attempt_id().to_owned();
+
+        attempt.reissue(1);
+
+        assert_ne!(attempt.attempt_id(), first);
     }
 }

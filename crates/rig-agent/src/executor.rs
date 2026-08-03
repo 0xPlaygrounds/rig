@@ -126,7 +126,9 @@ pub struct ToolExecutionRecord {
     pub original_call: ToolCall,
     /// Call actually executed or reported after hook rewrites.
     pub effective_call: ToolCall,
-    /// Structured execution or skip outcome.
+    /// Structured execution or policy-skip outcome. Authoritative for live
+    /// executor records; host/serialized pre-resolved content without a live
+    /// record can only be reconstructed as a lossy success view.
     pub raw_result: ToolResult,
     /// Model-visible presentation paired with [`Self::raw_result`].
     pub result: UserContent,
@@ -134,6 +136,17 @@ pub struct ToolExecutionRecord {
     pub disposition: ToolInvocationDisposition,
     /// Per-call telemetry span, absent when no tool body ran.
     pub span: Option<tracing::Span>,
+}
+
+/// A call whose tool has already been resolved from the registry.
+///
+/// Keeping the executable handle in the job makes a registry miss
+/// unrepresentable once execution and telemetry-span creation begin.
+struct ExecutableToolJob {
+    batch_index: usize,
+    call: PendingToolCall,
+    tool: PortableDynamicTool,
+    span: tracing::Span,
 }
 
 /// An ordered registry of executable tools that answers `ToolCallsReady`
@@ -312,96 +325,99 @@ impl ToolExecutor {
         follows_from: Option<u64>,
     ) -> ToolBatchOutput {
         let concurrency = self.concurrency.min(calls.len()).max(1);
-        let mut slots: Vec<Option<ToolExecutionRecord>> = calls
-            .iter()
-            .enumerate()
-            .map(|(batch_index, call)| {
-                let effective_call = call.tool_call.clone();
-                let original_call = call
-                    .original_tool_call
-                    .as_deref()
-                    .cloned()
-                    .unwrap_or_else(|| effective_call.clone());
-                let internal_call_id = call
-                    .internal_call_id
-                    .clone()
-                    .unwrap_or_else(rig_core::id::generate);
-
-                if let Some(result) = &call.preresolved_result {
-                    return Some(ToolExecutionRecord {
-                        batch_index,
-                        internal_call_id,
-                        original_call,
-                        effective_call,
-                        raw_result: match &call.invocation_disposition {
-                            Some(ToolInvocationDisposition::NotExecuted {
-                                reason: Some(reason),
-                            }) => ToolResult::skipped(reason.clone()),
-                            _ => raw_tool_result(result),
-                        },
-                        result: result.clone(),
-                        disposition: call
-                            .invocation_disposition
-                            .clone()
-                            .unwrap_or_else(|| ToolInvocationDisposition::not_executed(None)),
-                        span: None,
-                    });
-                }
-
-                if !self.tools.contains_key(&effective_call.function.name) {
-                    let raw_result = not_found(&effective_call.function.name);
-                    return Some(ToolExecutionRecord {
-                        batch_index,
-                        internal_call_id,
-                        original_call,
-                        result: shape_result(&effective_call, &raw_result),
-                        effective_call,
-                        raw_result,
-                        disposition: ToolInvocationDisposition::not_executed(None),
-                        span: None,
-                    });
-                }
-
-                None
-            })
-            .collect();
-
-        // Own the per-call work up front: each future then borrows only
-        // `&self`, so the batch future carries a single lifetime and stays
-        // `Send` for every caller lifetime (a future capturing two
-        // independent borrows is invariant over each, which breaks
-        // higher-ranked `Send` bounds such as the Discord integration's
-        // `async_trait` handlers).
-        //
-        // Spans are opened here, in call order, so the `follows_from` chain is
-        // deterministic at any concurrency (mirroring the classic driver,
-        // which also chained at prepare time rather than completion time).
+        let mut slots: Vec<Option<ToolExecutionRecord>> =
+            std::iter::repeat_with(|| None).take(calls.len()).collect();
         let mut chain = follows_from;
         let mut last_span_id = None;
-        let jobs: Vec<(usize, PendingToolCall, tracing::Span)> = calls
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| slots.get(*index).is_some_and(Option::is_none))
-            .map(|(index, call)| {
-                let span = new_execute_tool_span();
-                let span = match chain {
-                    Some(id) => span
-                        .follows_from(tracing::span::Id::from_u64(id))
-                        .to_owned(),
-                    None => span,
-                };
-                if let Some(id) = span.id() {
-                    chain = Some(id.into_u64());
-                    last_span_id = chain;
-                }
-                (index, call.clone(), span)
-            })
-            .collect();
+        let mut jobs = Vec::new();
+        for (batch_index, (slot, call)) in slots.iter_mut().zip(calls).enumerate() {
+            let effective_call = call.tool_call.clone();
+            let original_call = call
+                .original_tool_call
+                .as_deref()
+                .cloned()
+                .unwrap_or_else(|| effective_call.clone());
+            let internal_call_id = call
+                .internal_call_id
+                .clone()
+                .unwrap_or_else(rig_core::id::generate);
+
+            if let Some(result) = &call.preresolved_result {
+                *slot = Some(ToolExecutionRecord {
+                    batch_index,
+                    internal_call_id,
+                    original_call,
+                    effective_call,
+                    raw_result: match &call.invocation_disposition {
+                        Some(ToolInvocationDisposition::NotExecuted {
+                            reason: Some(reason),
+                        }) => ToolResult::skipped(reason.clone()),
+                        _ => raw_tool_result(result),
+                    },
+                    result: result.clone(),
+                    disposition: call
+                        .invocation_disposition
+                        .clone()
+                        .unwrap_or_else(|| ToolInvocationDisposition::not_executed(None)),
+                    span: None,
+                });
+                continue;
+            }
+
+            let Some(tool) = self.tools.get(&effective_call.function.name).cloned() else {
+                let raw_result = not_found(&effective_call.function.name);
+                *slot = Some(ToolExecutionRecord {
+                    batch_index,
+                    internal_call_id,
+                    original_call,
+                    result: shape_result(&effective_call, &raw_result),
+                    effective_call,
+                    raw_result,
+                    disposition: ToolInvocationDisposition::not_executed(None),
+                    span: None,
+                });
+                continue;
+            };
+
+            // Spans are opened only after successful registry resolution and
+            // in call order, so unknown/pre-resolved calls have no execution
+            // span and the follows-from chain is deterministic at any
+            // concurrency.
+            let span = new_execute_tool_span();
+            let span = match chain {
+                Some(id) => span
+                    .follows_from(tracing::span::Id::from_u64(id))
+                    .to_owned(),
+                None => span,
+            };
+            if let Some(id) = span.id() {
+                chain = Some(id.into_u64());
+                last_span_id = chain;
+            }
+            jobs.push(ExecutableToolJob {
+                batch_index,
+                call: call.clone(),
+                tool,
+                span,
+            });
+        }
+
+        // Own the resolved per-call work up front: each future then borrows
+        // only `&self`, so the batch future carries a single lifetime and
+        // stays `Send` for every caller lifetime.
         let mut executed = stream::iter(jobs)
-            .map(|(index, call, span)| async move {
-                let (content, result, disposition) =
-                    self.execute_one(&call.tool_call, span.clone()).await;
-                (index, call, span, content, result, disposition)
+            .map(|job| async move {
+                let (content, result, disposition) = self
+                    .execute_one(&job.tool, &job.call.tool_call, job.span.clone())
+                    .await;
+                (
+                    job.batch_index,
+                    job.call,
+                    job.span,
+                    content,
+                    result,
+                    disposition,
+                )
             })
             .buffer_unordered(concurrency);
         while let Some((index, call, span, content, result, disposition)) = executed.next().await {
@@ -482,6 +498,7 @@ impl ToolExecutor {
     /// shaped model-visible content plus the execution error, if any.
     async fn execute_one<'a>(
         &'a self,
+        tool: &'a PortableDynamicTool,
         tool_call: &'a ToolCall,
         span: tracing::Span,
     ) -> (UserContent, ToolResult, ToolInvocationDisposition) {
@@ -499,21 +516,11 @@ impl ToolExecutor {
                 );
             }
 
-            let (result, disposition) = match self.tools.get(tool_name) {
-                Some(tool) => (
-                    match tool.execute(tool_call.function.arguments.clone()).await {
-                        Ok(output) => ToolResult::success(output),
-                        Err(error) => ToolResult::failed(error),
-                    },
-                    ToolInvocationDisposition::Executed,
-                ),
-                // Unknown tool: the registry's not-found shape, delivered to
-                // the model like any other failure.
-                None => (
-                    not_found(tool_name),
-                    ToolInvocationDisposition::not_executed(None),
-                ),
+            let result = match tool.execute(tool_call.function.arguments.clone()).await {
+                Ok(output) => ToolResult::success(output),
+                Err(error) => ToolResult::failed(error),
             };
+            let disposition = ToolInvocationDisposition::Executed;
 
             tool_span.record("gen_ai.tool.call.outcome", result.status_name());
             if let Some(error) = result.error() {
@@ -745,6 +752,44 @@ mod tests {
         assert!(record.span.is_none());
         assert!(batch.last_span_id.is_none());
         assert_eq!(batch.first_error.as_ref().map(|error| error.index), Some(0));
+    }
+
+    #[tokio::test]
+    async fn mixed_known_unknown_batch_only_spans_and_executes_known_tools() {
+        let executions = Arc::new(AtomicUsize::new(0));
+        let executions_by_tool = Arc::clone(&executions);
+        let known = PortableDynamicTool::new(
+            "known",
+            "known tool",
+            serde_json::json!({"type": "object"}),
+            move |_args| {
+                let executions = Arc::clone(&executions_by_tool);
+                async move {
+                    executions.fetch_add(1, Ordering::SeqCst);
+                    Ok(ToolOutput::text("known result"))
+                }
+            },
+        );
+        let executor = ToolExecutor::new().register(known).tool_concurrency(2);
+        let calls = vec![
+            call("missing-call", "missing", serde_json::json!({})),
+            call("known-call", "known", serde_json::json!({})),
+        ];
+
+        let batch = executor.execute_batch(&calls).await;
+
+        assert_eq!(executions.load(Ordering::SeqCst), 1);
+        assert_eq!(batch.records.len(), 2);
+        assert!(batch.records[0].span.is_none());
+        assert_eq!(
+            batch.records[0].disposition,
+            ToolInvocationDisposition::NotExecuted { reason: None }
+        );
+        assert!(batch.records[1].span.is_some());
+        assert_eq!(
+            batch.records[1].disposition,
+            ToolInvocationDisposition::Executed
+        );
     }
 
     #[tokio::test]

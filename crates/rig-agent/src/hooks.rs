@@ -673,14 +673,17 @@ impl Hooks {
                 HookDecision::ToolCall(action) => action,
                 _ => ToolCallAction::Run,
             };
-            if let ToolCallAction::Rewrite(arguments) = &action
-                && effective_call.function.arguments != *arguments
-            {
+            let continue_dispatch = resolution.apply(action);
+            // `ToolCallResolution` is the sole accumulator. The event view is
+            // only a shallow projection of its effective arguments for the
+            // next hook, allocating a new call only when that projection
+            // actually changes.
+            if effective_call.function.arguments != *resolution.args() {
                 let mut rewritten = (*effective_call).clone();
-                rewritten.function.arguments = arguments.clone();
+                rewritten.function.arguments = resolution.args().clone();
                 effective_call = Arc::new(rewritten);
             }
-            if !resolution.apply(action) {
+            if !continue_dispatch {
                 break;
             }
         }

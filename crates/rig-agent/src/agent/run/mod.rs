@@ -73,6 +73,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
+    schemars::Schema,
 };
 
 use crate::{
@@ -90,6 +91,28 @@ pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
+
+/// Effective Tool-mode structured-output contract for one model attempt.
+///
+/// This is intentionally separate from `CompletionRequest::output_schema`:
+/// Tool mode advertises the schema as a synthetic tool and leaves the
+/// provider-native structured-output field unset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolOutputContract {
+    /// Synthetic output tool advertised for this attempt.
+    pub output_tool_name: String,
+    /// Schema advertised as that tool's parameters.
+    pub effective_schema: Schema,
+}
+
+/// Attempt-specific state promoted into a model turn only after provider IO
+/// commits successfully.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ModelAttemptContext {
+    pub(crate) attempt_id: String,
+    pub(crate) prompt: Message,
+    pub(crate) output_contract: Option<ToolOutputContract>,
+}
 
 /// Build the canonical "the model called a tool that isn't available" error.
 /// The identical shape is raised from every recovery-rejection path
@@ -142,7 +165,7 @@ pub enum AgentRunStep {
     Done(PromptResponse),
 }
 
-/// Whether a tool invocation actually executed.
+/// Authoritative provenance for whether a tool invocation actually executed.
 ///
 /// This is carried independently from the model-visible result because a tool
 /// body may itself return a skipped-classified [`crate::tool::ToolResult`],
@@ -302,11 +325,20 @@ pub struct ModelTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
+    /// Driver-owned attempt context. Hand-driven callers use the context
+    /// derived from the pending run step when this is absent.
+    #[serde(default)]
+    attempt_context: Option<ModelAttemptContext>,
 }
 
 impl ModelTurn {
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
+    ///
+    /// When the request came from [`prepare_request`](super::prepare::prepare_request),
+    /// use [`PreparedModelAttempt::into_model_turn`](super::prepare::PreparedModelAttempt::into_model_turn)
+    /// instead so per-turn patches and attempt identity commit with the
+    /// response.
     pub fn new(
         message_id: Option<String>,
         choice: OneOrMany<AssistantContent>,
@@ -320,7 +352,13 @@ impl ModelTurn {
             usage,
             executable_tool_names,
             allowed_tool_names,
+            attempt_context: None,
         }
+    }
+
+    pub(crate) fn with_attempt_context(mut self, context: ModelAttemptContext) -> Self {
+        self.attempt_context = Some(context);
+        self
     }
 }
 
@@ -341,6 +379,25 @@ pub struct AcceptedModelTurn {
     pub usage: Usage,
     /// Whether this medium's provider-response observation is suppressed.
     pub response_hook_suppressed: bool,
+    /// The provider-operation contract that produced this accepted turn.
+    attempt_context: Box<ModelAttemptContext>,
+}
+
+impl AcceptedModelTurn {
+    /// Real prompt sent by the accepted provider attempt.
+    pub fn prompt(&self) -> &Message {
+        &self.attempt_context.prompt
+    }
+
+    /// Identity unique to the provider operation that produced this turn.
+    pub fn attempt_id(&self) -> &str {
+        &self.attempt_context.attempt_id
+    }
+
+    /// Effective Tool-mode contract for this turn, when Tool mode was used.
+    pub fn output_contract(&self) -> Option<&ToolOutputContract> {
+        self.attempt_context.output_contract.as_ref()
+    }
 }
 
 /// Result of feeding a model turn (or an invalid tool-call resolution) into
@@ -351,8 +408,9 @@ pub struct AcceptedModelTurn {
 #[derive(Debug)]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
-    /// driver should run its completion-response hook now, then call
-    /// [`AgentRun::next_step`].
+    /// driver should run its completion-response hook now. It must then apply
+    /// its verdict with [`AgentRun::continue_model_turn`] (or
+    /// [`AgentRun::retry_model_turn`]) before calling [`AgentRun::next_step`].
     ///
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
@@ -371,6 +429,7 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
+    attempt_context: ModelAttemptContext,
     message_id: Option<String>,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
@@ -396,11 +455,6 @@ struct ResolvingState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
     accepted: AcceptedModelTurn,
-    /// Whether a driver has already applied the normalized Continue verdict.
-    /// Kept in the run so a checkpoint between replying and `next_step` does
-    /// not surface the steering boundary twice after resume.
-    #[serde(default = "model_turn_verdict_pending_default")]
-    verdict_pending: bool,
     has_tool_calls: bool,
     /// Synthetic results positionally aligned with `items`.
     skipped: Vec<Option<PreresolvedToolResult>>,
@@ -412,22 +466,27 @@ struct TurnState {
     internal_call_ids: Vec<String>,
 }
 
-const fn model_turn_verdict_pending_default() -> bool {
-    true
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum RunState {
     /// Ready to emit [`AgentRunStep::CallModel`].
-    PreparingRequest,
+    PreparingRequest {
+        /// Contract inherited only by a corrective retry.
+        inherited_output_contract: Option<ToolOutputContract>,
+    },
     /// Waiting for [`AgentRun::model_response`].
-    AwaitingModel,
+    AwaitingModel {
+        /// Contract inherited by this request before its effective request is
+        /// prepared. A committed driver attempt may replace it.
+        inherited_output_contract: Option<ToolOutputContract>,
+    },
     /// Scanning the model turn's tool calls for validity; may be waiting for
     /// [`AgentRun::resolve_invalid_tool_call`].
     ResolvingToolCalls(Box<ResolvingState>),
-    /// The turn was accepted; ready to emit [`AgentRunStep::CallTools`] or
-    /// [`AgentRunStep::Done`].
-    AwaitingAdvance(Box<TurnState>),
+    /// The turn was accepted and still requires a normalized host verdict.
+    AwaitingTurnVerdict(Box<TurnState>),
+    /// The host accepted the turn; ready to emit [`AgentRunStep::CallTools`]
+    /// or [`AgentRunStep::Done`].
+    ReadyToAdvance(Box<TurnState>),
     /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
     /// Carrying the calls in the state keeps a serialized run self-contained:
     /// a resumed process re-obtains them from [`AgentRun::next_step`].
@@ -501,7 +560,9 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
-            state: RunState::PreparingRequest,
+            state: RunState::PreparingRequest {
+                inherited_output_contract: None,
+            },
         }
     }
 
@@ -544,11 +605,14 @@ impl AgentRun {
     /// when there is no schema, no `required` array, or every required field is
     /// present. Non-object arguments (e.g. `null`) count every required field as
     /// missing.
-    fn missing_required_output_fields(&self, args: &serde_json::Value) -> Vec<String> {
-        let Some(required) = self
-            .output_schema
-            .as_ref()
-            .and_then(|schema| schema.get("required"))
+    fn missing_required_output_fields(
+        contract: &ToolOutputContract,
+        args: &serde_json::Value,
+    ) -> Vec<String> {
+        let Some(required) = contract
+            .effective_schema
+            .as_value()
+            .get("required")
             .and_then(|required| required.as_array())
         else {
             return Vec::new();
@@ -565,10 +629,10 @@ impl AgentRun {
     /// Whether `text` already parses as a JSON object satisfying the output
     /// schema's required fields — i.e. it is acceptable structured output even
     /// though the model returned it as plain text instead of an output-tool call.
-    fn text_satisfies_output_schema(&self, text: &str) -> bool {
+    fn text_satisfies_output_schema(contract: &ToolOutputContract, text: &str) -> bool {
         serde_json::from_str::<serde_json::Value>(text.trim())
             .ok()
-            .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
+            .is_some_and(|value| Self::missing_required_output_fields(contract, &value).is_empty())
     }
 
     /// Whether the run may re-prompt for valid Tool-mode output: both the
@@ -582,9 +646,14 @@ impl AgentRun {
     /// have already appended the assistant turn and the corrective feedback
     /// message to the history. Consumes one output-retry, then emits the retry
     /// [`AgentRunStep::CallModel`].
-    fn reprompt_for_output(&mut self) -> Result<AgentRunStep, PromptError> {
+    fn reprompt_for_output(
+        &mut self,
+        output_contract: Option<ToolOutputContract>,
+    ) -> Result<AgentRunStep, PromptError> {
         self.output_retries += 1;
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract: output_contract,
+        };
         self.next_step()
     }
 
@@ -631,6 +700,31 @@ impl AgentRun {
         self.output_tool_name.as_deref()
     }
 
+    /// Tool-mode contract inherited by the pending request, when it is a
+    /// corrective retry of a specific violated attempt contract.
+    pub(crate) fn inherited_output_contract(&self) -> Option<&ToolOutputContract> {
+        match &self.state {
+            RunState::PreparingRequest {
+                inherited_output_contract,
+            }
+            | RunState::AwaitingModel {
+                inherited_output_contract,
+            } => inherited_output_contract.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Promote a committed streamed-recovery attempt's contract into the
+    /// already-prepared corrective transition.
+    pub(crate) fn inherit_output_contract(&mut self, output_contract: Option<ToolOutputContract>) {
+        if let RunState::PreparingRequest {
+            inherited_output_contract,
+        } = &mut self.state
+        {
+            *inherited_output_contract = output_contract;
+        }
+    }
+
     /// Aggregated token usage across all completed model calls so far.
     pub fn usage(&self) -> Usage {
         self.usage
@@ -658,11 +752,12 @@ impl AgentRun {
     /// the next [`AgentRun::next_step`] — the window where a driver surfaces
     /// its model-turn-finished decision point.
     pub fn accepted_turn(&self) -> Option<&AcceptedModelTurn> {
-        let RunState::AwaitingAdvance(turn) = &self.state else {
-            return None;
-        };
-
-        Some(&turn.accepted)
+        match &self.state {
+            RunState::AwaitingTurnVerdict(turn) | RunState::ReadyToAdvance(turn) => {
+                Some(&turn.accepted)
+            }
+            _ => None,
+        }
     }
 
     /// Accepted turn whose normalized Continue verdict has not yet been
@@ -672,11 +767,10 @@ impl AgentRun {
     /// [`Self::continue_model_turn`] even if the run has not yet emitted its
     /// next step. That distinction makes the steering boundary resume-durable.
     pub fn pending_accepted_turn(&self) -> Option<&AcceptedModelTurn> {
-        let RunState::AwaitingAdvance(turn) = &self.state else {
-            return None;
-        };
-
-        turn.verdict_pending.then_some(&turn.accepted)
+        match &self.state {
+            RunState::AwaitingTurnVerdict(turn) => Some(&turn.accepted),
+            _ => None,
+        }
     }
 
     /// Persist the driver's Continue verdict without advancing the run.
@@ -685,18 +779,24 @@ impl AgentRun {
     /// transition allows a serialized run to distinguish an unanswered turn
     /// from one answered immediately before a process restart.
     pub fn continue_model_turn(&mut self) -> Result<(), PromptError> {
-        let RunState::AwaitingAdvance(turn) = &mut self.state else {
-            return Err(self.protocol_violation(
-                "continue_model_turn called without an accepted turn awaiting advancement",
-            ));
-        };
-        if !turn.verdict_pending {
-            return Err(self.protocol_violation(
-                "continue_model_turn called after the turn verdict was already applied",
-            ));
+        match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingTurnVerdict(turn) => {
+                self.state = RunState::ReadyToAdvance(turn);
+                Ok(())
+            }
+            state @ RunState::ReadyToAdvance(_) => {
+                self.state = state;
+                Err(self.protocol_violation(
+                    "continue_model_turn called after the turn verdict was already applied",
+                ))
+            }
+            other => {
+                self.state = other;
+                Err(self.protocol_violation(
+                    "continue_model_turn called without an accepted turn awaiting advancement",
+                ))
+            }
         }
-        turn.verdict_pending = false;
-        Ok(())
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
@@ -719,7 +819,7 @@ impl AgentRun {
     /// provider-visible history. Use tool-call hooks to steer those turns.
     pub fn retry_model_turn(&mut self, request: RetryRequest) -> Result<(), PromptError> {
         let turn = match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::AwaitingAdvance(turn) => turn,
+            RunState::AwaitingTurnVerdict(turn) => turn,
             other => {
                 self.state = other;
                 return Err(self.protocol_violation(
@@ -735,6 +835,7 @@ impl AgentRun {
             ));
         }
 
+        let inherited_output_contract = turn.accepted.output_contract().cloned();
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
@@ -749,7 +850,9 @@ impl AgentRun {
             }
         }
 
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract,
+        };
         Ok(())
     }
 
@@ -761,13 +864,21 @@ impl AgentRun {
     ///
     /// Returns `false` (and changes nothing) when no model call is pending.
     pub fn abandon_pending_model_call(&mut self) -> bool {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return false;
-        }
+        let inherited_output_contract = match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingModel {
+                inherited_output_contract,
+            } => inherited_output_contract,
+            other => {
+                self.state = other;
+                return false;
+            }
+        };
         self.current_turn = self.current_turn.saturating_sub(1);
         self.rollback_pending = false;
         self.streamed_completion_call_recorded = false;
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract,
+        };
         true
     }
 
@@ -840,7 +951,9 @@ impl AgentRun {
     ///   pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::PreparingRequest => {
+            RunState::PreparingRequest {
+                inherited_output_contract,
+            } => {
                 let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
                     return Err(PromptError::prompt_cancelled(
                         self.full_history(),
@@ -862,22 +975,30 @@ impl AgentRun {
                 self.current_turn += 1;
                 self.rollback_pending = false;
                 self.streamed_completion_call_recorded = false;
-                self.state = RunState::AwaitingModel;
+                self.state = RunState::AwaitingModel {
+                    inherited_output_contract,
+                };
                 Ok(AgentRunStep::CallModel {
                     prompt,
                     history,
                     turn: self.current_turn,
                 })
             }
-            RunState::AwaitingAdvance(turn_state) => {
+            RunState::AwaitingTurnVerdict(turn_state) => {
+                self.state = RunState::AwaitingTurnVerdict(turn_state);
+                Err(self.protocol_violation(
+                    "next_step called while an accepted model turn awaits continue_model_turn",
+                ))
+            }
+            RunState::ReadyToAdvance(turn_state) => {
                 let TurnState {
                     accepted,
-                    verdict_pending: _,
                     has_tool_calls,
                     skipped,
                     original_tool_calls,
                     internal_call_ids,
                 } = *turn_state;
+                let output_contract = accepted.output_contract().cloned();
                 let AcceptedModelTurn {
                     message_id,
                     content: choice,
@@ -890,9 +1011,10 @@ impl AgentRun {
                 // instead of executing it as a tool. First match wins; any
                 // sibling tool calls in the same turn are dropped.
                 if has_tool_calls
-                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(tool_contract) = output_contract.as_ref()
+                    && let output_tool_name = &tool_contract.output_tool_name
                     && let Some(tool_call) = items.iter().find_map(|item| match item {
-                        AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
+                        AssistantContent::ToolCall(tc) if tc.function.name == *output_tool_name => {
                             Some(tc)
                         }
                         _ => None,
@@ -904,7 +1026,7 @@ impl AgentRun {
                             matches!(
                                 item,
                                 AssistantContent::ToolCall(tc)
-                                    if tc.function.name == output_tool_name
+                                    if tc.function.name == *output_tool_name
                             )
                         })
                         .count();
@@ -915,7 +1037,10 @@ impl AgentRun {
                     // Validate the output against the schema's required fields and
                     // re-prompt while budget remains, so a model that omits fields
                     // gets a chance to fix it before we finalize best-effort.
-                    let missing = self.missing_required_output_fields(&args);
+                    let missing = output_contract
+                        .as_ref()
+                        .map(|contract| Self::missing_required_output_fields(contract, &args))
+                        .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
                             id: message_id,
@@ -931,7 +1056,7 @@ impl AgentRun {
                         {
                             self.new_messages.push(user_message);
                         }
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(output_contract);
                     }
 
                     // Finalize. The turn is persisted as the assistant's final
@@ -1029,17 +1154,21 @@ impl AgentRun {
                     // with every required field), accept it rather than wasting a
                     // turn — the model answered correctly, just via the wrong
                     // channel.
-                    if let Some(output_tool_name) = self.output_tool_name.clone()
+                    if let Some(output_contract) = output_contract
                         && !is_empty_assistant_turn(&choice)
                         && self.can_reprompt_for_output()
-                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&choice))
+                        && !Self::text_satisfies_output_schema(
+                            &output_contract,
+                            &assistant_text_from_choice(&choice),
+                        )
                     {
+                        let output_tool_name = &output_contract.output_tool_name;
                         let feedback = format!(
                             "Provide your final answer by calling the `{output_tool_name}` tool \
                              with the structured result as its arguments, not as plain text."
                         );
                         self.new_messages.push(Message::user(feedback));
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(Some(output_contract));
                     }
 
                     let response =
@@ -1084,9 +1213,9 @@ impl AgentRun {
                 self.state = RunState::Done(response);
                 Ok(step)
             }
-            state @ (RunState::AwaitingModel | RunState::ResolvingToolCalls(_)) => {
+            state @ (RunState::AwaitingModel { .. } | RunState::ResolvingToolCalls(_)) => {
                 let reason = match &state {
-                    RunState::AwaitingModel => {
+                    RunState::AwaitingModel { .. } => {
                         "next_step called while a model response is pending; feed it via model_response first"
                     }
                     _ => {
@@ -1108,16 +1237,29 @@ impl AgentRun {
     /// turn's tool calls against the advertised tool names. See
     /// [`ModelTurnOutcome`] for what the driver must do next.
     pub fn model_response(&mut self, turn: ModelTurn) -> Result<ModelTurnOutcome, PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return Err(
-                self.protocol_violation("model_response called without a pending CallModel step")
-            );
-        }
+        let inherited_output_contract = match &self.state {
+            RunState::AwaitingModel {
+                inherited_output_contract,
+            } => inherited_output_contract.clone(),
+            _ => {
+                return Err(self
+                    .protocol_violation("model_response called without a pending CallModel step"));
+            }
+        };
         if self.streamed_completion_call_recorded {
             return Err(self.protocol_violation(
                 "model_response called after record_streamed_completion_call for the same turn; feed streamed turns via streamed_turn",
             ));
         }
+
+        let attempt_context = match turn.attempt_context {
+            Some(context) => context,
+            None => self.fallback_attempt_context(inherited_output_contract)?,
+        };
+        let prepared_output_tool_name = attempt_context
+            .output_contract
+            .as_ref()
+            .map(|contract| contract.output_tool_name.clone());
 
         self.record_completion_call(turn.usage);
 
@@ -1129,6 +1271,7 @@ impl AgentRun {
         let skipped = vec![None; items.len()];
         let original_calls = vec![None; items.len()];
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
+            attempt_context,
             message_id: turn.message_id,
             original_choice: turn.choice,
             usage: turn.usage,
@@ -1143,7 +1286,9 @@ impl AgentRun {
             has_tool_calls,
         }));
 
-        self.advance_resolution()
+        let outcome = self.advance_resolution()?;
+        self.set_output_tool_name(prepared_output_tool_name);
+        Ok(outcome)
     }
 
     /// Record one provider completion call: assign it the next call index,
@@ -1160,7 +1305,7 @@ impl AgentRun {
         call
     }
 
-    /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
+    /// Park an accepted model turn in [`RunState::AwaitingTurnVerdict`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
     /// ingestion paths converge here, differing only in the positional
     /// `skipped` results and the streamed `internal_call_ids`.
@@ -1172,9 +1317,8 @@ impl AgentRun {
         original_tool_calls: Vec<Option<ToolCall>>,
         internal_call_ids: Vec<String>,
     ) {
-        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
+        self.state = RunState::AwaitingTurnVerdict(Box::new(TurnState {
             accepted,
-            verdict_pending: true,
             has_tool_calls,
             skipped,
             original_tool_calls,
@@ -1279,7 +1423,9 @@ impl AgentRun {
                     ));
                 };
                 self.new_messages.push(user_message);
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: resolving.attempt_context.output_contract.clone(),
+                };
                 Ok(ModelTurnOutcome::TurnRetried)
             }
             InvalidToolCallAction::Repair { tool_name } => {
@@ -1546,7 +1692,9 @@ impl AgentRun {
         };
 
         self.new_messages.push(Message::User { content });
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract: None,
+        };
         Ok(())
     }
 
@@ -1586,6 +1734,7 @@ impl AgentRun {
         }
 
         let ResolvingState {
+            attempt_context,
             message_id,
             items,
             usage,
@@ -1632,6 +1781,7 @@ impl AgentRun {
             content,
             usage,
             response_hook_suppressed: recovered,
+            attempt_context: Box::new(attempt_context),
         };
         self.finalize_turn(
             accepted.clone(),
@@ -1660,8 +1810,8 @@ impl AgentRun {
         &mut self,
         usage: Usage,
     ) -> Result<CompletionCall, PromptError> {
-        let recordable = matches!(self.state, RunState::AwaitingModel)
-            || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
+        let recordable = matches!(self.state, RunState::AwaitingModel { .. })
+            || (matches!(self.state, RunState::PreparingRequest { .. }) && self.rollback_pending);
         if !recordable {
             return Err(self.protocol_violation(
                 "record_streamed_completion_call called without a pending or rolled-back CallModel step",
@@ -1711,7 +1861,7 @@ impl AgentRun {
         invalid: &StreamedInvalidToolCall,
         action: InvalidToolCallAction,
     ) -> Result<StreamedResolution, PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
+        if !matches!(self.state, RunState::AwaitingModel { .. }) {
             return Err(self.protocol_violation(
                 "resolve_streamed_invalid_tool_call called without a pending CallModel step",
             ));
@@ -1767,7 +1917,9 @@ impl AgentRun {
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
                 self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: None,
+                };
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: None,
                 })
@@ -1819,7 +1971,9 @@ impl AgentRun {
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
                 self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: None,
+                };
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: Some(skipped_tool_result),
                 })
@@ -1834,11 +1988,24 @@ impl AgentRun {
     /// already had recovery-hook access — and the turn then advances through
     /// [`AgentRun::next_step`] exactly like a non-streamed one.
     pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<AcceptedModelTurn, PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return Err(
-                self.protocol_violation("streamed_turn called without a pending CallModel step")
-            );
-        }
+        let inherited_output_contract = match &self.state {
+            RunState::AwaitingModel {
+                inherited_output_contract,
+            } => inherited_output_contract.clone(),
+            _ => {
+                return Err(self
+                    .protocol_violation("streamed_turn called without a pending CallModel step"));
+            }
+        };
+
+        let attempt_context = match turn.attempt_context {
+            Some(context) => context,
+            None => self.fallback_attempt_context(inherited_output_contract)?,
+        };
+        let prepared_output_tool_name = attempt_context
+            .output_contract
+            .as_ref()
+            .map(|contract| contract.output_tool_name.clone());
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -1883,6 +2050,7 @@ impl AgentRun {
             content: turn.choice,
             usage: turn.usage,
             response_hook_suppressed: false,
+            attempt_context: Box::new(attempt_context),
         };
         self.finalize_turn(
             accepted.clone(),
@@ -1891,6 +2059,7 @@ impl AgentRun {
             turn.original_tool_calls,
             turn.internal_call_ids,
         );
+        self.set_output_tool_name(prepared_output_tool_name);
         Ok(accepted)
     }
 
@@ -1917,6 +2086,33 @@ impl AgentRun {
             content: resolving.original_choice.clone(),
         });
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)
+    }
+
+    fn fallback_attempt_context(
+        &self,
+        inherited_output_contract: Option<ToolOutputContract>,
+    ) -> Result<ModelAttemptContext, PromptError> {
+        let prompt = self.new_messages.last().cloned().ok_or_else(|| {
+            self.protocol_violation("pending model response lost its real prompt")
+        })?;
+        let output_contract = inherited_output_contract.or_else(|| {
+            let output_tool_name = self.output_tool_name.clone()?;
+            let effective_schema = serde_json::from_value(
+                self.output_schema
+                    .clone()
+                    .unwrap_or_else(|| serde_json::json!({})),
+            )
+            .ok()?;
+            Some(ToolOutputContract {
+                output_tool_name,
+                effective_schema,
+            })
+        });
+        Ok(ModelAttemptContext {
+            attempt_id: rig_core::id::generate(),
+            prompt,
+            output_contract,
+        })
     }
 
     fn protocol_violation(&self, reason: &str) -> PromptError {
@@ -1999,6 +2195,7 @@ mod tests {
     }
 
     fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::CallModel {
                 prompt,
@@ -2010,6 +2207,7 @@ mod tests {
     }
 
     fn expect_call_tools(run: &mut AgentRun) -> Vec<PendingToolCall> {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::CallTools { calls } => calls,
             step => panic!("expected CallTools, got {step:?}"),
@@ -2017,6 +2215,7 @@ mod tests {
     }
 
     fn expect_done(run: &mut AgentRun) -> PromptResponse {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::Done(response) => response,
             step => panic!("expected Done, got {step:?}"),
@@ -2027,6 +2226,13 @@ mod tests {
         match outcome {
             ModelTurnOutcome::Continue(accepted) => accepted.response_hook_suppressed,
             outcome => panic!("expected Continue, got {outcome:?}"),
+        }
+    }
+
+    fn continue_pending_turn(run: &mut AgentRun) {
+        if run.pending_accepted_turn().is_some() {
+            run.continue_model_turn()
+                .expect("test driver should accept the pending model turn");
         }
     }
 
@@ -2659,6 +2865,92 @@ mod tests {
                 .expect("model_response should still succeed"),
         );
         assert_eq!(expect_done(&mut run).output, "hi");
+    }
+
+    #[test]
+    fn accepted_turn_requires_a_durable_verdict_transition_before_advancing() {
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        let accepted = match run.model_response(text_turn("hi")).expect("model response") {
+            ModelTurnOutcome::Continue(accepted) => accepted,
+            other => panic!("expected accepted turn, got {other:?}"),
+        };
+        assert_eq!(run.pending_accepted_turn().map(|turn| turn.turn), Some(1));
+
+        let error = run
+            .next_step()
+            .expect_err("a pending verdict must not be consumed implicitly");
+        assert!(error.to_string().contains("continue_model_turn"));
+        assert_eq!(run.pending_accepted_turn().map(|turn| turn.turn), Some(1));
+
+        let before_verdict = serde_json::to_string(&run).expect("pending verdict serializes");
+        let mut resumed: AgentRun =
+            serde_json::from_str(&before_verdict).expect("pending verdict deserializes");
+        assert_eq!(
+            resumed
+                .pending_accepted_turn()
+                .map(AcceptedModelTurn::attempt_id),
+            Some(accepted.attempt_id())
+        );
+        let error = resumed
+            .next_step()
+            .expect_err("a restored pending verdict must remain blocked");
+        assert!(error.to_string().contains("continue_model_turn"));
+        resumed
+            .continue_model_turn()
+            .expect("continue is the sole verdict transition");
+        assert!(resumed.pending_accepted_turn().is_none());
+        assert!(resumed.accepted_turn().is_some());
+        let error = resumed
+            .continue_model_turn()
+            .expect_err("the same verdict cannot be applied twice");
+        assert!(error.to_string().contains("already applied"));
+        assert!(resumed.accepted_turn().is_some());
+
+        let after_verdict = serde_json::to_string(&resumed).expect("accepted verdict serializes");
+        let mut resumed: AgentRun =
+            serde_json::from_str(&after_verdict).expect("accepted verdict deserializes");
+        assert!(resumed.pending_accepted_turn().is_none());
+        assert_eq!(expect_done(&mut resumed).output, "hi");
+    }
+
+    #[test]
+    fn accepted_attempt_output_contract_survives_checkpoint() {
+        let mut run = AgentRun::new("structured prompt").max_turns(2);
+        expect_call_model(&mut run);
+        let effective_schema = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {"patched": {"type": "string"}},
+            "required": ["patched"],
+        }))
+        .expect("schema");
+        let turn = text_turn("{}").with_attempt_context(ModelAttemptContext {
+            attempt_id: "attempt-checkpoint".to_string(),
+            prompt: Message::user("structured prompt"),
+            output_contract: Some(ToolOutputContract {
+                output_tool_name: "final_result".to_string(),
+                effective_schema,
+            }),
+        });
+        expect_continue(run.model_response(turn).expect("model response"));
+
+        let serialized = serde_json::to_string(&run).expect("accepted turn serializes");
+        let restored: AgentRun =
+            serde_json::from_str(&serialized).expect("accepted turn deserializes");
+        let accepted = restored
+            .pending_accepted_turn()
+            .expect("verdict remains pending");
+        assert_eq!(accepted.attempt_id(), "attempt-checkpoint");
+        assert_eq!(accepted.prompt(), &Message::user("structured prompt"));
+        assert_eq!(
+            accepted
+                .output_contract()
+                .expect("Tool-mode contract")
+                .effective_schema
+                .as_value()
+                .get("required"),
+            Some(&serde_json::json!(["patched"]))
+        );
     }
 
     #[test]

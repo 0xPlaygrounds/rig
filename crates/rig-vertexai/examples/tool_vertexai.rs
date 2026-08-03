@@ -10,7 +10,7 @@
 use anyhow::Result;
 use rig_agent::agent::AgentConfig;
 use rig_agent::agent::prepare::{ToolCatalog, prepare_request};
-use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurn};
+use rig_agent::agent::run::{AgentRun, AgentRunStep};
 use rig_core::OneOrMany;
 use rig_core::completion::ToolDefinition;
 use rig_core::message::{ToolResultContent, UserContent};
@@ -63,16 +63,16 @@ async fn main() -> Result<(), anyhow::Error> {
                     run.output_tool_name(),
                     None,
                 )?;
+                let model_attempt = prepared.model_attempt.clone();
                 let response =
                     functions::complete(&client, &provider.model, prepared.request).await?;
-                let turn = ModelTurn::new(
+                let turn = model_attempt.into_model_turn(
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
-                    prepared.executable_tool_names,
-                    prepared.allowed_tool_names,
                 );
                 run.model_response(turn)?;
+                run.continue_model_turn()?;
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::new();

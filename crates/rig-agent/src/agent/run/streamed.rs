@@ -206,6 +206,12 @@ impl PartialStreamedTurn {
 
 /// The assembled streamed turn, fed to
 /// [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn).
+///
+/// When its request came from
+/// [`prepare_request`](crate::agent::prepare::prepare_request), bind the
+/// assembled value with
+/// [`PreparedModelAttempt::into_streamed_turn`](crate::agent::prepare::PreparedModelAttempt::into_streamed_turn)
+/// before submitting it so the exact prepared attempt contract is retained.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct StreamedTurn {
@@ -230,6 +236,10 @@ pub struct StreamedTurn {
     /// resumed process keeps the IDs consumers already saw in deltas.
     #[serde(default)]
     pub internal_call_ids: Vec<String>,
+    /// Driver-owned attempt context. Hand-driven callers use the context
+    /// derived from the pending run step when this is absent.
+    #[serde(default)]
+    pub(crate) attempt_context: Option<super::ModelAttemptContext>,
 }
 
 /// What the machine decided about a mid-stream invalid tool call.
@@ -723,6 +733,7 @@ impl StreamedTurnAssembler {
             allowed_tool_names,
             original_tool_calls,
             internal_call_ids,
+            attempt_context: None,
         }
     }
 
@@ -984,6 +995,7 @@ mod tests {
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), final_choice, Usage::new()))
             .expect("streamed_turn should succeed");
+        run.continue_model_turn().expect("accept streamed turn");
 
         let AgentRunStep::CallTools { calls } = run.next_step().expect("next_step") else {
             panic!("expected CallTools");
@@ -1006,6 +1018,7 @@ mod tests {
         let final_choice = OneOrMany::one(AssistantContent::text("done"));
         run.streamed_turn(asm.finish(None, final_choice, Usage::new()))
             .expect("streamed_turn should succeed");
+        run.continue_model_turn().expect("accept streamed turn");
 
         let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
             panic!("expected Done");
@@ -1237,6 +1250,7 @@ mod tests {
             Usage::new(),
         );
         run.streamed_turn(turn).expect("turn should commit");
+        run.continue_model_turn().expect("accept repaired turn");
         let calls = match run.next_step().expect("tool step") {
             AgentRunStep::CallTools { calls } => calls,
             other => panic!("expected CallTools, got {other:?}"),
@@ -1283,6 +1297,7 @@ mod tests {
             Usage::new(),
         );
         run.streamed_turn(turn).expect("turn should commit");
+        run.continue_model_turn().expect("accept repaired turn");
         let calls = match run.next_step().expect("tool step") {
             AgentRunStep::CallTools { calls } => calls,
             other => panic!("expected CallTools, got {other:?}"),
@@ -1324,6 +1339,7 @@ mod tests {
             allowed_tool_names: tool_names(&["add"]),
             original_tool_calls: Vec::new(),
             internal_call_ids: Vec::new(),
+            attempt_context: None,
         };
         let err = run
             .streamed_turn(turn)
@@ -1376,6 +1392,7 @@ mod tests {
         .expect("two items");
         run.streamed_turn(asm.finish(None, final_choice, Usage::new()))
             .expect("streamed_turn should succeed");
+        run.continue_model_turn().expect("accept streamed turn");
 
         // The internal IDs survive in the run state itself: a serde round
         // trip must keep both calls distinguishable.
@@ -1516,6 +1533,7 @@ mod tests {
         let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
         run.streamed_turn(asm.finish(None, final_choice, Usage::new()))
             .expect("streamed_turn should succeed");
+        run.continue_model_turn().expect("accept streamed turn");
         run.next_step().expect("CallTools step");
 
         let serialized = serde_json::to_string(&run).expect("serialize mid-run");

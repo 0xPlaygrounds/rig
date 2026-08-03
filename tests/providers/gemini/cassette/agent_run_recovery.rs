@@ -136,6 +136,8 @@ async fn repair_renames_tool_call_and_executes_it() {
                             repaired_calls > repaired_before,
                             "exactly the recovered turns suppress the response hook"
                         );
+                        run.continue_model_turn()
+                            .expect("accepted repaired turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
@@ -218,6 +220,8 @@ async fn skip_suppresses_every_call_in_the_turn() {
                                 .expect("skip should be accepted");
                         }
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted recovered turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         if skipped_turn_calls.is_none() {
