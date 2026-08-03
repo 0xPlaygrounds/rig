@@ -1557,6 +1557,18 @@ enum ChatFinishReason {
     Other(String),
 }
 
+impl From<&ChatFinishReason> for CompatibleFinishReason {
+    fn from(reason: &ChatFinishReason) -> Self {
+        match reason {
+            ChatFinishReason::ToolCalls => Self::ToolCalls,
+            ChatFinishReason::Stop => Self::Stop,
+            ChatFinishReason::ContentFilter => Self::ContentFilter,
+            ChatFinishReason::Length => Self::Length,
+            ChatFinishReason::Other(other) => Self::Other(other.clone()),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct ChatStreamingChoice {
     delta: ChatStreamingDelta,
@@ -1598,11 +1610,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                 data.usage,
                 &data.choices,
                 |choice| CompatibleChoiceData {
-                    finish_reason: if choice.finish_reason == Some(ChatFinishReason::ToolCalls) {
-                        CompatibleFinishReason::ToolCalls
-                    } else {
-                        CompatibleFinishReason::Other
-                    },
+                    finish_reason: choice.finish_reason.as_ref().map(Into::into),
                     text: choice.delta.content.clone(),
                     reasoning: choice.delta.reasoning_content.clone(),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
@@ -1614,9 +1622,14 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<CompatibleFinishReason>,
+    ) -> Self::FinalResponse {
         CopilotStreamingResponse::Chat(openai::completion::streaming::StreamingCompletionResponse {
             usage,
+            finish_reason: finish_reason.map(Into::into),
         })
     }
 
@@ -2256,6 +2269,46 @@ mod tests {
             stream.next().await.is_none(),
             "chat stream should terminate immediately after a transport error"
         );
+    }
+
+    #[tokio::test]
+    async fn chat_stream_surfaces_finish_reason_on_final_response() {
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}],\"usage\":null}",
+                "{\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}],\"usage\":null}",
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":3,\"total_tokens\":10}}",
+                "[DONE]",
+            ]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("stream item should be ok")
+            {
+                final_response = Some(response);
+            }
+        }
+
+        let super::CopilotStreamingResponse::Chat(response) =
+            final_response.expect("expected a final response")
+        else {
+            panic!("chat streaming should yield a chat final response");
+        };
+        assert_eq!(
+            response.finish_reason,
+            Some(crate::providers::openai::completion::streaming::FinishReason::Length)
+        );
+        assert_eq!(response.usage.total_tokens, 10);
     }
 
     #[test]

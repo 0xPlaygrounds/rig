@@ -86,7 +86,8 @@ struct StreamingDelta {
     reasoning_details: Vec<serde_json::Value>,
 }
 
-#[derive(Deserialize, Debug, PartialEq)]
+/// Finish reason reported on a Chat Completions streaming choice.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
     ToolCalls,
@@ -95,6 +96,33 @@ pub enum FinishReason {
     Length,
     #[serde(untagged)]
     Other(String), // This will handle the deprecated function_call
+}
+
+impl From<&FinishReason> for CompatibleFinishReason {
+    fn from(reason: &FinishReason) -> Self {
+        match reason {
+            FinishReason::ToolCalls => Self::ToolCalls,
+            FinishReason::Stop => Self::Stop,
+            FinishReason::ContentFilter => Self::ContentFilter,
+            FinishReason::Length => Self::Length,
+            // `function_call` is the deprecated pre-tools finish reason some
+            // compatible providers still emit for tool calls.
+            FinishReason::Other(other) if other == "function_call" => Self::ToolCalls,
+            FinishReason::Other(other) => Self::Other(other.clone()),
+        }
+    }
+}
+
+impl From<CompatibleFinishReason> for FinishReason {
+    fn from(reason: CompatibleFinishReason) -> Self {
+        match reason {
+            CompatibleFinishReason::ToolCalls => Self::ToolCalls,
+            CompatibleFinishReason::Stop => Self::Stop,
+            CompatibleFinishReason::ContentFilter => Self::ContentFilter,
+            CompatibleFinishReason::Length => Self::Length,
+            CompatibleFinishReason::Other(other) => Self::Other(other),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -118,6 +146,10 @@ struct StreamingCompletionChunk<U = Usage> {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     pub usage: U,
+    /// The last `finish_reason` observed on the stream, if any; the deprecated
+    /// `function_call` value is normalized to [`FinishReason::ToolCalls`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
 }
 
 impl<U> GetTokenUsage for StreamingCompletionResponse<U>
@@ -273,15 +305,7 @@ where
                 data.usage,
                 &data.choices,
                 |choice| CompatibleChoiceData {
-                    // `function_call` is the deprecated pre-tools finish reason
-                    // some compatible providers still emit for tool calls.
-                    finish_reason: match &choice.finish_reason {
-                        Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
-                        Some(FinishReason::Other(other)) if other == "function_call" => {
-                            CompatibleFinishReason::ToolCalls
-                        }
-                        _ => CompatibleFinishReason::Other,
-                    },
+                    finish_reason: choice.finish_reason.as_ref().map(Into::into),
                     text: choice.delta.content.clone(),
                     reasoning: choice
                         .delta
@@ -297,8 +321,15 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse {
-        StreamingCompletionResponse { usage }
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<CompatibleFinishReason>,
+    ) -> Self::FinalResponse {
+        StreamingCompletionResponse {
+            usage,
+            finish_reason: finish_reason.map(Into::into),
+        }
     }
 
     fn decorate_tool_call(
@@ -614,6 +645,149 @@ mod tests {
         let usage = final_usage.expect("expected a final response with usage");
         assert_eq!(usage.prompt_tokens, 10);
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    async fn final_response_for_stream(
+        data_lines: Vec<String>,
+    ) -> StreamingCompletionResponse<Usage> {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(data_lines),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .unwrap();
+
+        let mut stream = send_compatible_streaming_request(client, req)
+            .await
+            .unwrap();
+
+        let mut final_response = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+                final_response = Some(res);
+            }
+        }
+
+        final_response.expect("expected a final response")
+    }
+
+    #[tokio::test]
+    async fn test_streaming_finish_reason_survives_final_response() {
+        for (wire, expected) in [
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("content_filter", FinishReason::ContentFilter),
+        ] {
+            let res = final_response_for_stream(vec![
+                "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}".to_owned(),
+                format!("{{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"{wire}\"}}],\"usage\":null}}"),
+                "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}".to_owned(),
+                "[DONE]".to_owned(),
+            ])
+            .await;
+
+            assert_eq!(
+                res.finish_reason,
+                Some(expected),
+                "finish_reason {wire:?} should survive to the final response"
+            );
+            assert_eq!(res.usage.prompt_tokens, 10);
+            assert_eq!(res.usage.total_tokens, 15);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_streaming_tool_calls_finish_reason_survives_final_response() {
+        let res = final_response_for_stream(vec![
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}],\"usage\":null}".to_owned(),
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}".to_owned(),
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":10,\"total_tokens\":30}}".to_owned(),
+            "[DONE]".to_owned(),
+        ])
+        .await;
+
+        assert_eq!(res.finish_reason, Some(FinishReason::ToolCalls));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_deprecated_function_call_finish_reason_normalizes_to_tool_calls() {
+        let res = final_response_for_stream(vec![
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"{}\"}}]},\"finish_reason\":null}],\"usage\":null}".to_owned(),
+            "{\"choices\":[{\"delta\":{\"tool_calls\":[]},\"finish_reason\":\"function_call\"}],\"usage\":null}".to_owned(),
+            "[DONE]".to_owned(),
+        ])
+        .await;
+
+        assert_eq!(res.finish_reason, Some(FinishReason::ToolCalls));
+    }
+
+    #[tokio::test]
+    async fn test_streaming_nonstandard_finish_reason_is_preserved() {
+        // Some compatible gateways emit finish reasons outside the OpenAI set
+        // (e.g. DeepSeek's `insufficient_system_resource`).
+        let res = final_response_for_stream(vec![
+            "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]},\"finish_reason\":null}],\"usage\":null}".to_owned(),
+            "{\"choices\":[{\"delta\":{},\"finish_reason\":\"insufficient_system_resource\"}],\"usage\":null}".to_owned(),
+            "[DONE]".to_owned(),
+        ])
+        .await;
+
+        assert_eq!(
+            res.finish_reason,
+            Some(FinishReason::Other(
+                "insufficient_system_resource".to_owned()
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_streaming_without_finish_reason_yields_none() {
+        let res = final_response_for_stream(vec![
+            "{\"choices\":[{\"delta\":{\"content\":\"Hello\",\"tool_calls\":[]}}],\"usage\":null}"
+                .to_owned(),
+            "{\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}".to_owned(),
+            "[DONE]".to_owned(),
+        ])
+        .await;
+
+        assert!(res.finish_reason.is_none());
+    }
+
+    #[test]
+    fn test_streaming_response_finish_reason_serde_is_backward_compatible() {
+        // Payloads serialized before the field existed still deserialize.
+        let legacy = r#"{"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#;
+        let response: StreamingCompletionResponse = serde_json::from_str(legacy).unwrap();
+        assert!(response.finish_reason.is_none());
+
+        // `None` keeps the serialized form unchanged.
+        let serialized = serde_json::to_value(&response).unwrap();
+        assert!(serialized.get("finish_reason").is_none());
+
+        // Standard and nonstandard reasons round-trip.
+        for (reason, wire) in [
+            (FinishReason::Length, serde_json::json!("length")),
+            (
+                FinishReason::Other("expired".to_owned()),
+                serde_json::json!("expired"),
+            ),
+        ] {
+            let response = StreamingCompletionResponse::<Usage> {
+                usage: Usage::new(),
+                finish_reason: Some(reason.clone()),
+            };
+            let serialized = serde_json::to_value(&response).unwrap();
+            assert_eq!(serialized["finish_reason"], wire);
+            let deserialized: StreamingCompletionResponse =
+                serde_json::from_value(serialized).unwrap();
+            assert_eq!(deserialized.finish_reason, Some(reason));
+        }
     }
 
     #[tokio::test]
