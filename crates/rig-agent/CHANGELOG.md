@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - [**breaking**] `StreamedTurnAssembler::partial_turn` now borrows an `Option<&str>` and owns the ID only when it creates the rollback snapshot; `finish` now consumes its final `OneOrMany<AssistantContent>`. Drivers should inspect live streams by borrow, then convert an exhausted `CompletionStream` into `CompletionResponse` and move its `message_id` and `choice` into `finish`.
+- [**breaking**] `ModelTurnOutcome::Continue` now carries an `AcceptedModelTurn`, the shared canonical post-resolution record used by both drivers. Repaired invalid-call turns cross `ModelTurnFinished` exactly once in blocking and streaming runs before tool preflight; provider-response observations retain their intentionally medium-specific suppression behavior.
+- [**breaking**] Tool-result submissions and execution records carry `ToolInvocationDisposition`. `ToolExecutionCommitted` now means a local tool body ran or the host explicitly supplied an externally executed result; policy skips, invalid-recovery skips, unknown tools, and other pre-resolved outcomes still commit model-visible results without emitting an execution observation.
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.0.0...rig-agent-v0.41.0) - 2026-07-28
 

@@ -199,4 +199,7 @@ pub use prepare::{PreparedRequest, ToolCatalog, prepare_request};
 pub use request::SessionRunner;
 pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::message::Text;
-pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
+pub use run::{
+    AcceptedModelTurn, AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode,
+    PendingToolCall, ToolInvocationDisposition,
+};

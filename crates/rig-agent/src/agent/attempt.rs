@@ -12,7 +12,7 @@ use rig_core::completion::{CompletionError, Message};
 use super::config::AgentConfig;
 use super::hook::RequestPatch;
 use super::prepare::{PreparedRequest, ToolCatalog, prepare_request};
-use super::run::{AgentRun, ModelTurn, ModelTurnOutcome, StreamedTurn};
+use super::run::{AcceptedModelTurn, AgentRun, ModelTurn, ModelTurnOutcome, StreamedTurn};
 use crate::completion::PromptError;
 
 /// Provisional state shared by the blocking and streaming model-call drivers.
@@ -101,11 +101,6 @@ impl ModelCallAttempt {
         Ok(prepared)
     }
 
-    /// One-based model-call index owned by this attempt.
-    pub(crate) fn turn(&self) -> usize {
-        self.turn
-    }
-
     /// Atomically feed a completed unary turn and promote provisional
     /// attempt metadata. A rejected turn is abandoned through the same
     /// rollback path as transport and preparation failures.
@@ -134,11 +129,11 @@ impl ModelCallAttempt {
         run: &mut AgentRun,
         next_patch: &mut Option<RequestPatch>,
         turn: StreamedTurn,
-    ) -> Result<(), PromptError> {
+    ) -> Result<AcceptedModelTurn, PromptError> {
         match run.streamed_turn(turn) {
-            Ok(()) => {
+            Ok(accepted) => {
                 run.set_output_tool_name(self.output_tool_name);
-                Ok(())
+                Ok(accepted)
             }
             Err(error) => {
                 self.abandon(run, next_patch);

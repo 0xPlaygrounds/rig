@@ -128,14 +128,11 @@ async fn repair_renames_tool_call_and_executes_it() {
                             repaired_calls += 1;
                             assert!(repaired_calls < 6, "repair loop did not converge");
                         }
-                        let ModelTurnOutcome::Continue {
-                            response_hook_suppressed,
-                        } = outcome
-                        else {
+                        let ModelTurnOutcome::Continue(accepted) = outcome else {
                             panic!("repaired turns continue: {outcome:?}");
                         };
                         assert_eq!(
-                            response_hook_suppressed,
+                            accepted.response_hook_suppressed,
                             repaired_calls > repaired_before,
                             "exactly the recovered turns suppress the response hook"
                         );
@@ -220,7 +217,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
                                 ))
                                 .expect("skip should be accepted");
                         }
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         if skipped_turn_calls.is_none() {

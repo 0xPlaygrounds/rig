@@ -1453,7 +1453,7 @@ where
     let mut repaired = restricted_recovery_run(PROMPT, turn.clone(), 0)?;
     if !matches!(
         repaired.resolve_invalid_tool_call(InvalidToolCallAction::repair(CountingSum::NAME))?,
-        ModelTurnOutcome::Continue { .. }
+        ModelTurnOutcome::Continue(_)
     ) {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -1481,7 +1481,7 @@ where
     let mut skipped = restricted_recovery_run(PROMPT, turn.clone(), 0)?;
     if !matches!(
         skipped.resolve_invalid_tool_call(InvalidToolCallAction::skip("disabled for this turn"))?,
-        ModelTurnOutcome::Continue { .. }
+        ModelTurnOutcome::Continue(_)
     ) {
         return Err(ScenarioError::contract(SCENARIO, "skip did not continue"));
     }
@@ -2993,7 +2993,7 @@ pub async fn invalid_tool_recovery_session(
     let mut repaired = restricted_recovery_run(PROMPT, turn.clone(), 0)?;
     if !matches!(
         repaired.resolve_invalid_tool_call(InvalidToolCallAction::repair(CountingSum::NAME))?,
-        ModelTurnOutcome::Continue { .. }
+        ModelTurnOutcome::Continue(_)
     ) {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -3021,7 +3021,7 @@ pub async fn invalid_tool_recovery_session(
     let mut skipped = restricted_recovery_run(PROMPT, turn.clone(), 0)?;
     if !matches!(
         skipped.resolve_invalid_tool_call(InvalidToolCallAction::skip("disabled for this turn"))?,
-        ModelTurnOutcome::Continue { .. }
+        ModelTurnOutcome::Continue(_)
     ) {
         return Err(ScenarioError::contract(SCENARIO, "skip did not continue"));
     }

@@ -442,6 +442,84 @@ async fn resume_reconstitutes_pending_invalid_tool_call() {
 }
 
 #[tokio::test]
+async fn resume_reconstitutes_post_repair_turn_verdict_before_tools() {
+    let script = MockScript::from_responses(vec![
+        tool_call_response("call_1", "bogus", serde_json::json!({"a": 2, "b": 2})),
+        text_response("recovered: 4", 2),
+    ]);
+    let mut config = AgentConfig::new();
+    config.max_turns = Some(3);
+    let policy = SessionPolicy {
+        surface_model_turns: true,
+        ..SessionPolicy::default()
+    };
+    let mut session = AgentSession::new(
+        config.clone(),
+        mock_provider(script.clone()),
+        Arc::new(Runtime::new()),
+        "hello",
+    )
+    .with_tools(adder_catalog())
+    .with_policy(policy);
+
+    assert!(matches!(
+        session.advance().await.expect("surface invalid call"),
+        SessionEvent::InvalidToolCall(_)
+    ));
+    session
+        .resolve_invalid(InvalidToolCallAction::repair("add"))
+        .expect("repair should produce an accepted turn");
+
+    // Suspend in the post-resolution AcceptedModelTurn window, before the
+    // host has observed or answered TurnFinished.
+    let serialized =
+        serde_json::to_string(session.run_state()).expect("run state should serialize");
+    let run = serde_json::from_str(&serialized).expect("run state should deserialize");
+    let mut resumed = AgentSession::resume(
+        config.clone(),
+        mock_provider(script.clone()),
+        Arc::new(Runtime::new()),
+        run,
+    )
+    .with_tools(adder_catalog())
+    .with_policy(policy);
+
+    match resumed.advance().await.expect("resurface accepted turn") {
+        SessionEvent::TurnFinished { content, .. } => {
+            assert!(content.iter().any(|item| {
+                matches!(
+                    item,
+                    AssistantContent::ToolCall(call) if call.function.name == "add"
+                )
+            }));
+        }
+        other => panic!("expected TurnFinished before tools after resume, got {other:?}"),
+    }
+    resumed
+        .reply_turn(ModelTurnAction::Continue)
+        .expect("accept repaired turn");
+
+    // Checkpoint again after answering Continue but before advancing. The
+    // durable verdict state must prevent a duplicate TurnFinished on resume.
+    let serialized =
+        serde_json::to_string(resumed.run_state()).expect("continued run should serialize");
+    let run = serde_json::from_str(&serialized).expect("continued run should deserialize");
+    let mut continued =
+        AgentSession::resume(config, mock_provider(script), Arc::new(Runtime::new()), run)
+            .with_tools(adder_catalog())
+            .with_policy(SessionPolicy {
+                surface_model_turns: true,
+                ..SessionPolicy::default()
+            });
+
+    let calls = match continued.advance().await.expect("advance to tools") {
+        SessionEvent::ToolCallsReady(calls) => calls,
+        other => panic!("expected ToolCallsReady without a duplicate verdict, got {other:?}"),
+    };
+    assert_eq!(calls[0].tool_call.function.name, "add");
+}
+
+#[tokio::test]
 async fn transient_provider_error_recovers_on_next_advance() {
     let script = MockScript::from_responses(vec![
         text_response("unused", 0),

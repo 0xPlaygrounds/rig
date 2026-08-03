@@ -30,7 +30,7 @@ use crate::agent::response::tool_result_output;
 use crate::agent::run::{
     AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, PartialStreamedTurn, PendingToolCall,
     StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent,
-    ToolResultSubmission,
+    ToolInvocationDisposition, ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span, record_usage_on_span,
@@ -128,8 +128,9 @@ pub enum AgentStreamItem {
         /// The model-visible result content as provided.
         result: UserContent,
     },
-    /// A tool call's result was committed to history (post-batch, call
-    /// order).
+    /// A tool body ran locally, or the host explicitly supplied an externally
+    /// executed result. Emitted post-batch in call order and independently of
+    /// the durable result item.
     ToolExecutionCommitted {
         /// The executed tool call.
         tool_call: ToolCall,
@@ -164,7 +165,9 @@ pub enum AgentRunItem {
         /// One-based index of the retried model call.
         turn: usize,
     },
-    /// A tool call's result was committed to history.
+    /// A tool body ran locally, or the host explicitly supplied an externally
+    /// executed result. This is independent of durable result commitment:
+    /// policy-skipped calls still emit [`Self::User`] but never this variant.
     ToolExecutionCommitted {
         /// The executed tool call.
         tool_call: ToolCall,
@@ -349,6 +352,8 @@ struct ResultGateEntry {
     call: PendingToolCall,
     internal_call_id: String,
     result: Option<UserContent>,
+    /// Actual execution state, independent of the result presentation.
+    disposition: ToolInvocationDisposition,
     /// Whether this entry surfaces as [`AgentStreamItem::ToolResultReady`].
     surface: bool,
 }
@@ -812,40 +817,34 @@ impl AgentStream {
                         ));
                     }
                 };
-                let turn = attempt.turn();
-                let usage = response.usage;
-                let message_id = response.message_id.clone();
-                let streamed = assembler.finish(response.message_id, response.choice, usage);
+                let streamed =
+                    assembler.finish(response.message_id, response.choice, response.usage);
                 // Exactly one CompletionCall item per model call: when the
                 // provider never yielded a terminal record, `streamed_turn`
                 // records the no-usage fallback and the item is surfaced here.
                 let recorded_calls = self.run.completion_calls().len();
-                attempt.commit_streamed(&mut self.run, &mut self.next_patch, streamed)?;
-                record_usage_on_span(&chat_span, usage);
+                let accepted =
+                    attempt.commit_streamed(&mut self.run, &mut self.next_patch, streamed)?;
+                record_usage_on_span(&chat_span, accepted.usage);
                 if let Some(call) = self.run.completion_calls().get(recorded_calls).copied() {
                     self.buffered
                         .push_back(AgentStreamItem::CompletionCall(call));
                 }
-                if self.policy.surface_model_turns && self.run.accepted_turn_choice().is_some() {
+                if self.policy.surface_model_turns {
                     // The verdict is the host's: park the span so a retried
                     // turn records no output telemetry.
                     self.turn_chat_span = Some(chat_span.clone());
                 } else {
                     self.record_turn_output(&chat_span);
+                    self.run.continue_model_turn()?;
                 }
-                if self.policy.surface_model_turns
-                    && let Some(content) = self.run.accepted_turn_choice()
-                {
+                if self.policy.surface_model_turns {
                     self.pending = Pending::TurnReply;
-                    // Per-turn usage, not the run aggregate: the last recorded
-                    // completion call is this turn's (recorded from the
-                    // stream's terminal event, or as a zero-usage fallback by
-                    // `streamed_turn` when the provider reported none).
                     self.buffered.push_back(AgentStreamItem::TurnFinished {
-                        turn,
-                        content,
-                        usage,
-                        message_id,
+                        turn: accepted.turn,
+                        content: accepted.content,
+                        usage: accepted.usage,
+                        message_id: accepted.message_id,
                     });
                 }
                 Ok(())
@@ -1032,7 +1031,7 @@ impl AgentStream {
                 if let Some(span) = &chat_span {
                     self.record_turn_output(span);
                 }
-                Ok(())
+                self.run.continue_model_turn()
             }
             ModelTurnAction::Retry(request) => {
                 let turn = self.run.turn();
@@ -1248,8 +1247,9 @@ impl AgentStream {
                         );
                         skipped_internal_ids.push(call.ensure_internal_call_id().to_owned());
                         call.preresolved_result = Some(content);
-                        call.preresolved_disposition =
-                            Some(crate::agent::run::PreresolvedToolDisposition::Skipped { reason });
+                        call.invocation_disposition = Some(
+                            crate::agent::run::ToolInvocationDisposition::not_executed(reason),
+                        );
                         decided.push(call);
                     }
                     ResolvedToolCallDisposition::Stop(reason) => {
@@ -1319,18 +1319,24 @@ impl AgentStream {
                     .iter()
                     .filter_map(|entry| {
                         entry.result.clone().map(|result| {
-                            ToolResultSubmission::new(entry.internal_call_id.clone(), result)
+                            ToolResultSubmission::with_disposition(
+                                entry.internal_call_id.clone(),
+                                result,
+                                entry.disposition.clone(),
+                            )
                         })
                     })
                     .chain(extras)
                     .collect();
                 self.run.tool_result_submissions(submissions)?;
                 for entry in entries {
-                    self.buffered
-                        .push_back(AgentStreamItem::ToolExecutionCommitted {
-                            tool_call: entry.call.tool_call.clone(),
-                            internal_call_id: entry.internal_call_id.clone(),
-                        });
+                    if entry.disposition.execution_committed() {
+                        self.buffered
+                            .push_back(AgentStreamItem::ToolExecutionCommitted {
+                                tool_call: entry.call.tool_call.clone(),
+                                internal_call_id: entry.internal_call_id.clone(),
+                            });
+                    }
                     if let Some(UserContent::ToolResult(result)) = entry.result {
                         self.buffered.push_back(AgentStreamItem::User(
                             StreamedUserContent::tool_result(result, entry.internal_call_id),
@@ -1399,9 +1405,11 @@ impl AgentStream {
     /// Answer [`AgentStreamItem::ToolCallsReady`] with identity-bearing
     /// [`ToolResultSubmission`] records. Use each
     /// [`PendingToolCall::internal_call_id`] as the join key; provider IDs may
-    /// duplicate and submissions may arrive in any order. Committed results
-    /// and execution markers surface on subsequent [`AgentStream::next_item`]
-    /// calls, in call order. Under `policy.surface_tool_results` the batch is
+    /// duplicate and submissions may arrive in any order. Results are
+    /// canonicalized to pending-call order before both durable commit and
+    /// observation; committed results and execution markers surface on
+    /// subsequent [`AgentStream::next_item`] calls in that same order. Under
+    /// `policy.surface_tool_results` the batch is
     /// not committed yet: each result surfaces as
     /// [`AgentStreamItem::ToolResultReady`] first, and commits once every
     /// decision is answered.
@@ -1444,10 +1452,20 @@ impl AgentStream {
                     .internal_call_id
                     .clone()
                     .unwrap_or_else(rig_core::id::generate);
+                let disposition = call
+                    .invocation_disposition
+                    .clone()
+                    .or_else(|| {
+                        matched
+                            .as_ref()
+                            .map(|submission| submission.disposition.clone())
+                    })
+                    .unwrap_or_else(|| ToolInvocationDisposition::not_executed(None));
                 entries.push(ResultGateEntry {
                     call,
                     internal_call_id,
                     result: matched.map(|submission| submission.result),
+                    disposition,
                     surface,
                 });
             }
@@ -1468,15 +1486,22 @@ impl AgentStream {
                 .internal_call_id
                 .clone()
                 .unwrap_or_else(rig_core::id::generate);
-            self.buffered
-                .push_back(AgentStreamItem::ToolExecutionCommitted {
-                    tool_call: call.tool_call.clone(),
-                    internal_call_id: internal.clone(),
-                });
-            if let Some(UserContent::ToolResult(result)) = submissions
+            let submission = submissions
                 .iter()
-                .find(|submission| submission.internal_call_id == internal)
-                .map(|submission| submission.result.clone())
+                .find(|submission| submission.internal_call_id == internal);
+            let disposition = call
+                .invocation_disposition
+                .as_ref()
+                .or_else(|| submission.map(|submission| &submission.disposition));
+            if disposition.is_some_and(ToolInvocationDisposition::execution_committed) {
+                self.buffered
+                    .push_back(AgentStreamItem::ToolExecutionCommitted {
+                        tool_call: call.tool_call.clone(),
+                        internal_call_id: internal.clone(),
+                    });
+            }
+            if let Some(UserContent::ToolResult(result)) =
+                submission.map(|submission| submission.result.clone())
             {
                 self.buffered
                     .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(
@@ -1523,6 +1548,7 @@ impl AgentStream {
                         call,
                         internal_call_id: record.internal_call_id.clone(),
                         result: Some(record.result.clone()),
+                        disposition: record.disposition.clone(),
                         surface,
                     }
                 })
@@ -1540,19 +1566,22 @@ impl AgentStream {
             records
                 .iter()
                 .map(|record| {
-                    ToolResultSubmission::new(
+                    ToolResultSubmission::with_disposition(
                         record.internal_call_id.clone(),
                         record.result.clone(),
+                        record.disposition.clone(),
                     )
                 })
                 .collect(),
         )?;
         for (call, record) in calls.iter().zip(records) {
-            self.buffered
-                .push_back(AgentStreamItem::ToolExecutionCommitted {
-                    tool_call: record.effective_call.clone(),
-                    internal_call_id: record.internal_call_id.clone(),
-                });
+            if record.disposition.execution_committed() {
+                self.buffered
+                    .push_back(AgentStreamItem::ToolExecutionCommitted {
+                        tool_call: record.effective_call.clone(),
+                        internal_call_id: record.internal_call_id.clone(),
+                    });
+            }
             if let UserContent::ToolResult(result) = &record.result {
                 self.buffered
                     .push_back(AgentStreamItem::User(StreamedUserContent::tool_result(
@@ -2297,11 +2326,105 @@ mod gate_tests {
             .expect("reply");
 
         loop {
-            if let AgentStreamItem::Final(done) = next(&mut stream).await {
-                assert_eq!(done.output, "done");
-                break;
+            match next(&mut stream).await {
+                AgentStreamItem::ToolExecutionCommitted { .. } => {
+                    panic!("a gated policy skip must not emit an execution observation")
+                }
+                AgentStreamItem::Final(done) => {
+                    assert_eq!(done.output, "done");
+                    break;
+                }
+                _ => {}
             }
         }
+    }
+
+    #[tokio::test]
+    async fn stream_ungated_skip_commits_result_without_execution_observation() {
+        let policy = SessionPolicy {
+            surface_tool_calls: true,
+            surface_tool_results: false,
+            ..SessionPolicy::default()
+        };
+        let mut stream = tool_stream(policy);
+
+        assert!(matches!(
+            next_decision(&mut stream).await,
+            AgentStreamItem::ToolCallPending { .. }
+        ));
+        stream
+            .reply_tool_call(ToolCallAction::skip("blocked by policy"))
+            .expect("reply");
+        let calls = match next_decision(&mut stream).await {
+            AgentStreamItem::ToolCallsReady(calls) => calls,
+            other => panic!("expected ToolCallsReady, got {other:?}"),
+        };
+        let ready = calls.first().expect("one call");
+        let result = ready.preresolved_result.clone().expect("skip result");
+        stream
+            .provide_tool_results(vec![submission_for(ready, result)])
+            .expect("results");
+
+        let mut saw_result = false;
+        loop {
+            match next(&mut stream).await {
+                AgentStreamItem::ToolExecutionCommitted { .. } => {
+                    panic!("an ungated policy skip must not emit an execution observation")
+                }
+                AgentStreamItem::User(_) => saw_result = true,
+                AgentStreamItem::Final(done) => {
+                    assert_eq!(done.output, "done");
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_result, "the skipped result remains model-visible");
+    }
+
+    #[tokio::test]
+    async fn executed_disposition_emits_even_for_skipped_classified_result() {
+        let mut stream = tool_stream(SessionPolicy {
+            surface_tool_results: true,
+            ..SessionPolicy::default()
+        });
+        let calls = match next_decision(&mut stream).await {
+            AgentStreamItem::ToolCallsReady(calls) => calls,
+            other => panic!("expected ToolCallsReady, got {other:?}"),
+        };
+        let call = calls.first().expect("one call").clone();
+        let raw_result = crate::tool::ToolResult::skipped("body chose a skipped result");
+        let result = crate::tool::router_support::shape_result(&call.tool_call, &raw_result);
+        let record = crate::executor::ToolExecutionRecord {
+            batch_index: 0,
+            internal_call_id: call
+                .internal_call_id
+                .clone()
+                .expect("durable internal identity"),
+            original_call: call.tool_call.clone(),
+            effective_call: call.tool_call.clone(),
+            raw_result,
+            result,
+            disposition: ToolInvocationDisposition::Executed,
+            span: None,
+        };
+        stream
+            .provide_tool_execution_records(&[record])
+            .expect("record reaches result gate");
+
+        assert!(matches!(
+            next(&mut stream).await,
+            AgentStreamItem::ToolResultReady { .. }
+        ));
+        stream
+            .reply_tool_result(ToolResultAction::rewrite("rewritten presentation"))
+            .expect("result rewrite");
+
+        assert!(matches!(
+            next(&mut stream).await,
+            AgentStreamItem::ToolExecutionCommitted { .. }
+        ));
+        assert!(matches!(next(&mut stream).await, AgentStreamItem::User(_)));
     }
 }
 
@@ -3953,6 +4076,13 @@ mod migrated_streaming_tests {
         )));
         assert_eq!(collected.expect_final().output, "continued");
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            collected
+                .items
+                .iter()
+                .all(|item| !matches!(item, AgentRunItem::ToolExecutionCommitted { .. })),
+            "invalid-call recovery skip must not report tool execution"
+        );
 
         let requests = script.requests();
         assert_eq!(requests.len(), 2);
@@ -4107,6 +4237,13 @@ mod migrated_streaming_tests {
         assert_eq!(skipped.call_id.as_deref(), Some("call_2"));
         assert_eq!(collected.expect_final().output, "continued");
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            collected
+                .items
+                .iter()
+                .all(|item| !matches!(item, AgentRunItem::ToolExecutionCommitted { .. })),
+            "neither the skipped invalid call nor its suppressed peer executed"
+        );
 
         let requests = script.requests();
         assert_eq!(requests.len(), 2);

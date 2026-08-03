@@ -325,6 +325,11 @@ later provider error rolls them back with the rest of the attempt.
 Current-turn metadata and tool identity now travel with their records:
 
 - `AgentStreamItem::TurnFinished` has `message_id: Option<String>`.
+- `ModelTurnOutcome::Continue` carries an `AcceptedModelTurn` containing the
+  canonical post-resolution content, turn index, message ID, usage, and
+  medium-specific response-observation suppression flag. Both drivers use this
+  record for their one normalized `ModelTurnFinished` verdict before tool
+  preflight, including after invalid-call repair.
 - `AgentStream::last_response()` describes only the current/most recently
   completed attempt; a successful turn with no provider terminal record leaves
   it as `None` rather than retaining an older turn's record.
@@ -342,6 +347,9 @@ Current-turn metadata and tool identity now travel with their records:
   `AgentRun` boundary, use `tool_result_submissions` for the same protocol.
   Rig validates both embedded provider correlation fields (`id` and `call_id`)
   against the invocation selected by `internal_call_id`.
+  `ToolResultSubmission::new` declares that the host performed the execution
+  externally; submissions produced by Rig's executor or pre-resolved policy
+  retain their explicit `ToolInvocationDisposition`.
   The `tool_results(Vec<UserContent>)` convenience remains only for batches
   whose provider call IDs are unique and fails closed on ambiguous duplicates.
 - `ResolvedToolCall` now owns the complete effective call plus a normalized
@@ -349,11 +357,12 @@ Current-turn metadata and tool identity now travel with their records:
   rewrites therefore remain attached even when a later hook skips the call.
 
 Each `ToolExecutionRecord` keeps the batch index, unique Rig internal ID,
-original and effective call, structured result, visible result, and telemetry
-span together. Provider call IDs are payload and may repeat. Rig generates
+original and effective call, structured result, visible result, explicit
+`ToolInvocationDisposition`, and optional telemetry span together. Provider
+call IDs are payload and may repeat. Rig generates
 missing/duplicate internal IDs before storing the pending batch in `AgentRun`,
 so they survive serialization and resume. Pending calls also serialize the
-original call and a data-only pre-resolved skip disposition. Invalid-call
+original call and a data-only invocation disposition. Invalid-call
 recovery stores synthetic results positionally rather than by duplicate-prone
 provider IDs, preserving each call's `call_id`, reason, and classification.
 When recovery repairs a tool name, both unary and streamed execution retain the
@@ -406,8 +415,10 @@ of the history. Verified provider by provider — Anthropic (`system` array +
 Ollama, OpenRouter, xAI, and Bedrock all agree — with a placement conversion
 test per provider outside the replay claim (for example
 `system_messages_land_in_system_instruction_not_contents` in
-`rig-vertexai` and `rig-gemini-grpc`), and the recorded provider suites replay
-byte-identically.
+`rig-vertexai` and `rig-gemini-grpc`). Recorded response payloads are unchanged.
+The only fixture-file exception is four OpenRouter request matchers whose
+`when.body` objects gain the now-forwarded `max_tokens` field (6 insertions and
+6 deletions); every other cassette is unchanged.
 
 Collapsing to one representation also closed a data-loss bug: Gemini's
 Interactions API used to prefer a scalar preamble and *discard* the history
@@ -1515,7 +1526,10 @@ completion and streaming APIs still return typed raw provider responses.
 Invalid-tool hooks return `None` to defer; every explicit action, including
 `Fail`, is terminal for that hook stack. The atomically surfaced post-batch
 streaming event is named `ToolExecutionCommitted` — for live host lifecycle
-events, observe `on_tool_call` / `on_tool_result`.
+events, observe `on_tool_call` / `on_tool_result`. The event means a local body
+ran or the host explicitly supplied an externally executed result; a skipped,
+unknown, or otherwise pre-resolved call still produces durable model-visible
+feedback but does not emit this execution observation.
 
 ### 6. `AgentRunner` is the only execution path
 

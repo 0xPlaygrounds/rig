@@ -44,7 +44,7 @@ async fn resume_from_serialized_state_mid_tool_execution() {
                                 call_model(&agent, prompt, history, &names, &names).await,
                             )
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => break calls,
                     AgentRunStep::Done(response) => {
@@ -108,7 +108,7 @@ async fn resume_from_serialized_state_mid_tool_execution() {
                                 call_model(&agent, prompt, history, &names, &names).await,
                             )
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         resumed
@@ -176,9 +176,8 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
             assert!(
                 matches!(
                     outcome,
-                    ModelTurnOutcome::Continue {
-                        response_hook_suppressed: true
-                    }
+                    ModelTurnOutcome::Continue(accepted)
+                        if accepted.response_hook_suppressed
                 ),
                 "recovered turns suppress the response hook"
             );
@@ -209,7 +208,7 @@ async fn resume_while_invalid_tool_call_awaits_resolution() {
                                 call_model(&agent, prompt, history, &executable, &executable).await,
                             )
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         resumed
@@ -292,7 +291,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
             let outcome = resumed
                 .model_response(call_model(&agent, prompt, history, &executable, &executable).await)
                 .expect("retry model turn should be accepted");
-            assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+            assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
 
             let response = loop {
                 match resumed.next_step().expect("resumed run should advance") {
@@ -304,7 +303,7 @@ async fn resume_after_invalid_tool_call_retry_rollback() {
                                 call_model(&agent, prompt, history, &executable, &executable).await,
                             )
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         resumed

@@ -66,7 +66,7 @@ pub mod streamed;
 
 pub use output_mode::OutputMode;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -142,11 +142,39 @@ pub enum AgentRunStep {
     Done(PromptResponse),
 }
 
-/// Serializable pre-execution disposition retained with a pending call.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum PreresolvedToolDisposition {
-    /// A tool-call hook deliberately skipped execution with this reason.
-    Skipped { reason: String },
+/// Whether a tool invocation actually executed.
+///
+/// This is carried independently from the model-visible result because a tool
+/// body may itself return a skipped-classified [`crate::tool::ToolResult`],
+/// while a policy skip produces a durable result without invoking the body.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ToolInvocationDisposition {
+    /// Rig invoked the registered tool body.
+    Executed,
+    /// A host supplied the result for execution performed outside Rig.
+    #[default]
+    ExternallyExecuted,
+    /// No tool body ran; the result was resolved before or instead of
+    /// execution.
+    NotExecuted {
+        /// Policy or recovery reason, when one is available.
+        reason: Option<String>,
+    },
+}
+
+impl ToolInvocationDisposition {
+    /// Whether this invocation represents actual local or external execution
+    /// and should therefore emit an execution observation.
+    pub fn execution_committed(&self) -> bool {
+        matches!(self, Self::Executed | Self::ExternallyExecuted)
+    }
+
+    pub(crate) fn not_executed(reason: impl Into<Option<String>>) -> Self {
+        Self::NotExecuted {
+            reason: reason.into(),
+        }
+    }
 }
 
 /// One result resolved before tool execution, positionally aligned with its
@@ -154,7 +182,7 @@ pub(crate) enum PreresolvedToolDisposition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PreresolvedToolResult {
     result: UserContent,
-    disposition: PreresolvedToolDisposition,
+    disposition: ToolInvocationDisposition,
 }
 
 /// One tool call awaiting execution by the driver.
@@ -178,10 +206,11 @@ pub struct PendingToolCall {
     /// original/effective distinction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) original_tool_call: Option<Box<ToolCall>>,
-    /// Data-only disposition for a pre-resolved hook decision. The visible
-    /// result carries presentation; this preserves hook/telemetry semantics.
+    /// Data-only disposition for a pre-resolved decision. The visible result
+    /// carries presentation; this field preserves execution semantics through
+    /// serialization and every later result gate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) preresolved_disposition: Option<PreresolvedToolDisposition>,
+    pub invocation_disposition: Option<ToolInvocationDisposition>,
 }
 
 impl PendingToolCall {
@@ -193,7 +222,7 @@ impl PendingToolCall {
             preresolved_result: None,
             internal_call_id: None,
             original_tool_call: None,
-            preresolved_disposition: None,
+            invocation_disposition: None,
         }
     }
 
@@ -201,6 +230,7 @@ impl PendingToolCall {
     /// result without executing the tool.
     pub fn with_preresolved_result(mut self, result: UserContent) -> Self {
         self.preresolved_result = Some(result);
+        self.invocation_disposition = Some(ToolInvocationDisposition::not_executed(None));
         self
     }
 
@@ -224,14 +254,36 @@ pub struct ToolResultSubmission {
     pub internal_call_id: String,
     /// The model-visible tool result for that invocation.
     pub result: UserContent,
+    /// Whether producing this result involved an actual tool execution.
+    #[serde(default)]
+    pub disposition: ToolInvocationDisposition,
 }
 
 impl ToolResultSubmission {
-    /// Associate `result` with one pending Rig invocation.
+    /// Associate an externally executed `result` with one pending Rig
+    /// invocation.
+    ///
+    /// The host is asserting that execution occurred outside Rig, so streaming
+    /// drivers emit the same execution observation as for a locally executed
+    /// tool body. Results already resolved by Rig policy carry their
+    /// [`ToolInvocationDisposition::NotExecuted`] disposition internally.
     pub fn new(internal_call_id: impl Into<String>, result: UserContent) -> Self {
         Self {
             internal_call_id: internal_call_id.into(),
             result,
+            disposition: ToolInvocationDisposition::ExternallyExecuted,
+        }
+    }
+
+    pub(crate) fn with_disposition(
+        internal_call_id: impl Into<String>,
+        result: UserContent,
+        disposition: ToolInvocationDisposition,
+    ) -> Self {
+        Self {
+            internal_call_id: internal_call_id.into(),
+            result,
+            disposition,
         }
     }
 }
@@ -272,6 +324,25 @@ impl ModelTurn {
     }
 }
 
+/// Canonical accepted model turn owned by the shared run state.
+///
+/// Unary and streaming drivers surface their normalized turn policy from this
+/// record instead of reconstructing the boundary from provider-local state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct AcceptedModelTurn {
+    /// One-based model-call index within the run.
+    pub turn: usize,
+    /// Provider-assigned assistant message ID, when available.
+    pub message_id: Option<String>,
+    /// Canonical content after invalid-call repair and validation.
+    pub content: OneOrMany<AssistantContent>,
+    /// Usage reported for this provider call.
+    pub usage: Usage,
+    /// Whether this medium's provider-response observation is suppressed.
+    pub response_hook_suppressed: bool,
+}
+
 /// Result of feeding a model turn (or an invalid tool-call resolution) into
 /// the machine.
 ///
@@ -286,10 +357,7 @@ pub enum ModelTurnOutcome {
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
     /// of not invoking `on_completion_response` for recovered turns.
-    Continue {
-        /// Whether the driver should suppress its completion-response hook.
-        response_hook_suppressed: bool,
-    },
+    Continue(AcceptedModelTurn),
     /// The model emitted a tool call that is unknown or disallowed for this
     /// turn. The driver must decide how to recover (typically by asking its
     /// invalid tool-call hook) and answer via
@@ -307,6 +375,7 @@ struct ResolvingState {
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: OneOrMany<AssistantContent>,
+    usage: Usage,
     /// Working copy of the assistant content; repairs rename tool calls here.
     items: Vec<AssistantContent>,
     /// Original calls aligned with `items`; populated only where repair makes
@@ -326,8 +395,12 @@ struct ResolvingState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
-    message_id: Option<String>,
-    items: Vec<AssistantContent>,
+    accepted: AcceptedModelTurn,
+    /// Whether a driver has already applied the normalized Continue verdict.
+    /// Kept in the run so a checkpoint between replying and `next_step` does
+    /// not surface the steering boundary twice after resume.
+    #[serde(default = "model_turn_verdict_pending_default")]
+    verdict_pending: bool,
     has_tool_calls: bool,
     /// Synthetic results positionally aligned with `items`.
     skipped: Vec<Option<PreresolvedToolResult>>,
@@ -337,6 +410,10 @@ struct TurnState {
     /// subsequence; empty for non-streamed turns.
     #[serde(default)]
     internal_call_ids: Vec<String>,
+}
+
+const fn model_turn_verdict_pending_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -575,17 +652,56 @@ impl AgentRun {
         &self.new_messages
     }
 
-    /// Canonical content for the accepted model turn awaiting advancement.
+    /// Canonical accepted model turn awaiting advancement.
     ///
     /// `Some` only between [`AgentRun::model_response`] accepting a turn and
     /// the next [`AgentRun::next_step`] — the window where a driver surfaces
     /// its model-turn-finished decision point.
-    pub fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+    pub fn accepted_turn(&self) -> Option<&AcceptedModelTurn> {
         let RunState::AwaitingAdvance(turn) = &self.state else {
             return None;
         };
 
-        OneOrMany::from_iter_optional(turn.items.clone())
+        Some(&turn.accepted)
+    }
+
+    /// Accepted turn whose normalized Continue verdict has not yet been
+    /// applied by a driver.
+    ///
+    /// Unlike [`Self::accepted_turn`], this becomes `None` after
+    /// [`Self::continue_model_turn`] even if the run has not yet emitted its
+    /// next step. That distinction makes the steering boundary resume-durable.
+    pub fn pending_accepted_turn(&self) -> Option<&AcceptedModelTurn> {
+        let RunState::AwaitingAdvance(turn) = &self.state else {
+            return None;
+        };
+
+        turn.verdict_pending.then_some(&turn.accepted)
+    }
+
+    /// Persist the driver's Continue verdict without advancing the run.
+    ///
+    /// Drivers call this after accepting `ModelTurnFinished`. The separate
+    /// transition allows a serialized run to distinguish an unanswered turn
+    /// from one answered immediately before a process restart.
+    pub fn continue_model_turn(&mut self) -> Result<(), PromptError> {
+        let RunState::AwaitingAdvance(turn) = &mut self.state else {
+            return Err(self.protocol_violation(
+                "continue_model_turn called without an accepted turn awaiting advancement",
+            ));
+        };
+        if !turn.verdict_pending {
+            return Err(self.protocol_violation(
+                "continue_model_turn called after the turn verdict was already applied",
+            ));
+        }
+        turn.verdict_pending = false;
+        Ok(())
+    }
+
+    /// Canonical content for the accepted model turn awaiting advancement.
+    pub fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+        self.accepted_turn().map(|turn| turn.content.clone())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.
@@ -622,15 +738,10 @@ impl AgentRun {
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
-                let Some(content) = OneOrMany::from_iter_optional(turn.items) else {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model-turn retry lost the rejected assistant content",
-                    ));
-                };
+                let content = turn.accepted.content;
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
-                        id: turn.message_id,
+                        id: turn.accepted.message_id,
                         content,
                     });
                 }
@@ -760,19 +871,19 @@ impl AgentRun {
             }
             RunState::AwaitingAdvance(turn_state) => {
                 let TurnState {
-                    message_id,
-                    items,
+                    accepted,
+                    verdict_pending: _,
                     has_tool_calls,
                     skipped,
                     original_tool_calls,
                     internal_call_ids,
                 } = *turn_state;
-                let Some(choice) = OneOrMany::from_iter_optional(items.clone()) else {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model turn lost its assistant content",
-                    ));
-                };
+                let AcceptedModelTurn {
+                    message_id,
+                    content: choice,
+                    ..
+                } = accepted;
+                let items: Vec<AssistantContent> = choice.iter().cloned().collect();
 
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
@@ -898,7 +1009,7 @@ impl AgentRun {
                                         .map(|result| result.result.clone()),
                                     internal_call_id: Some(internal_call_id),
                                     original_tool_call: original_tool_call.map(Box::new),
-                                    preresolved_disposition: preresolved
+                                    invocation_disposition: preresolved
                                         .map(|result| result.disposition),
                                 })
                             }
@@ -1020,6 +1131,7 @@ impl AgentRun {
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
             message_id: turn.message_id,
             original_choice: turn.choice,
+            usage: turn.usage,
             items,
             original_calls,
             next_index: 0,
@@ -1054,16 +1166,15 @@ impl AgentRun {
     /// `skipped` results and the streamed `internal_call_ids`.
     fn finalize_turn(
         &mut self,
-        message_id: Option<String>,
-        items: Vec<AssistantContent>,
+        accepted: AcceptedModelTurn,
         has_tool_calls: bool,
         skipped: Vec<Option<PreresolvedToolResult>>,
         original_tool_calls: Vec<Option<ToolCall>>,
         internal_call_ids: Vec<String>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
-            message_id,
-            items,
+            accepted,
+            verdict_pending: true,
             has_tool_calls,
             skipped,
             original_tool_calls,
@@ -1231,7 +1342,7 @@ impl AgentRun {
                 };
                 *slot = Some(PreresolvedToolResult {
                     result: user_content,
-                    disposition: PreresolvedToolDisposition::Skipped { reason },
+                    disposition: ToolInvocationDisposition::not_executed(reason),
                 });
                 resolving.recovered = true;
                 resolving.any_skipped = true;
@@ -1344,8 +1455,9 @@ impl AgentRun {
 
     /// Feed results keyed by Rig's unique invocation identity.
     ///
-    /// Submissions may be in any order. They are validated by identity and
-    /// committed in submission order as one provider-compatible user message.
+    /// Submissions may be in any order. They are validated and joined by
+    /// identity, then committed in the pending calls' assistant source order
+    /// as one provider-compatible user message.
     /// Every pending invocation must be answered exactly once, and the
     /// embedded provider result `id` and `call_id` must still match that
     /// invocation's provider correlation fields.
@@ -1367,7 +1479,7 @@ impl AgentRun {
         }
 
         let mut answered = BTreeSet::new();
-        let mut results = Vec::with_capacity(submissions.len());
+        let mut results_by_id = BTreeMap::new();
         for submission in submissions {
             let UserContent::ToolResult(tool_result) = &submission.result else {
                 return Err(self.protocol_violation(
@@ -1400,10 +1512,11 @@ impl AgentRun {
                     submission.internal_call_id
                 )));
             }
-            results.push(submission.result);
+            results_by_id.insert(submission.internal_call_id, submission.result);
         }
 
         let mut unanswered = Vec::new();
+        let mut results = Vec::with_capacity(pending.len());
         for call in pending {
             let Some(internal_call_id) = &call.internal_call_id else {
                 return Err(self.protocol_violation(
@@ -1412,6 +1525,12 @@ impl AgentRun {
             };
             if !answered.contains(internal_call_id) {
                 unanswered.push(internal_call_id.clone());
+            } else if let Some(result) = results_by_id.remove(internal_call_id) {
+                results.push(result);
+            } else {
+                return Err(self.protocol_violation(
+                    "internal: validated tool result lost its Rig invocation identity",
+                ));
             }
         }
         if !unanswered.is_empty() {
@@ -1469,6 +1588,7 @@ impl AgentRun {
         let ResolvingState {
             message_id,
             items,
+            usage,
             original_calls,
             mut skipped,
             recovered,
@@ -1491,7 +1611,7 @@ impl AgentRun {
                             tool_call.call_id.clone(),
                             reason.clone(),
                         ),
-                        disposition: PreresolvedToolDisposition::Skipped { reason },
+                        disposition: ToolInvocationDisposition::not_executed(reason),
                     });
                 }
             }
@@ -1503,17 +1623,24 @@ impl AgentRun {
             .filter(|(_, item)| matches!(item, AssistantContent::ToolCall(_)))
             .map(|(index, _)| original_calls.get(index).cloned().flatten())
             .collect();
-        self.finalize_turn(
+        let content = OneOrMany::from_iter_optional(items).ok_or_else(|| {
+            self.protocol_violation("internal: accepted model turn lost its assistant content")
+        })?;
+        let accepted = AcceptedModelTurn {
+            turn: self.current_turn,
             message_id,
-            items,
+            content,
+            usage,
+            response_hook_suppressed: recovered,
+        };
+        self.finalize_turn(
+            accepted.clone(),
             has_tool_calls,
             skipped,
             original_tool_calls,
             Vec::new(),
         );
-        Ok(ModelTurnOutcome::Continue {
-            response_hook_suppressed: recovered,
-        })
+        Ok(ModelTurnOutcome::Continue(accepted))
     }
 
     // ── Streamed-turn entry points ──────────────────────────────────────
@@ -1706,7 +1833,7 @@ impl AgentRun {
     /// Remaining tool calls are validated fail-fast — mid-stream resolution
     /// already had recovery-hook access — and the turn then advances through
     /// [`AgentRun::next_step`] exactly like a non-streamed one.
-    pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
+    pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<AcceptedModelTurn, PromptError> {
         if !matches!(self.state, RunState::AwaitingModel) {
             return Err(
                 self.protocol_violation("streamed_turn called without a pending CallModel step")
@@ -1750,15 +1877,21 @@ impl AgentRun {
         }
 
         let skipped = vec![None; items.len()];
+        let accepted = AcceptedModelTurn {
+            turn: self.current_turn,
+            message_id: turn.message_id,
+            content: turn.choice,
+            usage: turn.usage,
+            response_hook_suppressed: false,
+        };
         self.finalize_turn(
-            turn.message_id,
-            items,
+            accepted.clone(),
             has_tool_calls,
             skipped,
             turn.original_tool_calls,
             turn.internal_call_ids,
         );
-        Ok(())
+        Ok(accepted)
     }
 
     /// Diagnostic history for a streamed turn: the run's messages plus the
@@ -1892,9 +2025,7 @@ mod tests {
 
     fn expect_continue(outcome: ModelTurnOutcome) -> bool {
         match outcome {
-            ModelTurnOutcome::Continue {
-                response_hook_suppressed,
-            } => response_hook_suppressed,
+            ModelTurnOutcome::Continue(accepted) => accepted.response_hook_suppressed,
             outcome => panic!("expected Continue, got {outcome:?}"),
         }
     }
@@ -2455,13 +2586,14 @@ mod tests {
                 .contains("invalid reason")
         );
         assert!(matches!(
-            &calls[0].preresolved_disposition,
-            Some(PreresolvedToolDisposition::Skipped { reason })
+            &calls[0].invocation_disposition,
+            Some(ToolInvocationDisposition::NotExecuted { reason: Some(reason) })
                 if reason == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
         ));
         assert!(matches!(
-            &calls[1].preresolved_disposition,
-            Some(PreresolvedToolDisposition::Skipped { reason }) if reason == "invalid reason"
+            &calls[1].invocation_disposition,
+            Some(ToolInvocationDisposition::NotExecuted { reason: Some(reason) })
+                if reason == "invalid reason"
         ));
     }
 
@@ -2683,8 +2815,8 @@ mod tests {
             .iter()
             .map(|item| serde_json::to_string(item).expect("result serializes"))
             .collect::<Vec<_>>();
-        assert!(rendered[0].contains('7'));
-        assert!(rendered[1].contains('3'));
+        assert!(rendered[0].contains('3'));
+        assert!(rendered[1].contains('7'));
     }
 
     #[test]

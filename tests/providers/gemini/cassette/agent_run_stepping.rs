@@ -53,9 +53,8 @@ async fn hand_driven_single_turn_completes() {
                         assert!(
                             matches!(
                                 outcome,
-                                ModelTurnOutcome::Continue {
-                                    response_hook_suppressed: false
-                                }
+                                ModelTurnOutcome::Continue(accepted)
+                                    if !accepted.response_hook_suppressed
                             ),
                             "unrecovered turns must not suppress the response hook"
                         );
@@ -142,7 +141,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                         let outcome = run
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
@@ -226,7 +225,7 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
                         let outcome = run
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     AgentRunStep::CallTools { calls } => {
                         if first_tool_step.is_none() {
@@ -288,7 +287,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
                         let outcome = run
                             .model_response(call_model(&agent, prompt, history, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                     }
                     Ok(AgentRunStep::CallTools { calls }) => {
                         run.tool_results(execute_pending_calls(&calls))

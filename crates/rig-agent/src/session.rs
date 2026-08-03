@@ -27,6 +27,9 @@
 //!
 //! A run suspended on an invalid tool-call decision *is* recovered — `resume`
 //! re-derives it from the run and re-surfaces the event.
+//! An accepted model turn awaiting its host verdict is also durable: when
+//! `surface_model_turns` is enabled on the resumed session, `resume` re-surfaces
+//! [`SessionEvent::TurnFinished`] before the run advances to tools or completion.
 //!
 //! ```no_run
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,8 +60,8 @@ use crate::agent::hook::{
 use crate::agent::prepare::ToolCatalog;
 use crate::agent::response::tool_result_output;
 use crate::agent::run::{
-    AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall,
-    ToolResultSubmission,
+    AcceptedModelTurn, AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome,
+    PendingToolCall, ToolInvocationDisposition, ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_span, record_usage_on_span,
@@ -171,6 +174,7 @@ struct ResultGateEntry {
     call: Option<ToolCall>,
     internal_call_id: Option<String>,
     result: UserContent,
+    disposition: ToolInvocationDisposition,
     /// Whether this entry surfaces as [`SessionEvent::ToolResultReady`].
     surface: bool,
 }
@@ -191,6 +195,9 @@ enum Pending {
         /// contract); once answered, the next advance resumes the call.
         answered: bool,
     },
+    /// An accepted turn produced by invalid-call recovery, ready to surface on
+    /// the next `advance` before the run can enter tool execution.
+    TurnReady(AcceptedModelTurn),
     TurnReply,
     Invalid {
         /// A chained invalid call surfaced by the previous resolution,
@@ -335,6 +342,9 @@ impl AgentSession {
     ///   pending context; the next [`AgentSession::advance`] re-surfaces
     ///   [`SessionEvent::InvalidToolCall`] for
     ///   [`AgentSession::resolve_invalid`].
+    /// - A run suspended after accepting a model turn re-derives that turn;
+    ///   when the resumed policy surfaces model turns, the next `advance`
+    ///   re-surfaces [`SessionEvent::TurnFinished`] before any tool dispatch.
     /// - A run serialized while a model call was in flight (for example after
     ///   a transient provider error) recovers by re-issuing that call.
     ///
@@ -355,11 +365,14 @@ impl AgentSession {
             config.record_telemetry_content,
         );
         run.abandon_pending_model_call();
-        let pending = match run.pending_invalid_tool_call() {
-            Some(context) => Pending::Invalid {
+        let pending = if let Some(context) = run.pending_invalid_tool_call() {
+            Pending::Invalid {
                 next: Some(context),
-            },
-            None => Pending::None,
+            }
+        } else if let Some(accepted) = run.pending_accepted_turn().cloned() {
+            Pending::TurnReady(accepted)
+        } else {
+            Pending::None
         };
         Self {
             config,
@@ -429,6 +442,25 @@ impl AgentSession {
     /// Provider/protocol errors, plus a protocol violation when a decision
     /// inbox is still awaiting its answer.
     pub async fn advance(&mut self) -> Result<SessionEvent, PromptError> {
+        if let Pending::TurnReady(accepted) = &self.pending
+            && self.policy.surface_model_turns
+        {
+            let accepted = accepted.clone();
+            self.pending = Pending::TurnReply;
+            return Ok(SessionEvent::TurnFinished {
+                turn: accepted.turn,
+                content: accepted.content,
+                usage: accepted.usage,
+            });
+        }
+        if matches!(self.pending, Pending::TurnReady(_)) {
+            // Resume reconstructs the durable accepted-turn boundary before
+            // the caller reattaches its policy. If the final policy does not
+            // surface model turns, consume that boundary exactly as a fresh
+            // session would and continue advancing the run.
+            self.pending = Pending::None;
+            self.run.continue_model_turn()?;
+        }
         // A previously chained invalid call surfaces first.
         if let Pending::Invalid { next } = &mut self.pending {
             if let Some(context) = next.take() {
@@ -439,7 +471,7 @@ impl AgentSession {
                 .cancel_error("advance called while an invalid tool call awaits resolution"));
         }
         match &self.pending {
-            Pending::TurnReply => {
+            Pending::TurnReady(_) | Pending::TurnReply => {
                 return Err(self
                     .run
                     .cancel_error("advance called while a model turn awaits reply_turn"));
@@ -599,35 +631,32 @@ impl AgentSession {
                         prepared.executable_tool_names,
                         prepared.allowed_tool_names,
                     );
-                    let usage = response.usage;
                     let outcome =
                         attempt.commit_unary(&mut self.run, &mut self.next_patch, model_turn)?;
                     self.last_response = Some(response);
 
                     match outcome {
-                        ModelTurnOutcome::Continue {
-                            response_hook_suppressed,
-                        } => {
-                            if response_hook_suppressed {
+                        ModelTurnOutcome::Continue(accepted) => {
+                            if accepted.response_hook_suppressed {
                                 self.last_response = None;
                             }
-                            if self.policy.surface_model_turns
-                                && let Some(content) = self.run.accepted_turn_choice()
-                            {
+                            if self.policy.surface_model_turns {
                                 // The verdict is the host's; record the turn's
                                 // output telemetry once it answers (never for
                                 // a retried turn).
                                 self.turn_chat_span = Some(chat_span);
                                 self.pending = Pending::TurnReply;
                                 return Ok(SessionEvent::TurnFinished {
-                                    turn,
-                                    content,
-                                    usage,
+                                    turn: accepted.turn,
+                                    content: accepted.content,
+                                    usage: accepted.usage,
                                 });
                             }
                             self.record_turn_output(&chat_span);
+                            self.run.continue_model_turn()?;
                         }
                         ModelTurnOutcome::NeedsResolution(context) => {
+                            self.turn_chat_span = Some(chat_span);
                             self.pending = Pending::Invalid { next: None };
                             return Ok(SessionEvent::InvalidToolCall(context));
                         }
@@ -740,7 +769,7 @@ impl AgentSession {
                 if let Some(span) = &chat_span {
                     self.record_turn_output(span);
                 }
-                Ok(())
+                self.run.continue_model_turn()
             }
             // A retried turn's content was provisional: its output telemetry
             // is suppressed, exactly as the classic driver suppressed it.
@@ -774,14 +803,27 @@ impl AgentSession {
                 .run
                 .cancel_error("resolve_invalid without a pending InvalidToolCall event"));
         }
-        match self.run.resolve_invalid_tool_call(action)? {
-            ModelTurnOutcome::Continue {
-                response_hook_suppressed,
-            } => {
-                if response_hook_suppressed {
+        let outcome = match self.run.resolve_invalid_tool_call(action) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                self.turn_chat_span = None;
+                return Err(error);
+            }
+        };
+        match outcome {
+            ModelTurnOutcome::Continue(accepted) => {
+                if accepted.response_hook_suppressed {
                     self.last_response = None;
                 }
-                self.pending = Pending::None;
+                if self.policy.surface_model_turns {
+                    self.pending = Pending::TurnReady(accepted);
+                } else {
+                    if let Some(span) = self.turn_chat_span.take() {
+                        self.record_turn_output(&span);
+                    }
+                    self.run.continue_model_turn()?;
+                    self.pending = Pending::None;
+                }
                 Ok(())
             }
             ModelTurnOutcome::NeedsResolution(context) => {
@@ -791,6 +833,7 @@ impl AgentSession {
                 Ok(())
             }
             ModelTurnOutcome::TurnRetried => {
+                self.turn_chat_span = None;
                 self.pending = Pending::None;
                 Ok(())
             }
@@ -894,8 +937,9 @@ impl AgentSession {
                         );
                         skipped_internal_ids.push(call.ensure_internal_call_id().to_owned());
                         call.preresolved_result = Some(content);
-                        call.preresolved_disposition =
-                            Some(crate::agent::run::PreresolvedToolDisposition::Skipped { reason });
+                        call.invocation_disposition = Some(
+                            crate::agent::run::ToolInvocationDisposition::not_executed(reason),
+                        );
                         decided.push(call);
                     }
                     ResolvedToolCallDisposition::Stop(reason) => {
@@ -964,7 +1008,11 @@ impl AgentSession {
                             .run
                             .cancel_error("tool-result gate lost the Rig invocation identity"));
                     };
-                    submissions.push(ToolResultSubmission::new(internal_call_id, entry.result));
+                    submissions.push(ToolResultSubmission::with_disposition(
+                        internal_call_id,
+                        entry.result,
+                        entry.disposition,
+                    ));
                 }
                 self.run.tool_result_submissions(submissions)?;
                 self.batch_records.clear();
@@ -1075,6 +1123,10 @@ impl AgentSession {
                             call: Some(call.tool_call.clone()),
                             internal_call_id: Some(submission.internal_call_id),
                             result: submission.result,
+                            disposition: call
+                                .invocation_disposition
+                                .clone()
+                                .unwrap_or(submission.disposition),
                             surface,
                         });
                     }
@@ -1088,6 +1140,7 @@ impl AgentSession {
                             call: None,
                             internal_call_id: Some(submission.internal_call_id),
                             result: submission.result,
+                            disposition: submission.disposition,
                             surface: false,
                         }),
                 );
@@ -1137,9 +1190,10 @@ impl AgentSession {
                 records
                     .iter()
                     .map(|record| {
-                        ToolResultSubmission::new(
+                        ToolResultSubmission::with_disposition(
                             record.internal_call_id.clone(),
                             record.result.clone(),
+                            record.disposition.clone(),
                         )
                     })
                     .collect(),
@@ -1156,6 +1210,7 @@ impl AgentSession {
                     call: Some(record.effective_call.clone()),
                     internal_call_id: Some(record.internal_call_id.clone()),
                     result: record.result.clone(),
+                    disposition: record.disposition.clone(),
                     surface,
                 }
             })
@@ -1439,9 +1494,12 @@ pub(crate) fn preresolved_only_results(
                         ),
                     ));
                 };
-                results.push(ToolResultSubmission::new(
+                results.push(ToolResultSubmission::with_disposition(
                     internal_call_id.clone(),
                     content.clone(),
+                    call.invocation_disposition
+                        .clone()
+                        .unwrap_or_else(|| ToolInvocationDisposition::not_executed(None)),
                 ));
             }
             None => {
@@ -4326,7 +4384,8 @@ mod classic_hook_tests {
     }
 
     #[tokio::test]
-    async fn recovered_turn_suppresses_response_finish_hook_on_both_drivers() {
+    async fn recovered_turn_keeps_response_observations_medium_specific_but_turn_policy_identical()
+    {
         // Turn 1 emits text then an invalid tool call (repaired to "add");
         // turn 2 is a plain final-text turn whose response event DOES fire on
         // both drivers — so a correct run sees exactly one response-finish.
@@ -4384,22 +4443,213 @@ mod classic_hook_tests {
             1,
             "the recovered turn must not fire CompletionResponse"
         );
-        // NOTE: the blocking driver suppresses `CompletionResponse` on the
-        // recovered turn (asserted above). The unified `AgentStream` still
-        // fires `StreamResponseFinish` for the recovered turn, so the
-        // classic run/stream parity on this medium-specific event no longer
-        // holds; the normalized per-turn `ModelTurnFinished` parity below
-        // does.
         assert_eq!(streaming_hook.count(EventKind::StreamResponseFinish), 2);
         assert_eq!(
             blocking_hook.count(EventKind::ModelTurnFinished),
-            1,
-            "the recovered turn must not fire ModelTurnFinished"
+            2,
+            "every accepted blocking turn crosses the normalized turn boundary"
         );
-        // NOTE: on the streaming driver the recovered turn still fires
-        // `ModelTurnFinished` (2 rather than the classic 1) — the recovery
-        // suppression is currently blocking-only.
-        assert_eq!(streaming_hook.count(EventKind::ModelTurnFinished), 2);
+        assert_eq!(
+            streaming_hook.count(EventKind::ModelTurnFinished),
+            2,
+            "blocking and streaming apply one verdict to each accepted turn"
+        );
+    }
+
+    fn stop_tool_bearing_model_turn(reason: impl Into<String>) -> HookEntry {
+        let reason = reason.into();
+        hook_entry("stop-tool-bearing-turn", move |event| {
+            let HookEvent::ModelTurnFinished { content, .. } = event else {
+                return HookDecision::Continue;
+            };
+            if content
+                .iter()
+                .any(|item| matches!(item, AssistantContent::ToolCall(_)))
+            {
+                HookDecision::ModelTurn(ModelTurnAction::stop(reason.clone()))
+            } else {
+                HookDecision::Continue
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn repaired_turn_stop_has_identical_blocking_and_streaming_effects() {
+        let blocking_executions = Arc::new(AtomicU32::new(0));
+        let blocking_hook = RecordingHook::default();
+        let blocking_error = AgentBuilder::new(
+            MockCompletionModel::from_turns([MockTurn::tool_call(
+                "tc1",
+                "default_api",
+                json!({"x": 2, "y": 3}),
+            )])
+            .provider(),
+        )
+        .tool(CountingAddTool {
+            calls: blocking_executions.clone(),
+        })
+        .build()
+        .runner("compute")
+        .max_turns(2)
+        .add_hook(blocking_hook.entry())
+        .add_hook(repair_invalid_to_hook("add"))
+        .add_hook(stop_tool_bearing_model_turn("repaired turn rejected"))
+        .run()
+        .await
+        .expect_err("the repaired blocking turn must honor ModelTurnFinished::Stop");
+
+        let streaming_executions = Arc::new(AtomicU32::new(0));
+        let streaming_hook = RecordingHook::default();
+        let mut stream = Box::pin(
+            AgentBuilder::new(
+                MockCompletionModel::from_stream_turns([[
+                    MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+                    MockStreamEvent::final_response_with_total_tokens(0),
+                ]])
+                .provider(),
+            )
+            .tool(CountingAddTool {
+                calls: streaming_executions.clone(),
+            })
+            .build()
+            .runner("compute")
+            .max_turns(2)
+            .add_hook(streaming_hook.entry())
+            .add_hook(repair_invalid_to_hook("add"))
+            .add_hook(stop_tool_bearing_model_turn("repaired turn rejected"))
+            .stream_run(),
+        );
+        let mut streaming_error = None;
+        let mut streaming_execution_commits = 0;
+        let mut streaming_results = 0;
+        while let Some(item) = stream.next().await {
+            match item {
+                Err(error) => streaming_error = Some(error),
+                Ok(AgentRunItem::ToolExecutionCommitted { .. }) => streaming_execution_commits += 1,
+                Ok(AgentRunItem::User(StreamedUserContent::ToolResult { .. })) => {
+                    streaming_results += 1
+                }
+                Ok(_) => {}
+            }
+        }
+        let streaming_error = streaming_error.expect("streaming stop must surface an error");
+
+        let PromptError::PromptCancelled {
+            chat_history: blocking_history,
+            reason: blocking_reason,
+        } = blocking_error
+        else {
+            panic!("blocking repaired-turn stop returned the wrong error");
+        };
+        let PromptError::PromptCancelled {
+            chat_history: streaming_history,
+            reason: streaming_reason,
+        } = streaming_error
+        else {
+            panic!("streaming repaired-turn stop returned the wrong error");
+        };
+
+        assert_eq!(blocking_reason, "repaired turn rejected");
+        assert_eq!(streaming_reason, blocking_reason);
+        assert_eq!(blocking_history, vec![Message::user("compute")]);
+        assert_eq!(streaming_history, blocking_history);
+        assert_eq!(blocking_hook.count(EventKind::ModelTurnFinished), 1);
+        assert_eq!(streaming_hook.count(EventKind::ModelTurnFinished), 1);
+        assert_eq!(blocking_hook.count(EventKind::ToolCall), 0);
+        assert_eq!(streaming_hook.count(EventKind::ToolCall), 0);
+        assert_eq!(blocking_executions.load(SeqCst), 0);
+        assert_eq!(streaming_executions.load(SeqCst), 0);
+        assert_eq!(streaming_execution_commits, 0);
+        assert_eq!(streaming_results, 0);
+    }
+
+    fn record_model_turn_tool_counts(counts: Arc<Mutex<Vec<usize>>>) -> HookEntry {
+        hook_entry("record-model-turn-tool-counts", move |event| {
+            let HookEvent::ModelTurnFinished { content, .. } = event else {
+                return HookDecision::Continue;
+            };
+            counts.lock().expect("turn counts").push(
+                content
+                    .iter()
+                    .filter(|item| matches!(item, AssistantContent::ToolCall(_)))
+                    .count(),
+            );
+            HookDecision::Continue
+        })
+    }
+
+    #[tokio::test]
+    async fn chained_repairs_emit_one_normalized_verdict_after_the_whole_turn() {
+        let blocking_turns = Arc::new(Mutex::new(Vec::new()));
+        let blocking_executions = Arc::new(AtomicU32::new(0));
+        let blocking = AgentBuilder::new(
+            MockCompletionModel::from_turns([
+                MockTurn::from_contents([
+                    AssistantContent::tool_call("tc1", "first_unknown", json!({"x": 1, "y": 2})),
+                    AssistantContent::tool_call("tc2", "second_unknown", json!({"x": 3, "y": 4})),
+                ])
+                .expect("two calls form one turn"),
+                MockTurn::text("done"),
+            ])
+            .provider(),
+        )
+        .tool(CountingAddTool {
+            calls: blocking_executions.clone(),
+        })
+        .build()
+        .runner("compute twice")
+        .max_turns(3)
+        .add_hook(record_model_turn_tool_counts(blocking_turns.clone()))
+        .add_hook(repair_invalid_to_hook("add"))
+        .run()
+        .await
+        .expect("blocking chained repairs");
+
+        let streaming_turns = Arc::new(Mutex::new(Vec::new()));
+        let streaming_executions = Arc::new(AtomicU32::new(0));
+        let streaming = drive_to_final_response(
+            AgentBuilder::new(
+                MockCompletionModel::from_stream_turns(vec![
+                    vec![
+                        MockStreamEvent::tool_call("tc1", "first_unknown", json!({"x": 1, "y": 2})),
+                        MockStreamEvent::tool_call(
+                            "tc2",
+                            "second_unknown",
+                            json!({"x": 3, "y": 4}),
+                        ),
+                        MockStreamEvent::final_response_with_total_tokens(0),
+                    ],
+                    vec![
+                        MockStreamEvent::text("done"),
+                        MockStreamEvent::final_response_with_total_tokens(0),
+                    ],
+                ])
+                .provider(),
+            )
+            .tool(CountingAddTool {
+                calls: streaming_executions.clone(),
+            })
+            .build()
+            .runner("compute twice")
+            .max_turns(3)
+            .add_hook(record_model_turn_tool_counts(streaming_turns.clone()))
+            .add_hook(repair_invalid_to_hook("add"))
+            .stream_run(),
+        )
+        .await;
+
+        assert_eq!(blocking.output, "done");
+        assert_eq!(streaming.output(), "done");
+        assert_eq!(*blocking_turns.lock().expect("blocking turns"), [2, 0]);
+        assert_eq!(*streaming_turns.lock().expect("streaming turns"), [2, 0]);
+        assert_eq!(blocking_executions.load(SeqCst), 2);
+        assert_eq!(streaming_executions.load(SeqCst), 2);
+        assert_eq!(
+            serde_json::to_value(blocking.messages.expect("blocking history"))
+                .expect("serialize blocking"),
+            serde_json::to_value(streaming.messages().expect("streaming history"))
+                .expect("serialize streaming")
+        );
     }
 
     // ------------------------------------------------------------------
@@ -5432,6 +5682,60 @@ mod classic_hook_tests {
         }
     }
 
+    #[derive(Clone)]
+    struct MixedDelayTool {
+        calls: Arc<AtomicU32>,
+        completions: Arc<Mutex<Vec<i64>>>,
+    }
+
+    impl PortableTool for MixedDelayTool {
+        const NAME: &'static str = "add";
+        type Error = MockToolError;
+        type Args = serde_json::Value;
+        type Output = serde_json::Value;
+
+        fn description(&self) -> String {
+            MockAddTool.description()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            MockAddTool.parameters()
+        }
+
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+            self.calls.fetch_add(1, SeqCst);
+            let x = args
+                .get("x")
+                .and_then(serde_json::Value::as_i64)
+                .expect("mixed test call has integer x");
+            if x == 1 {
+                tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            }
+            self.completions.lock().expect("completions").push(x);
+            Ok(args)
+        }
+    }
+
+    fn skip_second_mixed_call(preflight: Arc<Mutex<Vec<i64>>>) -> HookEntry {
+        hook_entry("skip-second-mixed-call", move |event| {
+            let HookEvent::ToolCall { call, .. } = event else {
+                return HookDecision::Continue;
+            };
+            let x = call
+                .function
+                .arguments
+                .get("x")
+                .and_then(serde_json::Value::as_i64)
+                .expect("mixed test call has integer x");
+            preflight.lock().expect("preflight").push(x);
+            if x == 2 {
+                HookDecision::ToolCall(ToolCallAction::skip("middle call blocked"))
+            } else {
+                HookDecision::Continue
+            }
+        })
+    }
+
     fn two_add_calls_blocking_model(
         first: serde_json::Value,
         second: serde_json::Value,
@@ -5635,6 +5939,96 @@ mod classic_hook_tests {
     }
 
     #[tokio::test]
+    async fn parallel_mixed_batch_preserves_disposition_order_and_rig_identity() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let preflight = Arc::new(Mutex::new(Vec::new()));
+        let completions = Arc::new(Mutex::new(Vec::new()));
+        let model = MockCompletionModel::from_stream_turns(vec![
+            vec![
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 0})),
+                MockStreamEvent::tool_call("tc2", "add", json!({"x": 2, "y": 0})),
+                MockStreamEvent::tool_call("tc3", "add", json!({"x": 3, "y": 0})),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+            vec![
+                MockStreamEvent::text("done"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ],
+        ]);
+        let mut stream = Box::pin(
+            AgentBuilder::new(model.provider())
+                .tool(MixedDelayTool {
+                    calls: calls.clone(),
+                    completions: completions.clone(),
+                })
+                .add_hook(skip_second_mixed_call(preflight.clone()))
+                .build()
+                .runner("run a mixed batch")
+                .max_turns(3)
+                .tool_concurrency(3)
+                .stream_run(),
+        );
+
+        let mut announced = std::collections::BTreeMap::new();
+        let mut committed = Vec::new();
+        let mut results = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item.unwrap_or_else(|error| panic!("stream item errored: {error}")) {
+                AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
+                    tool_call,
+                    internal_call_id,
+                }) => {
+                    announced.insert(tool_call.id, internal_call_id);
+                }
+                AgentRunItem::ToolExecutionCommitted {
+                    tool_call,
+                    internal_call_id,
+                } => committed.push((tool_call.id, internal_call_id)),
+                AgentRunItem::User(StreamedUserContent::ToolResult {
+                    tool_result,
+                    internal_call_id,
+                }) => results.push((tool_result.id, internal_call_id)),
+                _ => {}
+            }
+        }
+
+        assert_eq!(calls.load(SeqCst), 2, "only tc1 and tc3 execute");
+        assert_eq!(
+            *preflight.lock().expect("preflight"),
+            [1, 2, 3],
+            "preflight remains sequential in assistant source order"
+        );
+        assert_eq!(
+            *completions.lock().expect("completions"),
+            [3, 1],
+            "tc3 completes before delayed tc1, proving the batch really interleaved"
+        );
+        assert_eq!(
+            committed
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            ["tc1", "tc3"],
+            "the skipped middle call has no execution observation"
+        );
+        assert_eq!(
+            results
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            ["tc1", "tc2", "tc3"],
+            "all durable results remain in source order"
+        );
+        for (provider_id, internal_id) in committed.iter().chain(&results) {
+            assert_eq!(
+                announced.get(provider_id),
+                Some(internal_id),
+                "completion interleaving changed the Rig identity for {provider_id}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn stream_executes_tools_concurrently_under_concurrency() {
         let barrier = Arc::new(tokio::sync::Barrier::new(2));
         let model = MockCompletionModel::from_stream_turns([
@@ -5802,11 +6196,7 @@ mod classic_hook_tests {
         }
 
         assert_eq!(calls.load(SeqCst), 0, "a skipped tool's body never runs");
-        // NOTE: the classic driver emitted no execution-commit for a
-        // hook-skipped call. The unified `AgentStream` commits the skip result
-        // through the same path as an executed one, so a commit item is
-        // surfaced; the tool body still never runs (asserted above).
-        assert_eq!(exec_commits, 1);
+        assert_eq!(exec_commits, 0);
         assert_eq!(
             results, 1,
             "the skip result is still surfaced to the consumer"
