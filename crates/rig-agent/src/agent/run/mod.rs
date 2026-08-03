@@ -16,11 +16,13 @@
 //! Because the machine never awaits anything, it is runtime-agnostic and the
 //! whole run state is `Serialize + Deserialize`: a driver can serialize a run
 //! between steps (for example while tool calls are pending), persist it, and
-//! resume it later in another process. Note that serialized run state embeds
-//! the full conversation accumulated so far — persisting it inherits whatever
-//! sensitivity the conversation content has — and the serialization format
-//! carries no cross-version stability guarantee yet: resume with the same rig
-//! version that suspended the run.
+//! resume it later in another process — by continuing to drive it by hand, or
+//! by handing it back to the full agent driver with
+//! [`Agent::resume`](crate::agent::Agent::resume). Note that serialized run
+//! state embeds the full conversation accumulated so far — persisting it
+//! inherits whatever sensitivity the conversation content has — and the
+//! serialization format carries no cross-version stability guarantee yet:
+//! resume with the same rig version that suspended the run.
 //!
 //! `AgentRun` deliberately contains no model, tool registry, memory backend, or
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
@@ -484,6 +486,32 @@ impl AgentRun {
     /// and tool results), excluding the input history.
     pub fn messages(&self) -> &[Message] {
         &self.new_messages
+    }
+
+    /// The run's total model-call budget.
+    pub(crate) fn max_turns_limit(&self) -> usize {
+        self.max_turns
+    }
+
+    /// The run's invalid tool-call retry budget.
+    pub(crate) fn invalid_tool_call_retry_limit(&self) -> usize {
+        self.max_invalid_tool_call_retries
+    }
+
+    /// The tool-choice policy stored on the run.
+    pub(crate) fn tool_choice(&self) -> Option<&ToolChoice> {
+        self.tool_choice.as_ref()
+    }
+
+    /// Replace the tool-choice policy, used when a resuming runner re-applies
+    /// its loop overrides to a restored run.
+    pub(crate) fn set_tool_choice(&mut self, tool_choice: Option<ToolChoice>) {
+        self.tool_choice = tool_choice;
+    }
+
+    /// The prompt message that started the run.
+    pub(crate) fn initial_prompt(&self) -> Option<&Message> {
+        self.new_messages.first()
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
