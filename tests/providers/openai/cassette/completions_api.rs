@@ -272,3 +272,44 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     )
     .await;
 }
+
+#[tokio::test]
+async fn completions_api_stream_surfaces_length_finish_reason() {
+    use futures::StreamExt;
+    use rig::providers::openai::completion::streaming::FinishReason;
+    use rig::streaming::StreamedAssistantContent;
+
+    with_openai_completions_cassette(
+        "completions_api/completions_api_stream_surfaces_length_finish_reason",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_4O);
+            let request = model
+                .completion_request("Write a long story about a lighthouse keeper.")
+                .max_tokens(6)
+                .build();
+
+            let mut stream = model
+                .stream(request)
+                .await
+                .expect("raw completions api stream should start");
+
+            let mut final_response = None;
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(response) =
+                    item.expect("stream item should be ok")
+                {
+                    final_response = Some(response);
+                }
+            }
+
+            let final_response = final_response.expect("stream should yield a final response");
+            assert_eq!(
+                final_response.finish_reason,
+                Some(FinishReason::Length),
+                "a max_tokens truncation must surface `length` on the streaming final response"
+            );
+            assert_eq!(final_response.usage.total_tokens, 22);
+        },
+    )
+    .await;
+}

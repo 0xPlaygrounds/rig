@@ -41,10 +41,15 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     Some(crate::provider_response::completion_error_from_body(data))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// `ToolCalls` also drives the shared state machine (it flushes pending tool
+// calls); `Other` preserves nonstandard values some compatible gateways emit.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
     ToolCalls,
-    Other,
+    Stop,
+    Length,
+    ContentFilter,
+    Other(String),
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +87,7 @@ impl CompatibleToolCallChunk {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoice<D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) finish_reason: Option<CompatibleFinishReason>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
@@ -91,7 +96,7 @@ pub(crate) struct CompatibleChoice<D> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoiceData<T, D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) finish_reason: Option<CompatibleFinishReason>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
@@ -162,7 +167,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    fn build_final_response(
+        &self,
+        usage: Self::Usage,
+        finish_reason: Option<CompatibleFinishReason>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -231,6 +240,7 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_finish_reason: Option<CompatibleFinishReason> = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -273,6 +283,11 @@ where
                     let Some(choice) = chunk.choice else {
                         continue;
                     };
+
+                    // Keep the most recent finish reason for the final response.
+                    if let Some(reason) = choice.finish_reason.as_ref() {
+                        final_finish_reason = Some(reason.clone());
+                    }
 
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
@@ -351,7 +366,7 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
-                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                    if choice.finish_reason == Some(CompatibleFinishReason::ToolCalls) {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
                             DroppedToolCallContext::ToolCallsFinishReason,
@@ -387,7 +402,7 @@ where
         let final_usage = final_usage.unwrap_or_default();
         record_usage(&span, &final_usage);
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(final_usage, final_finish_reason),
         ));
     }
     .instrument(instrument_span);
