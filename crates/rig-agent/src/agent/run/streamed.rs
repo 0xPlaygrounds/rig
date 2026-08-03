@@ -104,6 +104,10 @@ pub(crate) fn assistant_text_items_from_choice(
         .collect()
 }
 
+fn pending_reasoning_fallback(text: String, id: Option<String>) -> Option<Reasoning> {
+    (!text.is_empty()).then(|| Reasoning::multi(vec![text]).optional_id(id))
+}
+
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
 /// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -663,12 +667,13 @@ impl StreamedTurnAssembler {
     /// into the returned owned snapshot.
     pub fn partial_turn(&self, message_id: Option<&str>) -> PartialStreamedTurn {
         let mut reasoning = self.accumulated_reasoning.clone();
-        if reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
-            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
-            if let Some(id) = self.pending_reasoning_delta_id.clone() {
-                assembled = assembled.with_id(id);
-            }
-            reasoning.push(assembled);
+        if reasoning.is_empty()
+            && let Some(fallback) = pending_reasoning_fallback(
+                self.pending_reasoning_delta_text.clone(),
+                self.pending_reasoning_delta_id.clone(),
+            )
+        {
+            reasoning.push(fallback);
         }
 
         PartialStreamedTurn {
@@ -701,11 +706,11 @@ impl StreamedTurnAssembler {
             ..
         } = self;
 
-        if accumulated_reasoning.is_empty() && !pending_reasoning_delta_text.is_empty() {
-            accumulated_reasoning.push(
-                Reasoning::multi(vec![pending_reasoning_delta_text])
-                    .optional_id(pending_reasoning_delta_id),
-            );
+        if accumulated_reasoning.is_empty()
+            && let Some(fallback) =
+                pending_reasoning_fallback(pending_reasoning_delta_text, pending_reasoning_delta_id)
+        {
+            accumulated_reasoning.push(fallback);
         }
 
         let mut tool_items = Vec::with_capacity(pending_tool_calls.len());
@@ -954,6 +959,37 @@ mod tests {
         assert_eq!(turn.executable_tool_names, tool_names(&["add"]));
         assert_eq!(turn.allowed_tool_names, tool_names(&["add"]));
         assert_eq!(turn.internal_call_ids, vec!["internal_tc_1".to_string()]);
+    }
+
+    #[test]
+    fn partial_and_finished_turn_share_reasoning_fallback() {
+        for id in [Some("rs_1".to_string()), None] {
+            let mut asm = assembler();
+            asm.ingest(&StreamedAssistantContent::ReasoningDelta {
+                id: id.clone(),
+                reasoning: "think".to_string(),
+            })
+            .expect("ingest should succeed");
+
+            let partial = asm.partial_turn(Some("msg_1"));
+            let turn = asm.finish(
+                Some("msg_1".to_string()),
+                OneOrMany::one(AssistantContent::text("answer")),
+                Usage::new(),
+            );
+            let completed = turn
+                .choice
+                .iter()
+                .find_map(|item| match item {
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                    _ => None,
+                })
+                .expect("finished turn should contain reasoning");
+            let expected = Reasoning::multi(vec!["think".to_string()]).optional_id(id.clone());
+
+            assert_eq!(partial.reasoning, vec![expected.clone()]);
+            assert_eq!(completed, &expected);
+        }
     }
 
     #[test]

@@ -94,16 +94,23 @@ pub fn merge_additional_params(
     let serde_json::Value::Object(mut canonical) = canonical else {
         return Err(RequestOverlayError::CanonicalNotObject { context });
     };
-    let Some(params) = validated_additional_params(params.as_ref(), reserved, context)? else {
+    let Some(validated_params) = validated_additional_params(params.as_ref(), reserved, context)?
+    else {
         return Ok(serde_json::Value::Object(canonical));
     };
-    if let Some(key) = params.keys().find(|key| canonical.contains_key(*key)) {
+    if let Some(key) = validated_params
+        .keys()
+        .find(|key| canonical.contains_key(*key))
+    {
         return Err(RequestOverlayError::Collision {
             context,
             key: key.clone(),
         });
     }
-    canonical.extend(params.clone());
+    // Re-match the owner after borrowed validation so the object map can move.
+    if let Some(serde_json::Value::Object(params)) = params {
+        canonical.extend(params);
+    }
     Ok(serde_json::Value::Object(canonical))
 }
 
@@ -585,6 +592,26 @@ mod tests {
             validated_additional_params(Some(&serde_json::Value::Null), &[], "test request")
                 .expect("null means no extensions")
                 .is_none()
+        );
+
+        let canonical = serde_json::json!({"model": "m"});
+        let merge_error = merge_additional_params(
+            canonical.clone(),
+            Some(serde_json::json!(["not", "an", "object"])),
+            &[],
+            "test request",
+        )
+        .expect_err("merge must preserve non-object validation");
+        assert_eq!(merge_error, error);
+        assert_eq!(
+            merge_additional_params(
+                canonical.clone(),
+                Some(serde_json::Value::Null),
+                &[],
+                "test request",
+            )
+            .expect("null means no extensions"),
+            canonical,
         );
     }
 
