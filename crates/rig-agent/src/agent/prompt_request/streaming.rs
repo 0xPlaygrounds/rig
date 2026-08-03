@@ -505,6 +505,9 @@ where
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        // Only a restored run may open on CallTools without a pinned snapshot;
+        // on any later step a missing snapshot is a driver bug.
+        let mut first_step = true;
 
         'outer: loop {
             let step = match run.next_step() {
@@ -612,13 +615,32 @@ where
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
-                    let Some(tool_snapshot) = pending_tool_snapshot.take() else {
-                        store_error_usage(&runner, &run);
-                        yield Err(StreamingError::Completion(CompletionError::ResponseError(
-                            "agent requested tool execution without a prepared registry snapshot"
-                                .to_string(),
-                        )));
-                        break 'outer;
+                    // A restored run's pinned handles did not survive serialization:
+                    // its opening batch binds to the current registry instead.
+                    let tool_snapshot = match pending_tool_snapshot.take() {
+                        Some(tool_snapshot) => tool_snapshot,
+                        None if first_step => {
+                            match runner.tool_server_handle.snapshot_tool_defs(None).await {
+                                Ok(tool_snapshot) => Arc::new(tool_snapshot),
+                                Err(_) => {
+                                    store_error_usage(&runner, &run);
+                                    yield Err(StreamingError::Completion(
+                                        CompletionError::RequestError(
+                                            "Failed to get tool definitions".into(),
+                                        ),
+                                    ));
+                                    break 'outer;
+                                }
+                            }
+                        }
+                        None => {
+                            store_error_usage(&runner, &run);
+                            yield Err(StreamingError::Completion(CompletionError::ResponseError(
+                                "agent requested tool execution without a prepared registry snapshot"
+                                    .to_string(),
+                            )));
+                            break 'outer;
+                        }
                     };
                     let mut tool_stream = source.run_tool_calls(
                         &runner,
@@ -668,6 +690,7 @@ where
                     break 'outer;
                 }
             }
+            first_step = false;
         }
     }
 }
@@ -1504,7 +1527,7 @@ where
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult<M::StreamingResponse> {
+    pub async fn stream(mut self) -> StreamingResult<M::StreamingResponse> {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1520,25 +1543,29 @@ where
         // When the caller passes explicit history, memory is fully bypassed for
         // this request (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
-            None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => match memory.load(id).await {
-                    Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
-                    Err(err) => {
-                        let stream = async_stream::stream! {
-                            yield Err(StreamingError::from(err));
-                        };
-                        // Instrument under the agent span like the success path so
-                        // a load failure stays tied to invoke_agent.
-                        return Box::pin(stream.instrument(agent_span));
-                    }
+        let (history_override, memory_handle) = if self.restored_run.is_some() {
+            (None, self.resume_memory_handle())
+        } else {
+            match &self.chat_history {
+                Some(_) => (None, None),
+                None => match (&self.memory, &self.conversation_id) {
+                    (Some(memory), Some(id)) => match memory.load(id).await {
+                        Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
+                        Err(err) => {
+                            let stream = async_stream::stream! {
+                                yield Err(StreamingError::from(err));
+                            };
+                            // Instrument under the agent span like the success path so
+                            // a load failure stays tied to invoke_agent.
+                            return Box::pin(stream.instrument(agent_span));
+                        }
+                    },
+                    _ => (None, None),
                 },
-                _ => (None, None),
-            },
+            }
         };
 
-        let run = self.build_run(history_override);
+        let run = self.take_run(history_override);
         let source = StreamingTurnSource::new(
             &self.hooks,
             self.agent_name_or_default().to_string(),

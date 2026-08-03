@@ -1,6 +1,6 @@
 use super::hook::{HookStack, RequestPatch};
 use super::prompt_request::{self, PromptRequest};
-use super::run::OutputMode;
+use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
@@ -619,6 +619,45 @@ where
     /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
     pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner<M> {
         AgentRunner::from_agent(self, prompt)
+    }
+
+    /// Build an [`AgentRunner`] that continues a previously suspended
+    /// [`AgentRun`] — one serialized between steps, persisted, and restored
+    /// (possibly in another process) — with this agent's hooks, tool server,
+    /// memory, and telemetry. [`AgentRunner::run`] and [`AgentRunner::stream`]
+    /// share their drive loop with a fresh run, so a resumed run behaves
+    /// identically to one that was never suspended.
+    ///
+    /// The restored run supplies the loop state (prompt, history, pending tool
+    /// calls, budgets, aggregated usage); this agent supplies the environment
+    /// it resumes into and should be configured like the one that started the
+    /// run — pinned per-turn tool handles do not survive serialization, so
+    /// pending tool calls execute against this agent's current registry.
+    /// Conversation memory is never loaded for a resumed run (the run carries
+    /// its own history), but a configured backend still receives the completed
+    /// run's messages at the end. See the [`run`](crate::agent::run) module
+    /// docs for serialization caveats.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use rig_agent::{agent::run::AgentRun, prelude::*};
+    /// use rig_core::{client::ProviderClient, providers::openai};
+    ///
+    /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let openai = openai::Client::from_env()?;
+    /// let agent = openai.agent(openai::GPT_5_2).build();
+    ///
+    /// // A run suspended earlier (possibly by another process).
+    /// let json = std::fs::read_to_string("suspended-run.json")?;
+    /// let run: AgentRun = serde_json::from_str(&json)?;
+    ///
+    /// let response = agent.resume(run).run().await?;
+    /// println!("{}", response.output);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn resume(&self, run: AgentRun) -> AgentRunner<M> {
+        AgentRunner::resume(self, run)
     }
 
     /// Resolve the provider-facing tool definitions available for a prompt.

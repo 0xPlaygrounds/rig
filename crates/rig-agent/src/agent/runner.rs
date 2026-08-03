@@ -226,6 +226,9 @@ where
     pub(crate) conversation_id: Option<String>,
     pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
+    /// A restored run to continue instead of building a fresh one. Set by
+    /// [`resume`](Self::resume).
+    pub(crate) restored_run: Option<AgentRun>,
 }
 
 impl<M> AgentRunner<M>
@@ -262,7 +265,27 @@ where
             conversation_id: agent.default_conversation_id.clone(),
             hooks: agent.hooks.clone(),
             error_usage: None,
+            restored_run: None,
         }
+    }
+
+    /// Build a runner that continues a previously suspended [`AgentRun`],
+    /// seeding it with the agent's default hook stack and the run's own
+    /// turn/retry budgets and tool-choice policy, so builder overrides such as
+    /// [`max_turns`](Self::max_turns) default to the suspended values. Prefer
+    /// [`Agent::resume`](crate::agent::Agent::resume), which documents the
+    /// resume semantics.
+    pub fn resume(agent: &Agent<M>, run: AgentRun) -> Self {
+        let prompt = run
+            .initial_prompt()
+            .cloned()
+            .unwrap_or_else(|| Message::user(String::new()));
+        let mut runner = Self::from_agent(agent, prompt);
+        runner.max_turns = run.max_turns_limit();
+        runner.max_invalid_tool_call_retries = run.invalid_tool_call_retry_limit();
+        runner.tool_choice = run.tool_choice().cloned();
+        runner.restored_run = Some(run);
+        runner
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -506,6 +529,31 @@ where
         match &self.output_tool_name {
             Some(name) => run.with_output_tool_name(name.clone()),
             None => run,
+        }
+    }
+
+    /// The run to drive: the restored run when resuming (with this runner's
+    /// loop overrides re-applied), otherwise a freshly built one.
+    pub(crate) fn take_run(&mut self, history_override: Option<Vec<Message>>) -> AgentRun {
+        match self.restored_run.take() {
+            Some(run) => {
+                let mut run = run
+                    .max_turns(self.max_turns)
+                    .max_invalid_tool_call_retries(self.max_invalid_tool_call_retries);
+                run.set_tool_choice(self.tool_choice.clone());
+                run
+            }
+            None => self.build_run(history_override),
+        }
+    }
+
+    /// Memory participation for a resumed run: never load (the run's history
+    /// is authoritative); a configured backend still gets the completed run's
+    /// messages at `Done`, which the suspending process never appended.
+    pub(crate) fn resume_memory_handle(&self) -> Option<(Arc<dyn ConversationMemory>, String)> {
+        match (&self.memory, &self.conversation_id) {
+            (Some(memory), Some(id)) => Some((memory.clone(), id.clone())),
+            _ => None,
         }
     }
 }
@@ -1115,7 +1163,7 @@ where
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    pub async fn run(mut self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1131,18 +1179,22 @@ where
         // When the caller passes explicit history, memory is fully bypassed for
         // this run (no load AND no save). Otherwise, if a memory backend and
         // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
-            None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => {
-                    let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
-                }
-                _ => (None, None),
-            },
+        let (history_override, memory_handle) = if self.restored_run.is_some() {
+            (None, self.resume_memory_handle())
+        } else {
+            match &self.chat_history {
+                Some(_) => (None, None),
+                None => match (&self.memory, &self.conversation_id) {
+                    (Some(memory), Some(id)) => {
+                        let loaded = memory.load(id).await?;
+                        (Some(loaded), Some((memory.clone(), id.clone())))
+                    }
+                    _ => (None, None),
+                },
+            }
         };
 
-        let run = self.build_run(history_override);
+        let run = self.take_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the
@@ -10187,5 +10239,218 @@ mod migrated_tests {
         ));
         assert_eq!(stop_calls.load(SeqCst), 1);
         assert_eq!(after_stop_calls.load(SeqCst), 0);
+    }
+
+    mod resume {
+        use super::*;
+        use crate::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+        use crate::test_utils::CountingMemory;
+        use rig_core::memory::ConversationMemory;
+        use std::collections::BTreeSet;
+
+        /// Hand-drive a run to its tool boundary (one pending `add` call) and
+        /// serialize it to JSON, as a persisting host does before suspending.
+        fn suspended_mid_tool_batch(max_turns: usize) -> String {
+            let mut run = AgentRun::new("add 2 and 3").max_turns(max_turns);
+            let step = run.next_step().expect("first step");
+            assert!(matches!(step, AgentRunStep::CallModel { turn: 1, .. }));
+
+            let mut usage = Usage::new();
+            usage.input_tokens = 7;
+            usage.output_tokens = 3;
+            usage.total_tokens = 10;
+            let tool_names: BTreeSet<String> = ["add".to_string()].into();
+            let outcome = run
+                .model_response(ModelTurn::new(
+                    None,
+                    OneOrMany::one(AssistantContent::ToolCall(MessageToolCall::new(
+                        "tc1".to_string(),
+                        ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
+                    ))),
+                    usage,
+                    tool_names.clone(),
+                    tool_names,
+                ))
+                .expect("model turn should be accepted");
+            assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+
+            let step = run.next_step().expect("tool step");
+            assert!(matches!(step, AgentRunStep::CallTools { .. }));
+            serde_json::to_string(&run).expect("run should serialize to JSON")
+        }
+
+        /// A run serialized at its tool boundary, restored from JSON, completes
+        /// through the public runner surface: the pending tool executes through
+        /// the live tool server, hooks fire on the resumed leg, and usage
+        /// aggregates across the suspend/resume boundary.
+        #[tokio::test]
+        async fn resumed_mid_tool_batch_run_completes_with_hooks() {
+            let snapshot = suspended_mid_tool_batch(3);
+
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+            let mut resumed_usage = Usage::new();
+            resumed_usage.input_tokens = 5;
+            resumed_usage.output_tokens = 2;
+            resumed_usage.total_tokens = 7;
+            let model = MockCompletionModel::from_turns([
+                MockTurn::text("the answer is 5").with_usage(resumed_usage)
+            ]);
+            let hook = RecordingHook::default();
+            let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
+
+            let response = agent
+                .resume(run)
+                .add_hook(hook.clone())
+                .run()
+                .await
+                .expect("resumed run should complete");
+
+            assert_eq!(response.output, "the answer is 5");
+            assert_eq!(hook.tool_results(), vec!["5".to_string()]);
+            assert_eq!(
+                hook.shared_events(),
+                vec![
+                    StepEventKind::ToolCall,
+                    StepEventKind::ToolResult,
+                    StepEventKind::CompletionCall,
+                ]
+            );
+            // Only the post-resume model call reached the live model.
+            assert_eq!(model.request_count(), 1);
+            // Usage spans the suspending and resuming processes.
+            assert_eq!(response.usage.input_tokens, 12);
+            assert_eq!(response.usage.output_tokens, 5);
+            // Full history: prompt, tool call, tool result, final text.
+            let messages = response.messages.as_deref().unwrap_or_default();
+            assert_eq!(messages.len(), 4);
+        }
+
+        /// Resuming seeds the runner with the suspended run's own turn budget;
+        /// the runner's builder methods still override it before driving.
+        #[tokio::test]
+        async fn resume_seeds_and_overrides_the_suspended_turn_budget() {
+            // Suspended with a budget of one, already spent on the recorded call.
+            let snapshot = suspended_mid_tool_batch(1);
+
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+            let agent = AgentBuilder::new(MockCompletionModel::default())
+                .tool(MockAddTool)
+                .build();
+            let err = agent
+                .resume(run)
+                .run()
+                .await
+                .expect_err("the exhausted budget should be preserved");
+            assert!(matches!(
+                err,
+                PromptError::MaxTurnsError { max_turns: 1, .. }
+            ));
+
+            // The same snapshot resumes to completion once the budget is raised.
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+            let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+                .tool(MockAddTool)
+                .build();
+            let response = agent
+                .resume(run)
+                .max_turns(2)
+                .run()
+                .await
+                .expect("the raised budget should let the run finish");
+            assert_eq!(response.output, "done");
+        }
+
+        /// A resumed run never loads conversation memory — the restored run
+        /// carries its own history — but a configured backend still receives
+        /// the completed run's messages at the end.
+        #[tokio::test]
+        async fn resumed_run_appends_to_memory_without_loading() {
+            let snapshot = suspended_mid_tool_batch(3);
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+
+            let memory = CountingMemory::default();
+            let agent = AgentBuilder::new(MockCompletionModel::text("the answer is 5"))
+                .tool(MockAddTool)
+                .memory(memory.clone())
+                .conversation("resumed")
+                .build();
+
+            let response = agent.resume(run).run().await.expect("resumed run");
+
+            assert_eq!(memory.load_count(), 0, "resume must not load memory");
+            assert_eq!(memory.append_count(), 1, "completion must append once");
+            let stored = memory
+                .inner()
+                .load("resumed")
+                .await
+                .expect("stored history");
+            assert_eq!(Some(stored), response.messages);
+        }
+
+        /// Resuming a run serialized before its first model call behaves like a
+        /// run that was never suspended.
+        #[tokio::test]
+        async fn resume_at_the_model_boundary_runs_like_a_new_run() {
+            let snapshot = serde_json::to_string(&AgentRun::new("hi").max_turns(2))
+                .expect("run should serialize to JSON");
+
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+            let model = MockCompletionModel::text("hello");
+            let agent = AgentBuilder::new(model.clone()).build();
+            let response = agent.resume(run).run().await.expect("resumed run");
+
+            assert_eq!(response.output, "hello");
+            assert_eq!(model.request_count(), 1);
+        }
+
+        /// A restored run resumes through `stream()` as well: the pending
+        /// tool's result surfaces as a stream item, hooks fire on the resumed
+        /// leg, and the run ends with a final response.
+        #[tokio::test]
+        async fn resumed_run_streams_tool_activity_and_final_response() {
+            let snapshot = suspended_mid_tool_batch(3);
+            let run: AgentRun = serde_json::from_str(&snapshot).expect("run should deserialize");
+
+            let model = MockCompletionModel::from_stream_turns([vec![
+                MockStreamEvent::text("the answer is 5"),
+                MockStreamEvent::final_response_with_total_tokens(0),
+            ]]);
+            let hook = RecordingHook::default();
+            let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+            let mut stream = agent.resume(run).add_hook(hook.clone()).stream().await;
+
+            let mut saw_tool_result = false;
+            let mut final_response = None;
+            while let Some(item) = stream.next().await {
+                match item.expect("stream item") {
+                    MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                        ..
+                    }) => {
+                        saw_tool_result = true;
+                    }
+                    MultiTurnStreamItem::FinalResponse(response) => {
+                        final_response = Some(response);
+                    }
+                    _ => {}
+                }
+            }
+
+            assert!(
+                saw_tool_result,
+                "the resumed tool batch should surface its result"
+            );
+            let final_response = final_response.expect("final response");
+            assert_eq!(final_response.output(), "the answer is 5");
+            assert_eq!(hook.tool_results(), vec!["5".to_string()]);
+            assert_eq!(
+                hook.shared_events(),
+                vec![
+                    StepEventKind::ToolCall,
+                    StepEventKind::ToolResult,
+                    StepEventKind::CompletionCall,
+                ]
+            );
+        }
     }
 }
