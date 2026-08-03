@@ -23,7 +23,9 @@
 //! - **In-flight model calls.** [`SessionEvent::BeforeModelCall`] is not a
 //!   durable suspension point: a run serialized there (or while any model
 //!   call was in flight) is resumed by re-issuing the call from the pre-call
-//!   state, so it is re-prepared rather than picked up mid-flight.
+//!   state, so it is re-prepared rather than picked up mid-flight. The
+//!   interrupted attempt remains charged to `max_turns`; resume can reissue it
+//!   only while another attempt remains.
 //!
 //! A run suspended on an invalid tool-call decision *is* recovered — `resume`
 //! re-derives it from the run and re-surfaces the event.
@@ -60,8 +62,8 @@ use crate::agent::hook::{
 use crate::agent::prepare::ToolCatalog;
 use crate::agent::response::tool_result_output;
 use crate::agent::run::{
-    AcceptedModelTurn, AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome,
-    PendingToolCall, ToolInvocationDisposition, ToolResultSubmission,
+    AcceptedModelTurn, AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelAttemptId, ModelTurn,
+    ModelTurnOutcome, PendingToolCall, ToolInvocationDisposition, ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_span, record_usage_on_span,
@@ -114,7 +116,7 @@ pub enum SessionEvent {
         prompt: Message,
         /// The history preceding it.
         history: Vec<Message>,
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
     },
     /// `policy.surface_model_turns`: an accepted model turn awaiting the
@@ -123,7 +125,7 @@ pub enum SessionEvent {
     /// as [`AgentRun::retry_model_turn`]. The full provider response is
     /// available via [`AgentSession::last_response`].
     TurnFinished {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// Canonicalized assistant content parked for acceptance.
         content: OneOrMany<AssistantContent>,
@@ -189,6 +191,7 @@ enum Pending {
     BeforeCall {
         prompt: Message,
         history: Vec<Message>,
+        attempt_id: ModelAttemptId,
         /// Whether [`AgentSession::reply_before_call`] answered the event.
         /// Until it does, [`AgentSession::advance`] is a protocol violation
         /// (matching the [`AgentStream`](crate::stream::AgentStream)
@@ -297,13 +300,7 @@ impl AgentSession {
         let run = AgentRun::new(prompt)
             .max_turns(config.max_turns.unwrap_or(1))
             .max_invalid_tool_call_retries(config.max_invalid_tool_call_retries)
-            .with_output_validation(
-                config
-                    .output_schema
-                    .as_ref()
-                    .map(|schema| schema.as_value().clone()),
-                DEFAULT_OUTPUT_RETRIES,
-            );
+            .with_output_validation(config.output_schema.clone(), DEFAULT_OUTPUT_RETRIES);
         let run = match config.tool_choice.clone() {
             Some(tool_choice) => run.with_tool_choice(tool_choice),
             None => run,
@@ -346,7 +343,8 @@ impl AgentSession {
     ///   when the resumed policy surfaces model turns, the next `advance`
     ///   re-surfaces [`SessionEvent::TurnFinished`] before any tool dispatch.
     /// - A run serialized while a model call was in flight (for example after
-    ///   a transient provider error) recovers by re-issuing that call.
+    ///   a transient provider error) recovers by re-issuing that call if its
+    ///   finite model-attempt budget still has capacity.
     ///
     /// **Not** recovered, because the run does not carry it: gate state for
     /// [`SessionEvent::ToolCallPending`] and [`SessionEvent::ToolResultReady`]
@@ -442,83 +440,87 @@ impl AgentSession {
     /// Provider/protocol errors, plus a protocol violation when a decision
     /// inbox is still awaiting its answer.
     pub async fn advance(&mut self) -> Result<SessionEvent, PromptError> {
-        if let Pending::TurnReady(accepted) = &self.pending
-            && self.policy.surface_model_turns
-        {
-            let accepted = accepted.clone();
-            self.pending = Pending::TurnReply;
-            return Ok(SessionEvent::TurnFinished {
-                turn: accepted.turn,
-                content: accepted.content,
-                usage: accepted.usage,
-            });
-        }
-        if matches!(self.pending, Pending::TurnReady(_)) {
-            // Resume reconstructs the durable accepted-turn boundary before
-            // the caller reattaches its policy. If the final policy does not
-            // surface model turns, consume that boundary exactly as a fresh
-            // session would and continue advancing the run.
-            self.pending = Pending::None;
-            self.run.continue_model_turn()?;
-        }
-        // A previously chained invalid call surfaces first.
-        if let Pending::Invalid { next } = &mut self.pending {
-            if let Some(context) = next.take() {
+        let mut resumed_before_call = None;
+        match std::mem::replace(&mut self.pending, Pending::None) {
+            Pending::None => {}
+            Pending::BeforeCall {
+                prompt,
+                history,
+                attempt_id,
+                answered: true,
+            } => resumed_before_call = Some((prompt, history, attempt_id)),
+            pending @ Pending::BeforeCall {
+                answered: false, ..
+            } => {
+                self.pending = pending;
+                return Err(self.run.cancel_error(
+                    "advance called while a BeforeModelCall event awaits reply_before_call",
+                ));
+            }
+            Pending::TurnReady(accepted) => {
+                if self.policy.surface_model_turns {
+                    self.pending = Pending::TurnReply;
+                    return Ok(SessionEvent::TurnFinished {
+                        turn: accepted.turn,
+                        content: accepted.content,
+                        usage: accepted.usage,
+                    });
+                }
+                // Resume reconstructs the durable accepted-turn boundary
+                // before the caller reattaches its policy. A non-surfacing
+                // policy consumes it exactly as a fresh session would.
+                self.run.continue_model_turn()?;
+            }
+            Pending::TurnReply => {
+                self.pending = Pending::TurnReply;
+                return Err(self
+                    .run
+                    .cancel_error("advance called while a model turn awaits reply_turn"));
+            }
+            Pending::Invalid {
+                next: Some(context),
+            } => {
+                self.pending = Pending::Invalid { next: None };
                 return Ok(SessionEvent::InvalidToolCall(context));
             }
-            return Err(self
-                .run
-                .cancel_error("advance called while an invalid tool call awaits resolution"));
-        }
-        if matches!(self.pending, Pending::TurnReply) {
-            return Err(self
-                .run
-                .cancel_error("advance called while a model turn awaits reply_turn"));
-        }
-        if matches!(self.pending, Pending::Tools { .. }) {
-            return Err(self
-                .run
-                .cancel_error("advance called while tool results are awaited"));
-        }
-        if matches!(
-            self.pending,
-            Pending::BeforeCall {
-                answered: false,
-                ..
+            pending @ Pending::Invalid { next: None } => {
+                self.pending = pending;
+                return Err(self
+                    .run
+                    .cancel_error("advance called while an invalid tool call awaits resolution"));
             }
-        ) {
-            return Err(self.run.cancel_error(
-                "advance called while a BeforeModelCall event awaits reply_before_call",
-            ));
-        }
-        if matches!(
-            self.pending,
-            Pending::ToolCallGate {
-                current: Some(_),
-                ..
+            pending @ Pending::ToolCallGate {
+                current: Some(_), ..
+            } => {
+                self.pending = pending;
+                return Err(self.run.cancel_error(
+                    "advance called while a ToolCallPending event awaits reply_tool_call",
+                ));
             }
-        ) {
-            return Err(self.run.cancel_error(
-                "advance called while a ToolCallPending event awaits reply_tool_call",
-            ));
-        }
-        if matches!(self.pending, Pending::ToolResultGate { awaiting: true, .. }) {
-            return Err(self.run.cancel_error(
-                "advance called while a ToolResultReady event awaits reply_tool_result",
-            ));
-        }
-
-        // Pre-execution gate: surface the next undecided call, or the
-        // decided batch once every call is resolved.
-        if matches!(self.pending, Pending::ToolCallGate { .. }) {
-            return self.next_tool_call_gate_event();
-        }
-        // Post-execution gate: surface the next result decision; once every
-        // result is resolved the batch commits and the run continues below.
-        if matches!(self.pending, Pending::ToolResultGate { .. })
-            && let Some(event) = self.step_tool_result_gate()?
-        {
-            return Ok(event);
+            pending @ Pending::ToolCallGate { current: None, .. } => {
+                self.pending = pending;
+                return self.next_tool_call_gate_event();
+            }
+            pending @ Pending::Tools { .. } => {
+                self.pending = pending;
+                return Err(self
+                    .run
+                    .cancel_error("advance called while tool results are awaited"));
+            }
+            pending @ Pending::ToolResultGate { awaiting: true, .. } => {
+                self.pending = pending;
+                return Err(self.run.cancel_error(
+                    "advance called while a ToolResultReady event awaits reply_tool_result",
+                ));
+            }
+            pending @ Pending::ToolResultGate {
+                awaiting: false, ..
+            } => {
+                self.pending = pending;
+                if let Some(event) = self.step_tool_result_gate()? {
+                    return Ok(event);
+                }
+            }
         }
 
         // A provider future can be dropped by timeout/select cancellation.
@@ -532,29 +534,25 @@ impl AgentSession {
 
         loop {
             // Resume a pre-build pause answered by reply_before_call.
-            let (step, before_call_answered) =
-                match std::mem::replace(&mut self.pending, Pending::None) {
-                    Pending::BeforeCall {
-                        prompt, history, ..
-                    } => (
-                        AgentRunStep::CallModel {
-                            prompt,
-                            history,
-                            turn: self.run.turn(),
-                        },
-                        true,
-                    ),
-                    other => {
-                        self.pending = other;
-                        (self.run.next_step()?, false)
-                    }
-                };
+            let (step, before_call_answered) = match resumed_before_call.take() {
+                Some((prompt, history, attempt_id)) => (
+                    AgentRunStep::CallModel {
+                        prompt,
+                        history,
+                        turn: self.run.turn(),
+                        attempt_id,
+                    },
+                    true,
+                ),
+                None => (self.run.next_step()?, false),
+            };
 
             match step {
                 AgentRunStep::CallModel {
                     prompt,
                     history,
                     turn,
+                    attempt_id,
                 } => {
                     if self.policy.surface_completion_calls
                         && !before_call_answered
@@ -564,6 +562,7 @@ impl AgentSession {
                         self.pending = Pending::BeforeCall {
                             prompt: prompt.clone(),
                             history: history.clone(),
+                            attempt_id,
                             answered: false,
                         };
                         return Ok(SessionEvent::BeforeModelCall {
@@ -575,13 +574,14 @@ impl AgentSession {
 
                     let mut attempt = match retry_attempt.take() {
                         Some(mut attempt) => {
-                            attempt.reissue(turn);
+                            attempt.reissue(turn, attempt_id);
                             attempt
                         }
                         None => ModelCallAttempt::begin(
                             prompt,
                             history,
                             turn,
+                            attempt_id,
                             self.run.inherited_output_contract().cloned(),
                             &mut self.next_patch,
                         ),
@@ -629,7 +629,7 @@ impl AgentSession {
                             return Err(error.into());
                         }
                     };
-                    let model_turn = ModelTurn::new(
+                    let model_turn = ModelTurn::unbound(
                         response.message_id.clone(),
                         response.choice.clone(),
                         response.usage,
@@ -1529,7 +1529,7 @@ mod tests {
     use crate::agent::prepare::ToolCatalog;
     use crate::provider::MockScript;
     use crate::tool::ToolOutput;
-    use rig_core::completion::{FinishReason, ToolDefinition};
+    use rig_core::completion::{CompletionError, FinishReason, ToolDefinition};
     use rig_core::message::ToolResultContent;
 
     fn usage(total: u64) -> Usage {
@@ -1600,6 +1600,119 @@ mod tests {
             tool_call_response("call_1", "add", serde_json::json!({"a": 1, "b": 2})),
             text_response("done"),
         ])
+    }
+
+    #[tokio::test]
+    async fn repeated_session_provider_failures_exhaust_model_attempt_budget() {
+        let script = MockScript::from_responses(Vec::new()).with_errors(vec![
+            Some("first provider failure".to_string()),
+            Some("second provider failure".to_string()),
+            Some("must not be reached".to_string()),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "hello",
+        );
+
+        for expected in ["first provider failure", "second provider failure"] {
+            let error = session
+                .advance()
+                .await
+                .expect_err("scripted provider operation should fail");
+            assert!(matches!(
+                error,
+                PromptError::CompletionError(CompletionError::ProviderError(message))
+                    if message == expected
+            ));
+        }
+
+        let error = session
+            .advance()
+            .await
+            .expect_err("a third provider operation must exceed the attempt budget");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 2, .. }
+        ));
+        assert_eq!(script.calls(), 2);
+        assert_eq!(session.run_state().model_call_attempts(), 2);
+        assert!(session.run_state().completion_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_session_provider_futures_exhaust_model_attempt_budget() {
+        let script = MockScript::from_responses(Vec::new()).with_pending(vec![true, true, true]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "hello",
+        );
+
+        for expected_calls in 1..=2 {
+            let mut pending_advance = Box::pin(session.advance());
+            assert!(matches!(
+                futures::poll!(pending_advance.as_mut()),
+                std::task::Poll::Pending
+            ));
+            drop(pending_advance);
+            assert_eq!(script.calls(), expected_calls);
+        }
+
+        let error = session
+            .advance()
+            .await
+            .expect_err("cancelled operations must still exhaust the attempt budget");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 2, .. }
+        ));
+        assert_eq!(script.calls(), 2);
+        assert_eq!(session.run_state().model_call_attempts(), 2);
+    }
+
+    #[tokio::test]
+    async fn preparation_failures_consume_attempt_budget_without_provider_io() {
+        let script = MockScript::from_responses(Vec::new());
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.tool_choice = Some(rig_core::message::ToolChoice::Specific {
+            function_names: vec!["missing".to_string()],
+        });
+        let mut session = AgentSession::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "hello",
+        )
+        .with_tools(adder_catalog());
+
+        for _ in 0..2 {
+            let error = session
+                .advance()
+                .await
+                .expect_err("invalid local request preparation should fail");
+            assert!(matches!(
+                error,
+                PromptError::CompletionError(CompletionError::RequestError(_))
+            ));
+        }
+        let error = session
+            .advance()
+            .await
+            .expect_err("preparation reissues must be finitely budgeted");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 2, .. }
+        ));
+        assert_eq!(script.calls(), 0);
+        assert_eq!(session.run_state().model_call_attempts(), 2);
     }
 
     fn object_schema_requiring(field: &str) -> rig_core::schemars::Schema {

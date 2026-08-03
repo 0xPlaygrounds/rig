@@ -66,7 +66,8 @@ pub struct AgentBuilder {
     temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     tool_choice: Option<ToolChoice>,
-    /// Default total model-call budget, including the initial call and retries.
+    /// Default total model-call attempt budget, including the initial call,
+    /// retries, and provider-operation reissues.
     default_max_turns: Option<usize>,
     /// The executable tool records registered on this builder.
     executor: ToolExecutor,
@@ -173,8 +174,9 @@ impl AgentBuilder {
         self
     }
 
-    /// Set the default total model-call budget, including the initial call and
-    /// every retry or continuation. Zero permits no model calls.
+    /// Set the default total model-call attempt budget, including the initial
+    /// call, every retry or continuation, and provider-operation reissues.
+    /// Zero permits no model calls.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
         self.default_max_turns = Some(default_max_turns);
         self

@@ -20,7 +20,7 @@ use crate::{
     agent::{
         AgentBuilder, CompletionCallAction, InvalidToolCallAction, ObservationAction, OutputMode,
         RequestPatch, ToolCallAction, ToolResultAction,
-        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
+        run::{AgentRun, AgentRunStep, ModelAttemptId, ModelTurn, ModelTurnOutcome},
     },
     completion::{
         AssistantContent, CompletionError, CompletionRequest, Message, PromptError, ToolDefinition,
@@ -1317,12 +1317,23 @@ fn restricted_recovery_run(
     let mut run = AgentRun::new(prompt)
         .max_turns(2)
         .max_invalid_tool_call_retries(retries);
-    if !matches!(run.next_step()?, AgentRunStep::CallModel { .. }) {
-        return Err(ScenarioError::contract(
-            SCENARIO,
-            "fresh AgentRun did not request a model turn",
-        ));
-    }
+    let attempt_id = match run.next_step()? {
+        AgentRunStep::CallModel { attempt_id, .. } => attempt_id,
+        _ => {
+            return Err(ScenarioError::contract(
+                SCENARIO,
+                "fresh AgentRun did not request a model turn",
+            ));
+        }
+    };
+    let turn = ModelTurn::new(
+        attempt_id,
+        turn.message_id,
+        turn.choice,
+        turn.usage,
+        turn.executable_tool_names,
+        turn.allowed_tool_names,
+    );
     let outcome = run.model_response(turn)?;
     let ModelTurnOutcome::NeedsResolution(context) = outcome else {
         return Err(ScenarioError::contract(
@@ -1367,6 +1378,7 @@ where
             return HookDecision::Continue;
         };
         *lock_recover(&capture_slot) = Some(ModelTurn::new(
+            ModelAttemptId::new(),
             response.message_id.clone(),
             response.choice.clone(),
             response.usage,
@@ -1404,6 +1416,7 @@ where
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
     let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
     let turn = ModelTurn::new(
+        ModelAttemptId::new(),
         response.message_id,
         response.choice,
         response.usage,
@@ -2946,6 +2959,7 @@ pub async fn invalid_tool_recovery_session(
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
     let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
     let turn = ModelTurn::new(
+        ModelAttemptId::new(),
         response.message_id,
         response.choice,
         response.usage,

@@ -13,8 +13,8 @@ use super::config::AgentConfig;
 use super::hook::RequestPatch;
 use super::prepare::{PreparedRequest, ToolCatalog, prepare_request_with_inherited_output};
 use super::run::{
-    AcceptedModelTurn, AgentRun, ModelAttemptContext, ModelTurn, ModelTurnOutcome, StreamedTurn,
-    ToolOutputContract,
+    AcceptedModelTurn, AgentRun, ModelAttemptContext, ModelAttemptId, ModelTurn, ModelTurnOutcome,
+    StreamedTurn, ToolOutputContract,
 };
 use crate::completion::PromptError;
 
@@ -45,12 +45,13 @@ impl ModelCallAttempt {
         prompt: Message,
         history: Vec<Message>,
         turn: usize,
+        attempt_id: ModelAttemptId,
         inherited_output_contract: Option<ToolOutputContract>,
         next_patch: &mut Option<RequestPatch>,
     ) -> Self {
         Self {
             context: ModelAttemptContext {
-                attempt_id: rig_core::id::generate(),
+                attempt_id,
                 prompt,
                 output_contract: inherited_output_contract,
             },
@@ -81,13 +82,17 @@ impl ModelCallAttempt {
     }
 
     /// Re-enter preparation after AgentRun reissued the logical model call.
-    pub(crate) fn reissue(&mut self, turn: usize) {
+    pub(crate) fn reissue(&mut self, turn: usize, attempt_id: ModelAttemptId) {
         self.turn = turn;
-        self.context.attempt_id = rig_core::id::generate();
+        self.context.attempt_id = attempt_id;
         self.phase = ModelCallAttemptPhase::Preparing;
     }
 
     pub(crate) fn attempt_id(&self) -> &str {
+        self.context.attempt_id.as_str()
+    }
+
+    pub(crate) fn attempt_identity(&self) -> &ModelAttemptId {
         &self.context.attempt_id
     }
 
@@ -107,7 +112,7 @@ impl ModelCallAttempt {
             &self.history,
             committed_output_tool,
             self.context.output_contract.as_ref(),
-            Some(self.context.attempt_id.as_str()),
+            Some(&self.context.attempt_id),
             Some(&self.patch),
         )?;
         self.context = prepared.model_attempt.attempt_context.clone();
@@ -151,18 +156,8 @@ impl ModelCallAttempt {
         }
     }
 
-    /// Promote provisional metadata after invalid-call recovery deliberately
-    /// commits the provider attempt's usage while abandoning its turn.
-    pub(crate) fn commit_recovered(self, run: &mut AgentRun) {
-        run.inherit_output_contract(self.context.output_contract.clone());
-        run.set_output_tool_name(
-            self.context
-                .output_contract
-                .map(|contract| contract.output_tool_name),
-        );
-    }
-
-    /// Restore the retry patch and refund the pending model call.
+    /// Restore the retry patch and roll back the pending logical turn. The
+    /// consumed model-call attempt remains charged to the run budget.
     pub(crate) fn abandon(self, run: &mut AgentRun, next_patch: &mut Option<RequestPatch>) {
         if !self.patch.is_empty() {
             *next_patch = Some(match next_patch.take() {
@@ -185,12 +180,13 @@ mod tests {
             Message::user("prompt"),
             Vec::new(),
             1,
+            ModelAttemptId::new(),
             None,
             &mut next_patch,
         );
         let first = attempt.attempt_id().to_owned();
 
-        attempt.reissue(1);
+        attempt.reissue(1, ModelAttemptId::new());
 
         assert_ne!(attempt.attempt_id(), first);
     }

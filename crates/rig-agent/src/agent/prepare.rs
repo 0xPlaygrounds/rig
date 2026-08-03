@@ -29,7 +29,7 @@ use super::completion::{
 use super::config::AgentConfig;
 use super::hook::RequestPatch;
 use super::run::{
-    ModelAttemptContext, ModelTurn, OutputMode, StreamedTurn, StreamedTurnAssembler,
+    ModelAttemptContext, ModelAttemptId, ModelTurn, OutputMode, StreamedTurnAssembler,
     ToolOutputContract,
 };
 use crate::completion::Message;
@@ -81,10 +81,10 @@ impl ToolCatalog {
 ///
 /// Hand-driven callers retain this value while provider I/O is in flight, then
 /// consume it with [`PreparedModelAttempt::into_model_turn`] or
-/// [`PreparedModelAttempt::into_streamed_turn`]. That binds the real prompt,
-/// unique attempt identity, effective Tool-mode schema, and validation name
-/// sets to the response as one commit-time operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// [`PreparedModelAttempt::into_streamed_turn_assembler`]. That binds the real
+/// prompt, unique attempt identity, effective Tool-mode schema, and validation
+/// name sets to the response as one commit-time operation.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PreparedModelAttempt {
     pub(crate) attempt_context: ModelAttemptContext,
     executable_tool_names: BTreeSet<String>,
@@ -94,7 +94,7 @@ pub struct PreparedModelAttempt {
 impl PreparedModelAttempt {
     /// Identity unique to this prepared provider operation.
     pub fn attempt_id(&self) -> &str {
-        &self.attempt_context.attempt_id
+        self.attempt_context.attempt_id.as_str()
     }
 
     /// Effective Tool-mode contract advertised by this operation, if any.
@@ -102,13 +102,19 @@ impl PreparedModelAttempt {
         self.attempt_context.output_contract.as_ref()
     }
 
-    /// Create a streamed-turn assembler with this request's exact validation
-    /// name sets.
-    pub fn streamed_turn_assembler(&self) -> StreamedTurnAssembler {
+    /// Consume this receipt into a streamed-turn assembler with the request's
+    /// exact attempt context and validation name sets.
+    ///
+    /// Both partial invalid-call recovery and successful final assembly then
+    /// carry the same prepared contract. Consuming the receipt prevents a
+    /// caller from accidentally binding the same provider operation twice.
+    pub fn into_streamed_turn_assembler(self) -> StreamedTurnAssembler {
         StreamedTurnAssembler::new(
-            self.executable_tool_names.clone(),
-            self.allowed_tool_names.clone(),
+            self.attempt_context.attempt_id.clone(),
+            self.executable_tool_names,
+            self.allowed_tool_names,
         )
+        .with_attempt_context(self.attempt_context)
     }
 
     /// Bind a unary provider response to this exact prepared operation.
@@ -119,6 +125,7 @@ impl PreparedModelAttempt {
         usage: rig_core::completion::Usage,
     ) -> ModelTurn {
         ModelTurn::new(
+            self.attempt_context.attempt_id.clone(),
             message_id,
             choice,
             usage,
@@ -127,24 +134,11 @@ impl PreparedModelAttempt {
         )
         .with_attempt_context(self.attempt_context)
     }
-
-    /// Bind an assembled streamed response to this exact prepared operation.
-    ///
-    /// The prepared name sets replace the assembler's copies as a final
-    /// consistency boundary. Construct the assembler with
-    /// [`PreparedModelAttempt::streamed_turn_assembler`] so mid-stream
-    /// validation uses the same sets too.
-    pub fn into_streamed_turn(self, mut turn: StreamedTurn) -> StreamedTurn {
-        turn.executable_tool_names = self.executable_tool_names;
-        turn.allowed_tool_names = self.allowed_tool_names;
-        turn.attempt_context = Some(self.attempt_context);
-        turn
-    }
 }
 
 /// The complete, ready-to-send request for one turn plus the contract needed
 /// to bind the provider's response back to that exact operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PreparedRequest {
     /// The finished provider-agnostic request.
@@ -170,7 +164,13 @@ pub struct PreparedRequest {
 /// `committed_output_tool` is the output-tool name the run pinned on an
 /// earlier turn ([`AgentRun::output_tool_name`](super::run::AgentRun)); when
 /// unset, [`AgentConfig::output_tool_name`] pins it for the first turn, and
-/// `patch` is the merged per-turn hook patch
+/// `inherited_output_contract` is the exact violated contract exposed by
+/// [`AgentRun::inherited_output_contract`](super::run::AgentRun::inherited_output_contract)
+/// for a corrective retry. It takes precedence over the baseline config.
+/// `attempt_id` binds requests built from an [`AgentRunStep::CallModel`](super::run::AgentRunStep::CallModel)
+/// authorization back to that exact operation; capture the step's ID and pass
+/// `Some(&attempt_id)`. Callers preparing a request outside an `AgentRun` may
+/// pass `None` to generate a standalone identity. The `patch` is the merged per-turn hook patch
 /// ([`fold_completion_actions`](super::hook::fold_completion_actions)).
 ///
 /// # Errors
@@ -186,6 +186,8 @@ pub fn prepare_request(
     prompt: Message,
     history: &[Message],
     committed_output_tool: Option<&str>,
+    inherited_output_contract: Option<&ToolOutputContract>,
+    attempt_id: Option<&ModelAttemptId>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, CompletionError> {
     prepare_request_with_inherited_output(
@@ -195,8 +197,8 @@ pub fn prepare_request(
         prompt,
         history,
         committed_output_tool,
-        None,
-        None,
+        inherited_output_contract,
+        attempt_id,
         patch,
     )
 }
@@ -212,7 +214,7 @@ pub(crate) fn prepare_request_with_inherited_output(
     history: &[Message],
     committed_output_tool: Option<&str>,
     inherited_output_contract: Option<&ToolOutputContract>,
-    attempt_id: Option<&str>,
+    attempt_id: Option<&ModelAttemptId>,
     patch: Option<&RequestPatch>,
 ) -> Result<PreparedRequest, CompletionError> {
     let attempt_prompt = prompt.clone();
@@ -446,9 +448,7 @@ pub(crate) fn prepare_request_with_inherited_output(
 
     let model_attempt = PreparedModelAttempt {
         attempt_context: ModelAttemptContext {
-            attempt_id: attempt_id
-                .map(str::to_owned)
-                .unwrap_or_else(rig_core::id::generate),
+            attempt_id: attempt_id.cloned().unwrap_or_else(ModelAttemptId::new),
             prompt: attempt_prompt,
             output_contract: output_tool_contract.clone(),
         },

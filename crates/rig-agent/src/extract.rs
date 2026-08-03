@@ -156,7 +156,7 @@ impl ExtractOptions {
         self
     }
 
-    /// Override the total model-call budget.
+    /// Override the total model-call attempt budget.
     pub fn with_max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = Some(max_turns);
         self
@@ -358,7 +358,7 @@ impl ExtractionRunner {
         self
     }
 
-    /// Overrides the model-call budget.
+    /// Overrides the model-call attempt budget.
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.options.max_turns = Some(max_turns);
         self

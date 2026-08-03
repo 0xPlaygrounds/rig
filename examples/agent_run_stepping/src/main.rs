@@ -111,6 +111,7 @@ async fn main() -> Result<()> {
                 prompt,
                 history,
                 turn,
+                attempt_id,
             } => {
                 println!("→ model call #{turn}");
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
@@ -135,20 +136,30 @@ async fn main() -> Result<()> {
                     .collect();
 
                 let mut outcome = run.model_response(ModelTurn::new(
+                    attempt_id,
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),
                     tool_names,
                 ))?;
-                while let ModelTurnOutcome::NeedsResolution(context) = outcome {
-                    eprintln!("model called unknown tool `{}`", context.tool_name);
-                    // Preserve the agent loop's default fail-fast behavior; a
-                    // driver could instead retry, repair, or skip here.
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
-                }
-                if matches!(outcome, ModelTurnOutcome::Continue(_)) {
-                    run.continue_model_turn()?;
+                match outcome {
+                    ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        eprintln!("model called unknown tool `{}`", context.tool_name);
+                        // Preserve the agent loop's default fail-fast behavior; a
+                        // driver could instead retry, repair, or skip here.
+                        outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                        match outcome {
+                            ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                            ModelTurnOutcome::NeedsResolution(context) => anyhow::bail!(
+                                "invalid-tool resolution surfaced another unknown tool: {}",
+                                context.tool_name
+                            ),
+                            ModelTurnOutcome::TurnRetried => continue,
+                        }
+                    }
+                    ModelTurnOutcome::TurnRetried => continue,
                 }
             }
             AgentRunStep::CallTools { .. } => {

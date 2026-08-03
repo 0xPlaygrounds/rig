@@ -39,6 +39,7 @@ async fn hand_driven_single_turn_completes() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         assert_eq!(turn, 1, "a tool-free run makes exactly one model call");
                         assert!(
@@ -47,7 +48,8 @@ async fn hand_driven_single_turn_completes() {
                         );
                         let outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &names, &names).await,
+                                call_model(&agent, prompt, history, attempt_id, &names, &names)
+                                    .await,
                             )
                             .expect("model turn should be accepted");
                         assert!(
@@ -129,6 +131,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         if turn > 1 {
                             assert!(
@@ -141,7 +144,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                             );
                         }
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                         run.continue_model_turn()
@@ -224,10 +227,10 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     } => {
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                         run.continue_model_turn()
@@ -288,10 +291,10 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             let error = loop {
                 match run.next_step() {
                     Ok(AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     }) => {
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
                         assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
                         run.continue_model_turn()

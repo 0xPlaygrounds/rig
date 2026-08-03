@@ -32,8 +32,9 @@ impl ChatBotBuilder {
         }
     }
 
-    /// Set the total model-call budget for each prompt, including the initial
-    /// call and every retry or continuation. Zero emits no model calls.
+    /// Set the total model-call attempt budget for each prompt, including the
+    /// initial call, retries, continuations, and provider-operation reissues.
+    /// Zero emits no model calls.
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self

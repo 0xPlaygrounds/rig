@@ -28,9 +28,9 @@ use crate::agent::hook::{
 use crate::agent::prepare::ToolCatalog;
 use crate::agent::response::tool_result_output;
 use crate::agent::run::{
-    AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, PartialStreamedTurn, PendingToolCall,
-    StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent,
-    ToolInvocationDisposition, ToolResultSubmission,
+    AgentRun, AgentRunStep, DEFAULT_OUTPUT_RETRIES, ModelAttemptId, PartialStreamedTurn,
+    PendingToolCall, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
+    StreamedTurnEvent, ToolInvocationDisposition, ToolResultSubmission,
 };
 use crate::agent::telemetry::{
     SessionSpanParams, acquire_agent_span, new_session_chat_streaming_span, record_usage_on_span,
@@ -73,7 +73,7 @@ pub enum AgentStreamItem {
         prompt: Message,
         /// The history preceding it.
         history: Vec<Message>,
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
     },
     /// `policy.surface_model_turns` — answer via
@@ -81,7 +81,7 @@ pub enum AgentStreamItem {
     /// [`Self::ModelTurnRetried`] so consumers discard the turn's
     /// provisional deltas.
     TurnFinished {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// Canonicalized assistant content parked for acceptance.
         content: OneOrMany<AssistantContent>,
@@ -93,7 +93,7 @@ pub enum AgentStreamItem {
     /// A turn was rolled back (hook retry or invalid-call recovery); its
     /// earlier deltas were provisional.
     ModelTurnRetried {
-        /// One-based index of the retried model call.
+        /// One-based logical turn number retained by the reissued operation.
         turn: usize,
     },
     /// The model called an unknown/disallowed tool mid-stream. Answer via
@@ -162,7 +162,7 @@ pub enum AgentRunItem {
     CompletionCall(crate::agent::CompletionCall),
     /// A turn was rolled back; its earlier deltas were provisional.
     ModelTurnRetried {
-        /// One-based index of the retried model call.
+        /// One-based logical turn number retained by the reissued operation.
         turn: usize,
     },
     /// A tool body ran locally, or the host explicitly supplied an externally
@@ -294,6 +294,22 @@ struct ActiveTurn {
     recovery: Option<PendingStreamRecovery>,
 }
 
+impl ActiveTurn {
+    fn accept_provider_item(&mut self, item: &StreamedAssistantContent) -> Result<(), PromptError> {
+        if self.provider_final_seen {
+            return Err(PromptError::CompletionError(
+                rig_core::completion::CompletionError::ResponseError(
+                    "provider stream emitted an item after its final response".to_string(),
+                ),
+            ));
+        }
+        if matches!(item, StreamedAssistantContent::Final(_)) {
+            self.provider_final_seen = true;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 struct AttemptTextAggregation {
     attempt_id: Option<String>,
@@ -324,10 +340,11 @@ enum Pending {
     BeforeCall {
         prompt: Message,
         history: Vec<Message>,
+        attempt_id: ModelAttemptId,
     },
     TurnReply,
     Invalid {
-        partial: PartialStreamedTurn,
+        partial: Box<PartialStreamedTurn>,
         invalid: StreamedInvalidToolCall,
     },
     /// `policy.surface_tool_calls`: pre-execution decisions in flight.
@@ -337,7 +354,7 @@ enum Pending {
         /// Calls already decided (rewrites/skips applied).
         decided: Vec<PendingToolCall>,
         /// The call surfaced and awaiting [`AgentStream::reply_tool_call`].
-        current: Option<PendingToolCall>,
+        current: Option<Box<PendingToolCall>>,
         /// Rig identities skipped via [`ToolCallAction::Skip`].
         skipped_internal_ids: Vec<String>,
     },
@@ -429,13 +446,7 @@ impl AgentStream {
         let run = AgentRun::new(prompt)
             .max_turns(config.max_turns.unwrap_or(1))
             .max_invalid_tool_call_retries(config.max_invalid_tool_call_retries)
-            .with_output_validation(
-                config
-                    .output_schema
-                    .as_ref()
-                    .map(|schema| schema.as_value().clone()),
-                DEFAULT_OUTPUT_RETRIES,
-            );
+            .with_output_validation(config.output_schema.clone(), DEFAULT_OUTPUT_RETRIES);
         let run = match config.tool_choice.clone() {
             Some(tool_choice) => run.with_tool_choice(tool_choice),
             None => run,
@@ -502,7 +513,9 @@ impl AgentStream {
     /// Terminate and abandon the current provider attempt immediately.
     ///
     /// Continuing to poll starts a fresh attempt with the retained request
-    /// patch. Already-observed deltas were provisional and may be repeated.
+    /// patch when the `max_turns` attempt budget has capacity. The abandoned
+    /// operation remains charged. Already-observed deltas were provisional and
+    /// may be repeated.
     pub fn close_turn(&mut self) {
         self.abandon_active_turn();
     }
@@ -583,15 +596,17 @@ impl AgentStream {
                 prompt,
                 history,
                 turn,
+                attempt_id,
             } => {
                 if let Some(mut attempt) = retry_attempt {
-                    attempt.reissue(turn);
+                    attempt.reissue(turn, attempt_id);
                     return self.open_attempt(attempt).await;
                 }
                 if self.policy.surface_completion_calls {
                     self.pending = Pending::BeforeCall {
                         prompt: prompt.clone(),
                         history: history.clone(),
+                        attempt_id,
                     };
                     self.buffered.push_back(AgentStreamItem::BeforeModelCall {
                         prompt,
@@ -600,7 +615,7 @@ impl AgentStream {
                     });
                     return Ok(());
                 }
-                self.open_turn(prompt, history, turn).await
+                self.open_turn(prompt, history, turn, attempt_id).await
             }
             AgentRunStep::CallTools { mut calls } => {
                 for call in &mut calls {
@@ -658,11 +673,13 @@ impl AgentStream {
         prompt: Message,
         history: Vec<Message>,
         turn: usize,
+        attempt_id: ModelAttemptId,
     ) -> Result<(), PromptError> {
         let attempt = ModelCallAttempt::begin(
             prompt,
             history,
             turn,
+            attempt_id,
             self.run.inherited_output_contract().cloned(),
             &mut self.next_patch,
         );
@@ -718,14 +735,12 @@ impl AgentStream {
                 return Err(PromptError::from(error));
             }
         };
+        let assembler = prepared.model_attempt.into_streamed_turn_assembler();
         let previous_last_final = self.last_final.take();
         self.active = Some(ActiveTurn {
             attempt,
             stream,
-            assembler: StreamedTurnAssembler::new(
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
-            ),
+            assembler,
             chat_span,
             provider_final_seen: false,
             previous_last_final,
@@ -760,17 +775,11 @@ impl AgentStream {
         let chat_span = active.chat_span.clone();
         match active.stream.next().instrument(chat_span.clone()).await {
             Some(Ok(item)) => {
-                if active.provider_final_seen {
-                    // Any provider item after the terminal record violates the
-                    // stream protocol, including metadata-only items.
-                    return Err(PromptError::CompletionError(
-                        rig_core::completion::CompletionError::ResponseError(
-                            "provider stream emitted an item after its final response".to_string(),
-                        ),
-                    ));
-                }
+                // The terminal invariant is shared with recovery draining:
+                // whether an item is consumed or discarded cannot change the
+                // provider stream protocol.
+                active.accept_provider_item(&item)?;
                 let events = active.assembler.ingest(&item).map_err(PromptError::from)?;
-                let mut saw_provider_final = false;
                 for event in events {
                     match event {
                         StreamedTurnEvent::EmitIngested => {
@@ -796,7 +805,7 @@ impl AgentStream {
                                 .run
                                 .streamed_invalid_tool_call_context(&partial, &invalid);
                             self.pending = Pending::Invalid {
-                                partial,
+                                partial: Box::new(partial),
                                 invalid: *invalid,
                             };
                             self.buffered
@@ -807,7 +816,6 @@ impl AgentStream {
                             usage: _,
                             emit_final,
                         } => {
-                            saw_provider_final = true;
                             if let StreamedAssistantContent::Final(final_record) = &item {
                                 self.last_final = Some(final_record.clone());
                                 if emit_final {
@@ -817,9 +825,6 @@ impl AgentStream {
                             }
                         }
                     }
-                }
-                if saw_provider_final && let Some(active) = &mut self.active {
-                    active.provider_final_seen = true;
                 }
                 Ok(())
             }
@@ -892,11 +897,13 @@ impl AgentStream {
         };
         let chat_span = active.chat_span.clone();
         match active.stream.next().instrument(chat_span.clone()).await {
-            Some(Ok(StreamedAssistantContent::Final(final_record))) => {
-                self.last_final = Some(final_record);
+            Some(Ok(item)) => {
+                active.accept_provider_item(&item)?;
+                if let StreamedAssistantContent::Final(final_record) = item {
+                    self.last_final = Some(final_record);
+                }
                 Ok(())
             }
-            Some(Ok(_)) => Ok(()),
             Some(Err(error)) => Err(PromptError::from(error)),
             None => {
                 let Some(active) = self.active.take() else {
@@ -934,7 +941,9 @@ impl AgentStream {
                         "invalid-call recovery drain lost its provisional transition",
                     ));
                 };
-                let call = match run.record_streamed_completion_call(response.usage) {
+                let call = match run
+                    .record_streamed_completion_call(attempt.attempt_identity(), response.usage)
+                {
                     Ok(call) => call,
                     Err(error) => {
                         attempt.make_retryable(&mut self.run);
@@ -942,7 +951,6 @@ impl AgentStream {
                         return Err(error);
                     }
                 };
-                attempt.commit_recovered(&mut run);
                 self.run = run;
                 record_usage_on_span(&chat_span, response.usage);
 
@@ -1018,8 +1026,11 @@ impl AgentStream {
         &mut self,
         action: CompletionCallAction,
     ) -> Result<(), PromptError> {
-        let Pending::BeforeCall { prompt, history } =
-            std::mem::replace(&mut self.pending, Pending::None)
+        let Pending::BeforeCall {
+            prompt,
+            history,
+            attempt_id,
+        } = std::mem::replace(&mut self.pending, Pending::None)
         else {
             return Err(self
                 .run
@@ -1033,7 +1044,7 @@ impl AgentStream {
             }
         }
         let turn = self.run.turn();
-        self.open_turn(prompt, history, turn).await
+        self.open_turn(prompt, history, turn, attempt_id).await
     }
 
     /// Record the accepted turn's content telemetry onto its
@@ -1176,7 +1187,7 @@ impl AgentStream {
                     self.pending = Pending::ToolCallGate {
                         remaining,
                         decided,
-                        current: Some(next),
+                        current: Some(Box::new(next)),
                         skipped_internal_ids,
                     };
                     self.buffered
@@ -1256,9 +1267,10 @@ impl AgentStream {
             Pending::ToolCallGate {
                 remaining,
                 mut decided,
-                current: Some(mut call),
+                current: Some(call),
                 mut skipped_internal_ids,
             } => {
+                let mut call = *call;
                 let (effective_call, disposition) = resolution.into_parts();
                 call.original_tool_call
                     .get_or_insert_with(|| Box::new(call.tool_call.clone()));
@@ -1651,9 +1663,9 @@ impl AgentStream {
         let observes_deltas = hooks.observes_deltas();
         AgentRunStream::new(async_stream::stream! {
             // Aggregation is keyed by provider-operation identity, so a
-            // refunded/reissued attempt resets even when BeforeModelCall is
-            // not surfaced again.
-            let mut aggregation = AttemptTextAggregation::default();
+            // rolled-back/reissued attempt resets even when BeforeModelCall is
+            // not surfaced again. A no-observer run owns no aggregation state.
+            let mut aggregation = observes_deltas.then(AttemptTextAggregation::default);
             // The in-flight batch's structured results and per-call spans, so
             // the post-execution decision point carries the classic
             // classification and records post-hook result telemetry.
@@ -1811,7 +1823,7 @@ impl AgentStream {
                     AgentStreamItem::Assistant(content) => {
                         // Delta observation, gated exactly as the classic
                         // driver gated it: only when an entry opted in.
-                        if observes_deltas {
+                        if let Some(aggregation) = aggregation.as_mut() {
                             let turn = self.run_state().turn();
                             let observation = match &content {
                                 StreamedAssistantContent::Text(text) => {
@@ -1857,15 +1869,6 @@ impl AgentStream {
                                 yield Err(self.run_state().cancel_error(reason));
                                 break;
                             }
-                        } else if let StreamedAssistantContent::Text(text) = &content {
-                            let Some(attempt_id) = self.current_attempt_id().map(str::to_owned)
-                            else {
-                                yield Err(self.run_state().cancel_error(
-                                    "streamed text delta lost its model-attempt identity",
-                                ));
-                                break;
-                            };
-                            aggregation.push(&attempt_id, &text.text);
                         }
                         // The provider's terminal record also drives the
                         // stream-finish observation.
@@ -2789,8 +2792,10 @@ mod migrated_streaming_tests {
             ],
             vec![text_item("recovered"), final_tokens(5)],
         ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
         let mut driver = AgentStream::new(
-            AgentConfig::new(),
+            config,
             ProviderConfig::Mock(script),
             Arc::new(Runtime::new()),
             "go",
@@ -2805,12 +2810,13 @@ mod migrated_streaming_tests {
             prompt,
             history,
             turn,
+            attempt_id,
         } = driver.run.next_step().expect("first model call")
         else {
             panic!("expected CallModel");
         };
         driver
-            .open_turn(prompt, history, turn)
+            .open_turn(prompt, history, turn, attempt_id)
             .await
             .expect("stream opens");
         driver
@@ -2876,6 +2882,147 @@ mod migrated_streaming_tests {
                 .contains("provider stream emitted an item after its final response"),
             "got {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn repeated_stream_provider_failures_exhaust_model_attempt_budget() {
+        let script = MockScript::from_responses(Vec::new()).with_errors(vec![
+            Some("first stream failure".to_string()),
+            Some("second stream failure".to_string()),
+            Some("must not be reached".to_string()),
+        ]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        let mut stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "go",
+        );
+
+        for expected in ["first stream failure", "second stream failure"] {
+            let error = stream
+                .next_item()
+                .await
+                .expect("raw stream must return its provider error")
+                .expect_err("scripted provider operation should fail");
+            assert!(matches!(
+                error,
+                PromptError::CompletionError(
+                    rig_core::completion::CompletionError::ProviderError(message)
+                ) if message == expected
+            ));
+        }
+
+        let error = stream
+            .next_item()
+            .await
+            .expect("raw stream must return its budget error")
+            .expect_err("a third provider operation must exceed the attempt budget");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 2, .. }
+        ));
+        assert_eq!(script.calls(), 2);
+        assert_eq!(stream.run_state().model_call_attempts(), 2);
+        assert!(stream.run_state().completion_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_stream_provider_futures_exhaust_model_attempt_budget() {
+        let script = MockScript::from_responses(Vec::new()).with_pending(vec![true, true, true]);
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        let mut stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "go",
+        );
+
+        for expected_calls in 1..=2 {
+            let mut pending_next = Box::pin(stream.next_item());
+            assert!(matches!(
+                futures::poll!(pending_next.as_mut()),
+                std::task::Poll::Pending
+            ));
+            drop(pending_next);
+            assert_eq!(script.calls(), expected_calls);
+        }
+
+        let error = stream
+            .next_item()
+            .await
+            .expect("raw stream must return its budget error")
+            .expect_err("cancelled operations must still exhaust the attempt budget");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 2, .. }
+        ));
+        assert_eq!(script.calls(), 2);
+        assert_eq!(stream.run_state().model_call_attempts(), 2);
+    }
+
+    async fn assert_recovery_rejects_item_after_final(action: InvalidToolCallAction) {
+        let mut config = AgentConfig::new();
+        config.max_turns = Some(2);
+        config.max_invalid_tool_call_retries = 1;
+        let script = script(vec![vec![
+            call_item("tool_call_1", "default_api", json!({})),
+            final_tokens(7),
+            text_item("stray recovery content after the final"),
+        ]]);
+        let mut stream = AgentStream::new(
+            config,
+            ProviderConfig::Mock(script.clone()),
+            Arc::new(Runtime::new()),
+            "go",
+        )
+        .with_tools(ToolCatalog::new(vec![ToolDefinition {
+            name: "add".to_string(),
+            description: "add".to_string(),
+            parameters: json!({"type": "object"}),
+        }]));
+
+        loop {
+            match stream.next_item().await {
+                Some(Ok(AgentStreamItem::InvalidToolCall(context))) => {
+                    assert_eq!(context.tool_name, "default_api");
+                    break;
+                }
+                Some(Ok(_)) => {}
+                Some(Err(error)) => panic!("stream failed before recovery: {error}"),
+                None => panic!("stream ended before invalid-call recovery"),
+            }
+        }
+
+        let error = stream
+            .resolve_invalid(action)
+            .await
+            .expect_err("post-final content must invalidate the recovery drain");
+        assert!(
+            error
+                .to_string()
+                .contains("provider stream emitted an item after its final response"),
+            "got {error}"
+        );
+        assert_eq!(script.calls(), 1);
+        assert_eq!(stream.run_state().turn(), 0);
+        assert!(stream.run_state().completion_calls().is_empty());
+        assert!(stream.last_response().is_none());
+    }
+
+    #[tokio::test]
+    async fn invalid_call_retry_rejects_item_after_final_and_rolls_back() {
+        assert_recovery_rejects_item_after_final(InvalidToolCallAction::retry(
+            "use an available tool",
+        ))
+        .await;
+    }
+
+    #[tokio::test]
+    async fn invalid_call_skip_rejects_item_after_final_and_rolls_back() {
+        assert_recovery_rejects_item_after_final(InvalidToolCallAction::skip("skip it")).await;
     }
 
     fn agent_builder(script: MockScript) -> AgentBuilder {
@@ -4609,6 +4756,35 @@ mod migrated_streaming_tests {
             *aggregated.lock().expect("aggregated deltas"),
             ["first-attempt".to_string(), "second-attempt".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn direct_stream_drive_does_not_dispatch_deltas_without_opt_in() {
+        let delta_events = Arc::new(AtomicUsize::new(0));
+        let delta_events_by_hook = Arc::clone(&delta_events);
+        let hooks =
+            crate::hooks::Hooks::new().with(hook_entry("non-delta-observer", move |event| {
+                if matches!(event, HookEvent::TextDelta { .. }) {
+                    delta_events_by_hook.fetch_add(1, Ordering::SeqCst);
+                }
+                HookDecision::Continue
+            }));
+        let stream = AgentStream::new(
+            AgentConfig::new(),
+            ProviderConfig::Mock(script(vec![vec![
+                text_item("first "),
+                text_item("second"),
+                final_tokens(1),
+            ]])),
+            Arc::new(Runtime::new()),
+            "go",
+        )
+        .drive(hooks, None);
+
+        let collected = collect(stream).await;
+        assert!(collected.error.is_none(), "{:?}", collected.error);
+        assert_eq!(collected.expect_final().output, "first second");
+        assert_eq!(delta_events.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

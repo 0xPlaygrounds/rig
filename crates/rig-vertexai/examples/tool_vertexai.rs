@@ -10,7 +10,7 @@
 use anyhow::Result;
 use rig_agent::agent::AgentConfig;
 use rig_agent::agent::prepare::{ToolCatalog, prepare_request};
-use rig_agent::agent::run::{AgentRun, AgentRunStep};
+use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig_core::OneOrMany;
 use rig_core::completion::ToolDefinition;
 use rig_core::message::{ToolResultContent, UserContent};
@@ -52,7 +52,10 @@ async fn main() -> Result<(), anyhow::Error> {
     loop {
         match run.next_step()? {
             AgentRunStep::CallModel {
-                prompt, history, ..
+                prompt,
+                history,
+                attempt_id,
+                ..
             } => {
                 let prepared = prepare_request(
                     &config,
@@ -61,9 +64,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     prompt,
                     &history,
                     run.output_tool_name(),
+                    run.inherited_output_contract(),
+                    Some(&attempt_id),
                     None,
                 )?;
-                let model_attempt = prepared.model_attempt.clone();
+                let model_attempt = prepared.model_attempt;
                 let response =
                     functions::complete(&client, &provider.model, prepared.request).await?;
                 let turn = model_attempt.into_model_turn(
@@ -71,8 +76,16 @@ async fn main() -> Result<(), anyhow::Error> {
                     response.choice.clone(),
                     response.usage,
                 );
-                run.model_response(turn)?;
-                run.continue_model_turn()?;
+                match run.model_response(turn)? {
+                    ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        return Err(anyhow::anyhow!(
+                            "Vertex AI called unavailable tool `{}`",
+                            context.tool_name
+                        ));
+                    }
+                    ModelTurnOutcome::TurnRetried => continue,
+                }
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::new();

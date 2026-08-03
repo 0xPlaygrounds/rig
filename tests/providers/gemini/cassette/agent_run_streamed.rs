@@ -6,8 +6,8 @@
 use std::collections::{BTreeSet, VecDeque};
 
 use rig::agent::run::{
-    AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
-    StreamedTurnEvent,
+    AgentRun, AgentRunStep, ModelAttemptId, StreamedInvalidToolCall, StreamedResolution,
+    StreamedTurnAssembler, StreamedTurnEvent,
 };
 use rig::agent::{InvalidToolCallAction, ToolCallAction};
 use rig::completion::{PromptError, Usage};
@@ -47,6 +47,7 @@ async fn run_streamed_turn(
     run: &mut AgentRun,
     prompt: Message,
     history: Vec<Message>,
+    attempt_id: ModelAttemptId,
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
@@ -56,7 +57,8 @@ async fn run_streamed_turn(
         gemini::functions::open_stream(&agent.cfg, &agent.rt, agent.request(prompt, history))
             .await
             .expect("gemini stream should open");
-    let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
+    let mut assembler =
+        StreamedTurnAssembler::new(attempt_id.clone(), executable.clone(), allowed.clone());
     let mut recorded = false;
 
     while let Some(item) = stream.next().await {
@@ -75,7 +77,7 @@ async fn run_streamed_turn(
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
                 StreamedTurnEvent::Completed { usage, .. } => {
                     if !recorded {
-                        run.record_streamed_completion_call(usage)
+                        run.record_streamed_completion_call(&attempt_id, usage)
                             .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
@@ -103,7 +105,10 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage).expect(
+                                        run.record_streamed_completion_call(
+                                            &attempt_id,
+                                            drained_usage,
+                                        ).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -124,7 +129,7 @@ async fn run_streamed_turn(
         "the provider stream should end consistently"
     );
     if !recorded {
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(&attempt_id, Usage::new())
             .expect("turns without provider usage still record a completion call");
     }
     let response = stream
@@ -154,7 +159,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new()).is_err(),
+                fresh
+                    .record_streamed_completion_call(&ModelAttemptId::new(), Usage::new())
+                    .is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 
@@ -175,13 +182,17 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let end = run_streamed_turn(
                             &agent,
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &names,
                             &names,
                             |invalid| {
@@ -250,7 +261,10 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
 
             let mut run = AgentRun::new("What is 21 + 21? Use the add tool.").max_turns(2);
             let AgentRunStep::CallModel {
-                prompt, history, ..
+                prompt,
+                history,
+                attempt_id,
+                ..
             } = run.next_step().expect("run should advance")
             else {
                 panic!("a fresh run starts with a model call");
@@ -261,6 +275,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
                 &mut run,
                 prompt,
                 history,
+                attempt_id,
                 &executable,
                 &nothing_allowed,
                 |invalid| {
@@ -315,13 +330,17 @@ async fn streamed_repair_continues_the_same_stream() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let end = run_streamed_turn(
                             &agent,
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &machine_names,
                             &machine_names,
                             |invalid| {
@@ -390,6 +409,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         let (allowed, expect_abandon) = if abandoned {
                             (&executable, false)
@@ -413,6 +433,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &executable,
                             allowed,
                             |invalid| {

@@ -40,7 +40,8 @@ pub struct AgentConfig {
     pub additional_params: Option<serde_json::Value>,
     /// Tool-choice policy.
     pub tool_choice: Option<ToolChoice>,
-    /// Total model-call budget, including retries and continuations.
+    /// Total model-call attempt budget, including retries, continuations, and
+    /// provider-operation reissues after failure or cancellation.
     /// `None` uses the implicit budget of one.
     pub max_turns: Option<usize>,
     /// Retry budget for invalid tool-call recovery.
@@ -103,7 +104,7 @@ impl AgentConfig {
         self
     }
 
-    /// Set the total model-call budget.
+    /// Set the total model-call attempt budget.
     pub fn with_max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = Some(max_turns);
         self

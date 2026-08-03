@@ -184,7 +184,7 @@ async fn transient_provider_error_recovers_on_next_poll() {
     ])
     .with_errors(vec![Some("boom".to_string())]);
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -197,8 +197,8 @@ async fn transient_provider_error_recovers_on_next_poll() {
         .expect_err("first poll must surface the provider error");
     assert!(error.to_string().contains("boom"));
 
-    // The run returned to the pre-call state (budget refunded — max_turns is
-    // 1): polling again retries the call instead of protocol-violating.
+    // The run returned to the pre-call state: polling again spends the second
+    // configured attempt and reissues the same logical turn.
     let mut final_output = None;
     while let Some(item) = stream.next_item().await {
         if let AgentStreamItem::Final(response) = item.expect("no further errors") {
@@ -217,7 +217,7 @@ async fn stream_open_failure_retains_and_merges_the_exact_request_patch() {
     .with_errors(vec![Some("boom".to_string())]);
     let probe = script.clone();
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -264,7 +264,7 @@ async fn cancelled_stream_open_reissues_the_exact_answered_attempt() {
     .with_pending(vec![true, false]);
     let probe = script.clone();
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -334,7 +334,7 @@ async fn cancelled_next_item_reissues_the_exact_unanswered_attempt() {
     .with_pending(vec![true, false]);
     let probe = script.clone();
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -371,7 +371,7 @@ async fn stream_preparation_failure_is_retryable_and_retains_the_patch() {
     let script = MockScript::from_responses(vec![text_response("recovered", 5)]);
     let probe = script.clone();
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -404,7 +404,7 @@ async fn failed_stream_open_does_not_commit_a_provisional_output_tool() {
     );
     let script = MockScript::from_responses(vec![text_response("unused", 0), output])
         .with_errors(vec![Some("boom".to_string())]);
-    let mut config = AgentConfig::new();
+    let mut config = AgentConfig::new().with_max_turns(2);
     config.output_schema = Some(rig_core::schemars::json_schema!({
         "type": "object",
         "properties": {"answer": {"type": "string"}},
@@ -443,7 +443,7 @@ async fn close_turn_after_partial_text_rolls_back_and_retries_cleanly() {
     ])
     .with_streams(vec![vec![StreamedAssistantContent::text("provisional")]]);
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -493,7 +493,7 @@ async fn midstream_error_discards_partial_text_and_tool_then_retries_once() {
     .with_stream_errors(vec![Some(MockStreamError::new(2, "midstream boom"))]);
     let probe = script.clone();
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",
@@ -539,7 +539,7 @@ async fn invalid_tool_recovery_does_not_commit_before_provider_eof(action: Inval
             "invalid recovery drain failed",
         ))]);
     let probe = script.clone();
-    let mut config = AgentConfig::new();
+    let mut config = AgentConfig::new().with_max_turns(2);
     config.max_invalid_tool_call_retries = 1;
     let mut stream = AgentStream::new(
         config,
@@ -615,7 +615,7 @@ async fn provider_final_followed_by_error_commits_no_provisional_usage() {
     ]])
     .with_stream_errors(vec![Some(MockStreamError::new(2, "after-final boom"))]);
     let mut stream = AgentStream::new(
-        AgentConfig::new(),
+        AgentConfig::new().with_max_turns(2),
         ProviderConfig::Mock(script),
         Arc::new(Runtime::new()),
         "hi",

@@ -29,8 +29,8 @@ use std::{
 };
 
 use rig_agent::agent::{
-    AgentConfig, AgentRun, AgentRunStep, ModelTurn, OutputMode, RequestPatch, ToolCatalog,
-    prepare_request,
+    AgentConfig, AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, RequestPatch,
+    ToolCatalog, prepare_request,
 };
 use rig_candle::{CandleModel, ModelArtifacts, ModelData};
 use rig_core::completion::{AssistantContent, ToolDefinition, Usage};
@@ -99,7 +99,7 @@ async fn buffered_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
-    let model_attempt = prepared.model_attempt.clone();
+    let model_attempt = prepared.model_attempt;
     let response = rig_candle::functions::complete(model, prepared.request).await?;
     Ok(model_attempt.into_model_turn(
         response.message_id.clone(),
@@ -113,7 +113,7 @@ async fn streamed_turn(
     model: &CandleModel,
     prepared: rig_agent::agent::PreparedRequest,
 ) -> Result<ModelTurn, TestError> {
-    let model_attempt = prepared.model_attempt.clone();
+    let model_attempt = prepared.model_attempt;
     let mut stream = rig_candle::functions::open_stream(model, prepared.request).await?;
     let mut text = String::new();
     let mut contents: Vec<AssistantContent> = Vec::new();
@@ -154,7 +154,10 @@ async fn drive(
     loop {
         match run.next_step()? {
             AgentRunStep::CallModel {
-                prompt, history, ..
+                prompt,
+                history,
+                attempt_id,
+                ..
             } => {
                 let prepared = prepare_request(
                     config,
@@ -163,6 +166,8 @@ async fn drive(
                     prompt,
                     &history,
                     run.output_tool_name(),
+                    run.inherited_output_contract(),
+                    Some(&attempt_id),
                     None,
                 )?;
                 let turn = if streaming {
@@ -170,8 +175,17 @@ async fn drive(
                 } else {
                     buffered_turn(model, prepared).await?
                 };
-                run.model_response(turn)?;
-                run.continue_model_turn()?;
+                match run.model_response(turn)? {
+                    ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        return Err(format!(
+                            "model called unavailable tool {:?}",
+                            context.tool_name
+                        )
+                        .into());
+                    }
+                    ModelTurnOutcome::TurnRetried => continue,
+                }
             }
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::new();
@@ -750,6 +764,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
                     prompt,
                     history,
                     turn,
+                    attempt_id,
                 } => {
                     let prepared = prepare_request(
                         &config,
@@ -758,11 +773,22 @@ async fn pinned_qwen3_model_contract() -> Result<(), TestError> {
                         prompt,
                         &history,
                         run.output_tool_name(),
+                        run.inherited_output_contract(),
+                        Some(&attempt_id),
                         (turn == 1).then_some(&patch),
                     )?;
                     let turn = buffered_turn(&model, prepared).await?;
-                    run.model_response(turn)?;
-                    run.continue_model_turn()?;
+                    match run.model_response(turn)? {
+                        ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                        ModelTurnOutcome::NeedsResolution(context) => {
+                            return Err(format!(
+                                "request_patch: model called unavailable tool {:?}",
+                                context.tool_name
+                            )
+                            .into());
+                        }
+                        ModelTurnOutcome::TurnRetried => continue,
+                    }
                 }
                 AgentRunStep::CallTools { .. } => {
                     return Err("request_patch: unexpected tool calls".into());

@@ -200,6 +200,6 @@ pub use request::SessionRunner;
 pub use response::{CompletionCall, PromptResponse};
 pub use rig_core::message::Text;
 pub use run::{
-    AcceptedModelTurn, AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode,
-    PendingToolCall, ToolInvocationDisposition,
+    AcceptedModelTurn, AgentRun, AgentRunStep, ModelAttemptId, ModelTurn, ModelTurnOutcome,
+    OutputMode, PendingToolCall, ToolInvocationDisposition,
 };

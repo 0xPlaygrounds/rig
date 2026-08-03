@@ -18,10 +18,10 @@ pub enum PromptError {
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
-    /// The run exhausted its total model-call budget.
+    /// The run exhausted its total model-call attempt budget.
     #[error("MaxTurnsError: reached max turns limit: {max_turns}")]
     MaxTurnsError {
-        /// Configured total model-call budget.
+        /// Configured total model-call attempt budget.
         max_turns: usize,
         /// Canonical history available when the budget was exhausted.
         chat_history: Box<Vec<Message>>,

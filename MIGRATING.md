@@ -166,7 +166,11 @@ the model. There is also a compile-time consequence — see
 
 The highest-impact change in this release. `max_turns` and
 `default_max_turns` now bound the **exact total number of model calls**,
-including the initial call, tool continuations, and retries.
+including the initial call, tool continuations, retries, local request-
+preparation failures, and failed or cancelled provider-operation reissues.
+Each emitted `AgentRunStep::CallModel` consumes one unit. Rolling back a failed
+operation restores its logical turn position and request patch, but never
+refunds that attempt.
 
 | Budget | Before | After |
 | --- | --- | --- |
@@ -179,7 +183,9 @@ preserve the maximum allowance of an old explicit budget `n`, account for the
 old effective `n + 2`; otherwise set the literal total you actually intend.
 
 If you set `max_turns` at all, re-derive the number. A budget that used to
-permit a tool round-trip may now stop after the first model call.
+permit a tool round-trip may now stop after the first model call. Hosts that
+continue polling a raw `AgentSession` or `AgentStream` after provider errors
+must budget for those retries; polling cannot issue unbounded billable calls.
 
 #### Providers that used to return empty text now error
 
@@ -310,11 +316,13 @@ The parked read is woken without polling the provider source in a loop.
 
 Both agent drivers now keep each provider call in a transactional attempt.
 Preparation, provider-open/unary failure, midstream failure, and
-`AgentStream::close_turn()` restore the request patch and model-call budget and
-discard provisional history, usage, output-tool selection, terminal metadata,
-and tool calls. This ownership survives cancellation of `advance()`,
+`AgentStream::close_turn()` restore the request patch and logical turn position
+and discard provisional history, usage, terminal metadata, and tool calls. The
+failed/cancelled operation remains charged to the `max_turns` attempt budget;
+a clean reissue is available only while capacity remains. This ownership
+survives cancellation of `advance()`,
 `next_item()`, or `reply_before_call()` while provider I/O is pending.
-Continuing reissues the same logical attempt and merges any newly supplied
+Continuing reissues the same logical turn and merges any newly supplied
 patch; an already-answered `BeforeModelCall` decision is not dispatched again,
 so append-only fields such as `extra_context` are not applied twice. Text/tool
 deltas already returned to the host were provisional and may be returned again
@@ -323,7 +331,7 @@ also provisional until the abandoned provider stream reaches checked EOF; a
 later provider error rolls them back with the rest of the attempt.
 
 Each provider operation now gets a fresh attempt identity, including a
-refunded reissue of the same logical request. The attempt owns the real prompt
+budgeted reissue of the same logical turn. The attempt owns the real prompt
 and the effective Tool-mode output contract until commit. Consequently,
 response hooks receive the real prompt without relying on a surfaced
 `BeforeModelCall`, streamed text aggregation cannot leak across reissues, and
@@ -337,15 +345,29 @@ Current-turn metadata and tool identity now travel with their records:
 
 - `PreparedRequest::output_tool_contract` replaces the former
   `output_tool_name` field and carries both the synthetic tool name and the
-  schema advertised as its parameters. Hand-written drivers must retain
+  schema advertised as its parameters. `AgentRunStep::CallModel` now exposes
+  an `attempt_id`; hand-written drivers must capture it and pass
+  `Some(&attempt_id)` to `prepare_request` (standalone request preparation may
+  pass `None`). They must retain
   `PreparedRequest::model_attempt` while provider I/O is in flight and consume
-  its `into_model_turn` or `into_streamed_turn` method when feeding the
-  response to `AgentRun`; construct streaming aggregation through its
-  `streamed_turn_assembler` method as well. This atomically carries the
-  prepared prompt, attempt identity, schema, and validation name sets instead
-  of reconstructing them from the run's baseline configuration. Callers that
-  only inspect the name can map `output_tool_contract.as_ref()` to its
-  `output_tool_name`.
+  it with `into_model_turn` for unary responses or
+  `into_streamed_turn_assembler` before streaming. The receipt and assembler
+  are single-use rather than `Clone`; the assembler carries the prepared
+  prompt, attempt identity, schema, and validation name sets through partial
+  invalid-call recovery and final assembly. Direct `ModelTurn::new` and
+  `StreamedTurnAssembler::new` construction likewise require the authorizing
+  `ModelAttemptId`, and `record_streamed_completion_call` requires the same ID.
+  A stale response, partial recovery snapshot, terminal stream, completion
+  record, or replayed turn is rejected without mutating the current attempt.
+  On a corrective call, pass
+  `AgentRun::inherited_output_contract()` to the new `prepare_request`
+  argument so a per-attempt patched schema does not fall back to the baseline.
+  Callers that only inspect the name can map
+  `output_tool_contract.as_ref()` to its `output_tool_name`.
+- `AgentRun::with_output_validation` accepts `Option<schemars::Schema>` rather
+  than `Option<serde_json::Value>`. Convert untyped configuration at its input
+  boundary; schema values must be JSON objects or booleans. Invalid scalar or
+  array values now fail explicitly instead of silently dropping Tool mode.
 - `AgentStreamItem::TurnFinished` has `message_id: Option<String>`.
 - `ModelTurnOutcome::Continue` carries an `AcceptedModelTurn` containing the
   canonical post-resolution content, turn index, message ID, usage, and
@@ -356,6 +378,13 @@ Current-turn metadata and tool identity now travel with their records:
   “verdict required” and “ready to advance” as distinct states: call
   `continue_model_turn` before `next_step`; checkpoints before the verdict
   resurface it once, while checkpoints after it advance without redispatch.
+  The outcome is `#[must_use]`: match `Continue`, `NeedsResolution`, and
+  `TurnRetried` exhaustively instead of discarding the value.
+- Normal stream ingestion and invalid-call recovery now share one terminal
+  guard. Every provider item after the first `Final` is a protocol error,
+  including content that a Retry/Skip drain would otherwise discard. Runs with
+  no delta-observing hook also stop constructing a duplicate cumulative text
+  buffer.
 - `AgentStream::last_response()` describes only the current/most recently
   completed attempt; a successful turn with no provider terminal record leaves
   it as `None` rather than retaining an older turn's record.

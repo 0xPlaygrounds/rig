@@ -82,9 +82,10 @@ impl SessionRunner {
         self
     }
 
-    /// Set the total model-call budget, including the initial call and every
-    /// retry or continuation. Zero emits no model calls; one permits only the
-    /// initial call. Exceeding the budget returns
+    /// Set the total model-call attempt budget, including the initial call,
+    /// every retry or continuation, and provider-operation reissues after
+    /// failure or cancellation. Zero emits no model calls; one permits only
+    /// the initial attempt. Exceeding the budget returns
     /// [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.config.max_turns = Some(max_turns);

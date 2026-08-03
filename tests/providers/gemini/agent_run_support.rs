@@ -7,7 +7,7 @@ use rig::completion::CompletionRequest;
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall};
+use rig::agent::run::{ModelAttemptId, ModelTurn, PendingToolCall};
 use rig::completion::{ToolDefinition, Usage};
 use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
@@ -207,6 +207,7 @@ pub(crate) async fn call_model(
     agent: &GeminiAgent,
     prompt: Message,
     history: Vec<Message>,
+    attempt_id: ModelAttemptId,
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
@@ -215,6 +216,7 @@ pub(crate) async fn call_model(
             .await
             .expect("gemini completion should succeed");
     ModelTurn::new(
+        attempt_id,
         response.message_id.clone(),
         response.choice.clone(),
         response.usage,

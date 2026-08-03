@@ -66,6 +66,15 @@ fn session(script: MockScript) -> AgentSession {
     )
 }
 
+fn retrying_session(script: MockScript) -> AgentSession {
+    AgentSession::new(
+        AgentConfig::new().with_max_turns(2),
+        mock_provider(script),
+        Arc::new(Runtime::new()),
+        "hello",
+    )
+}
+
 fn submission_for(call: &PendingToolCall, result: UserContent) -> ToolResultSubmission {
     ToolResultSubmission::new(
         call.internal_call_id.clone().expect("durable internal id"),
@@ -526,7 +535,7 @@ async fn transient_provider_error_recovers_on_next_advance() {
         text_response("recovered", 5),
     ])
     .with_errors(vec![Some("boom".to_string())]);
-    let mut session = session(script);
+    let mut session = retrying_session(script);
 
     let error = session
         .advance()
@@ -534,9 +543,8 @@ async fn transient_provider_error_recovers_on_next_advance() {
         .expect_err("first advance must surface the provider error");
     assert!(error.to_string().contains("boom"));
 
-    // The run returned to the pre-call state: the next advance re-issues the
-    // model call (with the failed attempt's budget refunded — max_turns is 1)
-    // instead of raising a protocol violation.
+    // The run returned to the pre-call state: the next advance spends the
+    // second configured attempt and re-issues the same logical turn.
     let done = match session.advance().await.expect("second advance") {
         SessionEvent::Done(done) => done,
         other => panic!("expected Done, got {other:?}"),
@@ -552,7 +560,7 @@ async fn provider_failure_retains_and_merges_the_exact_request_patch() {
     ])
     .with_errors(vec![Some("boom".to_string())]);
     let probe = script.clone();
-    let mut session = session(script).with_tools(adder_catalog());
+    let mut session = retrying_session(script).with_tools(adder_catalog());
     session.patch_next_turn(retry_patch());
 
     session
@@ -595,7 +603,7 @@ async fn cancelled_provider_future_reissues_the_exact_answered_attempt() {
     ])
     .with_pending(vec![true, false]);
     let probe = script.clone();
-    let mut session = session(script)
+    let mut session = retrying_session(script)
         .with_tools(adder_catalog())
         .with_policy(SessionPolicy {
             surface_completion_calls: true,
@@ -646,7 +654,7 @@ async fn cancelled_provider_future_reissues_the_exact_answered_attempt() {
 async fn preparation_failure_is_retryable_and_retains_the_patch() {
     let script = MockScript::from_responses(vec![text_response("recovered", 5)]);
     let probe = script.clone();
-    let mut session = session(script);
+    let mut session = retrying_session(script);
     session.patch_next_turn(retry_patch());
 
     let error = session
@@ -680,7 +688,7 @@ async fn failed_attempt_does_not_commit_a_provisional_output_tool() {
     );
     let script = MockScript::from_responses(vec![text_response("unused", 0), output])
         .with_errors(vec![Some("boom".to_string())]);
-    let mut config = AgentConfig::new();
+    let mut config = AgentConfig::new().with_max_turns(2);
     config.output_schema = Some(rig_core::schemars::json_schema!({
         "type": "object",
         "properties": {"answer": {"type": "string"}},
@@ -715,7 +723,7 @@ async fn resume_recovers_run_serialized_awaiting_model() {
     // Hand-drive a run into AwaitingModel (a provider call in flight) and
     // serialize it there — what a crash between CallModel and its response
     // leaves behind.
-    let mut run = AgentRun::new("hello");
+    let mut run = AgentRun::new("hello").max_turns(2);
     assert!(matches!(
         run.next_step().expect("next_step"),
         AgentRunStep::CallModel { .. }

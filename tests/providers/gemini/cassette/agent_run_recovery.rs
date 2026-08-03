@@ -32,13 +32,16 @@ async fn run_until_invalid_add_call(
         .max_turns(2)
         .max_invalid_tool_call_retries(retries);
     let AgentRunStep::CallModel {
-        prompt, history, ..
+        prompt,
+        history,
+        attempt_id,
+        ..
     } = run.next_step().expect("run should advance")
     else {
         panic!("a fresh run starts with a model call");
     };
     let outcome = run
-        .model_response(call_model(agent, prompt, history, &executable, allowed).await)
+        .model_response(call_model(agent, prompt, history, attempt_id, &executable, allowed).await)
         .expect("model turn should be ingested");
     let ModelTurnOutcome::NeedsResolution(context) = outcome else {
         panic!("the add call must be rejected for this turn: {outcome:?}");
@@ -111,13 +114,23 @@ async fn repair_renames_tool_call_and_executes_it() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let repaired_before = repaired_calls;
                         let mut outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &machine_names, &machine_names)
-                                    .await,
+                                call_model(
+                                    &agent,
+                                    prompt,
+                                    history,
+                                    attempt_id,
+                                    &machine_names,
+                                    &machine_names,
+                                )
+                                .await,
                             )
                             .expect("model turn should be ingested");
                         while let ModelTurnOutcome::NeedsResolution(context) = outcome {
@@ -198,7 +211,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     } => {
                         let (allowed, expect_invalid) = if skipped_turn_calls.is_none() {
                             (&restricted, true)
@@ -207,7 +220,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
                         };
                         let mut outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &executable, allowed).await,
+                                call_model(&agent, prompt, history, attempt_id, &executable, allowed).await,
                             )
                             .expect("model turn should be ingested");
                         if let ModelTurnOutcome::NeedsResolution(context) = outcome {

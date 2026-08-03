@@ -131,6 +131,8 @@ async fn run_turn(state: &mut ChatState, message: String) -> Result<String, Brow
         &state.history,
         None,
         None,
+        None,
+        None,
     )
     .map_err(|error| BrowserModelError::Inference(error.to_string()))?;
     let response = state

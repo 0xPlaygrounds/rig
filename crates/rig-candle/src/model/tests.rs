@@ -844,6 +844,8 @@ fn loaded_model_works_with_agent_request_preparation()
             &[],
             None,
             None,
+            None,
+            None,
         )?;
         let _answer = crate::functions::complete(&model, prepared.request).await?;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())

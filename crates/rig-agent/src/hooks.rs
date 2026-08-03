@@ -83,7 +83,7 @@ pub enum HookEvent {
     /// A model call is about to be prepared. Answer with
     /// [`HookDecision::CompletionCall`].
     BeforeModelCall {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// This turn's prompt message.
         prompt: Arc<Message>,
@@ -93,7 +93,7 @@ pub enum HookEvent {
     /// An accepted model turn awaits a verdict. Answer with
     /// [`HookDecision::ModelTurn`].
     ModelTurnFinished {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// Canonicalized assistant content parked for acceptance.
         content: Arc<OneOrMany<AssistantContent>>,
@@ -103,7 +103,7 @@ pub enum HookEvent {
     /// The full provider response for a completed turn. Answer with
     /// [`HookDecision::Observation`].
     CompletionResponse {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// The prompt sent for this turn.
         prompt: Arc<Message>,
@@ -145,7 +145,7 @@ pub enum HookEvent {
     /// A streamed turn's canonical response finished. Answer with
     /// [`HookDecision::Observation`].
     StreamResponseFinish {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// The prompt sent for this turn.
         prompt: Arc<Message>,
@@ -160,18 +160,18 @@ pub enum HookEvent {
     /// [`HookEntry::observing_deltas`]. Answer with
     /// [`HookDecision::Observation`].
     TextDelta {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// Newly received text.
         delta: Arc<str>,
-        /// Text accumulated for the turn so far.
+        /// Text accumulated for this provider attempt so far.
         aggregated: Arc<str>,
     },
     /// One streamed tool-call argument delta. Opt in with
     /// [`HookEntry::observing_deltas`]. Answer with
     /// [`HookDecision::Observation`].
     ToolCallDelta {
-        /// One-based model-call index.
+        /// One-based logical turn number. Provider-operation reissues retain it.
         turn: usize,
         /// Provider tool-call id.
         tool_call_id: Arc<str>,

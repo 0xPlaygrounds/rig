@@ -27,6 +27,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &[],
         None,
         None,
+        None,
+        None,
     )?;
     let response = rig_candle::functions::complete(&model, prepared.request).await?;
     println!("{:?}", response.choice.first());
