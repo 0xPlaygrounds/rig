@@ -462,6 +462,23 @@ or `ProviderCapabilities::new()` and enable what you support. Capabilities are
 plain data, so a runtime can snapshot them instead of holding a callback into
 the concrete model.
 
+### Agents erase the model type at construction (runtime model swapping)
+
+`Agent<M>`, `AgentBuilder<M>`, `AgentRunner<M>`, the prompt/stream request
+types, and `Extractor<M, T>` lost their model parameter: `AgentBuilder::new`
+takes any `CompletionModel + 'static` and erases it once into a concrete
+`ModelHandle` (which itself implements `CompletionModel`). Update type
+annotations by deleting the parameter — `Agent<openai::CompletionModel>`
+becomes `Agent`; `Extractor<M, T>` becomes `Extractor<T>`. Construction call
+sites are unchanged.
+
+Because the stored model is a handle, it can now change at runtime:
+`Agent::set_model`, per-run `runner(...).using_model(...)`, or an
+`AgentHook::on_model_select` hook receiving `ModelSelection` (which sees the
+merged `RequestPatch` and the previous model, and may pick a different handle
+per model call). `CompletionModel::capabilities()` is captured by value when
+the handle is created.
+
 ---
 
 ## 0.40 → 0.41
@@ -634,9 +651,10 @@ response. For intentionally hook-free transport, start from
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
 not an alternate execution path for configured agents.
 
-An `Agent`'s model is fixed and private. Former per-call `.model(...)` /
-`.model_opt(...)` users should retain the provider `CompletionModel` and use its
-raw request API, or construct a separate `Agent`.
+An `Agent`'s default model is set at construction. Per-run overrides now go
+through `runner(...).using_model(...)`, `Agent::set_model`, or a
+`ModelSelection` hook (see the "runtime model swapping" section for the
+current release).
 
 `Extractor` now routes through the full hook lifecycle.
 

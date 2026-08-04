@@ -1044,6 +1044,7 @@ where
             stream! {
                 let mut final_usage = responses_api::ResponsesUsage::new();
                 let mut final_status = None;
+                let mut final_response_id = None;
                 let mut final_incomplete_details = None;
                 let mut final_model = None;
                 let mut reasoning_metadata = None;
@@ -1156,6 +1157,9 @@ where
                                     responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
                                         span.record("gen_ai.response.id", response.id.as_str());
                                         span.record("gen_ai.response.model", response.model.as_str());
+                                        if !response.id.is_empty() {
+                                            final_response_id = Some(response.id.clone());
+                                        }
                                         // Terminal metadata for the normalized
                                         // `StreamFinal`: the response `status`
                                         // drives the finish reason, and the
@@ -1256,6 +1260,7 @@ where
                             // `MessageId` event upstream, which takes
                             // precedence over the terminal record anyway.
                             message_id: None,
+                            response_id: final_response_id,
                             model: final_model,
                         }
                     )

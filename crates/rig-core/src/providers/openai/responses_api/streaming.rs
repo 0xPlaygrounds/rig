@@ -61,10 +61,14 @@ pub struct StreamingCompletionResponse {
     /// The assistant message ID (`msg_...`) carried by the terminal response's
     /// output items.
     ///
-    /// Distinct from the response ID (`resp_...`), which names the whole
-    /// response and is recorded on telemetry rather than here.
+    /// Distinct from [`Self::response_id`] (`resp_...`), which names the whole
+    /// response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
+    /// The response ID (`resp_...`) reported by the terminal
+    /// `response.completed` event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -81,6 +85,7 @@ impl StreamingCompletionResponse {
             status: None,
             incomplete_details: None,
             message_id: None,
+            response_id: None,
             model: None,
         }
     }
@@ -104,6 +109,7 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
         streaming::StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
+            .with_optional_response_id(response.response_id)
             .with_optional_model(response.model)
     }
 }
@@ -305,6 +311,7 @@ struct RawChoiceAccumulator {
     status: Option<ResponseStatus>,
     incomplete_details: Option<IncompleteDetailsReason>,
     message_id: Option<String>,
+    response_id: Option<String>,
     model: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
@@ -322,6 +329,7 @@ impl RawChoiceAccumulator {
             status: None,
             incomplete_details: None,
             message_id: None,
+            response_id: None,
             model: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
@@ -418,6 +426,9 @@ impl RawChoiceAccumulator {
                 if let Some(message_id) = message_id_from_response(&response) {
                     self.message_id = Some(message_id);
                 }
+                if !response.id.is_empty() {
+                    self.response_id = Some(response.id.clone());
+                }
                 if !response.model.is_empty() {
                     self.model = Some(response.model.clone());
                 }
@@ -513,6 +524,7 @@ impl RawChoiceAccumulator {
                 status: self.status,
                 incomplete_details: self.incomplete_details,
                 message_id: self.message_id,
+                response_id: self.response_id,
                 model: self.model,
             },
         ));

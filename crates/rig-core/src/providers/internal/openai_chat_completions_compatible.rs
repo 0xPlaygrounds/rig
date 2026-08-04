@@ -323,9 +323,13 @@ where
                         Ok(Some(chunk)) => chunk,
                         Ok(None) => continue,
                         Err(error) => {
-                            terminated_with_error = true;
+                            // Surface the malformed frame but keep consuming:
+                            // a later genuine terminal signal can still
+                            // complete the stream, and without one the
+                            // missing `saw_terminal` suppresses the terminal
+                            // record below.
                             yield Err(error);
-                            break;
+                            continue;
                         }
                     };
 
@@ -1060,9 +1064,21 @@ mod tests {
             .expect_err("second item should be the normalize error");
         assert_eq!(err.to_string(), "ProviderError: normalize failed");
 
+        // The malformed frame does not abort the stream; consumption continues
+        // to EOF. The fully-delivered zero-arg tool call still flushes as
+        // content, but with no `[DONE]` or finish reason the truncated stream
+        // must not synthesize a terminal record.
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("post-error items should be ok") {
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { .. } => {}
+                other => panic!("unexpected post-error stream item: {other:?}"),
+            }
+        }
         assert!(
-            stream.next().await.is_none(),
-            "stream should terminate immediately after normalize_chunk error"
+            !saw_final,
+            "a truncated stream must not synthesize a terminal record"
         );
     }
 
