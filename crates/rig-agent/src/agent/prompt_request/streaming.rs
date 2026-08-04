@@ -484,7 +484,11 @@ where
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
-        // Live routing state stays in the driver, not the serde `AgentRun`.
+        // Live routing state stays in the driver, not the serde `AgentRun`. It
+        // records the model behind the preceding *issued* attempt: it advances
+        // immediately before the selected model's unary or streaming operation
+        // is invoked, so a completion-call stop, selection stop, or preparation
+        // failure leaves it unchanged while a provider error still counts.
         let mut previous_model: Option<ModelHandle> = None;
 
         'outer: loop {
@@ -505,14 +509,30 @@ where
                     }
                     hook_ctx.set_turn(turn);
 
-                    // Resolve routing once at the model-call boundary. The
-                    // resulting handle is cloned into the prepared attempt and
-                    // used for both capability inspection and execution.
+                    // Completion-call hooks resolve FIRST: a stop here suppresses
+                    // model selection entirely, and their merged `RequestPatch`
+                    // is handed to the selection hooks below.
+                    let request_patch =
+                        match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
+                            CompletionCallOutcome::Terminate(reason) => {
+                                store_error_usage(&runner, &run);
+                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                                break 'outer;
+                            }
+                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
+                        };
+
+                    // Resolve routing once at the model-call boundary, after the
+                    // completion-call hooks proceed. The resulting handle is
+                    // cloned into the prepared attempt, so request preparation
+                    // inspects the *selected* model's captured capabilities and
+                    // the same handle executes the request.
                     let selected_model = match runner.hooks.on_model_select(
                         &hook_ctx,
                         ModelSelection {
                             prompt: &prompt,
                             history: &history,
+                            request_patch: request_patch.as_ref(),
                             previous_model: previous_model.as_ref(),
                             default_model: &runner.model,
                             selected_model: &runner.model,
@@ -526,17 +546,6 @@ where
                             break 'outer;
                         }
                     };
-                    previous_model = Some(selected_model.clone());
-
-                    let request_patch =
-                        match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
-                            CompletionCallOutcome::Terminate(reason) => {
-                                store_error_usage(&runner, &run);
-                                yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
-                                break 'outer;
-                            }
-                            CompletionCallOutcome::Proceed(request_patch) => request_patch,
-                        };
 
                     // Record this turn's base system prompt — the patched-or-baseline
                     // preamble, before any output-mode augmentation the request builder
@@ -587,6 +596,13 @@ where
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                         prepared.builder = prepared.builder.record_content_telemetry(false);
                     }
+
+                    // The attempt is now committed: advance `previous_model`
+                    // immediately before invoking the selected model's unary or
+                    // streaming operation. An issued attempt counts even when
+                    // the provider returns an error; every stop/error path
+                    // above left `previous_model` untouched.
+                    previous_model = Some(selected_model);
 
                     let mut turn_stream = source.run_model_turn(
                         &runner,

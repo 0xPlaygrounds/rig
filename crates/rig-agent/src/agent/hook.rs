@@ -387,6 +387,16 @@ pub struct InvalidToolCallContext {
 }
 
 /// Completion-call event.
+///
+/// Per `CallModel` step, hook resolution is ordered: completion-call hooks run
+/// **first** and their [`RequestPatch`]es merge in registration order. Only
+/// when every completion-call hook proceeds does [`ModelSelection`] run
+/// (receiving the merged patch), after which request preparation inspects the
+/// selected model's captured
+/// [`ProviderCapabilities`](crate::completion::ProviderCapabilities) and the
+/// attempt is issued. A completion-call stop therefore suppresses model
+/// selection entirely and does not advance
+/// [`ModelSelection::previous_model`].
 #[derive(Clone, Copy)]
 pub struct CompletionCall<'a> {
     /// Prompt for this turn.
@@ -397,11 +407,34 @@ pub struct CompletionCall<'a> {
     pub turn: usize,
 }
 
-/// Model-selection event resolved before request preparation.
+/// Model-selection event resolved after completion-call hooks and before
+/// request preparation.
 ///
 /// The runner default is the first candidate. A [`HookStack`] threads every
 /// [`ModelSelectionAction::Select`] into later hooks in registration order, so
 /// `selected_model` always reflects all earlier decisions for this event.
+///
+/// Ordering per `CallModel` step: completion-call hooks resolve first; only if
+/// they proceed does this event fire, carrying the merged [`RequestPatch`] in
+/// [`request_patch`](Self::request_patch); only after selection resolves does
+/// request preparation run against the selected model's captured
+/// [`ProviderCapabilities`](crate::completion::ProviderCapabilities), and only
+/// then is the attempt issued. Selection therefore runs once per `CallModel`
+/// step whose completion-call hooks proceed — including model-turn retries and
+/// post-tool calls — and never after a completion-call stop.
+///
+/// Selection is synchronous, local, and non-blocking: a hook may read and
+/// write the run [`Scratchpad`], but must not perform blocking I/O. In-flight
+/// attempts never rebind — the selected handle is cloned into the prepared
+/// attempt and executes it to completion.
+///
+/// `previous_model` reflects **issued attempts** only: it advances immediately
+/// before the selected model's unary or streaming operation is invoked, so a
+/// provider attempt that returns an error still counts, while a
+/// completion-call stop, a selection stop, or a request-preparation failure
+/// does not. An extraction or run default set via `using_model(...)` is the
+/// default candidate for every retry, not a hard pin: selection hooks may
+/// override it on each retry.
 #[derive(Clone, Copy)]
 #[non_exhaustive]
 pub struct ModelSelection<'a> {
@@ -409,7 +442,10 @@ pub struct ModelSelection<'a> {
     pub prompt: &'a Message,
     /// Canonical history visible to the pending model call.
     pub history: &'a [Message],
-    /// Model selected for the preceding model attempt in this run, if any.
+    /// Merged per-turn request patch from this step's completion-call hooks
+    /// (in hook registration order), when any hook patched the request.
+    pub request_patch: Option<&'a RequestPatch>,
+    /// Model that executed the preceding issued attempt in this run, if any.
     pub previous_model: Option<&'a ModelHandle>,
     /// Runner default used as the initial candidate for this call.
     pub default_model: &'a ModelHandle,
@@ -768,6 +804,9 @@ impl ModelSelectionAction {
     }
 
     /// Stops the run before the pending model attempt.
+    ///
+    /// A selection stop happens before the attempt is issued, so it does not
+    /// advance [`ModelSelection::previous_model`].
     pub fn stop(reason: impl Into<String>) -> Self {
         Self::Stop(reason.into())
     }
@@ -968,10 +1007,15 @@ impl ObservationAction {
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Selects the model for the pending model-call boundary.
     ///
-    /// Selection is synchronous and operates only on already-constructed
-    /// [`ModelHandle`] values. In a [`HookStack`], selections are passed to
-    /// later hooks in registration order; the last selection wins and a stop
-    /// is terminal. The default action keeps the current candidate.
+    /// Selection is synchronous, local, and non-blocking: it operates only on
+    /// already-constructed [`ModelHandle`] values and may read or write the
+    /// run [`Scratchpad`], but must not perform blocking I/O. It runs once per
+    /// `CallModel` step whose completion-call hooks proceed — including
+    /// retries and post-tool calls — never after a completion-call stop, and
+    /// in-flight attempts never rebind. In a [`HookStack`], selections are
+    /// passed to later hooks in registration order; the last selection wins
+    /// and a stop is terminal. The default action keeps the current candidate.
+    /// See [`ModelSelection`] for the full ordering contract.
     fn on_model_select(
         &self,
         _ctx: &HookContext,
@@ -1753,6 +1797,7 @@ mod migrated_tests {
         ModelSelection {
             prompt,
             history: &[],
+            request_patch: None,
             previous_model: None,
             default_model,
             selected_model: default_model,

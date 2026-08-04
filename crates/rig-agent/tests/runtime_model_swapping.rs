@@ -17,8 +17,8 @@ use rig_agent::{
     agent::{
         AgentHook, CompletionCallAction, HookContext, InvalidToolCallAction, ModelSelection,
         ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig, PromptRequest,
-        Standard, StreamingError, StreamingResult, ToolCall as ToolCallEvent, ToolCallAction,
-        ToolResultAction, ToolResultEvent,
+        RequestPatch, Standard, StreamingError, StreamingResult, ToolCall as ToolCallEvent,
+        ToolCallAction, ToolResultAction, ToolResultEvent,
     },
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
@@ -110,6 +110,7 @@ enum Turn {
         usage: Usage,
         message_id: String,
     },
+    Error(String),
 }
 
 impl Turn {
@@ -139,11 +140,16 @@ impl Turn {
         }
     }
 
+    fn error(message: &str) -> Self {
+        Self::Error(message.to_owned())
+    }
+
     fn usage(&self) -> Usage {
         match self {
             Self::Text { usage, .. } | Self::Tool { usage, .. } | Self::Rich { usage, .. } => {
                 *usage
             }
+            Self::Error(_) => Usage::new(),
         }
     }
 
@@ -152,6 +158,7 @@ impl Turn {
             Self::Text { message_id, .. }
             | Self::Tool { message_id, .. }
             | Self::Rich { message_id, .. } => message_id.clone(),
+            Self::Error(_) => String::new(),
         }
     }
 
@@ -172,6 +179,7 @@ impl Turn {
                 AssistantContent::text(text),
             ])
             .expect("rich turn contains two items"),
+            Self::Error(_) => OneOrMany::one(AssistantContent::text("unreachable")),
         }
     }
 }
@@ -244,6 +252,9 @@ fn completion_from_script(
 ) -> Result<CompletionResponse, CompletionError> {
     script.record(request);
     let turn = script.next_turn();
+    if let Turn::Error(message) = &turn {
+        return Err(CompletionError::ProviderError(message.clone()));
+    }
     Ok(
         CompletionResponse::new(turn.choice(), turn.usage(), script.provider)
             .with_message_id(turn.message_id()),
@@ -256,6 +267,9 @@ fn stream_from_script(
 ) -> Result<StreamingCompletionResponse, CompletionError> {
     script.record(request);
     let turn = script.next_turn();
+    if let Turn::Error(message) = &turn {
+        return Err(CompletionError::ProviderError(message.clone()));
+    }
     let mut events = vec![Ok(RawStreamingChoice::MessageId(turn.message_id()))];
     match &turn {
         Turn::Text { text, .. } => {
@@ -296,6 +310,8 @@ fn stream_from_script(
             }))));
             events.push(Ok(RawStreamingChoice::Message(text.clone())));
         }
+        // Handled by the early return above.
+        Turn::Error(_) => return Err(CompletionError::ProviderError("unreachable".to_owned())),
     }
     events.push(Ok(RawStreamingChoice::FinalResponse(
         StreamFinal::new(script.provider, turn.usage()).with_message_id(turn.message_id()),
@@ -589,7 +605,9 @@ async fn model_selection_stop_cancels_before_provider_execution() {
         PromptError::PromptCancelled { reason, .. } if reason == "routing denied"
     ));
     assert!(blocking_script.requests().is_empty());
-    assert_eq!(blocking_completion_calls.load(Ordering::SeqCst), 0);
+    // Completion-call hooks resolve BEFORE model selection, so the stop above
+    // does not suppress them.
+    assert_eq!(blocking_completion_calls.load(Ordering::SeqCst), 1);
 
     let streaming_model = alpha_static("must not stream");
     let streaming_script = streaming_model.0.clone();
@@ -614,7 +632,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
                 if reason == "routing denied")
     ));
     assert!(streaming_script.requests().is_empty());
-    assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -1529,4 +1547,351 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
     let (first, second) = tokio::join!(first, second);
     assert_eq!(first.expect("first shared call"), "shared handle");
     assert_eq!(second.expect("second shared call"), "shared handle");
+}
+
+// ---------------------------------------------------------------------------
+// Ordering parity tests: completion-call hooks -> merged RequestPatch ->
+// ModelSelection -> preparation -> issue attempt; previous_model reflects
+// issued attempts only. Each scenario runs on both surfaces.
+// ---------------------------------------------------------------------------
+
+struct PatchWith(RequestPatch);
+
+impl AgentHook for PatchWith {
+    async fn on_completion_call(
+        &self,
+        _context: &HookContext,
+        _event: rig_agent::agent::CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        CompletionCallAction::patch(self.0.clone())
+    }
+}
+
+struct StopCompletionCall;
+
+impl AgentHook for StopCompletionCall {
+    async fn on_completion_call(
+        &self,
+        _context: &HookContext,
+        _event: rig_agent::agent::CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        CompletionCallAction::stop("completion denied")
+    }
+}
+
+/// Records what every selection event observed: (turn, previous_model label,
+/// merged-patch temperature, merged-patch preamble).
+type SelectionObservations = Arc<Mutex<Vec<(usize, Option<String>, Option<f64>, Option<String>)>>>;
+
+fn observing_selector(
+    observations: SelectionObservations,
+) -> SelectWith<impl for<'a> Fn(&HookContext, ModelSelection<'a>) -> ModelSelectionAction> {
+    SelectWith(move |context: &HookContext, event: ModelSelection<'_>| {
+        observations.lock().expect("observation lock").push((
+            context.turn(),
+            event
+                .previous_model
+                .and_then(ModelHandle::label)
+                .map(str::to_owned),
+            event.request_patch.and_then(|patch| patch.temperature),
+            event.request_patch.and_then(|patch| patch.preamble.clone()),
+        ));
+        ModelSelectionAction::continue_run()
+    })
+}
+
+/// Drive a streaming run to its terminal item, returning the first error if
+/// the stream yields one.
+async fn drain_stream(mut stream: StreamingResult) -> Result<(), StreamingError> {
+    while let Some(item) = stream.next().await {
+        item?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces() {
+    for streaming in [false, true] {
+        let model = alpha_static("patched");
+        let script = model.0.clone();
+        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
+        // Two patching hooks: the selection event must observe their MERGED
+        // patch (temperature from the first, preamble from the second).
+        let agent = AgentBuilder::new(model)
+            .add_hook(PatchWith(RequestPatch::new().temperature(0.25)))
+            .add_hook(PatchWith(RequestPatch::new().preamble("patched preamble")))
+            .add_hook(observing_selector(observations.clone()))
+            .build();
+
+        if streaming {
+            drain_stream(agent.stream_prompt("merged patch").await)
+                .await
+                .expect("streaming patched run");
+        } else {
+            agent
+                .prompt("merged patch")
+                .await
+                .expect("blocking patched run");
+        }
+
+        assert_eq!(
+            observations.lock().expect("observation lock").as_slice(),
+            &[(1, None, Some(0.25), Some("patched preamble".to_owned()))],
+            "streaming={streaming}: selection must see the merged completion-call patch"
+        );
+        // The merged patch reached the issued request too.
+        let requests = script.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].temperature, Some(0.25));
+    }
+}
+
+#[tokio::test]
+async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
+    for streaming in [false, true] {
+        let alpha = alpha_static("alpha answer");
+        let beta = beta_static("beta answer");
+        let beta_script = beta.0.clone();
+        let beta_handle = ModelHandle::named("beta", beta);
+        // The completion-call hook escalates via a patch; the selection hook
+        // routes to beta exactly when it observes the escalation marker.
+        let agent = AgentBuilder::new(alpha)
+            .add_hook(PatchWith(RequestPatch::new().temperature(0.9)))
+            .add_hook(SelectWith(
+                move |_context: &HookContext, event: ModelSelection<'_>| {
+                    let escalated = event
+                        .request_patch
+                        .and_then(|patch| patch.temperature)
+                        .is_some_and(|temperature| temperature > 0.5);
+                    if escalated {
+                        ModelSelectionAction::select(beta_handle.clone())
+                    } else {
+                        ModelSelectionAction::continue_run()
+                    }
+                },
+            ))
+            .build();
+
+        if streaming {
+            drain_stream(agent.stream_prompt("route by patch").await)
+                .await
+                .expect("streaming patch-routed run");
+            assert_eq!(
+                beta_script.requests().len(),
+                1,
+                "streaming: the patch must route the attempt to beta"
+            );
+        } else {
+            assert_eq!(
+                agent
+                    .prompt("route by patch")
+                    .await
+                    .expect("blocking patch-routed run"),
+                "beta answer"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() {
+    for streaming in [false, true] {
+        let model = alpha_static("must not run");
+        let script = model.0.clone();
+        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
+        let agent = AgentBuilder::new(model)
+            .add_hook(StopCompletionCall)
+            .add_hook(observing_selector(observations.clone()))
+            .build();
+
+        if streaming {
+            let error = drain_stream(agent.stream_prompt("stopped").await)
+                .await
+                .expect_err("streaming completion-call stop");
+            assert!(matches!(
+                error,
+                StreamingError::Prompt(error)
+                    if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+                        if reason == "completion denied")
+            ));
+        } else {
+            let error = agent
+                .prompt("stopped")
+                .await
+                .expect_err("blocking completion-call stop");
+            assert!(matches!(
+                error,
+                PromptError::PromptCancelled { reason, .. } if reason == "completion denied"
+            ));
+        }
+
+        // The stop resolves BEFORE model selection: no selection event fired,
+        // so previous_model never advanced and no attempt was issued.
+        assert!(
+            observations.lock().expect("observation lock").is_empty(),
+            "streaming={streaming}: a completion-call stop must suppress selection"
+        );
+        assert!(script.requests().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn failed_preparation_follows_selection_and_does_not_issue_an_attempt() {
+    for streaming in [false, true] {
+        // Turn 1 issues a tool-call attempt on alpha; turn 2's completion-call
+        // patch names a tool that does not exist, so preparation fails after
+        // model selection resolves.
+        let alpha_turn = Turn::tool("lookup", 3, "alpha-tool-message");
+        let model = AlphaModel(Script::new("alpha", [alpha_turn.clone()], alpha_turn));
+        let script = model.0.clone();
+        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
+        let alpha_handle = ModelHandle::named("alpha", model.clone());
+        let bad_patch = BadSecondTurnPatch;
+        let agent = AgentBuilder::from_model_handle(alpha_handle)
+            .tool(LookupTool {
+                calls: Arc::new(AtomicUsize::new(0)),
+            })
+            .add_hook(bad_patch)
+            .add_hook(observing_selector(observations.clone()))
+            .build();
+
+        let failed = if streaming {
+            drain_stream(agent.stream_prompt("prepare fails").max_turns(2).await)
+                .await
+                .is_err()
+        } else {
+            agent.prompt("prepare fails").max_turns(2).await.is_err()
+        };
+        assert!(failed, "streaming={streaming}: preparation must fail");
+
+        // Selection ran on both turns; only turn 1's attempt was issued, so
+        // turn 2 observes previous_model == alpha, and the failed preparation
+        // never reached the provider.
+        let observed = observations.lock().expect("observation lock").clone();
+        assert_eq!(observed.len(), 2, "streaming={streaming}");
+        assert_eq!(observed[0].0, 1);
+        assert_eq!(observed[0].1, None);
+        assert_eq!(observed[1].0, 2);
+        assert_eq!(observed[1].1, Some("alpha".to_owned()));
+        assert_eq!(
+            script.requests().len(),
+            1,
+            "streaming={streaming}: the failed turn must not reach the provider"
+        );
+    }
+}
+
+/// Patches turn 2 with an `active_tools` allow-list naming a missing tool, so
+/// request preparation fails locally on that turn.
+#[derive(Clone)]
+struct BadSecondTurnPatch;
+
+impl AgentHook for BadSecondTurnPatch {
+    async fn on_completion_call(
+        &self,
+        context: &HookContext,
+        _event: rig_agent::agent::CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        if context.turn() == 2 {
+            CompletionCallAction::patch(
+                RequestPatch::new().active_tools(["no_such_tool".to_owned()]),
+            )
+        } else {
+            CompletionCallAction::continue_run()
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
+    for streaming in [false, true] {
+        // Turn 1's provider attempt errors after being issued; the invalid
+        // reply is not needed — instead, the recovery path that keeps the run
+        // alive is a fresh extraction retry driven by the caller. Within a
+        // single run the driver terminates on a provider error, so the
+        // issued-attempt semantics are observed through the invalid-tool-call
+        // retry: alpha's turn-1 attempt is issued and defective, and turn 2's
+        // selection still sees previous_model == alpha. The direct
+        // provider-error path is asserted below to issue exactly one request
+        // and fail with the provider error (not a cancellation), proving the
+        // attempt was issued after selection resolved.
+        let flaky = AlphaModel(Script::new(
+            "flaky",
+            [Turn::error("provider exploded")],
+            Turn::text("unreachable", 1, "unreachable-message"),
+        ));
+        let script = flaky.0.clone();
+        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
+        let flaky_handle = ModelHandle::named("flaky", flaky);
+        let agent = AgentBuilder::from_model_handle(flaky_handle)
+            .add_hook(observing_selector(observations.clone()))
+            .build();
+
+        let failed_with_provider_error = if streaming {
+            matches!(
+                drain_stream(agent.stream_prompt("boom").await).await,
+                Err(StreamingError::Completion(CompletionError::ProviderError(message)))
+                    if message == "provider exploded"
+            )
+        } else {
+            matches!(
+                agent.prompt("boom").await,
+                Err(PromptError::CompletionError(CompletionError::ProviderError(message)))
+                    if message == "provider exploded"
+            )
+        };
+        assert!(
+            failed_with_provider_error,
+            "streaming={streaming}: the issued attempt's provider error must surface"
+        );
+        // The attempt WAS issued: selection resolved, preparation succeeded,
+        // and the provider received exactly one request before erroring.
+        assert_eq!(observations.lock().expect("observation lock").len(), 1);
+        assert_eq!(script.requests().len(), 1);
+    }
+
+    // The advancement itself (an issued-but-failed attempt counts) is
+    // observable when the run continues: alpha's turn-1 attempt returns an
+    // invalid tool call (issued and defective), and turn 2's selection sees
+    // previous_model == "alpha" even though nothing from that attempt was
+    // committed.
+    let invalid = Turn::tool("missing_tool", 2, "invalid-message");
+    let alpha = AlphaModel(Script::new("alpha", [invalid.clone()], invalid));
+    let beta_handle = ModelHandle::named("beta", beta_static("recovered"));
+    let alpha_handle = ModelHandle::named("alpha", alpha);
+    let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
+    let observations_for_router = observations.clone();
+    let output = AgentBuilder::from_model_handle(alpha_handle.clone())
+        .add_hook(RetryInvalidTool)
+        .build()
+        .prompt("recover")
+        .max_turns(2)
+        .max_invalid_tool_call_retries(1)
+        .add_hook(SelectWith(
+            move |context: &HookContext, event: ModelSelection<'_>| {
+                observations_for_router
+                    .lock()
+                    .expect("observation lock")
+                    .push((
+                        context.turn(),
+                        event
+                            .previous_model
+                            .and_then(ModelHandle::label)
+                            .map(str::to_owned),
+                        None,
+                        None,
+                    ));
+                ModelSelectionAction::select(if context.turn() == 1 {
+                    alpha_handle.clone()
+                } else {
+                    beta_handle.clone()
+                })
+            },
+        ))
+        .await
+        .expect("recovered run");
+    assert_eq!(output, "recovered");
+    let observed = observations.lock().expect("observation lock").clone();
+    assert_eq!(observed[0], (1, None, None, None));
+    assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
 }
