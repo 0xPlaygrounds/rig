@@ -300,12 +300,14 @@ pub struct CompletionResponse {
     pub response_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///
-    /// Prefer [`CompletionResponse::with_finish_reason`] over assigning this
-    /// field directly: the setter applies
-    /// [`FinishReason::reconcile_with_output`], which a direct assignment
-    /// skips.
+    /// Private so that every write flows through
+    /// [`CompletionResponse::with_finish_reason`] /
+    /// [`CompletionResponse::with_optional_finish_reason`], which apply
+    /// [`FinishReason::reconcile_with_output`] — a direct assignment would
+    /// silently skip the tool-call upgrade. Read via
+    /// [`CompletionResponse::finish_reason`].
     #[serde(default)]
-    pub finish_reason: Option<FinishReason>,
+    finish_reason: Option<FinishReason>,
     /// Stable descriptor name of the provider that produced this response, for
     /// example `"openai"`. Always populated, including for responses derived
     /// from a stream that ended before its terminal record.
@@ -338,28 +340,39 @@ impl CompletionResponse {
     }
 
     /// Attach the provider-assigned message ID.
+    ///
+    /// An empty string is treated as absent: gateways that echo `""` for
+    /// fields they don't populate must not produce a `Some("")` that differs
+    /// from the streaming path. All identifier and model setters share this
+    /// rule so the invariant lives here rather than at every provider call
+    /// site.
     pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
-        self.message_id = Some(message_id.into());
+        self.message_id = Some(message_id.into()).filter(|id| !id.is_empty());
         self
     }
 
     /// Attach the provider-assigned message ID when the provider reported one.
     pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into);
+        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
         self
     }
 
     /// Attach the provider-assigned response-scoped ID.
     pub fn with_response_id(mut self, response_id: impl Into<String>) -> Self {
-        self.response_id = Some(response_id.into());
+        self.response_id = Some(response_id.into()).filter(|id| !id.is_empty());
         self
     }
 
     /// Attach the provider-assigned response-scoped ID when the provider
     /// reported one.
     pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into);
+        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
         self
+    }
+
+    /// Why the model stopped generating, when the provider reported it.
+    pub fn finish_reason(&self) -> Option<FinishReason> {
+        self.finish_reason.clone()
     }
 
     /// Attach the normalized finish reason, reconciled against the choice via
@@ -385,15 +398,17 @@ impl CompletionResponse {
     }
 
     /// Attach the provider-reported model identifier.
+    ///
+    /// An empty string is treated as absent, matching the identifier setters.
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = Some(model.into());
+        self.model = Some(model.into()).filter(|model| !model.is_empty());
         self
     }
 
     /// Attach the provider-reported model identifier when the response carried
     /// one.
     pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into);
+        self.model = model.map(Into::into).filter(|model| !model.is_empty());
         self
     }
 }
@@ -580,6 +595,33 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     /// this to declare the capabilities a provider actually supports.
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities::default()
+    }
+}
+
+/// A shared model is a model: `Arc<M>` forwards every method to `M`, so the
+/// "wrap it in an `Arc` if needed" guidance holds through the generic APIs
+/// (`CompletionRequestBuilder`, agent construction), not just at direct call
+/// sites. `Arc<M>: Clone` always holds, so [`CompletionModel::completion_request`]
+/// clones the `Arc` — never the model.
+impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        (**self).completion(request)
+    }
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        (**self).stream(request)
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        (**self).capabilities()
     }
 }
 

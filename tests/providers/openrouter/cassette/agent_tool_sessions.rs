@@ -677,9 +677,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "raw response should preserve finish reasons"
             );
             anyhow::ensure!(
-                response.finish_reason.is_some(),
+                response.finish_reason().is_some(),
                 "normalized response should preserve the finish reason: {:?}",
-                response.finish_reason
+                response.finish_reason()
             );
             assert_nonempty_response(&raw.model);
 

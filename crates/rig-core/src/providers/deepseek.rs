@@ -765,7 +765,7 @@ mod tests {
         assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_123"));
         assert_eq!(converted.message_id, None);
         assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
-        assert_eq!(converted.finish_reason, Some(FinishReason::Stop));
+        assert_eq!(converted.finish_reason(), Some(FinishReason::Stop));
         assert_eq!(converted.usage.input_tokens, 10);
         assert_eq!(converted.usage.cached_input_tokens, 3);
         assert_eq!(converted.usage.output_tokens, 8);
@@ -811,7 +811,7 @@ mod tests {
         ] {
             let converted = normalized(response_with_finish_reason(wire));
 
-            assert_eq!(converted.finish_reason, Some(expected), "wire: {wire}");
+            assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
         }
     }
 
@@ -845,7 +845,10 @@ mod tests {
         }))
         .expect("fixture should deserialize");
 
-        assert_eq!(normalized(raw).finish_reason, Some(FinishReason::ToolCalls));
+        assert_eq!(
+            normalized(raw).finish_reason(),
+            Some(FinishReason::ToolCalls)
+        );
     }
 
     #[test]

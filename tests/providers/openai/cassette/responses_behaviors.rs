@@ -113,7 +113,7 @@ async fn incomplete_response_surfaces_partial_output() {
                 .normalize("openai")
                 .expect("an incomplete response should still convert, not error");
             assert_eq!(
-                response.finish_reason,
+                response.finish_reason(),
                 Some(FinishReason::Length),
                 "the incomplete/max_output_tokens pair should normalize to a length stop"
             );

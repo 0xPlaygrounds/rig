@@ -460,13 +460,36 @@ on your model type; the blanket `CompletionClient` implementation over
 
 `CompletionModel` also no longer requires `Clone` — the trait demands only
 async service behavior, in the spirit of `tower::Service`; cloning or sharing
-a model is the caller's concern (wrap it in an `Arc` if needed). Implementors
-can drop `Clone` derives they only carried for the bound (keeping them is
-harmless). Generic code that cloned a model through the trait must now bound
-`M: CompletionModel + Clone` explicitly or take the model by value. The
-`completion_request` convenience gates on `Self: Clone` individually; every
-built-in provider model and `ModelHandle` satisfy it, so call sites on
-concrete types compile unchanged.
+a model is the caller's concern — and wrapping in an `Arc` genuinely works:
+`CompletionModel` is implemented for `Arc<M>` by forwarding, so `Arc<M>`
+passes through every generic API (`CompletionRequestBuilder`, agent
+construction), and `completion_request` on an `Arc` clones the `Arc`, never
+the model. Implementors can drop `Clone` derives they only carried for the
+bound (keeping them is harmless). Generic code that cloned a model through
+the trait must now bound `M: CompletionModel + Clone` explicitly or take the
+model by value. The `completion_request` convenience gates on `Self: Clone`
+individually; every built-in provider model, `Arc<M>`, and `ModelHandle`
+satisfy it, so call sites on concrete types compile unchanged.
+
+`CompletionResponse::finish_reason` is now a private field with a
+`finish_reason()` getter: every write flows through `with_finish_reason` /
+`with_optional_finish_reason`, so the `Stop` → `ToolCalls` reconciliation can
+no longer be bypassed by direct assignment. Replace field reads with the
+getter call.
+
+The identifier and model setters on both `CompletionResponse` and
+`StreamFinal` now treat an empty string as absent: gateways that echo `""`
+produce `None`, matching the streaming paths, and the rule lives in the
+setters rather than at provider call sites.
+
+Corrupt stream frames (payloads that are not valid JSON) are now surfaced as
+`Err` items on the stream instead of being logged and silently skipped; the
+stream keeps consuming, and a later genuine terminal still completes it.
+Valid-JSON events whose shape this client doesn't recognize are still skipped
+(with a warning) for forward compatibility with new provider event types.
+Consumers that drained to `None` see the same content as before plus any
+error items; consumers that stopped at the first `Err` should drain to
+`None` — see the emission-contract table on `StreamFinal`.
 
 ### Provider behavior is reported through capabilities
 

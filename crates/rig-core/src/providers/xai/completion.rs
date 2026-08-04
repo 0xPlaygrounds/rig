@@ -522,7 +522,7 @@ mod tests {
         // The provider-reported model, not the one the handle was created with.
         assert_eq!(converted.model.as_deref(), Some("grok-4.3"));
         // The fixture reports no top-level status, so no reason is invented.
-        assert_eq!(converted.finish_reason, None);
+        assert_eq!(converted.finish_reason(), None);
     }
 
     #[test]
@@ -596,7 +596,7 @@ mod tests {
             .expect("xAI response should convert");
 
         assert_eq!(
-            converted.finish_reason,
+            converted.finish_reason(),
             Some(crate::completion::FinishReason::Length)
         );
     }
@@ -626,7 +626,7 @@ mod tests {
             .expect("xAI response should convert");
 
         assert_eq!(
-            converted.finish_reason,
+            converted.finish_reason(),
             Some(crate::completion::FinishReason::ToolCalls)
         );
     }

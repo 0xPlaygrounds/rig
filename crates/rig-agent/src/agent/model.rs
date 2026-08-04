@@ -278,9 +278,63 @@ mod tests {
             .expect("second scripted stream turn");
 
         assert_eq!(
-            clones.load(Ordering::SeqCst) + stream_clones.load(Ordering::SeqCst),
+            clones.load(Ordering::SeqCst),
             0,
-            "erasure and attempts must never clone the model"
+            "erasure and unary attempts must never clone the model"
         );
+        assert_eq!(
+            stream_clones.load(Ordering::SeqCst),
+            0,
+            "erasure and streaming attempts must never clone the model"
+        );
+    }
+
+    /// A model without any `Clone` impl at all must pass through every public
+    /// erasure seam. The assertions are the bounds themselves — a regression
+    /// is a compile error, which is the strongest form this check can take.
+    struct NonCloneModel;
+
+    impl CompletionModel for NonCloneModel {
+        fn completion(
+            &self,
+            _request: CompletionRequest,
+        ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
+        + rig_core::wasm_compat::WasmCompatSend {
+            std::future::ready(Err(CompletionError::ProviderError(
+                "compile-time probe".to_string(),
+            )))
+        }
+
+        fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+        + rig_core::wasm_compat::WasmCompatSend {
+            std::future::ready(Err(CompletionError::ProviderError(
+                "compile-time probe".to_string(),
+            )))
+        }
+    }
+
+    #[test]
+    fn traits() {
+        fn assert_completion_model<M: CompletionModel>() {}
+
+        assert_completion_model::<NonCloneModel>();
+        // `Arc<M>` forwards the trait, so the documented "wrap it in an `Arc`
+        // if needed" guidance holds for non-`Clone` models through the
+        // generic builder path (`completion_request` gates on `Self: Clone`,
+        // which `Arc<M>` always satisfies).
+        assert_completion_model::<std::sync::Arc<NonCloneModel>>();
+
+        // Construction through the public erasure seams type-checks without a
+        // `Clone` impl; never awaited — the bounds are the test.
+        let _ = || {
+            let handle = ModelHandle::new(NonCloneModel);
+            let named = ModelHandle::named("probe", NonCloneModel);
+            let via_arc = std::sync::Arc::new(NonCloneModel).completion_request("go");
+            let builder = crate::AgentBuilder::new(NonCloneModel);
+            (handle, named, via_arc, builder)
+        };
     }
 }

@@ -2096,7 +2096,7 @@ mod tests {
         let converted = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(
-            converted.finish_reason,
+            converted.finish_reason(),
             Some(crate::completion::FinishReason::ToolCalls)
         );
     }

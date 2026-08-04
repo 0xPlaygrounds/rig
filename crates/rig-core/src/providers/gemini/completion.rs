@@ -1502,6 +1502,11 @@ pub mod gemini_api_types {
         Blocklist,
         /// Prompt was blocked due to prohibited content.
         ProhibitedContent,
+        /// A block reason this crate does not know yet. Google adds wire
+        /// values without notice; carrying the spelling verbatim keeps the
+        /// whole payload deserializable instead of failing on the new value.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1537,6 +1542,12 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
+        /// A finish reason this crate does not know yet. Google adds wire
+        /// values without notice; carrying the spelling verbatim keeps the
+        /// whole payload deserializable — and the finish observable — instead
+        /// of failing on the new value, matching the gRPC crate's handling.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     impl FinishReason {
@@ -1545,7 +1556,7 @@ pub mod gemini_api_types {
         /// Spelled out rather than derived from `Debug` (which would yield
         /// `MaxTokens`, not `MAX_TOKENS`) so the string that reaches
         /// [`crate::completion::FinishReason::Other`] is the provider's own.
-        pub fn as_wire_str(&self) -> &'static str {
+        pub fn as_wire_str(&self) -> &str {
             match self {
                 Self::FinishReasonUnspecified => "FINISH_REASON_UNSPECIFIED",
                 Self::Stop => "STOP",
@@ -1562,6 +1573,7 @@ pub mod gemini_api_types {
                 Self::MissingThoughtSignature => "MISSING_THOUGHT_SIGNATURE",
                 Self::TooManyToolCalls => "TOO_MANY_TOOL_CALLS",
                 Self::MalformedResponse => "MALFORMED_RESPONSE",
+                Self::Unknown(reason) => reason,
             }
         }
     }
@@ -2287,9 +2299,9 @@ mod tests {
     use crate::{
         message,
         providers::gemini::completion::gemini_api_types::{
-            CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
-            GenerateContentResponse, LogprobsResult, ModalityTokenCount, Schema, TopCandidate,
-            UsageMetadata, flatten_schema, tool_parameters_to_schema,
+            BlockReason, CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
+            GenerateContentResponse, LogprobsResult, ModalityTokenCount, PromptFeedback, Schema,
+            TopCandidate, UsageMetadata, flatten_schema, tool_parameters_to_schema,
         },
     };
 
@@ -2871,6 +2883,102 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_finish_reason_round_trips_verbatim() {
+        // A wire value this crate does not know must land in `Unknown` with
+        // the provider's spelling intact — and serialize back to the same
+        // string — so nothing is lost between deserialize and re-serialize.
+        let reason: FinishReason = serde_json::from_value(json!("FINISH_REASON_FUTURE"))
+            .expect("unknown finish reason should deserialize");
+        assert!(matches!(&reason, FinishReason::Unknown(s) if s == "FINISH_REASON_FUTURE"));
+        assert_eq!(reason.as_wire_str(), "FINISH_REASON_FUTURE");
+        assert_eq!(
+            serde_json::to_value(&reason).expect("reason should serialize"),
+            json!("FINISH_REASON_FUTURE")
+        );
+        assert_eq!(
+            map_finish_reason(&reason),
+            Some(crate::completion::FinishReason::Other(
+                "FINISH_REASON_FUTURE".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_unknown_block_reason_deserializes_verbatim() {
+        // Same contract for prompt feedback: a new block reason must not fail
+        // the payload, and the spelling is preserved.
+        let feedback: PromptFeedback = serde_json::from_value(json!({
+            "blockReason": "BLOCK_REASON_FUTURE"
+        }))
+        .expect("unknown block reason should deserialize");
+        assert!(matches!(
+            feedback.block_reason,
+            Some(BlockReason::Unknown(ref s)) if s == "BLOCK_REASON_FUTURE"
+        ));
+    }
+
+    #[test]
+    fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
+        // A finish reason Google ships tomorrow must not fail the whole
+        // payload: content and usage stay intact, and the reason maps to
+        // `Other` verbatim — matching the gRPC crate's handling of unknowns.
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "resp-future",
+            "candidates": [{
+                "content": {
+                    "parts": [{"text": "hi"}],
+                    "role": "model"
+                },
+                "finishReason": "FINISH_REASON_FUTURE"
+            }],
+            "usageMetadata": {
+                "promptTokenCount": 3,
+                "candidatesTokenCount": 2,
+                "totalTokenCount": 5
+            }
+        }))
+        .expect("unknown finish reason should not fail the payload");
+
+        let converted: crate::completion::CompletionResponse =
+            response.try_into().expect("convert response");
+
+        assert!(matches!(
+            converted.choice.first(),
+            message::AssistantContent::Text(text) if text.text == "hi"
+        ));
+        assert_eq!(converted.usage.total_tokens, 5);
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Other(
+                "FINISH_REASON_FUTURE".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_streaming_candidate_with_unknown_finish_reason_stays_parseable() {
+        // Streaming terminal chunks embed the same `ContentCandidate`; an
+        // unknown reason must leave the chunk deserializable so the terminal
+        // record is still produced.
+        let candidate: ContentCandidate = serde_json::from_value(json!({
+            "content": {
+                "parts": [{"text": "done"}],
+                "role": "model"
+            },
+            "finishReason": "FINISH_REASON_FUTURE"
+        }))
+        .expect("unknown finish reason should not fail the chunk");
+
+        let reason = candidate.finish_reason.expect("finish reason present");
+        assert_eq!(
+            map_finish_reason(&reason),
+            Some(crate::completion::FinishReason::Other(
+                "FINISH_REASON_FUTURE".to_string()
+            ))
+        );
+    }
+
+    #[test]
     fn test_completion_response_carries_normalized_metadata() {
         let response: GenerateContentResponse = serde_json::from_value(json!({
             "responseId": "resp-meta",
@@ -2893,7 +3001,7 @@ mod tests {
         assert_eq!(converted.response_id.as_deref(), Some("resp-meta"));
         assert_eq!(converted.message_id, None);
         assert_eq!(
-            converted.finish_reason,
+            converted.finish_reason(),
             Some(crate::completion::FinishReason::Length)
         );
     }
@@ -2923,7 +3031,7 @@ mod tests {
             response.try_into().expect("convert response");
 
         assert_eq!(
-            converted.finish_reason,
+            converted.finish_reason(),
             Some(crate::completion::FinishReason::ToolCalls)
         );
         assert_eq!(converted.model, None);

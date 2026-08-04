@@ -92,9 +92,19 @@ pub enum StreamFinalKind {
 /// A terminal record is emitted only when the provider signaled genuine
 /// completion — its own end-of-response event (an Anthropic `message_delta`
 /// with a stop reason, an OpenAI `[DONE]` / `response.completed`, a Gemini
-/// chunk carrying `finishReason`, and so on). A stream that errors, or that
-/// reaches EOF without that signal, yields whatever content arrived and then
-/// simply ends: consumers must treat the absence of a terminal record as
+/// chunk carrying `finishReason`, and so on). Three failure shapes reach a
+/// consumer, and they are distinct:
+///
+/// | Shape | `Err` item | Stream continues | Terminal record |
+/// |---|---|---|---|
+/// | Transport error (connection lost, HTTP failure) | yes | no | never |
+/// | Malformed frame (recoverable parse error) | yes | yes | if a genuine terminal later arrives |
+/// | Truncation (EOF without the provider's end event) | no | — | never |
+///
+/// Consequently an `Err` item is **not** by itself terminal: a malformed frame
+/// is surfaced and the stream keeps consuming, so a later genuine terminal
+/// still completes it. Consumers must drain the stream to `None` rather than
+/// stop at the first `Err`, and must treat the absence of a terminal record as
 /// truncation, never as a successful zero-usage completion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -159,13 +169,18 @@ impl StreamFinal {
     }
 
     /// Attach the provider-assigned message ID.
+    ///
+    /// An empty string is treated as absent, matching the unary
+    /// [`CompletionResponse`](crate::completion::CompletionResponse) setters:
+    /// the invariant lives in the setters so no provider call site can
+    /// diverge.
     pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
         self.with_optional_message_id(Some(message_id.into()))
     }
 
     /// Attach the provider-assigned message ID when the provider reported one.
     pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into);
+        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
         self
     }
 
@@ -177,7 +192,7 @@ impl StreamFinal {
     /// Attach the provider-assigned response-scoped ID when the provider
     /// reported one.
     pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into);
+        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
         self
     }
 
@@ -189,7 +204,7 @@ impl StreamFinal {
     /// Attach the provider-reported model identifier when the stream reported
     /// one.
     pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into);
+        self.model = model.map(Into::into).filter(|model| !model.is_empty());
         self
     }
 }
@@ -970,7 +985,7 @@ mod tests {
         let response: CompletionResponse = stream.into();
         assert_eq!(response.provider, TEST_PROVIDER);
         assert_eq!(response.usage, Usage::new());
-        assert_eq!(response.finish_reason, None);
+        assert_eq!(response.finish_reason(), None);
         assert_eq!(response.model, None);
     }
 

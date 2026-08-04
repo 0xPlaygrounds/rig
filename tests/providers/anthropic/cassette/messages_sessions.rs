@@ -288,7 +288,7 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .expect("first turn should call lookup_harbor_label");
             assert_eq!(
-                first_response.finish_reason,
+                first_response.finish_reason(),
                 Some(FinishReason::ToolCalls),
                 "a tool-using turn should preserve the tool_use stop reason"
             );
@@ -348,7 +348,7 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert_eq!(
-                response.finish_reason,
+                response.finish_reason(),
                 Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );

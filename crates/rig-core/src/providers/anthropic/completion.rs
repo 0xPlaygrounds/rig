@@ -5051,7 +5051,7 @@ mod tests {
         assert_eq!(parsed.provider, "anthropic");
         assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
         assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));
-        assert_eq!(parsed.finish_reason, Some(completion::FinishReason::Stop));
+        assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
     }
 
     #[test]
@@ -5148,7 +5148,7 @@ mod tests {
             .expect("tool-use response should normalize");
 
         assert_eq!(
-            parsed.finish_reason,
+            parsed.finish_reason(),
             Some(completion::FinishReason::ToolCalls)
         );
     }

@@ -4137,7 +4137,7 @@ mod tests {
         assert_eq!(completion.provider, "openai");
         assert_eq!(completion.model.as_deref(), Some("gpt-5.4"));
         assert_eq!(
-            completion.finish_reason,
+            completion.finish_reason(),
             Some(completion::FinishReason::Stop)
         );
     }
@@ -4195,7 +4195,7 @@ mod tests {
         // `completed` is reconciled up to `ToolCalls` because the turn carried
         // a function call.
         assert_eq!(
-            completion.finish_reason,
+            completion.finish_reason(),
             Some(completion::FinishReason::ToolCalls)
         );
     }
@@ -4225,7 +4225,7 @@ mod tests {
             .expect("response should convert");
 
         assert_eq!(
-            completion.finish_reason,
+            completion.finish_reason(),
             Some(completion::FinishReason::Length)
         );
     }

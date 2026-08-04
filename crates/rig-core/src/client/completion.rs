@@ -1,7 +1,9 @@
 use crate::completion::CompletionModel;
 
 /// A provider client with completion capabilities.
-/// Clone is required for conversions between client types.
+///
+/// Clients remain `Clone` for conversions between client types; the models
+/// they construct no longer need to be.
 pub trait CompletionClient {
     /// The type of CompletionModel used by the client.
     type CompletionModel: CompletionModel;

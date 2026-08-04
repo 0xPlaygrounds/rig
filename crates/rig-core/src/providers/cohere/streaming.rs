@@ -183,8 +183,19 @@ where
 
                         let event: StreamingEvent = match serde_json::from_str(data_str) {
                             Ok(ev) => ev,
-                            Err(_) => {
-                                tracing::warn!("Couldn't parse SSE payload as StreamingEvent");
+                            Err(err) => {
+                                // Valid JSON with an unrecognized shape is an
+                                // event type this client doesn't know yet —
+                                // skip it for forward compatibility. Invalid
+                                // JSON is a genuinely corrupt frame: surface
+                                // it but keep consuming, so a later genuine
+                                // `message-end` event can still complete the
+                                // stream with its terminal record.
+                                if serde_json::from_str::<serde_json::Value>(data_str).is_ok() {
+                                    tracing::warn!("skipping unrecognized Cohere SSE event: {err:?}");
+                                } else {
+                                    yield Err(CompletionError::JsonError(err));
+                                }
                                 continue;
                             }
                         };
@@ -202,16 +213,22 @@ where
                                 yield Ok(RawStreamingChoice::Message(text.clone()));
                             },
 
-                            StreamingEvent::MessageEnd { delta: Some(delta) } => {
+                            StreamingEvent::MessageEnd { delta } => {
+                                // `message-end` is the genuine terminal even
+                                // when its optional payload is absent; usage
+                                // and finish reason then default.
                                 let span = tracing::Span::current();
-                                let usage = delta
-                                    .usage
+                                let (usage, finish_reason) = match delta {
+                                    Some(delta) => (delta.usage, delta.finish_reason),
+                                    None => (None, None),
+                                };
+                                let recorded_usage = usage
                                     .as_ref()
                                     .map(crate::completion::Usage::from)
                                     .unwrap_or_default();
-                                span.record_token_usage(&usage);
-                                final_usage = Some(delta.usage);
-                                final_finish_reason = delta.finish_reason;
+                                span.record_token_usage(&recorded_usage);
+                                final_usage = Some(usage);
+                                final_finish_reason = finish_reason;
                                 saw_terminal = true;
                                 break;
                             },
@@ -426,7 +443,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_frame_is_skipped_and_the_terminal_still_arrives() {
+    async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
         use crate::client::CompletionClient;
         use crate::completion::CompletionModel as _;
         use crate::streaming::StreamedAssistantContent;
@@ -434,7 +451,8 @@ mod tests {
         use futures::StreamExt;
 
         // A malformed frame between valid content and the genuine terminal
-        // must be skipped without derailing the rest of the stream.
+        // must surface as an `Err` item without derailing the rest of the
+        // stream.
         let sse_bytes = bytes::Bytes::from(
             [
                 r#"{"type":"message-start","id":"msg_1"}"#,
@@ -470,10 +488,56 @@ mod tests {
         }
 
         assert_eq!(texts, ["hi"]);
-        assert!(!saw_error, "the malformed frame is skipped, not surfaced");
+        assert!(saw_error, "the malformed frame must reach the consumer");
         let terminal = terminal.expect("the genuine terminal record must still arrive");
         assert_eq!(terminal.usage.input_tokens, 10);
         assert_eq!(terminal.usage.output_tokens, 4);
+    }
+
+    #[tokio::test]
+    async fn message_end_without_delta_still_emits_the_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // `message-end` with no payload is still the provider completing the
+        // turn; the terminal record arrives with default usage.
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+                r#"{"type":"message-end"}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        let terminal = terminal.expect("message-end without a delta is still the terminal");
+        assert_eq!(terminal.usage, crate::completion::Usage::default());
+        assert_eq!(terminal.finish_reason, None);
+        assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
     }
 
     #[tokio::test]

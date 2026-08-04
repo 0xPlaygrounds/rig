@@ -34,7 +34,7 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .expect("a truncated response should still convert, not error");
 
             assert_eq!(
-                response.finish_reason,
+                response.finish_reason(),
                 Some(FinishReason::Length),
                 "hitting max_tokens should preserve the max_tokens stop reason"
             );

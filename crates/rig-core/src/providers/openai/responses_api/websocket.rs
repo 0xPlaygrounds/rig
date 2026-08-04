@@ -8,7 +8,8 @@ use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::streaming::{
-    ItemChunk, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
+    ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
+    StreamingCompletionChunk, completion_response_from_raw_choices,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::{SinkExt, StreamExt};
@@ -23,9 +24,12 @@ use tokio_tungstenite::{
 use tracing::Level;
 use url::Url;
 
-use super::{CompletionResponse, ResponseStatus, ResponsesCompletionModel};
+use super::{CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage};
 
 type OpenAIWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+type WebSocketRawChoice = crate::streaming::RawStreamingChoice<
+    crate::providers::openai::responses_api::streaming::StreamingCompletionResponse,
+>;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
@@ -442,8 +446,17 @@ where
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let provider = self.model.provider_name();
-        let response = self.raw_completion(completion_request).await?;
-        response.normalize(provider)
+        self.send(completion_request).await?;
+        let (response, raw_choices) = self.wait_for_terminal_response().await?;
+        // Replay the accumulated deltas through the shared normalization
+        // pipeline so streamed partial output survives even when the terminal
+        // body's `output` is empty (e.g. an incomplete turn). A turn that
+        // carried no deltas (e.g. a `response.done`-only turn) falls back to
+        // normalizing the terminal body itself.
+        match completion_response_from_raw_choices(provider, raw_choices, &response).await? {
+            Some(normalized) => Ok(normalized),
+            None => response.normalize(provider),
+        }
     }
 
     /// Sends a completion turn and returns the provider's own wire response.
@@ -496,6 +509,17 @@ where
     }
 
     async fn wait_for_completed_response(&mut self) -> Result<CompletionResponse, CompletionError> {
+        Ok(self.wait_for_terminal_response().await?.0)
+    }
+
+    /// Drives the shared [`RawChoiceAccumulator`] over the websocket events —
+    /// the same decode state machine the SSE path uses, fed by a different
+    /// transport — so streamed deltas survive alongside the terminal body.
+    async fn wait_for_terminal_response(
+        &mut self,
+    ) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {
+        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
+        let mut raw_choices = Vec::new();
         loop {
             match self.next_event().await? {
                 ResponsesWebSocketEvent::Response(chunk) => {
@@ -505,12 +529,12 @@ where
                             | ResponseChunkKind::ResponseFailed
                             | ResponseChunkKind::ResponseIncomplete
                     ) {
-                        return terminal_response_result(chunk.response);
+                        return finish_terminal_response(accumulator, chunk.response, raw_choices);
                     }
                 }
                 ResponsesWebSocketEvent::Done(done) => {
                     if let Some(response) = done.as_completion_response() {
-                        return terminal_response_result(response);
+                        return finish_terminal_response(accumulator, response, raw_choices);
                     }
 
                     let message = if let Some(response_id) = done.response_id() {
@@ -531,7 +555,11 @@ where
                     // the websocket stream, so status: None.
                     return Err(provider_error_from_event(error));
                 }
-                ResponsesWebSocketEvent::Item(_) => {}
+                ResponsesWebSocketEvent::Item(chunk) => {
+                    raw_choices.extend(
+                        accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict()),
+                    );
+                }
             }
         }
     }
@@ -635,6 +663,27 @@ impl<H> Drop for ResponsesWebSocketSession<H> {
             );
         }
     }
+}
+
+/// Records the terminal event into the accumulator and drains it, so the raw
+/// choices end with the terminal record exactly as the SSE path produces them.
+fn finish_terminal_response(
+    mut accumulator: RawChoiceAccumulator,
+    response: CompletionResponse,
+    mut raw_choices: Vec<WebSocketRawChoice>,
+) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {
+    let response = terminal_response_result(response)?;
+    // Only completed/incomplete get through `terminal_response_result`, so the
+    // accumulator's failed-event error mapping (which needs the raw event
+    // bytes this path no longer has) is unreachable here.
+    let kind = if matches!(response.status, ResponseStatus::Incomplete) {
+        ResponseChunkKind::ResponseIncomplete
+    } else {
+        ResponseChunkKind::ResponseCompleted
+    };
+    accumulator.record_response_chunk(kind, response.clone(), "")?;
+    raw_choices.extend(accumulator.finish());
+    Ok((response, raw_choices))
 }
 
 fn terminal_response_result(
@@ -846,7 +895,6 @@ mod tests {
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::completion::NormalizeCompletionResponse;
     use crate::providers::openai::responses_api::{
         CompletionResponse, IncompleteDetailsReason, Output, ResponseError, ResponseObject,
         ResponseStatus, ResponsesUsage,
@@ -1061,33 +1109,89 @@ mod tests {
         assert!(failed.to_string().contains("failed response"));
     }
 
-    #[test]
-    fn terminal_incomplete_response_is_a_successful_terminal_with_mapped_finish_reason() {
-        let mut response = sample_response(ResponseStatus::Incomplete);
-        response.incomplete_details = Some(IncompleteDetailsReason {
-            reason: "max_output_tokens".to_string(),
+    #[tokio::test]
+    async fn incomplete_turn_keeps_streamed_partial_output() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            let request = socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+            let payload = request.into_text().expect("request should be text");
+            assert!(
+                payload.contains("\"type\":\"response.create\""),
+                "expected response.create payload, got {payload}"
+            );
+
+            // The content exists ONLY in the delta events; the terminal
+            // `response.incomplete` body has an empty `output`, which is a
+            // sequence the wire protocol permits.
+            socket
+                .send(Message::text(
+                    json!({
+                        "type": "response.output_text.delta",
+                        "content_index": 0,
+                        "delta": "partial",
+                        "item_id": "msg_incomplete_1",
+                        "logprobs": [],
+                        "output_index": 0,
+                        "sequence_number": 1
+                    })
+                    .to_string(),
+                ))
+                .await
+                .expect("delta event should send");
+
+            let mut response = sample_response(ResponseStatus::Incomplete);
+            response.incomplete_details = Some(IncompleteDetailsReason {
+                reason: "max_output_tokens".to_string(),
+            });
+            let response = serde_json::to_value(response).expect("response should serialize");
+
+            socket
+                .send(Message::text(
+                    json!({
+                        "type": "response.incomplete",
+                        "sequence_number": 2,
+                        "response": response,
+                    })
+                    .to_string(),
+                ))
+                .await
+                .expect("incomplete event should send");
         });
-        response.output = vec![
-            serde_json::from_value::<Output>(json!({
-                "type": "message",
-                "id": "msg_incomplete_1",
-                "status": "incomplete",
-                "role": "assistant",
-                "content": [{ "type": "output_text", "annotations": [], "text": "partial" }]
-            }))
-            .expect("output message should deserialize"),
-        ];
 
-        let response = terminal_response_result(response)
-            .expect("incomplete response should be a successful terminal");
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
 
-        // The partial output and usage survive, and normalization maps the
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("incomplete turn should be a successful terminal");
+
+        // The streamed partial text survives, and normalization maps the
         // incomplete status to the same finish reason as the unary path.
-        let normalized = response
-            .normalize("openai")
-            .expect("incomplete response should normalize");
         assert_eq!(
-            normalized.finish_reason,
+            normalized.finish_reason(),
             Some(crate::completion::FinishReason::Length)
         );
         assert_eq!(normalized.usage.input_tokens, 1);
@@ -1097,6 +1201,86 @@ mod tests {
             normalized.choice.first(),
             crate::completion::AssistantContent::Text(text) if text.text == "partial"
         ));
+
+        server.await.expect("server task should finish");
+    }
+
+    #[tokio::test]
+    async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            let request = socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+            let payload = request.into_text().expect("request should be text");
+            assert!(
+                payload.contains("\"type\":\"response.create\""),
+                "expected response.create payload, got {payload}"
+            );
+
+            // No delta events at all: the terminal body carries the full
+            // output, so normalization must fall back to it.
+            let mut response = sample_response(ResponseStatus::Completed);
+            response.output = vec![
+                serde_json::from_value::<Output>(json!({
+                    "type": "message",
+                    "id": "msg_terminal_1",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{ "type": "output_text", "annotations": [], "text": "hello there" }]
+                }))
+                .expect("output message should deserialize"),
+            ];
+            let response = serde_json::to_value(response).expect("response should serialize");
+
+            socket
+                .send(Message::text(
+                    json!({
+                        "type": "response.completed",
+                        "sequence_number": 1,
+                        "response": response,
+                    })
+                    .to_string(),
+                ))
+                .await
+                .expect("completed event should send");
+        });
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("completed turn should normalize");
+
+        assert!(matches!(
+            normalized.choice.first(),
+            crate::completion::AssistantContent::Text(text) if text.text == "hello there"
+        ));
+        assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
+
+        server.await.expect("server task should finish");
     }
 
     #[test]

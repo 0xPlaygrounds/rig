@@ -905,7 +905,7 @@ mod tests {
         assert_eq!(normalized.message_id, None);
         assert_eq!(normalized.model, None);
         assert_eq!(
-            normalized.finish_reason,
+            normalized.finish_reason(),
             Some(completion::FinishReason::ToolCalls)
         );
         assert_eq!(normalized.usage.input_tokens, 10);

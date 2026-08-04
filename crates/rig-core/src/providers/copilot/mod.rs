@@ -1136,7 +1136,13 @@ where
                             if let responses_api::streaming::StreamingCompletionChunk::Response(chunk) = data {
                                 let responses_api::streaming::ResponseChunk { kind, response, .. } = *chunk;
                                 match kind {
-                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted => {
+                                    // `response.incomplete` is a genuine terminal (e.g. hitting
+                                    // `max_output_tokens`): the delivered content and usage are
+                                    // kept, and the recorded status/incomplete_details map to the
+                                    // finish reason downstream, matching the OpenAI Responses SSE
+                                    // path's accumulator.
+                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted
+                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
                                         span.record("gen_ai.response.id", response.id.as_str());
                                         span.record("gen_ai.response.model", response.model.as_str());
                                         if !response.id.is_empty() {
@@ -1160,8 +1166,7 @@ where
                                             reasoning_context = response.reasoning_context;
                                         }
                                     }
-                                    responses_api::streaming::ResponseChunkKind::ResponseFailed
-                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
+                                    responses_api::streaming::ResponseChunkKind::ResponseFailed => {
                                         terminated_with_error = true;
                                         // Deliberate two-tier behaviour matching the OpenAI Responses
                                         // SSE path: when the provider supplies an error object we
@@ -1200,14 +1205,17 @@ where
 
                 event_source.close();
 
-                if terminated_with_error {
-                    return;
-                }
-
-                // Tool calls the provider fully delivered are content, so a
-                // truncated stream still flushes them to the consumer.
+                // Tool calls the provider fully delivered are content, so both
+                // a truncated stream and one that ended in an error still
+                // flush them to the consumer.
                 for tool_call in &tool_calls {
                     yield Ok(tool_call.to_owned())
+                }
+
+                // The error item has already been yielded; end the stream with
+                // no terminal record.
+                if terminated_with_error {
+                    return;
                 }
 
                 // But only a genuine `response.completed` event counts as the
@@ -1667,11 +1675,19 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         &self,
         data: &str,
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+        // Valid JSON with an unrecognized shape is an event this client
+        // doesn't know yet — skip it for forward compatibility. Invalid JSON
+        // is a genuinely corrupt frame, surfaced as an `Err` item; the shared
+        // compat layer keeps consuming, so a later genuine terminal still
+        // completes the stream.
         let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
-            Ok(data) => data,
+            Ok(chunk) => chunk,
             Err(error) => {
-                tracing::warn!(?error, "Couldn't parse Copilot chat SSE payload");
-                return Ok(None);
+                if serde_json::from_str::<serde_json::Value>(data).is_ok() {
+                    tracing::warn!("skipping unrecognized Copilot chat SSE event: {error:?}");
+                    return Ok(None);
+                }
+                return Err(CompletionError::from(error));
             }
         };
 
@@ -2176,6 +2192,7 @@ mod tests {
     async fn responses_stream_terminates_after_terminal_error() {
         let tool_call_done = serde_json::json!({
             "type": "response.output_item.done",
+            "output_index": 0,
             "sequence_number": 1,
             "item": {
                 "type": "function_call",
@@ -2250,9 +2267,138 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("Copilot response stream failed")
         );
+        // The fully-delivered tool call is still content: it is flushed after
+        // the error item, and no terminal record follows.
+        let tool_call = stream
+            .next()
+            .await
+            .expect("fully-delivered tool call should be flushed after the error")
+            .expect("flushed tool call should not be an error");
+        assert!(
+            matches!(
+                tool_call,
+                StreamedAssistantContent::ToolCall { ref tool_call, .. }
+                    if tool_call.function.name == "example_tool"
+            ),
+            "expected the flushed tool call, got {tool_call:?}"
+        );
         assert!(
             stream.next().await.is_none(),
-            "responses stream should terminate immediately after a terminal error"
+            "responses stream should end without a terminal record after a terminal error"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_stream_incomplete_is_a_terminal_with_partial_content() {
+        // The content exists only in the delta; the terminal
+        // `response.incomplete` body has an empty `output`.
+        let text_delta = serde_json::json!({
+            "type": "response.output_text.delta",
+            "content_index": 0,
+            "delta": "partial",
+            "item_id": "msg_1",
+            "logprobs": [],
+            "output_index": 0,
+            "sequence_number": 1
+        });
+        let incomplete = serde_json::json!({
+            "type": "response.incomplete",
+            "sequence_number": 2,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "incomplete",
+                "error": null,
+                "incomplete_details": { "reason": "max_output_tokens" },
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "usage": { "input_tokens": 1, "output_tokens": 2, "total_tokens": 3 },
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[text_delta, incomplete]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut text = String::new();
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("incomplete turn should not surface an error") {
+                StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+                other => panic!("unexpected stream item: {other:?}"),
+            }
+        }
+
+        assert_eq!(text, "partial");
+        let terminal = terminal.expect("incomplete turn should emit a terminal record");
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(terminal.usage.input_tokens, 1);
+        assert_eq!(terminal.usage.output_tokens, 2);
+        assert_eq!(terminal.usage.total_tokens, 3);
+    }
+
+    #[tokio::test]
+    async fn chat_stream_surfaces_malformed_frame_and_still_completes() {
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}],\"usage\":null}",
+                "{not valid json",
+                "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":null}",
+                "[DONE]",
+            ]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-4o");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut text = String::new();
+        let mut saw_error = false;
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Text(chunk)) => text.push_str(&chunk.text),
+                Ok(StreamedAssistantContent::Final(final_response)) => {
+                    terminal = Some(final_response)
+                }
+                Ok(other) => panic!("unexpected stream item: {other:?}"),
+                Err(err) => {
+                    assert!(
+                        matches!(err, crate::completion::CompletionError::JsonError(_)),
+                        "expected a JSON parse error item, got {err:?}"
+                    );
+                    saw_error = true;
+                }
+            }
+        }
+
+        // The malformed frame is surfaced as an error item, and the content
+        // and genuine terminal on either side of it both still arrive.
+        assert_eq!(text, "hello");
+        assert!(saw_error, "malformed frame should surface an error item");
+        let terminal = terminal.expect("stream should still emit its terminal record");
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::Stop)
         );
     }
 
@@ -2357,9 +2503,24 @@ mod tests {
         }
 
         assert!(saw_error, "stream should surface the transport error");
+        // The fully-delivered tool call is still content: it is flushed after
+        // the error item, and no terminal record follows.
+        let tool_call = stream
+            .next()
+            .await
+            .expect("fully-delivered tool call should be flushed after the error")
+            .expect("flushed tool call should not be an error");
+        assert!(
+            matches!(
+                tool_call,
+                StreamedAssistantContent::ToolCall { ref tool_call, .. }
+                    if tool_call.function.name == "ping"
+            ),
+            "expected the flushed tool call, got {tool_call:?}"
+        );
         assert!(
             stream.next().await.is_none(),
-            "chat stream should terminate immediately after a transport error"
+            "chat stream should end without a terminal record after a transport error"
         );
     }
 

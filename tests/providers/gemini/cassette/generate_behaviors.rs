@@ -61,10 +61,10 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
 
             // Gemini's MAX_TOKENS normalizes to `FinishReason::Length`.
             assert!(
-                matches!(response.finish_reason, Some(FinishReason::Length)),
+                matches!(response.finish_reason(), Some(FinishReason::Length)),
                 "hitting maxOutputTokens should preserve the MAX_TOKENS finish reason, \
                  got {:?}",
-                response.finish_reason
+                response.finish_reason()
             );
             let text: String = response
                 .choice

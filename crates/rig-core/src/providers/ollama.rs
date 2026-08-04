@@ -57,7 +57,7 @@ use crate::{
     streaming,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use async_stream::try_stream;
+use async_stream::stream;
 use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -819,12 +819,18 @@ where
             ));
         }
 
-        let stream = try_stream! {
+        let stream = stream! {
             let span = tracing::Span::current();
             let mut line_buf = NdjsonBuffer::new();
 
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
+            'outer: while let Some(chunk) = byte_stream.next().await {
+                let bytes = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
+                        break;
+                    }
+                };
 
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
@@ -832,7 +838,10 @@ where
                     let response: CompletionResponse = match serde_json::from_slice(&line) {
                         Ok(response) => response,
                         Err(err) => {
-                            tracing::warn!(error = %err, "skipping malformed NDJSON line from Ollama");
+                            // Surface the malformed line but keep consuming:
+                            // a later genuine `done: true` record can still
+                            // complete the stream with its terminal record.
+                            yield Err(CompletionError::JsonError(err));
                             continue;
                         }
                     };
@@ -843,27 +852,27 @@ where
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield RawStreamingChoice::ReasoningDelta {
+                            yield Ok(RawStreamingChoice::ReasoningDelta {
                                 id: None,
                                 reasoning: thinking_content,
-                            };
+                            });
                         }
 
                         if !content.is_empty() {
-                            yield RawStreamingChoice::Message(content);
+                            yield Ok(RawStreamingChoice::Message(content));
                         }
 
                         for tool_call in tool_calls {
-                            yield RawStreamingChoice::ToolCall(
+                            yield Ok(RawStreamingChoice::ToolCall(
                                 crate::streaming::RawStreamingToolCall::new(tool_call.function.name.clone(), tool_call.function.name, tool_call.function.arguments)
-                            );
+                            ));
                         }
                     }
 
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield RawStreamingChoice::FinalResponse(
+                        yield Ok(RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
                                 model: response.model,
                                 total_duration: response.total_duration,
@@ -874,8 +883,8 @@ where
                                 eval_duration: response.eval_duration,
                                 done_reason: response.done_reason,
                             }
-                        );
-                        break;
+                        ));
+                        break 'outer;
                     }
                 }
             }
@@ -1484,7 +1493,7 @@ mod tests {
         assert_eq!(normalized.provider, PROVIDER_NAME);
         assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
         assert_eq!(
-            normalized.finish_reason,
+            normalized.finish_reason(),
             Some(completion::FinishReason::Length)
         );
         // Ollama assigns no message identifier.
@@ -1517,7 +1526,7 @@ mod tests {
             response.try_into().expect("normalization should succeed");
 
         assert_eq!(
-            normalized.finish_reason,
+            normalized.finish_reason(),
             Some(completion::FinishReason::ToolCalls)
         );
     }
@@ -2638,6 +2647,59 @@ mod tests {
             "EOF without a done record must not synthesize a terminal record"
         );
         assert!(stream.response.is_none());
+    }
+
+    // Proves a malformed NDJSON line between valid lines surfaces as an
+    // `Err` item while the stream keeps consuming: the following content and
+    // the `done: true` record still arrive.
+    #[tokio::test]
+    async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+            "{not json\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":" there"},"done":false}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_error = false;
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                Ok(StreamedAssistantContent::Final(final_response)) => {
+                    terminal = Some(final_response)
+                }
+                Ok(_) => {}
+                Err(_) => saw_error = true,
+            }
+        }
+
+        assert_eq!(texts, ["hi", " there"]);
+        assert!(saw_error, "the malformed line must reach the consumer");
+        let terminal = terminal.expect("the genuine done record must still arrive");
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
     }
 
     // Proves a non-success HTTP response from `/api/chat` preserves the

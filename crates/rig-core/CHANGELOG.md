@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete and carry normalized `finish_reason`/`provider`/`model`/`message_id`
 - *(completion)* [**breaking**] `CompletionModel` no longer requires `Clone`; generic code that cloned models must bound `+ Clone` explicitly, and `completion_request` now gates on `Self: Clone` (a relaxation for implementors — derives kept only for the old bound can be dropped)
+- *(completion)* implement `CompletionModel` for `Arc<M>` by forwarding, making the "wrap it in an `Arc`" guidance work through the generic APIs
+- *(completion)* [**breaking**] `CompletionResponse::finish_reason` is now a private field with a `finish_reason()` getter, so the `Stop` → `ToolCalls` reconciliation cannot be bypassed by direct assignment
+- *(completion)* identifier and model setters on `CompletionResponse`/`StreamFinal` treat empty strings as absent
+- *(streaming)* [**breaking**] corrupt stream frames (invalid JSON) are surfaced as `Err` items (stream continues; a later genuine terminal still completes it) instead of being logged and skipped; valid-JSON events with unrecognized shapes are still skipped for forward compatibility — openai responses, copilot, cohere, ollama
+- *(streaming)* a bare `[DONE]` after only unparseable frames no longer fabricates a zero-usage terminal record
+- *(providers)* copilot Responses streaming treats `response.incomplete` as a genuine terminal (partial content + `Length` finish reason) instead of an error; the WebSocket session preserves streamed partial output on incomplete terminals
+- *(providers)* errored streams flush fully-delivered tool calls before ending (shared OpenAI-compatible path and copilot Responses route)
+- *(providers)* gemini REST and Interactions wire enums preserve unknown values verbatim (`FinishReason`/`BlockReason`/`InteractionStatus` gained untagged catch-alls), matching the gRPC mapper
+- *(providers)* cohere `message-end` without a `delta` still emits the terminal record
 
 ### Removed
 

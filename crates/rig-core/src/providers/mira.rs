@@ -498,7 +498,10 @@ mod tests {
         assert_eq!(completion_response.response_id.as_deref(), Some("resp_123"));
         assert_eq!(completion_response.message_id, None);
         assert_eq!(completion_response.model.as_deref(), Some("deepseek-r1"));
-        assert_eq!(completion_response.finish_reason, Some(FinishReason::Stop));
+        assert_eq!(
+            completion_response.finish_reason(),
+            Some(FinishReason::Stop)
+        );
         assert_eq!(completion_response.usage.input_tokens, 10);
         assert_eq!(completion_response.usage.output_tokens, 10);
         assert_eq!(completion_response.usage.total_tokens, 20);
@@ -540,7 +543,7 @@ mod tests {
         ] {
             let converted = normalized(structured_response_with_finish_reason(wire));
 
-            assert_eq!(converted.finish_reason, Some(expected), "wire: {wire}");
+            assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
         }
     }
 
@@ -551,7 +554,7 @@ mod tests {
         assert_eq!(converted.provider, "mira");
         assert_eq!(converted.message_id, None);
         assert_eq!(converted.model, None);
-        assert_eq!(converted.finish_reason, None);
+        assert_eq!(converted.finish_reason(), None);
     }
 
     #[test]

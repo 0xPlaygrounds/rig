@@ -1297,6 +1297,11 @@ pub mod interactions_api_types {
         Completed,
         Failed,
         Cancelled,
+        /// A status this crate does not know yet. Google adds wire values
+        /// without notice; carrying the spelling verbatim keeps the whole
+        /// payload deserializable instead of failing on the new value.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     impl InteractionStatus {
@@ -1318,7 +1323,7 @@ pub mod interactions_api_types {
         /// Spelled out rather than derived from `Debug` (which would yield
         /// `BudgetExceeded`, not `budget_exceeded`) so the string that reaches
         /// [`crate::completion::FinishReason::Other`] is the provider's own.
-        pub fn as_wire_str(&self) -> &'static str {
+        pub fn as_wire_str(&self) -> &str {
             match self {
                 Self::InProgress => "in_progress",
                 Self::RequiresAction => "requires_action",
@@ -1327,6 +1332,7 @@ pub mod interactions_api_types {
                 Self::Completed => "completed",
                 Self::Failed => "failed",
                 Self::Cancelled => "cancelled",
+                Self::Unknown(status) => status,
             }
         }
     }
@@ -3365,6 +3371,49 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_interaction_status_round_trips_verbatim() {
+        // A status this crate does not know must land in `Unknown` with the
+        // provider's spelling intact — and serialize back to the same string —
+        // rather than failing the whole payload.
+        let status: InteractionStatus = serde_json::from_value(json!("status_future"))
+            .expect("unknown status should deserialize");
+        assert!(matches!(&status, InteractionStatus::Unknown(s) if s == "status_future"));
+        assert_eq!(status.as_wire_str(), "status_future");
+        assert_eq!(
+            serde_json::to_value(&status).expect("status should serialize"),
+            json!("status_future")
+        );
+        assert_eq!(
+            map_interaction_status(&status),
+            crate::completion::FinishReason::Other("status_future".to_string())
+        );
+    }
+
+    #[test]
+    fn test_interaction_with_unknown_status_stays_parseable() {
+        // A status Google ships tomorrow must not fail the interaction
+        // payload; the unknown status is conservatively non-terminal.
+        let interaction: Interaction = serde_json::from_value(json!({
+            "id": "int-future",
+            "status": "status_future",
+            "usage": {"total_tokens": 5}
+        }))
+        .expect("unknown status should not fail the payload");
+
+        assert_eq!(interaction.id, "int-future");
+        assert!(matches!(
+            interaction.status,
+            Some(InteractionStatus::Unknown(ref s)) if s == "status_future"
+        ));
+        assert!(!interaction.is_terminal());
+        assert!(!interaction.is_completed());
+        assert_eq!(
+            interaction.usage.as_ref().and_then(|u| u.total_tokens),
+            Some(5)
+        );
+    }
+
+    #[test]
     fn test_completion_response_carries_normalized_metadata() {
         let interaction = Interaction {
             id: "interaction-meta".to_string(),
@@ -3387,7 +3436,7 @@ mod tests {
         assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
         assert_eq!(response.message_id, None);
         assert_eq!(
-            response.finish_reason,
+            response.finish_reason(),
             Some(crate::completion::FinishReason::Length)
         );
     }
@@ -3411,7 +3460,7 @@ mod tests {
             interaction.try_into().expect("conversion should succeed");
 
         assert_eq!(
-            response.finish_reason,
+            response.finish_reason(),
             Some(crate::completion::FinishReason::ToolCalls)
         );
         assert_eq!(response.model, None);
