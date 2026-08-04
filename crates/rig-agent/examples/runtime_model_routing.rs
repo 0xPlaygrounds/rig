@@ -1,0 +1,219 @@
+//! Route one agent across two concrete model types without credentials.
+//!
+//! The first scripted model calls a search tool. After Rig commits the tool
+//! result to provider-neutral history, the second scripted model writes the
+//! final answer. Real applications can put handles from different providers in
+//! the same map and apply the same selection policy.
+
+use std::convert::Infallible;
+
+use anyhow::Result;
+use futures::stream;
+use rig_agent::{
+    AgentBuilder, ModelHandle,
+    completion::{
+        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
+        Prompt, Usage,
+    },
+    streaming::{RawStreamingChoice, StreamingCompletionResponse},
+    tool::{Tool, ToolContext},
+};
+use rig_core::{
+    OneOrMany,
+    message::{AssistantContent, ToolCall, ToolFunction},
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct ScriptedRawResponse {
+    model: String,
+    usage: Usage,
+}
+
+impl GetTokenUsage for ScriptedRawResponse {
+    fn token_usage(&self) -> Usage {
+        self.usage
+    }
+}
+
+fn usage(total_tokens: u64) -> Usage {
+    Usage {
+        total_tokens,
+        ..Usage::new()
+    }
+}
+
+fn response(
+    model: &'static str,
+    choice: AssistantContent,
+    total_tokens: u64,
+) -> CompletionResponse<ScriptedRawResponse> {
+    let usage = usage(total_tokens);
+    CompletionResponse {
+        choice: OneOrMany::one(choice),
+        usage,
+        raw_response: ScriptedRawResponse {
+            model: model.to_owned(),
+            usage,
+        },
+        message_id: Some(format!("{model}-message")),
+    }
+}
+
+#[derive(Clone)]
+struct FastResearchModel;
+
+impl CompletionModel for FastResearchModel {
+    type Response = ScriptedRawResponse;
+    type StreamingResponse = ScriptedRawResponse;
+    type Client = ();
+
+    fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+        Self
+    }
+
+    async fn completion(
+        &self,
+        _request: CompletionRequest,
+    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+        Ok(response(
+            "fast",
+            AssistantContent::ToolCall(ToolCall::new(
+                "search-1".to_owned(),
+                ToolFunction::new(
+                    "search".to_owned(),
+                    serde_json::json!({"query": "runtime model routing"}),
+                ),
+            )),
+            3,
+        ))
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let usage = usage(3);
+        Ok(StreamingCompletionResponse::stream(Box::pin(stream::iter(
+            [
+                Ok(RawStreamingChoice::ToolCall(
+                    rig_agent::streaming::RawStreamingToolCall::new(
+                        "search-1".to_owned(),
+                        "search".to_owned(),
+                        serde_json::json!({"query": "runtime model routing"}),
+                    ),
+                )),
+                Ok(RawStreamingChoice::FinalResponse(ScriptedRawResponse {
+                    model: "fast".to_owned(),
+                    usage,
+                })),
+            ],
+        ))))
+    }
+}
+
+#[derive(Clone)]
+struct StrongSynthesisModel;
+
+impl CompletionModel for StrongSynthesisModel {
+    type Response = ScriptedRawResponse;
+    type StreamingResponse = ScriptedRawResponse;
+    type Client = ();
+
+    fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
+        Self
+    }
+
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+        let saw_tool_result = request.chat_history.iter().any(|message| {
+            matches!(message, rig_core::message::Message::User { content }
+                if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
+        });
+        let answer = if saw_tool_result {
+            "The strong model synthesized the committed search result."
+        } else {
+            "The tool result was missing."
+        };
+        Ok(response("strong", AssistantContent::text(answer), 5))
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+        let usage = usage(5);
+        Ok(StreamingCompletionResponse::stream(Box::pin(stream::iter(
+            [
+                Ok(RawStreamingChoice::Message(
+                    "The strong model synthesized the committed search result.".to_owned(),
+                )),
+                Ok(RawStreamingChoice::FinalResponse(ScriptedRawResponse {
+                    model: "strong".to_owned(),
+                    usage,
+                })),
+            ],
+        ))))
+    }
+}
+
+#[derive(Deserialize)]
+struct SearchArgs {
+    query: String,
+}
+
+#[derive(Clone)]
+struct Search;
+
+impl Tool for Search {
+    const NAME: &'static str = "search";
+    type Args = SearchArgs;
+    type Output = String;
+    type Error = Infallible;
+
+    fn description(&self) -> String {
+        "Return deterministic research evidence".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        Ok(format!("evidence for {}", args.query))
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let fast = ModelHandle::named("fast", FastResearchModel);
+    let strong = ModelHandle::named("strong", StrongSynthesisModel);
+
+    let agent = AgentBuilder::from_model_handle(fast.clone())
+        .tool(Search)
+        .build();
+    let answer = agent
+        .prompt("Research this, then synthesize a careful answer")
+        .max_turns(2)
+        .select_model(move |context| {
+            if context.turn == 1 {
+                fast.clone()
+            } else {
+                strong.clone()
+            }
+        })
+        .await?;
+
+    println!("{answer}");
+    Ok(())
+}
