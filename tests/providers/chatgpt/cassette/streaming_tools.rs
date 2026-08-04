@@ -9,7 +9,29 @@ use rig::streaming::StreamedAssistantContent;
 use serde_json::json;
 
 use super::super::support::with_chatgpt_cassette;
+use crate::cassettes::cassette_path;
 use crate::support::zero_arg_tool_definition;
+
+/// Assert that the recorded terminal `response.completed` event carries no
+/// output items, which is the precondition this whole scenario exercises.
+fn assert_terminal_response_has_no_output(scenario: &str) {
+    let cassette = std::fs::read_to_string(cassette_path("chatgpt", scenario))
+        .expect("cassette should be readable");
+    let terminal = cassette
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str::<serde_json::Value>(data.trim()).ok())
+        .find(|event| {
+            event.get("type").and_then(serde_json::Value::as_str) == Some("response.completed")
+        })
+        .expect("cassette should contain a response.completed event");
+
+    assert_eq!(
+        terminal["response"]["output"],
+        json!([]),
+        "cassette should keep the terminal response.completed output empty"
+    );
+}
 
 #[tokio::test]
 async fn nonstreaming_tool_call_completed_response_without_output() {
@@ -25,15 +47,23 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
                 .tool_choice(ToolChoice::Required)
                 .build();
 
+            // The premise of the scenario: the terminal `response.completed`
+            // event carries no output items, so the non-streaming path has to
+            // rebuild the tool call from the event stream. That used to be read
+            // off `response.raw_response`. The normalized response no longer
+            // carries the wire payload, ChatGPT's raw wire response is exactly
+            // that empty terminal record (its choice is only recoverable through
+            // the crate-private SSE fallback), and the cassette records a single
+            // interaction — so the premise is asserted against the recorded
+            // terminal event rather than by issuing a second request.
+            assert_terminal_response_has_no_output(
+                "streaming_tools/tool_call_completed_response_without_output",
+            );
+
             let response = model
                 .completion(request)
                 .await
                 .expect("non-streaming completion should reconstruct streamed tool call");
-
-            assert!(
-                response.raw_response.output.is_empty(),
-                "cassette should keep the terminal response.completed output empty"
-            );
 
             let tool_call = response.choice.iter().find_map(|content| match content {
                 AssistantContent::ToolCall(tool_call) if tool_call.function.name == "ping" => {

@@ -1,8 +1,9 @@
 # Migrating Rig
 
-This guide covers every breaking change from 0.30 through 0.41. Releases 0.36,
-0.37, 0.40 and 0.41 were the disruptive ones; 0.40 alone carried 31 breaking
-changes, and 0.37 renamed `rig-core`'s library target.
+This guide covers every breaking change from 0.30 through the unreleased changes
+after 0.41. Releases 0.36, 0.37, 0.40 and 0.41 were the disruptive ones; 0.40
+alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library
+target.
 
 ## Which sections apply to you
 
@@ -11,6 +12,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → next](#041--next) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -271,6 +273,166 @@ They now key on `all(target_arch = "wasm32", target_os = "unknown")`. If you
 defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
+
+---
+
+## 0.41 → next
+
+### Completion responses are concrete and normalized
+
+`CompletionResponse<T>` is now `CompletionResponse`. The provider-native
+`raw_response` field is gone; the normalized response carries the metadata that
+callers actually reached into `raw_response` for:
+
+```rust
+pub struct CompletionResponse {
+    pub choice: OneOrMany<AssistantContent>,
+    pub usage: Usage,
+    pub message_id: Option<String>,
+    pub finish_reason: Option<FinishReason>,
+    pub provider: String,
+    pub model: Option<String>,
+}
+```
+
+| Before | After |
+| --- | --- |
+| `response.raw_response.model` | `response.model` |
+| provider stop/finish reason off `raw_response` | `response.finish_reason` |
+| provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
+| a genuinely provider-specific field | `model.raw_completion(request).await?` |
+
+`usage` is unchanged, including the rule that all-zero values mean the provider
+supplied no metrics. `model` is the identifier the *wire response* reported, not
+the one you requested — it is `None` when the provider omits it. `provider` is
+always populated, including on a response derived from a stream that ended
+before its terminal record.
+
+`CompletionResponse` is `#[non_exhaustive]`; build it with
+`CompletionResponse::new(choice, usage, provider)` plus the `with_*` helpers.
+Use `with_finish_reason` / `with_optional_finish_reason` rather than assigning
+the field: the setters apply `FinishReason::reconcile_with_output`, which
+upgrades a reported `Stop` to `ToolCalls` when the turn actually carried tool
+calls. Several OpenAI-compatible gateways report `stop` on a tool-calling turn,
+so code branching on `ToolCalls` would otherwise miss the call.
+
+### Provider-native responses moved to `raw_completion` / `raw_stream`
+
+Every built-in provider model exposes both:
+
+```rust
+let native = model.raw_completion(request).await?;   // the provider's own type
+let native_stream = model.raw_stream(request).await?; // RawStreamingResult<TheirTerminal>
+```
+
+These share one request builder, transport call, parser, telemetry path, and
+error-preservation path with the normalized methods — the normalized method
+calls the raw one and maps the result, so there is still exactly one network
+request.
+
+The trade: raw access now requires the concrete provider model rather than any
+`CompletionResponse`. Code that was generic over `CompletionModel` could never
+touch `raw_response` without a bound anyway, so in practice this affects code
+that had already committed to a provider.
+
+### Normalized finish reasons
+
+```rust
+pub enum FinishReason { Stop, Length, ToolCalls, ContentFilter, Other(String) }
+```
+
+Unrecognized provider values are preserved verbatim in `Other` — in the
+provider's own spelling, so Gemini's `RECITATION` stays `RECITATION`. A provider
+adding a new terminal reason surfaces it rather than reading as a natural stop.
+`None` means the provider genuinely reported no reason.
+
+### Ordinary streaming types no longer carry a response parameter
+
+`StreamingCompletionResponse<R>`, `StreamingResult<R>`,
+`StreamedAssistantContent<R>`, and the downstream agent streaming types are
+concrete. Their terminal record is `StreamFinal`, which carries normalized
+usage, finish reason, provider, provider-reported model, and message ID.
+
+`GetTokenUsage` is deleted — read `StreamFinal::usage` (or
+`StreamingCompletionResponse::usage()`) directly. A stream that ends without a
+terminal record still reports `Usage::new()`, the documented zero sentinel.
+
+`StreamingCompletionResponse::stream` takes the provider descriptor name first:
+
+```rust
+StreamingCompletionResponse::stream(PROVIDER_NAME, normalized_stream)
+```
+
+Provider implementations keep their native terminal type behind
+`RawStreamingResult<Native>` and map it once:
+
+```rust
+let raw = self.raw_stream(request).await?;
+let normalized = rig_core::streaming::normalize_stream(raw, |native| {
+    Ok(StreamFinal::new(PROVIDER_NAME, native.usage)
+        .with_optional_finish_reason(map_finish_reason(native.finish_reason)))
+});
+Ok(StreamingCompletionResponse::stream(PROVIDER_NAME, normalized))
+```
+
+`normalize_stream` applies the same `Stop` → `ToolCalls` reconciliation as the
+unary path, using the tool calls it actually saw on the stream.
+
+`StreamingPrompt<M, R>` and `StreamingChat<M, R>` lost their `R` parameter:
+`StreamingPrompt<M>`, `StreamingChat<M>`.
+
+### `CompletionModel` no longer owns response or construction types
+
+Remove `Response`, `StreamingResponse`, `Client`, and `make` from custom
+implementations. A custom model implements only the normalized operations, and
+optionally `capabilities`:
+
+```rust
+impl CompletionModel for MyModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> { /* ... */ }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> { /* ... */ }
+}
+```
+
+Construction is a separate, optional opt-in. `CompletionClient::completion_model`
+is now required and calls your model's own constructor:
+
+```rust
+impl CompletionClient for MyClient {
+    type CompletionModel = MyModel;
+
+    fn completion_model(&self, model: impl Into<String>) -> MyModel {
+        MyModel::new(self.clone(), model.into())
+    }
+}
+```
+
+`client.completion_model(model)` and `client.agent(model)` are unchanged at call
+sites. A model type with no client at all is now expressible: implementing
+`CompletionModel` no longer drags in a client associated type.
+
+### Provider behavior is reported through capabilities
+
+`CompletionModel::composes_native_output_with_tools()` is replaced by
+`CompletionModel::capabilities()`:
+
+```rust
+fn capabilities(&self) -> ProviderCapabilities {
+    ProviderCapabilities::default().with_native_output_tool_composition(true)
+}
+```
+
+`ProviderCapabilities` is public and `#[non_exhaustive]`; start from `Default`
+or `ProviderCapabilities::new()` and enable what you support. Capabilities are
+plain data, so a runtime can snapshot them instead of holding a callback into
+the concrete model.
 
 ---
 

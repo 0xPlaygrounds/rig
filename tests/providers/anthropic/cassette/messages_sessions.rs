@@ -11,7 +11,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -288,8 +288,8 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .expect("first turn should call lookup_harbor_label");
             assert_eq!(
-                first_response.raw_response.stop_reason.as_deref(),
-                Some("tool_use"),
+                first_response.finish_reason,
+                Some(FinishReason::ToolCalls),
                 "a tool-using turn should preserve the tool_use stop reason"
             );
 
@@ -348,12 +348,19 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("end_turn"),
+                response.finish_reason,
+                Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
-                !response.raw_response.model.is_empty() && !response.raw_response.id.is_empty(),
+                response
+                    .model
+                    .as_deref()
+                    .is_some_and(|model| !model.is_empty())
+                    && response
+                        .message_id
+                        .as_deref()
+                        .is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(

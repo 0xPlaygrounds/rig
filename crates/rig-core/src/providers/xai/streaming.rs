@@ -12,20 +12,26 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
+    ResponsesStreamOptions, StreamingCompletionResponse, normalize_responses_stream,
+    raw_stream_from_event_source_with_options,
 };
-use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
-use crate::streaming;
+use crate::providers::xai::completion::{CompletionModel, PROVIDER_NAME, XAICompletionRequest};
+use crate::streaming::{self, RawStreamingResult};
 
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays xAI-native.
+    ///
+    /// This is the escape hatch for provider-specific streaming fields rig
+    /// does not normalize. The normalized
+    /// [`stream`](crate::completion::CompletionModel::stream) path calls it and
+    /// maps the terminal record once, so both paths open exactly one stream.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request =
@@ -52,29 +58,41 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span =
-            CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
-                .system_instructions(preamble.as_deref(), record_telemetry_content)
-                .build();
+        let span = CompletionSpanBuilder::new(
+            PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(preamble.as_deref(), record_telemetry_content)
+        .build();
 
         send_xai_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+
+        Ok(normalize_responses_stream(PROVIDER_NAME, stream))
+    }
 }
 
-/// Send a streaming request
+/// Send a streaming request, keeping the terminal record provider-native.
 pub(crate) async fn send_xai_streaming_request<T>(
     http_client: T,
     req: http::Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
+) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
     let span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
 
-    Ok(stream_from_event_source_with_options(
+    Ok(raw_stream_from_event_source_with_options(
         event_source,
         span,
         ResponsesStreamOptions::strict_with_immediate_tool_calls(),
@@ -177,9 +195,10 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_xai_streaming_request(client, req)
+        let raw = send_xai_streaming_request(client, req)
             .await
             .expect("stream should start");
+        let mut stream = super::normalize_responses_stream(super::PROVIDER_NAME, raw);
 
         match stream
             .next()

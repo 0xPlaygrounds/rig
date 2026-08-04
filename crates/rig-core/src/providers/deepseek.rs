@@ -18,9 +18,9 @@ use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
     ProviderBuilder, ProviderClient,
 };
-use crate::completion::GetTokenUsage;
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -159,8 +159,10 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<DeepSeekExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying DeepSeek's own usage payload (cache hit/miss counters).
+/// DeepSeek's provider-native terminal streaming record: the value carried by
+/// the final item of the stream returned by `CompletionModel::raw_stream`.
+/// Shared with the OpenAI Chat Completions path but carrying DeepSeek's own
+/// usage payload (cache hit/miss counters).
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
 impl ProviderClient for Client {
@@ -245,27 +247,32 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        crate::completion::Usage {
-            input_tokens: self.prompt_tokens as u64,
-            output_tokens: self.completion_tokens as u64,
-            total_tokens: self.total_tokens as u64,
-            cached_input_tokens: self
+impl From<&Usage> for crate::completion::Usage {
+    fn from(usage: &Usage) -> Self {
+        let mut normalized = crate::providers::internal::completion_usage(
+            usage.prompt_tokens as u64,
+            usage.completion_tokens as u64,
+            usage.total_tokens as u64,
+            usage
                 .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
                 .unwrap_or(0),
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: self
-                .completion_tokens_details
-                .as_ref()
-                .and_then(|details| details.reasoning_tokens)
-                .map(u64::from)
-                .unwrap_or(0),
-        }
+        );
+        normalized.reasoning_tokens = usage
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|details| details.reasoning_tokens)
+            .map(u64::from)
+            .unwrap_or(0);
+        normalized
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(usage: Usage) -> Self {
+        Self::from(&usage)
     }
 }
 
@@ -347,13 +354,23 @@ pub enum ToolType {
     Function,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+/// Normalize a DeepSeek chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant so the
+/// shared OpenAI-compatible completion path labels the response with the
+/// descriptor that actually produced it, exactly as it does for the OpenAI
+/// wire type.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+
+        let finish_reason = Some(choice.finish_reason.as_str())
+            .filter(|reason| !reason.is_empty())
+            .map(map_openai_finish_reason);
+
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -397,14 +414,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        let usage = response.usage.token_usage();
+        let usage = crate::completion::Usage::from(&response.usage);
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_message_id(response.id.as_deref().filter(|id| !id.is_empty()))
+            .with_optional_model(response.model.as_deref().filter(|model| !model.is_empty()))
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -507,12 +522,23 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
-    use crate::completion::{CompletionRequestBuilder, ToolDefinition as RigToolDefinition};
+    use crate::completion::NormalizeCompletionResponse;
+    use crate::completion::{
+        CompletionRequestBuilder, FinishReason, ToolDefinition as RigToolDefinition,
+    };
     use crate::message::ToolChoice as RigToolChoice;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
+
+    /// Normalize a DeepSeek wire response the way the shared completion path
+    /// does, threading DeepSeek's own descriptor name through the conversion.
+    fn normalized(response: CompletionResponse) -> crate::completion::CompletionResponse {
+        response
+            .normalize(DeepSeekExt::PROVIDER_NAME)
+            .expect("DeepSeek response should convert")
+    }
 
     fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
@@ -729,16 +755,95 @@ mod tests {
         }))
         .expect("fixture should deserialize");
 
-        let converted = crate::completion::CompletionResponse::try_from(raw.clone())
-            .expect("DeepSeek response should convert");
+        let converted = normalized(raw.clone());
 
         assert_eq!(raw.id.as_deref(), Some("chatcmpl_123"));
         assert_eq!(raw.model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(raw.system_fingerprint.as_deref(), Some("fp_123"));
+        assert_eq!(converted.provider, "deepseek");
+        assert_eq!(converted.message_id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(converted.finish_reason, Some(FinishReason::Stop));
         assert_eq!(converted.usage.input_tokens, 10);
         assert_eq!(converted.usage.cached_input_tokens, 3);
         assert_eq!(converted.usage.output_tokens, 8);
         assert_eq!(converted.usage.reasoning_tokens, 5);
+    }
+
+    fn response_with_finish_reason(finish_reason: &str) -> CompletionResponse {
+        serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_finish",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": null,
+                "message": {"role": "assistant", "content": "done"}
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 1,
+                "total_tokens": 2
+            }
+        }))
+        .expect("fixture should deserialize")
+    }
+
+    #[test]
+    fn deepseek_finish_reasons_normalize_and_preserve_unknowns() {
+        for (wire, expected) in [
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("max_tokens", FinishReason::Length),
+            ("tool_calls", FinishReason::ToolCalls),
+            ("function_call", FinishReason::ToolCalls),
+            ("content_filter", FinishReason::ContentFilter),
+            // Anything DeepSeek invents survives verbatim rather than reading
+            // as a natural stop.
+            (
+                "insufficient_system_resource",
+                FinishReason::Other("insufficient_system_resource".to_owned()),
+            ),
+        ] {
+            let converted = normalized(response_with_finish_reason(wire));
+
+            assert_eq!(converted.finish_reason, Some(expected), "wire: {wire}");
+        }
+    }
+
+    #[test]
+    fn deepseek_stop_finish_reason_upgrades_when_the_turn_called_a_tool() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_tool",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "index": 0,
+                        "type": "function",
+                        "function": {"name": "subtract", "arguments": "{\"x\":2,\"y\":5}"}
+                    }]
+                }
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 1,
+                "total_tokens": 2
+            }
+        }))
+        .expect("fixture should deserialize");
+
+        assert_eq!(normalized(raw).finish_reason, Some(FinishReason::ToolCalls));
     }
 
     #[test]

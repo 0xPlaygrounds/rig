@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
@@ -447,25 +448,38 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
+/// Run one completion and return both Mistral's own wire response and the
+/// normalized response the completion path derives from it.
+///
+/// `raw_completion` is the escape hatch for the provider-specific fields the
+/// normalized response no longer carries; converting its result locally keeps
+/// the raw-vs-normalized parity checks below on a single cassette interaction.
+async fn raw_and_normalized_completion(
+    model: &mistral::CompletionModel,
+    request: rig::completion::CompletionRequest,
+) -> Result<(
+    mistral::CompletionResponse,
+    rig::completion::CompletionResponse,
+)> {
+    let raw = model.raw_completion(request).await?;
+    let normalized: rig::completion::CompletionResponse = raw.clone().normalize("mistral")?;
+    Ok((raw, normalized))
+}
+
 fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<mistral::CompletionResponse>,
+    response: &rig::completion::CompletionResponse,
+    raw: &mistral::CompletionResponse,
 ) {
-    assert_nonempty_response(&response.raw_response.id);
-    assert_eq!(
-        response.message_id.as_deref(),
-        Some(response.raw_response.id.as_str())
-    );
-    assert_nonempty_response(&response.raw_response.model);
+    assert_nonempty_response(&raw.id);
+    assert_eq!(response.message_id.as_deref(), Some(raw.id.as_str()));
+    assert_nonempty_response(&raw.model);
     assert!(
-        response
-            .raw_response
-            .choices
+        raw.choices
             .iter()
             .all(|choice| !choice.finish_reason.is_empty()),
         "raw Mistral choices should preserve finish reasons"
     );
-    let raw_usage = response
-        .raw_response
+    let raw_usage = raw
         .usage
         .as_ref()
         .expect("raw response should preserve usage");
@@ -749,12 +763,12 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },
@@ -872,14 +886,14 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 .additional_params(json!({"response_format": { "type": "json_object" }}))
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
 
             let serialized = plan.to_string();
             assert_contains_all_case_insensitive(&serialized, &["canary", "low", "compile", "replay"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },
@@ -914,7 +928,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
                 .output_schema(schemars::schema_for!(StructuredReleasePlan))
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("structured response should contain text"))?;
             let plan: StructuredReleasePlan = serde_json::from_str(&text)?;
@@ -923,7 +937,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
             anyhow::ensure!(plan.risk.eq_ignore_ascii_case("low"));
             anyhow::ensure!(plan.checks.compile);
             anyhow::ensure!(plan.checks.replay);
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },

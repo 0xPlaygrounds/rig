@@ -2,10 +2,9 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
-use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
-};
+use super::client::ApiResponse;
+use crate::completion::NormalizeCompletionResponse;
+use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
@@ -1140,13 +1139,22 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+/// Normalize an OpenAI-compatible chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant: this same
+/// wire shape is shared by every OpenAI-compatible provider, so baking in
+/// `"openai"` here would mislabel Groq, Together, DeepSeek and the rest. Taking
+/// it as part of the conversion makes the correct name impossible to forget.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+
+        let finish_reason = Some(choice.finish_reason.as_str())
+            .filter(|reason| !reason.is_empty())
+            .map(crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -1205,15 +1213,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+            .with_model(response.model.as_str())
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -1360,8 +1366,21 @@ impl fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&Usage> for crate::completion::Usage {
+    fn from(value: &Usage) -> crate::completion::Usage {
+        value.to_normalized()
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        value.to_normalized()
+    }
+}
+
+impl Usage {
+    /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
+    pub fn to_normalized(&self) -> crate::completion::Usage {
         let mut usage = crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             self.completion_tokens
@@ -1439,7 +1458,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
         + Default
-        + GetTokenUsage
+        + Into<crate::completion::Usage>
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
@@ -1448,10 +1467,14 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         + 'static;
 
     /// The chat-completions payload this provider returns.
+    ///
+    /// The normalization bound is stated over `(&str, Self::Response)` so the
+    /// provider descriptor name is threaded through the conversion instead of
+    /// being hardcoded by whichever wire type happens to implement it.
     type Response: serde::de::DeserializeOwned
         + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
-        + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
+        + crate::telemetry::ProviderResponseExt<Usage: Into<crate::completion::Usage>>
+        + crate::completion::NormalizeCompletionResponse
         + WasmCompatSend
         + WasmCompatSync;
 
@@ -1901,7 +1924,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -1914,34 +1937,18 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = Ext::Response;
-    type StreamingResponse = StreamingCompletionResponse<Ext::StreamingUsage>;
-
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    // OpenAI Chat Completions *defers* `response_format` while tools are present
-    // and no tool result exists yet (see `should_apply_response_format`), then
-    // applies it once a tool result is in the history. So the native constraint
-    // does not suppress tool calls — they compose — which is what this flag
-    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
-    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
-    // See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
-        // false) cannot compose native structured output with tools; the
-        // agent then falls back to tool-mode enforcement as their
-        // pre-migration hand-rolled models did.
-        Ext::SUPPORTS_RESPONSE_FORMAT
-    }
-
-    async fn completion(
+    /// Execute a chat completion and return the provider's own wire response.
+    ///
+    /// This is the escape hatch for provider-specific fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one
+    /// network request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CoreCompletionRequest,
-    ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
+    ) -> Result<Ext::Response, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -1997,7 +2004,11 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
-                        span.record_token_usage(&response.get_usage());
+                        let usage = response
+                            .get_usage()
+                            .map(Into::into)
+                            .unwrap_or_default();
+                        span.record_token_usage(&usage);
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
                                 target: "rig::completions",
@@ -2006,7 +2017,7 @@ where
                             );
                         }
 
-                        response.try_into()
+                        Ok(response)
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
@@ -2021,15 +2032,61 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + OpenAICompatibleProvider
+        + crate::client::DebugExt
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // OpenAI Chat Completions *defers* `response_format` while tools are present
+    // and no tool result exists yet (see `should_apply_response_format`), then
+    // applies it once a tool result is in the history. So the native constraint
+    // does not suppress tool calls — they compose — which is what this flag
+    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
+    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
+    // See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
+        // false) cannot compose native structured output with tools; the
+        // agent then falls back to tool-mode enforcement as their
+        // pre-migration hand-rolled models did.
+        completion::ProviderCapabilities::default()
+            .with_native_output_tool_composition(Ext::SUPPORTS_RESPONSE_FORMAT)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: CoreCompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        response.normalize(Ext::PROVIDER_NAME)
+    }
 
     async fn stream(
         &self,
         request: CoreCompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
+    }
+}
+
+impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
+    for GenericCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
+{
+    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -2998,8 +3055,10 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let response: completion::CompletionResponse =
+            response
+                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .unwrap();
 
         assert_eq!(response.choice.len(), 1);
 

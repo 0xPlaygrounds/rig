@@ -13,7 +13,7 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -41,10 +41,65 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     Some(crate::provider_response::completion_error_from_body(data))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Map an OpenAI Chat Completions-style `finish_reason` string onto the
+/// normalized vocabulary, preserving anything unrecognized verbatim.
+///
+/// Shared by the unary and streaming paths so both agree, and so a gateway
+/// inventing a new reason surfaces it rather than reading as a natural stop.
+pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
+    match reason {
+        "stop" => FinishReason::Stop,
+        "length" | "max_tokens" => FinishReason::Length,
+        "tool_calls" | "function_call" => FinishReason::ToolCalls,
+        "content_filter" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
+    }
+}
+
+/// A chunk's terminal reason, as reported by an OpenAI-compatible provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
-    ToolCalls,
-    Other,
+    /// The chunk reported a terminal reason, normalized.
+    Reported(FinishReason),
+    /// The chunk carried no `finish_reason` field.
+    Absent,
+}
+
+impl CompatibleFinishReason {
+    /// Normalize a wire `finish_reason` field.
+    pub(crate) fn from_wire(reason: Option<&str>) -> Self {
+        match reason.filter(|reason| !reason.is_empty()) {
+            Some(reason) => Self::Reported(map_openai_finish_reason(reason)),
+            None => Self::Absent,
+        }
+    }
+
+    /// Whether the provider explicitly ended the turn to call tools.
+    pub(crate) fn is_tool_calls(&self) -> bool {
+        matches!(self, Self::Reported(FinishReason::ToolCalls))
+    }
+
+    /// The normalized reason, when the provider reported one.
+    pub(crate) fn reported(&self) -> Option<FinishReason> {
+        match self {
+            Self::Reported(reason) => Some(reason.clone()),
+            Self::Absent => None,
+        }
+    }
+}
+
+/// The terminal state a compatible stream reached, handed to a profile so it
+/// can build its own provider-native terminal record.
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleTerminal<U> {
+    /// Provider-native usage payload from the terminal event.
+    pub(crate) usage: U,
+    /// Normalized finish reason, when the stream reported one.
+    pub(crate) finish_reason: Option<FinishReason>,
+    /// Provider-assigned response identifier, when emitted.
+    pub(crate) response_id: Option<String>,
+    /// Provider-reported model identifier, when emitted.
+    pub(crate) model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,13 +211,19 @@ where
 }
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+    type Usage: Clone + Default + Into<Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
+    type FinalResponse: Clone + WasmCompatSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    /// Build the provider's own terminal record from the stream's terminal
+    /// state. The record stays provider-native for `raw_stream`; the normalized
+    /// path maps it once through [`crate::streaming::normalize_stream`].
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -215,11 +276,11 @@ pub(crate) fn should_evict_distinct_named_tool_call(
     false
 }
 
-pub(crate) async fn send_compatible_streaming_request<T, P>(
+pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
     profile: P,
-) -> Result<streaming::StreamingCompletionResponse<P::FinalResponse>, CompletionError>
+) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
@@ -231,6 +292,9 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_finish_reason = None;
+        let mut response_id = None;
+        let mut response_model = None;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -266,6 +330,14 @@ where
                         chunk.response_model.as_deref(),
                     );
 
+                    if let Some(id) = chunk.response_id.as_ref() {
+                        response_id = Some(id.clone());
+                    }
+
+                    if let Some(model) = chunk.response_model.as_ref() {
+                        response_model = Some(model.clone());
+                    }
+
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
                     }
@@ -273,6 +345,10 @@ where
                     let Some(choice) = chunk.choice else {
                         continue;
                     };
+
+                    if let Some(reason) = choice.finish_reason.reported() {
+                        final_finish_reason = Some(reason);
+                    }
 
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
@@ -351,7 +427,7 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
-                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                    if choice.finish_reason.is_tool_calls() {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
                             DroppedToolCallContext::ToolCallsFinishReason,
@@ -385,27 +461,26 @@ where
         }
 
         let final_usage = final_usage.unwrap_or_default();
-        record_usage(&span, &final_usage);
+        record_usage(&span, &final_usage.clone().into());
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(CompatibleTerminal {
+                usage: final_usage,
+                finish_reason: final_finish_reason,
+                response_id,
+                model: response_model,
+            }),
         ));
     }
     .instrument(instrument_span);
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
 }
 
-fn record_usage<T>(span: &tracing::Span, usage: &T)
-where
-    T: GetTokenUsage,
-{
+fn record_usage(span: &tracing::Span, usage: &Usage) {
     if span.is_disabled() {
         return;
     }
 
-    let usage = usage.token_usage();
     if !usage.has_values() {
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
@@ -576,7 +651,6 @@ fn take_finalized_tool_calls(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::completion::GetTokenUsage;
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -607,14 +681,12 @@ pub(crate) mod test_support {
         )
     }
 
-    pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
-        mut stream: streaming::StreamingCompletionResponse<R>,
+    pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
+        mut stream: streaming::StreamingCompletionResponse,
         expected_id: &str,
         expected_name: &str,
         expect_final_response: bool,
-    ) where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+    ) {
         let mut saw_final = false;
         let mut collected_tool_calls = Vec::new();
 
@@ -647,8 +719,8 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
     use super::{
-        finalize_completed_streaming_tool_call, finalize_pending_tool_call,
-        send_compatible_streaming_request,
+        CompatibleStreamProfile, finalize_completed_streaming_tool_call,
+        finalize_pending_tool_call, send_compatible_raw_streaming_request,
     };
     use crate::completion::CompletionError;
     use crate::http_client;
@@ -660,6 +732,24 @@ mod tests {
         FinishReasonCleanupProfile,
     };
     use futures::StreamExt;
+
+    /// Wrap a profile-driven raw stream into the normalized carrier, so these
+    /// tests exercise the same path providers use.
+    async fn send_compatible_streaming_request<T, P>(
+        http_client: T,
+        req: http::Request<Vec<u8>>,
+        profile: P,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError>
+    where
+        T: crate::http_client::HttpClientExt + Clone + 'static,
+        P: CompatibleStreamProfile<FinalResponse = crate::streaming::StreamFinal> + 'static,
+    {
+        let raw = send_compatible_raw_streaming_request(http_client, req, profile).await?;
+        Ok(crate::streaming::StreamingCompletionResponse::stream(
+            "test-compatible",
+            crate::streaming::normalize_stream(raw, Ok),
+        ))
+    }
 
     #[test]
     fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
@@ -1068,7 +1158,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1118,7 +1208,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1187,7 +1277,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 

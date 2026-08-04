@@ -1,11 +1,12 @@
+use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason};
 use crate::types::completion_request::AwsCompletionRequest;
+use crate::types::converse_output::StopReason;
 use crate::{
     completion::{CompletionModel, resolve_request_model},
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::GetTokenUsage;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
@@ -19,6 +20,10 @@ use tracing_futures::Instrument;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
     pub usage: Option<BedrockUsage>,
+    /// Bedrock's own `stopReason` from the terminal `MessageStop` event, when
+    /// the stream reported one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<StopReason>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,9 +37,10 @@ pub struct BedrockUsage {
     pub cache_write_input_tokens: Option<i32>,
 }
 
-impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
-        self.usage
+impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
+    fn from(response: &BedrockStreamingResponse) -> Self {
+        response
+            .usage
             .as_ref()
             .map(|u| rig_core::completion::Usage {
                 input_tokens: u.input_tokens as u64,
@@ -88,10 +94,12 @@ fn finalize_reasoning(
 }
 
 impl CompletionModel {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays Bedrock's own response type.
+    pub async fn raw_stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
+    ) -> Result<rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>, CompletionError>
+    {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -137,6 +145,7 @@ impl CompletionModel {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut current_reasoning: Option<ReasoningState> = None;
+            let mut final_stop_reason: Option<StopReason> = None;
             let mut stream = response.stream;
             loop {
                 let output = match stream.recv().await {
@@ -228,6 +237,18 @@ impl CompletionModel {
                             }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
+                        // Remember Bedrock's own terminal reason so the final
+                        // record can report it; an unmapped SDK variant is kept
+                        // verbatim rather than dropped.
+                        final_stop_reason = Some(
+                            StopReason::try_from(message_stop_event.stop_reason.clone()).unwrap_or_else(
+                                |_| StopReason::Unknown(
+                                    crate::types::converse_output::UnknownVariantValue(
+                                        message_stop_event.stop_reason.as_str().to_owned(),
+                                    ),
+                                ),
+                            ),
+                        );
                         match message_stop_event.stop_reason {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
@@ -262,8 +283,9 @@ impl CompletionModel {
                                     cache_read_input_tokens: usage.cache_read_input_tokens,
                                     cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
+                                stop_reason: final_stop_reason.clone(),
                             };
-                            span.record_token_usage(&final_response);
+                            span.record_token_usage(&(&final_response).into());
                             yield Ok(RawStreamingChoice::FinalResponse(final_response));
                         }
                     },
@@ -272,7 +294,27 @@ impl CompletionModel {
             }
         }.instrument(span));
 
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(stream)
+    }
+
+    /// Open a stream normalized to rig's terminal record. Delegates to
+    /// [`CompletionModel::raw_stream`] — one request either way.
+    pub(crate) async fn stream(
+        &self,
+        completion_request: rig_core::completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+        let normalized = rig_core::streaming::normalize_stream(raw, |response| {
+            let usage = (&response).into();
+            let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
+            Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
+                .with_optional_finish_reason(finish_reason))
+        });
+
+        Ok(StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            normalized,
+        ))
     }
 }
 
@@ -305,10 +347,11 @@ mod tests {
                 cache_read_input_tokens: Some(40),
                 cache_write_input_tokens: Some(10),
             }),
+            stop_reason: None,
         };
 
         assert_eq!(
-            response.token_usage(),
+            rig_core::completion::Usage::from(&response),
             rig_core::completion::Usage {
                 input_tokens: 200,
                 output_tokens: 75,
@@ -323,16 +366,22 @@ mod tests {
 
     #[test]
     fn test_bedrock_streaming_response_without_usage() {
-        let response = BedrockStreamingResponse { usage: None };
+        let response = BedrockStreamingResponse {
+            usage: None,
+            stop_reason: None,
+        };
 
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
-        assert_eq!(response.token_usage(), rig_core::completion::Usage::new());
-        assert!(!response.token_usage().has_values());
+        assert_eq!(
+            rig_core::completion::Usage::from(&response),
+            rig_core::completion::Usage::new()
+        );
+        assert!(!rig_core::completion::Usage::from(&response).has_values());
     }
 
     #[test]
-    fn test_get_token_usage_trait() {
+    fn test_streaming_response_normalizes_usage() {
         let response = BedrockStreamingResponse {
             usage: Some(BedrockUsage {
                 input_tokens: 448,
@@ -341,11 +390,12 @@ mod tests {
                 cache_read_input_tokens: Some(80),
                 cache_write_input_tokens: Some(20),
             }),
+            stop_reason: None,
         };
 
-        // Test that GetTokenUsage trait is properly implemented
+        // The streaming response normalizes into rig's usage record.
         assert_eq!(
-            response.token_usage(),
+            rig_core::completion::Usage::from(&response),
             rig_core::completion::Usage {
                 input_tokens: 448,
                 output_tokens: 68,
@@ -399,6 +449,7 @@ mod tests {
                 cache_read_input_tokens: Some(30),
                 cache_write_input_tokens: Some(15),
             }),
+            stop_reason: None,
         };
 
         // Test serialization

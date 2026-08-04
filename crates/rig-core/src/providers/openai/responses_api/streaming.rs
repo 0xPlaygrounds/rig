@@ -1,10 +1,12 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
-use crate::providers::openai::responses_api::{ReasoningSummary, ResponsesUsage};
+use crate::providers::openai::responses_api::{
+    IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
+};
 use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
@@ -15,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{Level, debug, enabled};
 use tracing_futures::Instrument as _;
 
-use super::{CompletionResponse, GenericResponsesCompletionModel, Output};
+use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
 
 type StreamingRawChoice = RawStreamingChoice<StreamingCompletionResponse>;
 
@@ -35,6 +37,11 @@ pub enum StreamingCompletionChunk {
 }
 
 /// The final streaming response from the OpenAI Responses API.
+///
+/// This is the provider-native terminal record carried by
+/// [`GenericResponsesCompletionModel::raw_stream`]. The normalized path maps it
+/// once, through [`crate::streaming::normalize_stream`], into a
+/// [`streaming::StreamFinal`].
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
     /// Token usage
@@ -45,6 +52,80 @@ pub struct StreamingCompletionResponse {
     /// The effective reasoning context from the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_context: Option<String>,
+    /// The `status` reported by the terminal `response.completed` event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ResponseStatus>,
+    /// Why the response stopped short, when the provider said so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_details: Option<IncompleteDetailsReason>,
+    /// The assistant message ID (`msg_...`) carried by the terminal response's
+    /// output items.
+    ///
+    /// Distinct from the response ID (`resp_...`), which names the whole
+    /// response and is recorded on telemetry rather than here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// The model identifier reported by the terminal response event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl StreamingCompletionResponse {
+    /// Create a terminal record carrying only usage; the remaining metadata is
+    /// filled in from the terminal `response.completed` event as it arrives.
+    pub fn new(usage: ResponsesUsage) -> Self {
+        Self {
+            usage,
+            reasoning_metadata: None,
+            reasoning_context: None,
+            status: None,
+            incomplete_details: None,
+            message_id: None,
+            model: None,
+        }
+    }
+}
+
+/// Normalize the Responses API's terminal stream record.
+///
+/// The provider descriptor name is an input for the same reason it is on the
+/// unary conversion: ChatGPT and Copilot stream this exact wire shape, so a
+/// baked-in `"openai"` would mislabel them.
+///
+/// The finish reason is left exactly as the provider reported it;
+/// [`crate::streaming::normalize_stream`] applies the tool-call reconciliation
+/// afterwards, using the calls the stream actually emitted.
+impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
+    fn from((provider, response): (&str, StreamingCompletionResponse)) -> Self {
+        let finish_reason = response.status.as_ref().and_then(|status| {
+            super::map_finish_reason(status, response.incomplete_details.as_ref())
+        });
+
+        streaming::StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_message_id(response.message_id)
+            .with_optional_model(response.model)
+    }
+}
+
+/// Normalize a provider-native Responses stream for `provider`.
+///
+/// Maps only the terminal record; every incremental event passes through
+/// untouched.
+pub(crate) fn normalize_responses_stream(
+    provider: &str,
+    raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
+) -> streaming::StreamingCompletionResponse {
+    let provider = provider.to_owned();
+    let mapped_provider = provider.clone();
+    let normalized = streaming::normalize_stream(raw, move |response| {
+        Ok(streaming::StreamFinal::from((
+            mapped_provider.as_str(),
+            response,
+        )))
+    });
+
+    streaming::StreamingCompletionResponse::stream(provider, normalized)
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
@@ -81,9 +162,9 @@ pub(crate) fn reasoning_choices_from_done_item(
     choices
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage.token_usage()
+impl From<&StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(response: &StreamingCompletionResponse) -> Self {
+        Self::from(&response.usage)
     }
 }
 
@@ -221,6 +302,10 @@ struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
+    status: Option<ResponseStatus>,
+    incomplete_details: Option<IncompleteDetailsReason>,
+    message_id: Option<String>,
+    model: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
 }
@@ -231,6 +316,10 @@ impl RawChoiceAccumulator {
             final_usage: initial_usage,
             reasoning_metadata: None,
             reasoning_context: None,
+            status: None,
+            incomplete_details: None,
+            message_id: None,
+            model: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
         }
@@ -318,6 +407,19 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
+                // The terminal event is the only place the stream learns how the
+                // turn ended, which model answered, and which assistant message
+                // (`msg_...`, not the response's `resp_...`) carried the output.
+                if let Some(message_id) = message_id_from_response(&response) {
+                    self.message_id = Some(message_id);
+                }
+                if !response.model.is_empty() {
+                    self.model = Some(response.model.clone());
+                }
+                self.status = Some(response.status);
+                if response.incomplete_details.is_some() {
+                    self.incomplete_details = response.incomplete_details;
+                }
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
@@ -396,6 +498,10 @@ impl RawChoiceAccumulator {
                 usage: self.final_usage,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
+                status: self.status,
+                incomplete_details: self.incomplete_details,
+                message_id: self.message_id,
+                model: self.model,
             },
         ));
         choices
@@ -533,9 +639,10 @@ pub(crate) fn raw_choices_from_sse_body(
 }
 
 pub(crate) async fn completion_response_from_sse_body(
+    provider: &str,
     body: &str,
     raw_response: CompletionResponse,
-) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+) -> Result<completion::CompletionResponse, CompletionError> {
     let raw_choices = raw_choices_from_sse_body(
         body,
         raw_response
@@ -549,7 +656,7 @@ pub(crate) async fn completion_response_from_sse_body(
             .map(Ok::<_, CompletionError>)
             .collect::<Vec<_>>(),
     );
-    let mut stream = crate::streaming::StreamingCompletionResponse::stream(Box::pin(stream));
+    let mut stream = normalize_responses_stream(provider, Box::pin(stream));
 
     while let Some(item) = stream.next().await {
         item?;
@@ -561,19 +668,37 @@ pub(crate) async fn completion_response_from_sse_body(
         ));
     }
 
-    Ok(completion::CompletionResponse {
-        usage: stream
-            .response
-            .as_ref()
-            .map(GetTokenUsage::token_usage)
-            .unwrap_or_else(|| usage_from_raw_response(&raw_response)),
-        message_id: stream
-            .message_id
-            .clone()
-            .or_else(|| message_id_from_response(&raw_response)),
-        choice: stream.choice,
-        raw_response,
-    })
+    // The replayed stream is authoritative where it reported something; the
+    // parsed terminal response fills any gap it left.
+    let terminal = stream.response.clone();
+    let usage = terminal
+        .as_ref()
+        .map(|terminal| terminal.usage)
+        .unwrap_or_else(|| usage_from_raw_response(&raw_response));
+    let message_id = stream
+        .message_id
+        .clone()
+        .or_else(|| message_id_from_response(&raw_response));
+    let finish_reason = terminal
+        .as_ref()
+        .and_then(|terminal| terminal.finish_reason.clone())
+        .or_else(|| {
+            super::map_finish_reason(
+                &raw_response.status,
+                raw_response.incomplete_details.as_ref(),
+            )
+        });
+    let model = terminal
+        .as_ref()
+        .and_then(|terminal| terminal.model.clone())
+        .or_else(|| Some(raw_response.model.clone()).filter(|model| !model.is_empty()));
+
+    Ok(
+        completion::CompletionResponse::new(stream.choice.clone(), usage, provider)
+            .with_optional_message_id(message_id)
+            .with_optional_model(model)
+            .with_optional_finish_reason(finish_reason),
+    )
 }
 
 fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
@@ -596,26 +721,30 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
     response
         .usage
         .as_ref()
-        .map(GetTokenUsage::token_usage)
+        .map(completion::Usage::from)
         .unwrap_or_default()
 }
 
-pub(crate) fn stream_from_event_source<HttpClient, RequestBody>(
+/// Open a Responses SSE stream whose terminal record stays provider-native.
+///
+/// Pass the result through [`normalize_responses_stream`] to obtain the
+/// normalized stream that [`completion::CompletionModel::stream`] returns.
+pub(crate) fn raw_stream_from_event_source<HttpClient, RequestBody>(
     event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+) -> streaming::RawStreamingResult<StreamingCompletionResponse>
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
+    raw_stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
 }
 
-pub(crate) fn stream_from_event_source_with_options<HttpClient, RequestBody>(
+pub(crate) fn raw_stream_from_event_source_with_options<HttpClient, RequestBody>(
     mut event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     options: ResponsesStreamOptions,
-) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+) -> streaming::RawStreamingResult<StreamingCompletionResponse>
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
@@ -716,7 +845,7 @@ where
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    Box::pin(stream)
 }
 
 /// An item message chunk from OpenAI's Responses API.
@@ -853,14 +982,21 @@ impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
-    Ext: crate::client::Provider + super::ResponsesProviderExt + Clone + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays provider-native.
+    ///
+    /// This is the escape hatch for Responses-API terminal fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::stream`](completion::CompletionModel::stream), which
+    /// calls it and normalizes the terminal record — one network request either
+    /// way.
+    pub async fn raw_stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request = self.create_completion_request(completion_request)?;
@@ -883,7 +1019,7 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
-            "openai",
+            Ext::PROVIDER_NAME,
             &request.model,
             CompletionOperation::ChatStreaming,
         )
@@ -892,7 +1028,16 @@ where
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 
-        Ok(stream_from_event_source(event_source, span))
+        Ok(raw_stream_from_event_source(event_source, span))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+
+        Ok(normalize_responses_stream(Ext::PROVIDER_NAME, raw))
     }
 }
 
@@ -957,6 +1102,7 @@ mod tests {
             .expect_err("stream should surface a provider error")
     }
 
+    /// The provider-native terminal record, as `raw_stream` exposes it.
     async fn final_response_from_event(
         event: serde_json::Value,
     ) -> super::StreamingCompletionResponse {
@@ -969,12 +1115,40 @@ mod tests {
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
         let request = model.completion_request("hello").build();
+        let mut stream = model
+            .raw_stream(request)
+            .await
+            .expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            if let RawStreamingChoice::FinalResponse(response) =
+                item.expect("completed stream should not error")
+            {
+                return response;
+            }
+        }
+
+        panic!("stream should yield a final response");
+    }
+
+    /// The normalized terminal record, as `stream` exposes it.
+    async fn stream_final_from_event(event: serde_json::Value) -> crate::streaming::StreamFinal {
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[event]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
         let mut stream = model.stream(request).await.expect("stream should start");
 
         while let Some(item) = stream.next().await {
-            match item.expect("completed stream should not error") {
-                StreamedAssistantContent::Final(response) => return response,
-                _ => continue,
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("completed stream should not error")
+            {
+                return response;
             }
         }
 
@@ -1479,7 +1653,10 @@ mod tests {
             .expect("request should build");
         let event_source = GenericEventSource::new(client, req);
         let span = tracing::Span::none();
-        let mut stream = super::stream_from_event_source(event_source, span);
+        let mut stream = super::normalize_responses_stream(
+            "openai",
+            super::raw_stream_from_event_source(event_source, span),
+        );
 
         let err = stream
             .next()
@@ -1534,7 +1711,10 @@ mod tests {
             .expect("request should build");
         let event_source = GenericEventSource::new(client, req);
         let span = tracing::Span::none();
-        let mut stream = super::stream_from_event_source(event_source, span);
+        let mut stream = super::normalize_responses_stream(
+            "openai",
+            super::raw_stream_from_event_source(event_source, span),
+        );
 
         let err = stream
             .next()
@@ -1598,6 +1778,121 @@ mod tests {
         let response = final_response_from_event(event).await;
         assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
         assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+    }
+
+    #[tokio::test]
+    async fn terminal_record_normalizes_into_the_stream_final() {
+        let mut response = sample_response(ResponseStatus::Completed);
+        response.usage = Some(ResponsesUsage {
+            input_tokens: 10,
+            input_tokens_details: None,
+            output_tokens: 5,
+            output_tokens_details: None,
+            total_tokens: 15,
+        });
+
+        let mut event = json!({
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": response,
+        });
+        event["response"]["output"] = json!([{
+            "type": "message",
+            "id": "msg_stream_1",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{ "type": "output_text", "annotations": [], "text": "hi" }]
+        }]);
+
+        let final_response = stream_final_from_event(event).await;
+
+        assert_eq!(final_response.provider, "openai");
+        assert_eq!(final_response.model.as_deref(), Some("gpt-5.4"));
+        // The assistant message ID (`msg_...`), never the response ID
+        // (`resp_123`) that the same event carries.
+        assert_eq!(final_response.message_id.as_deref(), Some("msg_stream_1"));
+        assert_eq!(
+            final_response.finish_reason,
+            Some(crate::completion::FinishReason::Stop)
+        );
+        assert_eq!(final_response.usage.input_tokens, 10);
+        assert_eq!(final_response.usage.output_tokens, 5);
+        assert_eq!(final_response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn terminal_record_reports_tool_calls_when_the_stream_called_a_tool() {
+        let tool_call_done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_123",
+                "arguments": "{}",
+                "call_id": "call_123",
+                "name": "example_tool",
+                "status": "completed"
+            }
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 2,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[tool_call_done, completed]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) =
+                item.expect("completed stream should not error")
+            {
+                final_response = Some(response);
+            }
+        }
+
+        // `completed` is reconciled up to `ToolCalls` by `normalize_stream`,
+        // using the call the stream actually emitted.
+        assert_eq!(
+            final_response
+                .expect("stream should yield a final response")
+                .finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
+    fn terminal_record_preserves_an_unknown_incomplete_reason() {
+        let response = super::StreamingCompletionResponse {
+            status: Some(ResponseStatus::Incomplete),
+            incomplete_details: Some(IncompleteDetailsReason {
+                reason: "MAX_TOOL_CALLS".to_string(),
+            }),
+            model: Some("gpt-5.4".to_string()),
+            message_id: Some("msg_1".to_string()),
+            ..super::StreamingCompletionResponse::new(ResponsesUsage::new())
+        };
+
+        let final_response = crate::streaming::StreamFinal::from(("openai", response));
+
+        assert_eq!(
+            final_response.finish_reason,
+            Some(crate::completion::FinishReason::Other(
+                "MAX_TOOL_CALLS".to_string()
+            ))
+        );
+        assert_eq!(final_response.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(final_response.model.as_deref(), Some("gpt-5.4"));
     }
 
     #[tokio::test]

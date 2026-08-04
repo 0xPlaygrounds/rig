@@ -33,15 +33,14 @@ use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Part, PartKind, Role, Tool,
+    GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -53,6 +52,12 @@ use super::Client;
 // =================================================================
 // Rig Implementation Types
 // =================================================================
+
+/// Stable descriptor name for the Gemini GenerateContent API.
+///
+/// Recorded on every normalized response and stream this module produces, and
+/// on the telemetry spans, so the two never drift apart.
+pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = reqwest::Client> {
@@ -76,25 +81,25 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = super::Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a completion and return Gemini's own `generateContent` payload.
+    ///
+    /// This is the escape hatch for provider-specific fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &request_model,
             CompletionOperation::GenerateContent,
         )
@@ -147,7 +152,12 @@ where
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
-                span.record_token_usage(&response.usage_metadata);
+                let usage = response
+                    .usage_metadata
+                    .as_ref()
+                    .map(crate::completion::Usage::from)
+                    .unwrap_or_default();
+                span.record_token_usage(&usage);
 
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -157,7 +167,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -174,15 +184,33 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
+    }
+}
+
+impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
+where
+    Client<T>: Clone,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -406,7 +434,8 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+/// Normalize a Gemini `generateContent` response.
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -420,6 +449,8 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         {
             return Err(err);
         }
+
+        let finish_reason = candidate.finish_reason.as_ref().map(map_finish_reason);
 
         let content = candidate
             .content
@@ -513,15 +544,17 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_message_id(
+                    Some(response.response_id.as_str()).filter(|id| !id.is_empty()),
+                )
+                .with_optional_model(response.model_version.as_deref())
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -535,7 +568,6 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::completion::GetTokenUsage;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         completion::CompletionError,
@@ -1424,19 +1456,25 @@ pub mod gemini_api_types {
         }
     }
 
-    impl GetTokenUsage for UsageMetadata {
-        fn token_usage(&self) -> crate::completion::Usage {
+    impl From<&UsageMetadata> for crate::completion::Usage {
+        fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
-            usage.input_tokens = self.prompt_token_count as u64;
-            usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
-            usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
-            usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
+            usage.input_tokens = value.prompt_token_count as u64;
+            usage.output_tokens = value.candidates_token_count.unwrap_or_default() as u64;
+            usage.cached_input_tokens = value.cached_content_token_count.unwrap_or_default() as u64;
+            usage.reasoning_tokens = value.thoughts_token_count.unwrap_or_default() as u64;
             usage.tool_use_prompt_tokens =
-                self.tool_use_prompt_token_count.unwrap_or_default() as u64;
-            usage.total_tokens = self.total_token_count as u64;
+                value.tool_use_prompt_token_count.unwrap_or_default() as u64;
+            usage.total_tokens = value.total_token_count as u64;
 
             usage
+        }
+    }
+
+    impl From<UsageMetadata> for crate::completion::Usage {
+        fn from(value: UsageMetadata) -> crate::completion::Usage {
+            (&value).into()
         }
     }
 
@@ -1499,6 +1537,51 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
+    }
+
+    impl FinishReason {
+        /// The exact spelling Gemini uses for this reason on the wire.
+        ///
+        /// Spelled out rather than derived from `Debug` (which would yield
+        /// `MaxTokens`, not `MAX_TOKENS`) so the string that reaches
+        /// [`crate::completion::FinishReason::Other`] is the provider's own.
+        pub fn as_wire_str(&self) -> &'static str {
+            match self {
+                Self::FinishReasonUnspecified => "FINISH_REASON_UNSPECIFIED",
+                Self::Stop => "STOP",
+                Self::MaxTokens => "MAX_TOKENS",
+                Self::Safety => "SAFETY",
+                Self::Recitation => "RECITATION",
+                Self::Language => "LANGUAGE",
+                Self::Other => "OTHER",
+                Self::Blocklist => "BLOCKLIST",
+                Self::ProhibitedContent => "PROHIBITED_CONTENT",
+                Self::Spii => "SPII",
+                Self::MalformedFunctionCall => "MALFORMED_FUNCTION_CALL",
+                Self::UnexpectedToolCall => "UNEXPECTED_TOOL_CALL",
+                Self::MissingThoughtSignature => "MISSING_THOUGHT_SIGNATURE",
+                Self::TooManyToolCalls => "TOO_MANY_TOOL_CALLS",
+                Self::MalformedResponse => "MALFORMED_RESPONSE",
+            }
+        }
+    }
+
+    /// Map a Gemini `finishReason` onto rig's normalized vocabulary.
+    ///
+    /// Only the four reasons that have a normalized counterpart are folded in;
+    /// everything else — including Gemini's own `OTHER` and the tool-protocol
+    /// failures — is carried verbatim so a reason rig does not model never reads
+    /// as a natural stop. Shared by the unary and streaming paths so both agree.
+    pub(crate) fn map_finish_reason(reason: &FinishReason) -> crate::completion::FinishReason {
+        match reason {
+            FinishReason::Stop => crate::completion::FinishReason::Stop,
+            FinishReason::MaxTokens => crate::completion::FinishReason::Length,
+            FinishReason::Safety
+            | FinishReason::Blocklist
+            | FinishReason::ProhibitedContent
+            | FinishReason::Spii => crate::completion::FinishReason::ContentFilter,
+            other => crate::completion::FinishReason::Other(other.as_wire_str().to_owned()),
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2563,7 +2646,7 @@ mod tests {
             model_version: None,
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
         let first = converted.choice.first();
         assert!(matches!(
@@ -2634,10 +2717,8 @@ mod tests {
                 model_version: None,
             };
 
-            let err = crate::completion::CompletionResponse::<GenerateContentResponse>::try_from(
-                response,
-            )
-            .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::try_from(response)
+                .expect_err("tool protocol finish reason should fail");
 
             assert!(matches!(
                 err,
@@ -2688,7 +2769,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
 
         assert_eq!(converted.usage.input_tokens, 40);
@@ -2697,6 +2778,141 @@ mod tests {
         assert_eq!(converted.usage.reasoning_tokens, 10);
         assert_eq!(converted.usage.tool_use_prompt_tokens, 12);
         assert_eq!(converted.usage.total_tokens, 100);
+    }
+
+    #[test]
+    fn test_finish_reason_maps_every_wire_variant() {
+        use crate::completion::FinishReason as Normalized;
+
+        for (wire, expected) in [
+            (FinishReason::Stop, Normalized::Stop),
+            (FinishReason::MaxTokens, Normalized::Length),
+            (FinishReason::Safety, Normalized::ContentFilter),
+            (FinishReason::Blocklist, Normalized::ContentFilter),
+            (FinishReason::ProhibitedContent, Normalized::ContentFilter),
+            (FinishReason::Spii, Normalized::ContentFilter),
+            // Everything Gemini reports that rig does not model survives in the
+            // provider's own SCREAMING_SNAKE_CASE spelling.
+            (
+                FinishReason::FinishReasonUnspecified,
+                Normalized::Other("FINISH_REASON_UNSPECIFIED".to_string()),
+            ),
+            (
+                FinishReason::Recitation,
+                Normalized::Other("RECITATION".to_string()),
+            ),
+            (
+                FinishReason::Language,
+                Normalized::Other("LANGUAGE".to_string()),
+            ),
+            (FinishReason::Other, Normalized::Other("OTHER".to_string())),
+            (
+                FinishReason::MalformedFunctionCall,
+                Normalized::Other("MALFORMED_FUNCTION_CALL".to_string()),
+            ),
+            (
+                FinishReason::UnexpectedToolCall,
+                Normalized::Other("UNEXPECTED_TOOL_CALL".to_string()),
+            ),
+            (
+                FinishReason::MissingThoughtSignature,
+                Normalized::Other("MISSING_THOUGHT_SIGNATURE".to_string()),
+            ),
+            (
+                FinishReason::TooManyToolCalls,
+                Normalized::Other("TOO_MANY_TOOL_CALLS".to_string()),
+            ),
+            (
+                FinishReason::MalformedResponse,
+                Normalized::Other("MALFORMED_RESPONSE".to_string()),
+            ),
+        ] {
+            assert_eq!(map_finish_reason(&wire), expected, "wire reason {wire:?}");
+        }
+    }
+
+    #[test]
+    fn test_finish_reason_wire_spelling_matches_serde() {
+        // `as_wire_str` is hand-written; keep it honest against the serde
+        // representation the same enum deserializes from.
+        for reason in [
+            FinishReason::FinishReasonUnspecified,
+            FinishReason::Stop,
+            FinishReason::MaxTokens,
+            FinishReason::Safety,
+            FinishReason::Recitation,
+            FinishReason::Language,
+            FinishReason::Other,
+            FinishReason::Blocklist,
+            FinishReason::ProhibitedContent,
+            FinishReason::Spii,
+            FinishReason::MalformedFunctionCall,
+            FinishReason::UnexpectedToolCall,
+            FinishReason::MissingThoughtSignature,
+            FinishReason::TooManyToolCalls,
+            FinishReason::MalformedResponse,
+        ] {
+            let serialized = serde_json::to_value(&reason).expect("reason should serialize");
+            assert_eq!(serialized, json!(reason.as_wire_str()));
+        }
+    }
+
+    #[test]
+    fn test_completion_response_carries_normalized_metadata() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "resp-meta",
+            "modelVersion": "gemini-2.0-flash-001",
+            "candidates": [{
+                "content": {
+                    "parts": [{"text": "hi"}],
+                    "role": "model"
+                },
+                "finishReason": "MAX_TOKENS"
+            }]
+        }))
+        .expect("response should deserialize");
+
+        let converted: crate::completion::CompletionResponse =
+            response.try_into().expect("convert response");
+
+        assert_eq!(converted.provider, PROVIDER_NAME);
+        assert_eq!(converted.model.as_deref(), Some("gemini-2.0-flash-001"));
+        assert_eq!(converted.message_id.as_deref(), Some("resp-meta"));
+        assert_eq!(
+            converted.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[test]
+    fn test_completion_response_upgrades_stop_to_tool_calls() {
+        // Gemini reports STOP on turns that only emitted a function call; the
+        // normalized response must still say `ToolCalls`.
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "resp-tool",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "get_weather",
+                            "args": {"city": "Paris"}
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP"
+            }]
+        }))
+        .expect("response should deserialize");
+
+        let converted: crate::completion::CompletionResponse =
+            response.try_into().expect("convert response");
+
+        assert_eq!(
+            converted.finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+        assert_eq!(converted.model, None);
     }
 
     #[test]
@@ -2778,7 +2994,7 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
             panic!("expected a tool call");

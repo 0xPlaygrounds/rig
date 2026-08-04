@@ -70,7 +70,7 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::{RawStreamingChoice, RawStreamingResult, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -102,16 +102,13 @@ const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
-#[derive(Clone)]
-enum ModelState {
-    Ready(Arc<LoadedModel>),
-    UnsupportedMake,
-}
-
 /// A cheaply cloneable, CPU-only Candle completion model.
+///
+/// A model always owns loaded weights: it is only constructible through the
+/// builders, which is what removing `CompletionModel::make` made expressible.
 #[derive(Clone)]
 pub struct CandleModel {
-    state: ModelState,
+    state: Arc<LoadedModel>,
 }
 
 /// Builder for loading a [`CandleModel`] and customizing generation defaults.
@@ -220,10 +217,7 @@ impl CandleModel {
 
     /// Returns the validated conversation/output protocol.
     pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
-        }
+        Some(self.state.profile.definition.protocol)
     }
 
     /// Backwards-compatible alias for [`Self::conversation_protocol`].
@@ -233,18 +227,12 @@ impl CandleModel {
 
     /// Returns the validated transformer architecture of the loaded checkpoint.
     pub fn architecture(&self) -> Option<ModelArchitecture> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
-        }
+        Some(self.state.profile.definition.architecture)
     }
 
     /// Returns the detected checkpoint quantization, if the model is quantized.
     pub fn quantization(&self) -> Option<Quantization> {
-        match &self.state {
-            ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
-        }
+        self.state.profile.definition.quantization
     }
 }
 
@@ -332,7 +320,7 @@ impl<'a> CandleModelBuilder<'a> {
             )?,
         };
         Ok(CandleModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            state: Arc::new(loaded),
         })
     }
 }
@@ -418,24 +406,25 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    type Response = CandleCompletionResponse;
-    type StreamingResponse = CandleCompletionResponse;
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
-    async fn completion(
+impl CandleModel {
+    /// Run one local completion and return this crate's own response record.
+    ///
+    /// This is the escape hatch for the local generation metrics rig does not
+    /// normalize (timings, tokens/second, the local finish reason).
+    /// [`CompletionModel::completion`] runs the same inference and normalizes
+    /// its result — the model is never run twice.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<CandleCompletionResponse, CompletionError> {
+        Ok(self.infer_completion(request).await?.response)
+    }
+
+    async fn infer_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<crate::generation::InferredCompletion, CompletionError> {
+        let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -463,13 +452,13 @@ impl CompletionModel for CandleModel {
         }
     }
 
-    async fn stream(
+    /// Open a stream whose terminal record stays this crate's own response
+    /// type.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<RawStreamingResult<CandleCompletionResponse>, CompletionError> {
+        let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -495,13 +484,13 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult<CandleCompletionResponse> =
+            let stream: RawStreamingResult<CandleCompletionResponse> =
                 Box::pin(CandleReceiverStream {
                     receiver,
                     cancellation,
                 });
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
 
         #[cfg(target_family = "wasm")]
@@ -512,10 +501,38 @@ impl CompletionModel for CandleModel {
                 Ok(())
             })?;
             events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: StreamingResult<CandleCompletionResponse> =
+            let stream: RawStreamingResult<CandleCompletionResponse> =
                 Box::pin(futures::stream::iter(events));
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
+    }
+}
+
+impl CompletionModel for CandleModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        Ok(self.infer_completion(request).await?.into_normalized())
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(request).await?;
+        let normalized = rig_core::streaming::normalize_stream(raw, |response| {
+            let usage = (&response).into();
+            Ok(
+                rig_core::streaming::StreamFinal::new(crate::types::PROVIDER_NAME, usage)
+                    .with_finish_reason(response.finish_reason.into()),
+            )
+        });
+
+        Ok(StreamingCompletionResponse::stream(
+            crate::types::PROVIDER_NAME,
+            normalized,
+        ))
     }
 }
 

@@ -1,11 +1,11 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
+use crate::completion::NormalizeCompletionResponse;
 use crate::{
     OneOrMany,
     client::Provider,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -64,6 +64,26 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+}
+
+/// Map an Anthropic Messages `stop_reason` onto the normalized vocabulary,
+/// preserving anything unrecognized verbatim.
+///
+/// Shared by the unary and streaming paths so both agree, and so a stop reason
+/// Anthropic adds later surfaces in its own spelling rather than reading as a
+/// natural stop.
+pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
+    match stop_reason {
+        // `stop_sequence` is a natural termination too: the model completed its
+        // turn by emitting one of the caller's stop sequences.
+        "end_turn" | "stop_sequence" => completion::FinishReason::Stop,
+        "max_tokens" => completion::FinishReason::Length,
+        "tool_use" => completion::FinishReason::ToolCalls,
+        // Anthropic's classifier-driven refusal; the closest normalized reason
+        // is content filtering.
+        "refusal" => completion::FinishReason::ContentFilter,
+        other => completion::FinishReason::Other(other.to_owned()),
+    }
 }
 
 impl ProviderResponseExt for CompletionResponse {
@@ -130,20 +150,26 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&Usage> for crate::completion::Usage {
+    fn from(value: &Usage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.input_tokens;
-        usage.output_tokens = self.output_tokens;
-        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or_default();
-        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or_default();
-        usage.total_tokens = self.input_tokens
-            + self.cache_read_input_tokens.unwrap_or_default()
-            + self.cache_creation_input_tokens.unwrap_or_default()
-            + self.output_tokens;
+        usage.input_tokens = value.input_tokens;
+        usage.output_tokens = value.output_tokens;
+        usage.cached_input_tokens = value.cache_read_input_tokens.unwrap_or_default();
+        usage.cache_creation_input_tokens = value.cache_creation_input_tokens.unwrap_or_default();
+        usage.total_tokens = value.input_tokens
+            + value.cache_read_input_tokens.unwrap_or_default()
+            + value.cache_creation_input_tokens.unwrap_or_default()
+            + value.output_tokens;
 
         usage
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        (&value).into()
     }
 }
 
@@ -214,10 +240,16 @@ pub enum SystemContent {
     },
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+/// Normalize an Anthropic Messages response.
+///
+/// The provider descriptor name is an *input* rather than a constant: this same
+/// wire shape is served by every Anthropic-compatible provider (MiniMax, Z.ai,
+/// Moonshot, Xiaomi MiMo), so baking in `"anthropic"` here would mislabel all of
+/// them. Taking it as part of the conversion makes the correct name impossible
+/// to forget.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let content = response
             .content
             .iter()
@@ -240,25 +272,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 .map_err(|_| CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned()))?
         };
 
-        let usage = completion::Usage {
-            input_tokens: response.usage.input_tokens,
-            output_tokens: response.usage.output_tokens,
-            total_tokens: response.usage.input_tokens
-                + response.usage.cache_read_input_tokens.unwrap_or(0)
-                + response.usage.cache_creation_input_tokens.unwrap_or(0)
-                + response.usage.output_tokens,
-            cached_input_tokens: response.usage.cache_read_input_tokens.unwrap_or(0),
-            cache_creation_input_tokens: response.usage.cache_creation_input_tokens.unwrap_or(0),
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        };
+        let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
 
-        Ok(completion::CompletionResponse {
+        Ok(completion::CompletionResponse::new(
             choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+            crate::completion::Usage::from(&response.usage),
+            provider,
+        )
+        .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+        .with_model(response.model.as_str())
+        .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -2454,30 +2477,23 @@ pub(super) fn build_tool_definitions(
     Ok(tools)
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = crate::client::Client<Ext, T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
+    /// Execute a completion and return Anthropic's own wire response.
+    ///
+    /// This is the escape hatch for provider-specific fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -2552,7 +2568,7 @@ where
                 ApiResponse::Message(completion) => {
                     let span = tracing::Span::current();
                     span.record_response_metadata(&completion);
-                    span.record_token_usage(&completion.usage);
+                    span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
                     if enabled!(Level::TRACE) {
                         tracing::trace!(
                             target: "rig::completions",
@@ -2560,7 +2576,7 @@ where
                             serde_json::to_string_pretty(&completion)?
                         );
                     }
-                    completion.try_into()
+                    Ok(completion)
                 }
                 ApiResponse::Error(ApiErrorResponse { message }) => {
                     tracing::warn!(message = %message, "provider returned an error response");
@@ -2574,15 +2590,45 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+where
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // Anthropic's native structured outputs (constrained decoding) are designed
+    // to compose with strict tool use, so the schema constraint does not suppress
+    // tool calls. See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        response.normalize(Ext::PROVIDER_NAME)
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
+    }
+}
+
+impl<Ext, T> crate::client::ConstructCompletionModel<crate::client::Client<Ext, T>>
+    for GenericCompletionModel<Ext, T>
+where
+    crate::client::Client<Ext, T>: Clone,
+    T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
+{
+    fn construct(client: &crate::client::Client<Ext, T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -4993,8 +5039,8 @@ mod tests {
             },
         };
 
-        let parsed: completion::CompletionResponse<CompletionResponse> = response
-            .try_into()
+        let parsed: completion::CompletionResponse = response
+            .normalize("anthropic")
             .expect("empty end_turn should not error");
 
         assert_eq!(parsed.choice.len(), 1);
@@ -5002,6 +5048,10 @@ mod tests {
             parsed.choice.first(),
             completion::AssistantContent::Text(text) if text.text.is_empty()
         ));
+        assert_eq!(parsed.provider, "anthropic");
+        assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
+        assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));
+        assert_eq!(parsed.finish_reason, Some(completion::FinishReason::Stop));
     }
 
     #[test]
@@ -5021,13 +5071,86 @@ mod tests {
             },
         };
 
-        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+        let err = response
+            .normalize("anthropic")
             .expect_err("empty non-end_turn should remain an error");
 
         assert!(matches!(
             err,
             CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
         ));
+    }
+
+    #[test]
+    fn stop_reason_maps_onto_the_normalized_vocabulary() {
+        assert_eq!(
+            map_finish_reason("end_turn"),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason("stop_sequence"),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason("max_tokens"),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("tool_use"),
+            completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason("refusal"),
+            completion::FinishReason::ContentFilter
+        );
+    }
+
+    #[test]
+    fn unknown_stop_reason_is_preserved_verbatim() {
+        // Anthropic's own spelling survives, so a reason this crate does not yet
+        // model never reads as a natural stop.
+        assert_eq!(
+            map_finish_reason("pause_turn"),
+            completion::FinishReason::Other("pause_turn".to_owned())
+        );
+        assert_eq!(
+            map_finish_reason("model_context_window_exceeded"),
+            completion::FinishReason::Other("model_context_window_exceeded".to_owned())
+        );
+    }
+
+    #[test]
+    fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
+        // Anthropic reports `tool_use`, but the reconciliation the response
+        // builder applies must hold for any provider that reports a plain stop
+        // alongside a tool call.
+        let response = CompletionResponse {
+            content: vec![Content::ToolUse {
+                id: "toolu_1".to_string(),
+                name: "add".to_string(),
+                input: json!({"x": 1}),
+            }],
+            id: "msg_123".to_string(),
+            model: CLAUDE_SONNET_4_6.to_string(),
+            role: "assistant".to_string(),
+            stop_reason: Some("end_turn".to_string()),
+            stop_sequence: None,
+            usage: Usage {
+                input_tokens: 7,
+                cache_read_input_tokens: None,
+                cache_creation_input_tokens: None,
+                output_tokens: 2,
+            },
+        };
+
+        let parsed = response
+            .normalize("anthropic")
+            .expect("tool-use response should normalize");
+
+        assert_eq!(
+            parsed.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
     }
 
     #[test]
@@ -5283,11 +5406,13 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        // The wire response is consumed by the conversion, so read the
+        // provider-native text off it first.
+        let raw_text_response = response.get_text_response();
+        let converted = response.normalize("anthropic").unwrap();
         assert_eq!(converted.choice.len(), 3);
         assert_eq!(
-            converted.raw_response.get_text_response().as_deref(),
+            raw_text_response.as_deref(),
             Some("Claude Shannon was born on April 30, 1916.")
         );
 
@@ -5370,8 +5495,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize("anthropic").unwrap();
         let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
             panic!("expected raw web_search_tool_result metadata");
         };
@@ -5476,8 +5600,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize("anthropic").unwrap();
         let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
         else {
             panic!("expected raw code_execution_tool_result metadata");
@@ -5981,6 +6104,14 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+
+        // The transport failure ends the stream: nothing may follow it that
+        // would read as a successfully completed turn.
+        assert!(stream.next().await.is_none());
+        assert!(
+            stream.response.is_none(),
+            "a stream cut short by a transport error must not synthesize a terminal record"
+        );
     }
 
     #[test]

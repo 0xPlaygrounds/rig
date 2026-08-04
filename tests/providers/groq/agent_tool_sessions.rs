@@ -10,10 +10,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, GetTokenUsage, Message};
+use rig::completion::NormalizeCompletionResponse;
+use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::{groq, openai};
 use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -449,24 +450,67 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
+/// The Groq wire metadata the normalized response deliberately does not carry.
+///
+/// The provider-local conversion consumes the raw response and Groq's wire type
+/// is not `Clone`, so the fields the parity assertions need are captured first.
+struct RawResponseMetadata {
+    id: String,
+    model: String,
+    system_fingerprint: Option<String>,
+    finish_reasons: Vec<String>,
+    usage: Option<openai::Usage>,
+}
+
+impl RawResponseMetadata {
+    fn capture(raw: &openai::CompletionResponse) -> Self {
+        Self {
+            id: raw.id.clone(),
+            model: raw.model.clone(),
+            system_fingerprint: raw.system_fingerprint.clone(),
+            finish_reasons: raw
+                .choices
+                .iter()
+                .map(|choice| choice.finish_reason.clone())
+                .collect(),
+            usage: raw.usage.clone(),
+        }
+    }
+}
+
+/// Run one completion and return both Groq's own wire metadata and the
+/// normalized response the completion path derives from the same wire response.
+///
+/// `raw_completion` is the escape hatch for the provider-specific fields the
+/// normalized response no longer carries (`system_fingerprint`, Groq's queue and
+/// total timings); converting its result locally keeps the raw-vs-normalized
+/// parity checks below on a single cassette interaction.
+async fn raw_and_normalized_completion(
+    model: &groq::CompletionModel,
+    request: rig::completion::CompletionRequest,
+) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
+    let raw = model.raw_completion(request).await?;
+    let metadata = RawResponseMetadata::capture(&raw);
+    let normalized: rig::completion::CompletionResponse = raw.normalize("groq")?;
+    Ok((metadata, normalized))
+}
+
 fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<openai::CompletionResponse>,
+    response: &rig::completion::CompletionResponse,
+    raw: &RawResponseMetadata,
 ) {
-    assert_nonempty_response(&response.raw_response.id);
-    assert_nonempty_response(&response.raw_response.model);
-    if let Some(system_fingerprint) = &response.raw_response.system_fingerprint {
+    assert_nonempty_response(&raw.id);
+    assert_nonempty_response(&raw.model);
+    if let Some(system_fingerprint) = &raw.system_fingerprint {
         assert_nonempty_response(system_fingerprint);
     }
     assert!(
-        response
-            .raw_response
-            .choices
+        raw.finish_reasons
             .iter()
-            .all(|choice| !choice.finish_reason.is_empty()),
+            .all(|finish_reason| !finish_reason.is_empty()),
         "raw Groq choices should preserve finish reasons"
     );
-    let raw_usage = response
-        .raw_response
+    let raw_usage = raw
         .usage
         .as_ref()
         .expect("raw response should preserve usage");
@@ -764,12 +808,12 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },
@@ -888,7 +932,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 .max_tokens(128)
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
@@ -898,7 +942,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 &serialized,
                 &["canary", "low", "compile", "replay"],
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },
@@ -934,7 +978,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
                 .max_tokens(128)
                 .build();
 
-            let response = model.completion(request).await?;
+            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("structured response should contain text"))?;
             let plan: StructuredReleasePlan = serde_json::from_str(&text)?;
@@ -943,7 +987,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
             anyhow::ensure!(plan.risk.eq_ignore_ascii_case("low"));
             anyhow::ensure!(plan.checks.compile);
             anyhow::ensure!(plan.checks.replay);
-            assert_response_metadata(&response);
+            assert_response_metadata(&response, &raw);
 
             Ok(())
         },
@@ -979,7 +1023,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
                         }
                     }
                     StreamedAssistantContent::Final(response) => {
-                        final_usage = Some(response.token_usage());
+                        final_usage = Some(response.usage);
                     }
                     _ => {}
                 }

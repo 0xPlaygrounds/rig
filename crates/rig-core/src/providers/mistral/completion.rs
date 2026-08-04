@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::completion::GetTokenUsage;
+use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::{
     OneOrMany,
@@ -35,9 +35,12 @@ pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<MistralExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying Mistral's own usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
+/// Mistral's provider-native terminal streaming record: the value carried by
+/// the final item of the stream returned by `CompletionModel::raw_stream`.
+/// Shared with the OpenAI Chat Completions path but carrying Mistral's own
+/// usage payload (cached-token fallbacks).
+pub type MistralStreamingCompletionResponse =
+    openai::StreamingCompletionResponse<super::client::Usage>;
 
 // =================================================================
 // Rig Implementation Types
@@ -175,33 +178,22 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage.cached_input_tokens = self.cached_tokens();
-        usage
-    }
-}
-
-impl GetTokenUsage for CompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage
-            .as_ref()
-            .map(GetTokenUsage::token_usage)
-            .unwrap_or_default()
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+/// Normalize a Mistral chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant so the
+/// shared OpenAI-compatible completion path labels the response with the
+/// descriptor that actually produced it.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+
+        let finish_reason = Some(choice.finish_reason.as_str())
+            .filter(|reason| !reason.is_empty())
+            .map(map_openai_finish_reason);
+
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -242,25 +234,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: usage.completion_tokens as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage.cached_tokens(),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(completion::Usage::from)
             .unwrap_or_default();
 
-        let message_id = response.id.clone();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: Some(message_id),
-        })
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_message_id(response.id.as_str())
+            .with_model(response.model.as_str())
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
