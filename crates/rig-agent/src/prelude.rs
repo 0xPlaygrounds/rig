@@ -11,7 +11,10 @@ pub use rig_core::client::audio_generation::AudioGenerationClient;
 #[cfg(feature = "image")]
 pub use rig_core::client::image_generation::ImageGenerationClient;
 
-pub use crate::agent::{Agent, MultiTurnStreamItem, StreamingResult};
+pub use crate::agent::{
+    Agent, AgentStreamFinal, ModelHandle, ModelSelectionContext, MultiTurnStreamItem,
+    StreamingResult,
+};
 pub use crate::client::{AgentClientExt, AgentModelExt};
 pub use crate::completion::{
     Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,

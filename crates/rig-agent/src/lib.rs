@@ -75,7 +75,10 @@ pub mod streaming;
 pub mod test_utils;
 pub mod tool;
 
-pub use agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
+pub use agent::{
+    Agent, AgentBuilder, AgentRun, AgentRunner, AgentStreamFinal, ModelHandle,
+    ModelSelectionContext,
+};
 pub use extractor::ExtractionResponse;
 
 #[cfg(feature = "derive")]

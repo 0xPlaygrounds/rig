@@ -34,7 +34,7 @@ const MAX_HISTORY_MESSAGES: usize = 12;
 const MAX_HISTORY_JSON_BYTES: usize = 2048;
 
 struct ChatState {
-    agent: Agent<CandleModel>,
+    agent: Agent,
     history: Vec<Message>,
 }
 

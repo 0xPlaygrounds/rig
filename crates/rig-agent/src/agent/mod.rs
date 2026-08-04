@@ -102,6 +102,7 @@
 mod builder;
 mod completion;
 pub mod hook;
+pub mod model;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -121,11 +122,13 @@ pub use hook::{
     StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
     ToolResultEvent,
 };
+pub use model::{AgentStreamFinal, ModelHandle, ModelSelectionContext};
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCall, PromptRequest, PromptResponse, TypedPromptRequest, TypedPromptResponse,
+    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
+    TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

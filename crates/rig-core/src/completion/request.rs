@@ -491,6 +491,14 @@ impl CompletionRequest {
         chat_history
     }
 
+    /// Returns the exact normalized input messages used by runtime telemetry.
+    ///
+    /// This includes documents at the same canonical insertion point used by
+    /// providers. It does not expose or transform provider-specific parameters.
+    pub fn messages_for_telemetry(&self) -> Vec<Message> {
+        self.chat_history_with_documents()
+    }
+
     /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
     pub fn with_provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
         self.additional_params =
@@ -591,7 +599,7 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
-pub struct CompletionRequestBuilder<M: CompletionModel> {
+pub struct CompletionRequestBuilder<M> {
     model: M,
     prompt: Message,
     request_model: Option<String>,
@@ -608,7 +616,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     record_telemetry_content: bool,
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
+impl<M> CompletionRequestBuilder<M> {
     pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
@@ -857,7 +865,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
+    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError>
+    where
+        M: CompletionModel,
+    {
         let model = self.model.clone();
         model.completion(self.build()).await
     }
@@ -867,11 +878,23 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self,
     ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError>
     where
+        M: CompletionModel,
         <M as CompletionModel>::StreamingResponse: 'a,
         Self: 'a,
     {
         let model = self.model.clone();
         model.stream(self.build()).await
+    }
+}
+
+impl CompletionRequestBuilder<()> {
+    /// Creates a model-independent request builder.
+    ///
+    /// This is used by runtimes that select a model only after entering a
+    /// concrete orchestration boundary. The built [`CompletionRequest`] can be
+    /// executed by any compatible [`CompletionModel`].
+    pub fn without_model(prompt: impl Into<Message>) -> Self {
+        Self::new((), prompt)
     }
 }
 

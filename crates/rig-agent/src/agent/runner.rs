@@ -13,8 +13,7 @@
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
-//! # use rig_core::completion::CompletionModel;
-//! # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
 //!     .runner("What is 2 + 2?")
 //!     .max_turns(3)
@@ -34,13 +33,14 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, PreparedCompletionRequest},
+    completion::{Agent, PreparedModelAttempt},
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
+    model::{ModelHandle, ModelSelectionContext, ModelSelector},
     prompt_request::{
         PromptResponse,
         streaming::{
@@ -195,15 +195,15 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
 #[non_exhaustive]
-pub struct AgentRunner<M>
-where
-    M: CompletionModel,
-{
+pub struct AgentRunner {
     pub(crate) prompt: Message,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) model: Arc<M>,
+    pub(crate) model: ModelHandle,
+    /// Optional per-call selector. When present it takes precedence over the
+    /// run-local fixed/default model at each `CallModel` boundary.
+    pub(crate) model_selector: Option<ModelSelector>,
     pub(crate) agent_name: Option<String>,
     pub(crate) preamble: Option<String>,
     pub(crate) static_context: Vec<Document>,
@@ -228,19 +228,17 @@ where
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
             max_turns: agent.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
             model: agent.model.clone(),
+            model_selector: None,
             agent_name: agent.name.clone(),
             preamble: agent.preamble.clone(),
             static_context: agent.static_context.clone(),
@@ -280,15 +278,48 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
+        self
+    }
+
+    /// Pin every model attempt in this run to `model`.
+    ///
+    /// This clears any selector installed earlier. Calling [`Self::select_model`]
+    /// afterwards installs per-call routing again, with this handle as the
+    /// selector context's `default_model`.
+    pub fn using_model(mut self, model: ModelHandle) -> Self {
+        self.model = model;
+        self.model_selector = None;
+        self
+    }
+
+    /// Erase and pin a typed completion model for this run.
+    pub fn using_model_value<M>(self, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        self.using_model(ModelHandle::new(model))
+    }
+
+    /// Select a model synchronously before every model call in this run.
+    ///
+    /// The selector runs exactly once per `AgentRunStep::CallModel`, including
+    /// calls after tools and retries. Its returned handle is bound to request
+    /// preparation and execution for that attempt. Installing a selector after
+    /// [`Self::using_model`] gives the selector precedence.
+    pub fn select_model<F>(mut self, selector: F) -> Self
+    where
+        F: for<'a> Fn(ModelSelectionContext<'a>) -> ModelHandle
+            + rig_core::wasm_compat::WasmCompatSend
+            + rig_core::wasm_compat::WasmCompatSync
+            + 'static,
+    {
+        self.model_selector = Some(ModelSelector::new(selector));
         self
     }
 
@@ -660,17 +691,14 @@ pub(crate) struct ToolCallOutcome {
 /// Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
-pub(crate) async fn run_single_tool<M>(
-    runner: &AgentRunner<M>,
+pub(crate) async fn run_single_tool(
+    runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError>
-where
-    M: CompletionModel,
-{
+) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.hooks;
     let tool_context = &runner.tool_context;
     let record_content = runner.record_telemetry_content;
@@ -896,15 +924,10 @@ impl UnaryTurnSource {
     }
 }
 
-impl<M> TurnSource<M> for UnaryTurnSource
-where
-    M: CompletionModel,
-{
-    type Raw = M::Response;
-
+impl TurnSource for UnaryTurnSource {
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
         let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
@@ -913,16 +936,21 @@ where
 
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedModelAttempt,
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
         current_prompt: Message,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
-            let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
+            let resp = match prepared
+                .model
+                .complete(prepared.request)
+                .instrument(chat_span.clone())
+                .await
+            {
                 Ok(resp) => resp,
                 Err(err) => {
                     yield Err(StreamingError::from(err));
@@ -1050,12 +1078,12 @@ where
 
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
         // skips building them.
@@ -1088,17 +1116,14 @@ where
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem<M::Response>> {
+    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     pub(crate) async fn run_with_error_usage(
         mut self,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
@@ -4387,8 +4412,8 @@ mod migrated_tests {
 
     /// Drive a stream to completion, panicking on any stream error, and return
     /// its final response.
-    async fn drive_to_final_response<R: Send + 'static>(
-        mut stream: crate::agent::prompt_request::streaming::StreamingResult<R>,
+    async fn drive_to_final_response(
+        mut stream: crate::agent::prompt_request::streaming::StreamingResult,
     ) -> crate::agent::prompt_request::PromptResponse {
         let mut final_response = None;
         while let Some(item) = stream.next().await {

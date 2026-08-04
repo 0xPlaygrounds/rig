@@ -1,6 +1,5 @@
 //! Anthropic streaming smoke test.
 
-use rig::completion::GetTokenUsage;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::StreamingPrompt;
@@ -20,13 +19,13 @@ async fn streaming_smoke() {
             .build();
 
         let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let (response, provider_final): (_, anthropic::streaming::StreamingCompletionResponse) =
+        let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert!(provider_final.token_usage().total_tokens > 0);
+        assert!(provider_final.usage.total_tokens > 0);
     })
     .await;
 }
