@@ -296,6 +296,7 @@ where
         let mut response_id = None;
         let mut response_model = None;
         let mut terminated_with_error = false;
+        let mut saw_terminal = false;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -304,7 +305,11 @@ where
                     continue;
                 }
                 Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                    if message.data == "[DONE]" {
+                        saw_terminal = true;
+                        continue;
+                    }
+                    if message.data.trim().is_empty() {
                         continue;
                     }
 
@@ -348,6 +353,7 @@ where
 
                     if let Some(reason) = choice.finish_reason.reported() {
                         final_finish_reason = Some(reason);
+                        saw_terminal = true;
                     }
 
                     for incoming in choice.tool_calls {
@@ -454,10 +460,21 @@ where
             return;
         }
 
+        // Tool calls the provider fully delivered are content, so a truncated
+        // stream still flushes them to the consumer.
         for tool_call in
             take_finalized_tool_calls(&mut tool_calls, DroppedToolCallContext::EndOfStream)
         {
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
+        }
+
+        // But only `[DONE]` or a chunk carrying a finish reason counts as the
+        // provider completing the turn. A stream that reached EOF without
+        // either signal (truncation) gets no terminal record — synthesizing
+        // one would present the partial turn as a successful, default-usage
+        // completion.
+        if !saw_terminal {
+            return;
         }
 
         let final_usage = final_usage.unwrap_or_default();
@@ -703,6 +720,11 @@ pub(crate) mod test_support {
 
         if expect_final_response {
             assert!(saw_final, "stream should still yield a final response");
+        } else {
+            assert!(
+                !saw_final,
+                "a truncated stream must not synthesize a terminal record"
+            );
         }
 
         assert_eq!(collected_tool_calls.len(), 1);

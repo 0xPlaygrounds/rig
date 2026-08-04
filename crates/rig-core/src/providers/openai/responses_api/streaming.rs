@@ -308,6 +308,9 @@ struct RawChoiceAccumulator {
     model: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
+    /// Whether a genuine `response.completed` event arrived. Without it the
+    /// stream was truncated, and `finish` withholds the terminal record.
+    saw_terminal: bool,
 }
 
 impl RawChoiceAccumulator {
@@ -322,6 +325,7 @@ impl RawChoiceAccumulator {
             model: None,
             tool_calls: Vec::new(),
             tool_call_internal_ids: std::collections::HashMap::new(),
+            saw_terminal: false,
         }
     }
 
@@ -407,6 +411,7 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
+                self.saw_terminal = true;
                 // The terminal event is the only place the stream learns how the
                 // turn ended, which model answered, and which assistant message
                 // (`msg_...`, not the response's `resp_...`) carried the output.
@@ -493,6 +498,13 @@ impl RawChoiceAccumulator {
     fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
         choices.append(&mut self.tool_calls);
+        // Only a genuine `response.completed` event counts as the provider
+        // completing the turn; a stream that ended without one was truncated,
+        // and a synthesized terminal record would present the partial turn as
+        // a successful, default-usage completion.
+        if !self.saw_terminal {
+            return choices;
+        }
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,

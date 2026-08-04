@@ -315,6 +315,7 @@ where
             let mut message_id = None;
             let mut response_model = None;
             let mut terminated_with_error = false;
+            let mut saw_terminal = false;
 
             let mut text_content = String::new();
 
@@ -351,6 +352,7 @@ where
                                             span.record_token_usage(&crate::completion::Usage::from(&usage));
                                             final_usage = Some(usage);
                                             stop_reason = Some(reason.clone());
+                                            saw_terminal = true;
                                             break;
                                         }
                                     }
@@ -389,10 +391,12 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
-            // A transport failure cut the stream short: whatever was accumulated
-            // is partial, so do not follow the error with a terminal record that
-            // would read as a successfully completed turn.
-            if terminated_with_error {
+            // Only a genuine `message_delta` carrying a stop reason counts as
+            // the provider completing the turn. A transport failure, or a
+            // stream that reached EOF without that event (truncation), leaves
+            // whatever was accumulated partial — emitting a terminal record
+            // then would read as a successfully completed turn.
+            if terminated_with_error || !saw_terminal {
                 return;
             }
 
@@ -1946,5 +1950,112 @@ mod tests {
                 "pause_turn".to_owned()
             ))
         );
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    mod terminal_emission {
+        use super::super::super::completion::CLAUDE_SONNET_4_6;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::anthropic::Client;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        const MESSAGE_START: &str = r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}}"#;
+        const TEXT_START: &str = r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
+        const TEXT_DELTA: &str =
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#;
+        const MESSAGE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#;
+
+        fn sse(frames: &[&str]) -> bytes::Bytes {
+            bytes::Bytes::from(
+                frames
+                    .iter()
+                    .map(|frame| format!("data: {frame}\n\n"))
+                    .collect::<String>(),
+            )
+        }
+
+        async fn collect(
+            sse_bytes: bytes::Bytes,
+        ) -> (Vec<String>, bool, bool, crate::streaming::StreamingCompletionResponse) {
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient { sse_bytes })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut texts = Vec::new();
+            let mut saw_error = false;
+            let mut saw_terminal = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                    Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                    Ok(_) => {}
+                    Err(_) => saw_error = true,
+                }
+            }
+            (texts, saw_error, saw_terminal, stream)
+        }
+
+        #[tokio::test]
+        async fn truncated_stream_yields_content_but_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(!saw_error);
+            assert!(
+                !saw_terminal,
+                "EOF without message_delta must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_eof_yields_error_and_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, "{not json"])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a parse error followed by EOF must not read as a completed turn"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_real_terminal_still_completes_the_stream() {
+            let (texts, saw_error, saw_terminal, stream) = collect(sse(&[
+                MESSAGE_START,
+                TEXT_START,
+                TEXT_DELTA,
+                "{not json",
+                MESSAGE_DELTA,
+            ]))
+            .await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                saw_terminal,
+                "a genuine message_delta after a parse error still completes the stream"
+            );
+            let terminal = stream.response.expect("terminal record");
+            assert_eq!(
+                terminal.finish_reason,
+                Some(crate::completion::FinishReason::Stop)
+            );
+            assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
+        }
     }
 }

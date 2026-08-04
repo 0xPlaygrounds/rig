@@ -35,7 +35,6 @@ pub(crate) async fn raw_stream(
         .into_inner();
 
     let stream = stream! {
-        let mut last_resp: Option<StreamingCompletionResponse> = None;
         let mut final_resp: Option<StreamingCompletionResponse> = None;
 
         while let Some(item) = response_stream.next().await {
@@ -97,8 +96,6 @@ pub(crate) async fn raw_stream(
                     if is_final {
                         final_resp = Some(resp);
                         break;
-                    } else {
-                        last_resp = Some(resp);
                     }
                 }
                 Err(status) => {
@@ -108,8 +105,14 @@ pub(crate) async fn raw_stream(
             }
         }
 
-        let resp = final_resp.or(last_resp).unwrap_or_default();
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        // Only a chunk carrying a genuine finish reason counts as the provider
+        // completing the turn. A stream that reached EOF without one was
+        // truncated, and synthesizing a terminal record from the last content
+        // chunk (or a default) would report a successful completion for a turn
+        // the provider never finished.
+        if let Some(resp) = final_resp {
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        }
     };
 
     Ok(Box::pin(stream))

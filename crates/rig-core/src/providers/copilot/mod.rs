@@ -1218,8 +1218,19 @@ where
                     return;
                 }
 
+                // Tool calls the provider fully delivered are content, so a
+                // truncated stream still flushes them to the consumer.
                 for tool_call in &tool_calls {
                     yield Ok(tool_call.to_owned())
+                }
+
+                // But only a genuine `response.completed` event counts as the
+                // provider completing the turn. A stream that reached EOF
+                // without that event (truncation) gets no terminal record —
+                // synthesizing one would present the partial turn as a
+                // successful completion.
+                if final_status.is_none() {
+                    return;
                 }
 
                 span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);

@@ -194,10 +194,14 @@ where
                         let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
                             Ok(d) => d,
                             Err(error) => {
+                                // Surface the malformed frame but keep
+                                // consuming: a later genuine terminal chunk can
+                                // still complete the stream, and if none
+                                // arrives the missing finishReason suppresses
+                                // the terminal record below.
                                 tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                stream_failed = true;
                                 yield Err(CompletionError::JsonError(error));
-                                break;
+                                continue;
                             }
                         };
 
@@ -332,10 +336,12 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            // A stream that errored out never gets a synthesized terminal
-            // record: yielding one would report a successful completion for a
-            // turn the provider aborted.
-            if !stream_failed {
+            // Only a chunk carrying Gemini's `finishReason` counts as the
+            // provider completing the turn. A stream that errored out, or that
+            // reached EOF without that chunk (truncation), never gets a
+            // synthesized terminal record: yielding one would report a
+            // successful completion for a turn the provider aborted.
+            if !stream_failed && final_finish_reason.is_some() {
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                     usage_metadata: final_usage.unwrap_or_default(),
                     finish_reason: final_finish_reason,
@@ -895,5 +901,101 @@ mod tests {
         assert_eq!(token_usage.reasoning_tokens, 15);
         assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 190);
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    mod terminal_emission {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        const CONTENT_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"}}],"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
+        const TERMINAL_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"totalTokenCount":7},"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
+
+        fn sse(frames: &[&str]) -> bytes::Bytes {
+            bytes::Bytes::from(
+                frames
+                    .iter()
+                    .map(|frame| format!("data: {frame}\n\n"))
+                    .collect::<String>(),
+            )
+        }
+
+        async fn collect(
+            sse_bytes: bytes::Bytes,
+        ) -> (Vec<String>, bool, bool, crate::streaming::StreamingCompletionResponse) {
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient { sse_bytes })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut texts = Vec::new();
+            let mut saw_error = false;
+            let mut saw_terminal = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                    Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                    Ok(_) => {}
+                    Err(_) => saw_error = true,
+                }
+            }
+            (texts, saw_error, saw_terminal, stream)
+        }
+
+        #[tokio::test]
+        async fn truncated_stream_yields_content_but_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) = collect(sse(&[CONTENT_CHUNK])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(!saw_error);
+            assert!(
+                !saw_terminal,
+                "EOF without a finishReason chunk must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_eof_yields_error_and_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[CONTENT_CHUNK, "{not json"])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a parse error followed by EOF must not read as a completed turn"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_real_terminal_still_completes_the_stream() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[CONTENT_CHUNK, "{not json", TERMINAL_CHUNK])).await;
+
+            assert_eq!(texts, ["hi", "!"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                saw_terminal,
+                "a genuine finishReason chunk after a parse error still completes the stream"
+            );
+            let terminal = stream.response.expect("terminal record");
+            assert_eq!(
+                terminal.finish_reason,
+                Some(crate::completion::FinishReason::Stop)
+            );
+            assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
+        }
     }
 }

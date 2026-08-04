@@ -1200,6 +1200,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
+        // The tool call was fully delivered, so it is still flushed at EOF —
+        // but the stream reached EOF without `[DONE]` or a finish reason, so
+        // no terminal record is synthesized for the truncated turn.
+        assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", false).await;
     }
 }

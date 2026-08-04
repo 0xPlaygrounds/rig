@@ -166,6 +166,7 @@ where
             let mut final_finish_reason = None;
             let mut message_id = None;
             let mut terminated_with_error = false;
+            let mut saw_terminal = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -211,6 +212,7 @@ where
                                 span.record_token_usage(&usage);
                                 final_usage = Some(delta.usage);
                                 final_finish_reason = delta.finish_reason;
+                                saw_terminal = true;
                                 break;
                             },
 
@@ -278,11 +280,12 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            // A stream that ended in an error never reached Cohere's
-            // `message-end` event, so there is no terminal record to report;
-            // synthesizing one would present a failed turn as a successful,
+            // Only Cohere's `message-end` event counts as the provider
+            // completing the turn. A stream that errored, or that reached EOF
+            // without it (truncation), has no terminal record to report;
+            // synthesizing one would present a partial turn as a successful,
             // zero-usage completion.
-            if terminated_with_error {
+            if terminated_with_error || !saw_terminal {
                 return;
             }
 
@@ -375,6 +378,51 @@ mod tests {
         assert_eq!(terminal.usage.total_tokens, 14);
         // Cohere's stream never names the model.
         assert_eq!(terminal.model, None);
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // No `message-end`: the stream was cut off mid-response.
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without message-end must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 
     #[tokio::test]

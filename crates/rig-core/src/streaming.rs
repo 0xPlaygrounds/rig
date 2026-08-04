@@ -86,6 +86,16 @@ pub enum StreamFinalKind {
 ///
 /// Providers that want their own terminal type keep it behind
 /// [`RawStreamingResult`] and map it once with [`normalize_stream`].
+///
+/// # Emission contract
+///
+/// A terminal record is emitted only when the provider signaled genuine
+/// completion — its own end-of-response event (an Anthropic `message_delta`
+/// with a stop reason, an OpenAI `[DONE]` / `response.completed`, a Gemini
+/// chunk carrying `finishReason`, and so on). A stream that errors, or that
+/// reaches EOF without that signal, yields whatever content arrived and then
+/// simply ends: consumers must treat the absence of a terminal record as
+/// truncation, never as a successful zero-usage completion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct StreamFinal {

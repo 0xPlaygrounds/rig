@@ -202,10 +202,12 @@ where
 
             event_source.close();
 
-            // A stream that errored out never gets a synthesized terminal
-            // record: yielding one would report a successful completion for a
-            // turn the provider aborted.
-            if !stream_failed {
+            // Only a genuine `interaction.completed` event counts as the
+            // provider completing the turn. A stream that errored out, or that
+            // reached EOF without that event (truncation), never gets a
+            // synthesized terminal record: yielding one would report a
+            // successful completion for a turn the provider aborted.
+            if !stream_failed && final_interaction.is_some() {
                 let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                     usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
