@@ -11,8 +11,7 @@ pub mod transcription;
 pub mod verify;
 
 use bytes::Bytes;
-pub use completion::CompletionClient;
-pub(crate) use completion::ConstructCompletionModel;
+pub use completion::{CompletionClient, ConstructCompletionModel};
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
