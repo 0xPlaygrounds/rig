@@ -235,6 +235,7 @@ impl ProviderResponseExt for CompletionResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Usage {
     pub completion_tokens: u32,
     pub prompt_tokens: u32,

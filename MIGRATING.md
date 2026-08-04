@@ -328,6 +328,10 @@ upgrades a reported `Stop` to `ToolCalls` when the turn actually carried tool
 calls. Several OpenAI-compatible gateways report `stop` on a tool-calling turn,
 so code branching on `ToolCalls` would otherwise miss the call.
 
+Tests (or other code) holding a provider's raw response can re-derive the
+normalized fields via the additive `NormalizeCompletionResponse::normalize`
+bridge — the same conversion the provider's normalized path uses.
+
 ### Provider-native responses moved to `raw_completion` / `raw_stream`
 
 Every built-in provider model exposes both:
@@ -363,7 +367,8 @@ adding a new terminal reason surfaces it rather than reading as a natural stop.
 `StreamingCompletionResponse<R>`, `StreamingResult<R>`,
 `StreamedAssistantContent<R>`, and the downstream agent streaming types are
 concrete. Their terminal record is `StreamFinal`, which carries normalized
-usage, finish reason, provider, provider-reported model, and message ID.
+usage, finish reason, provider, provider-reported model, message ID, and
+response ID.
 
 `GetTokenUsage` is deleted — read `StreamFinal::usage` (or
 `StreamingCompletionResponse::usage()`) directly. A stream that ends without a

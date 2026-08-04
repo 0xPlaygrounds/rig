@@ -166,7 +166,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 input_tokens: usage.prompt_token_count as u64,
                 output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
-                cached_input_tokens: 0, // unreported at time of writing
+                cached_input_tokens: usage.cached_content_token_count as u64,
                 cache_creation_input_tokens: 0,
                 tool_use_prompt_tokens: 0,
                 reasoning_tokens: 0,
@@ -178,7 +178,10 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
 
         Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME)
             .with_optional_finish_reason(finish_reason)
-            .with_optional_model(model))
+            .with_optional_model(model)
+            .with_optional_response_id(
+                Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+            ))
     }
 }
 

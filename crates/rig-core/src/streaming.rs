@@ -111,10 +111,12 @@ pub struct StreamFinal {
     /// to this value using the tool calls actually seen on the stream, so a
     /// provider mapper does not need to (and cannot — it has no view of the
     /// preceding events).
+    #[serde(default)]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned *assistant message* ID, when available — only IDs the
     /// provider would recognize on a replayed assistant message. Response-scoped
     /// identifiers belong in [`StreamFinal::response_id`].
+    #[serde(default)]
     pub message_id: Option<String>,
     /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
     /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
@@ -123,6 +125,7 @@ pub struct StreamFinal {
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// Provider-reported model identifier, when available.
+    #[serde(default)]
     pub model: Option<String>,
 }
 
@@ -456,6 +459,7 @@ pub struct StreamingCompletionResponse {
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
     pub final_response_yielded: AtomicBool,
+
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     pub message_id: Option<String>,
 }
@@ -961,11 +965,47 @@ mod tests {
         );
         while stream.next().await.is_some() {}
 
+        // No terminal record was ever yielded, so none may be synthesized.
+        assert!(stream.response.is_none());
+
         let response: CompletionResponse = stream.into();
         assert_eq!(response.provider, TEST_PROVIDER);
         assert_eq!(response.usage, Usage::new());
         assert_eq!(response.finish_reason, None);
         assert_eq!(response.model, None);
+    }
+
+    #[tokio::test]
+    async fn a_stream_that_errors_mid_stream_keeps_content_and_omits_the_terminal() {
+        // A transport error after some content must forward the error, keep
+        // the content already aggregated, and never fabricate a terminal
+        // record the provider did not send.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("partial".to_string()));
+                yield Err(CompletionError::ProviderError(
+                    "connection reset".to_string(),
+                ));
+            }),
+        );
+
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            if item.is_err() {
+                saw_error = true;
+            }
+        }
+        assert!(saw_error, "the mid-stream error must be forwarded");
+
+        // No StreamFinal may be synthesized for the aborted stream...
+        assert!(stream.response.is_none());
+
+        // ...but the content delivered before the error is preserved.
+        assert_eq!(
+            stream.choice.first(),
+            AssistantContent::text("partial".to_string()),
+        );
     }
 
     #[tokio::test]

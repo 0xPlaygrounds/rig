@@ -145,6 +145,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+        use serde_json::json;
+
+        // Deltas then EOF without `response.completed`: the truncated stream
+        // must deliver its content but never a synthesized terminal record.
+        let delta = json!({
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "hi"
+        });
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[delta]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let raw = send_xai_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+        let mut stream = super::normalize_responses_stream(super::PROVIDER_NAME, raw);
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without response.completed must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    #[tokio::test]
     async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::test_utils::MockStreamingClient;
         use futures::StreamExt;

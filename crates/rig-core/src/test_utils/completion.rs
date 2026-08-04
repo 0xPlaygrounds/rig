@@ -12,7 +12,7 @@ use crate::{
         Usage,
     },
     message::{ToolCall, ToolFunction},
-    streaming::{StreamingCompletionResponse, StreamingResult},
+    streaming::StreamingCompletionResponse,
 };
 
 use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
@@ -297,7 +297,10 @@ impl CompletionModel for MockCompletionModel {
                 yield event.into_raw_choice();
             }
         };
-        let stream: StreamingResult = Box::pin(stream);
+        // Scripted terminals go through `normalize_stream` like every real
+        // provider's, so the mock observes the same `Stop` -> `ToolCalls`
+        // reconciliation callers see in production.
+        let stream = crate::streaming::normalize_stream(Box::pin(stream), Ok);
         Ok(StreamingCompletionResponse::stream(MOCK_PROVIDER, stream))
     }
 }

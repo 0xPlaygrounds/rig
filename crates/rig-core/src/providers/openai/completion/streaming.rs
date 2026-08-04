@@ -16,11 +16,6 @@ use crate::providers::openai::completion::{
 };
 use crate::streaming::{self, RawStreamingResult, StreamFinal};
 
-/// Descriptor name for OpenAI itself.
-///
-/// Only the free-function transport helpers below use it; the model path
-/// threads `Ext::PROVIDER_NAME` so a compatible provider is never mislabeled.
-
 // ================================================================
 // OpenAI Completion Streaming API
 // ================================================================

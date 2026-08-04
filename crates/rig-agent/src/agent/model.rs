@@ -66,7 +66,9 @@ struct ModelDriver {
 /// Cloning is cheap and shares the retained model through an [`Arc`]. Replacing
 /// a handle on one cloned agent has value semantics and does not mutate other
 /// agent clones; each in-flight attempt owns its own handle clone, so in-flight
-/// work never rebinds.
+/// work never rebinds. The erased model itself is cloned once per
+/// completion/stream attempt, so a model whose `Clone` is expensive should be
+/// wrapped in an [`Arc`] before erasure.
 ///
 /// The absence of serde implementations is intentional:
 ///

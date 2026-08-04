@@ -18,11 +18,12 @@
 //! Disruptions reach a consumer in four different shapes:
 //!   1. Manual kill / drop          -> stream ends with `None`, no `Final`
 //!   2. Transport/server error      -> stream yields `Some(Err(..))`
-//!   3. Premature clean close       -> a `Final` whose usage is all zeros
+//!   3. Premature clean close       -> stream ends with no `Final` (absence of
+//!                                     a terminal record = truncation)
 //!   4. Stall / half-open socket    -> `next()` never returns
 //!
 //! Rather than branch on *why* the stream stopped, we key on a single question:
-//! **did we ever receive authoritative (non-zero) usage?** If not — for ANY of
+//! **did we ever receive authoritative usage?** If not — for ANY of
 //! the reasons above — we estimate locally from whatever partial output arrived,
 //! using Gemini's free `countTokens` endpoint (no inference, not billed).
 //!
@@ -225,8 +226,11 @@ where
                 }
                 StreamedAssistantContent::Reasoning(r) => output.push_str(&r.display_text()),
                 StreamedAssistantContent::Final(resp) => {
-                    // Authoritative usage — but only trust it if non-zero. A
-                    // premature clean close yields a zeroed Final (shape #3).
+                    // Authoritative usage. A premature clean close (shape #3)
+                    // never emits a Final at all — the absence of a terminal
+                    // record is itself the truncation signal — so reaching this
+                    // arm means the stream completed. Still guard on non-zero
+                    // usage in case the provider reported none.
                     let usage = resp.usage;
                     if usage.has_values() {
                         authoritative = Some(usage);

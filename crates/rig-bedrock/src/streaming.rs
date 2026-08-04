@@ -158,7 +158,10 @@ impl CompletionModel {
                 };
                 match output {
                     aws_bedrock::ConverseStreamOutput::ContentBlockDelta(event) => {
-                        let delta = event.delta.ok_or(CompletionError::ProviderError("The delta for a content block is missing".into()))?;
+                        let Some(delta) = event.delta else {
+                            tracing::warn!("skipping ContentBlockDelta with a missing delta");
+                            continue;
+                        };
                         match delta {
                             aws_bedrock::ContentBlockDelta::Text(text) => {
                                 if current_tool_call.is_none() {
@@ -212,7 +215,11 @@ impl CompletionModel {
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::ContentBlockStart(event) => {
-                        match event.start.ok_or(CompletionError::ProviderError("ContentBlockStart has no data".into()))? {
+                        let Some(start) = event.start else {
+                            tracing::warn!("skipping ContentBlockStart with no data");
+                            continue;
+                        };
+                        match start {
                             aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
                                 let internal_call_id = rig_core::id::generate();
                                 current_tool_call = Some(ToolCallState {
@@ -254,40 +261,47 @@ impl CompletionModel {
                                 if let Some(tool_call) = current_tool_call.take() {
                                     // Handle empty input_json for tools with no parameters
                                     let tool_input = if tool_call.input_json.is_empty() {
-                                        serde_json::json!({})
+                                        Some(serde_json::json!({}))
                                     } else {
-                                        serde_json::from_str(tool_call.input_json.as_str())?
+                                        match serde_json::from_str(tool_call.input_json.as_str()) {
+                                            Ok(input) => Some(input),
+                                            Err(err) => {
+                                                tracing::warn!(error = %err, "skipping tool call with malformed JSON input");
+                                                None
+                                            }
+                                        }
                                     };
-                                    yield Ok(RawStreamingChoice::ToolCall(
-                                        RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
-                                            .with_internal_call_id(tool_call.internal_call_id)
-                                    ));
+                                    if let Some(tool_input) = tool_input {
+                                        yield Ok(RawStreamingChoice::ToolCall(
+                                            RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
+                                                .with_internal_call_id(tool_call.internal_call_id)
+                                        ));
+                                    }
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
                             }
-                            aws_bedrock::StopReason::MaxTokens => {
-                                yield Err(CompletionError::ProviderError("Exceeded max tokens".into()))
-                            }
+                            // MaxTokens is a genuine provider terminal (truncation), not an
+                            // error: the Metadata path emits the terminal record with the
+                            // Length finish reason via `final_stop_reason`.
                             _ => {}
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
-                        // Extract usage information from metadata
-                        if let Some(usage) = metadata_event.usage {
-                            let final_response = BedrockStreamingResponse {
-                                usage: Some(BedrockUsage {
-                                    input_tokens: usage.input_tokens,
-                                    output_tokens: usage.output_tokens,
-                                    total_tokens: usage.total_tokens,
-                                    cache_read_input_tokens: usage.cache_read_input_tokens,
-                                    cache_write_input_tokens: usage.cache_write_input_tokens,
-                                }),
-                                stop_reason: final_stop_reason.clone(),
-                            };
-                            span.record_token_usage(&(&final_response).into());
-                            yield Ok(RawStreamingChoice::FinalResponse(final_response));
-                        }
+                        // Extract usage information from metadata; a missing usage still
+                        // yields a terminal record so the stream ends with a FinalResponse.
+                        let final_response = BedrockStreamingResponse {
+                            usage: metadata_event.usage.map(|usage| BedrockUsage {
+                                input_tokens: usage.input_tokens,
+                                output_tokens: usage.output_tokens,
+                                total_tokens: usage.total_tokens,
+                                cache_read_input_tokens: usage.cache_read_input_tokens,
+                                cache_write_input_tokens: usage.cache_write_input_tokens,
+                            }),
+                            stop_reason: final_stop_reason.clone(),
+                        };
+                        span.record_token_usage(&(&final_response).into());
+                        yield Ok(RawStreamingChoice::FinalResponse(final_response));
                     },
                     _ => {}
                 }

@@ -973,6 +973,52 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn errored_stream_forwards_the_error_and_no_terminal_record() {
+            use crate::test_utils::SequencedStreamingHttpClient;
+
+            // A transport failure after some content must reach the consumer
+            // and must not be papered over with a synthesized terminal record.
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(SequencedStreamingHttpClient::new(vec![
+                    Ok(sse(&[CONTENT_CHUNK])),
+                    Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        http::StatusCode::BAD_GATEWAY,
+                        "connection reset".to_string(),
+                    )),
+                ]))
+                .build()
+                .expect("build client");
+            let model = client.completion_model(
+                crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+            );
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut texts = Vec::new();
+            let mut saw_error = false;
+            let mut saw_terminal = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                    Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                    Ok(_) => {}
+                    Err(_) => saw_error = true,
+                }
+            }
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the transport failure must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a failed stream must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
         async fn malformed_frame_then_eof_yields_error_and_no_terminal_record() {
             let (texts, saw_error, saw_terminal, stream) =
                 collect(sse(&[CONTENT_CHUNK, "{not json"])).await;

@@ -37,8 +37,9 @@ async fn loads_and_generates_with_a_real_local_model()
         "Reply with one short greeting."
     };
     let request = model.completion_request(prompt).build();
-    // The raw path is what carries Candle's own generated text and counters;
-    // the normalized path is exercised through the stream below.
+    // The raw path carries Candle's own generated text and counters; the
+    // normalized `completion()`/`stream()` surfaces are exercised further
+    // below against the same request.
     let response = model.raw_completion(request.clone()).await?;
     if response.text.is_empty() {
         return Err(std::io::Error::other("real model returned empty generated text").into());
@@ -53,7 +54,7 @@ async fn loads_and_generates_with_a_real_local_model()
         ))
         .into());
     }
-    let mut stream = model.raw_stream(request).await?;
+    let mut stream = model.raw_stream(request.clone()).await?;
     let mut streamed_text = String::new();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
@@ -70,6 +71,40 @@ async fn loads_and_generates_with_a_real_local_model()
     }
     if final_response.generated_tokens != response.generated_tokens {
         return Err(std::io::Error::other("buffered and streamed usage differed").into());
+    }
+
+    // Normalized unary surface: the same request through `completion()` must
+    // produce non-empty text and non-zero usage.
+    let normalized = model.completion(request.clone()).await?;
+    let normalized_text: String = normalized
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig_core::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect();
+    if normalized_text.is_empty() {
+        return Err(std::io::Error::other("normalized completion returned empty text").into());
+    }
+    if normalized.usage.input_tokens == 0 || normalized.usage.output_tokens == 0 {
+        return Err(std::io::Error::other("normalized completion returned zero usage").into());
+    }
+
+    // Normalized streaming surface: `stream()` must deliver text and a
+    // genuine terminal record (its absence would signal truncation).
+    let mut normalized_stream = model.stream(request).await?;
+    let mut normalized_streamed = String::new();
+    while let Some(item) = normalized_stream.next().await {
+        if let rig_core::streaming::StreamedAssistantContent::Text(text) = item? {
+            normalized_streamed.push_str(&text.text);
+        }
+    }
+    if normalized_streamed.is_empty() {
+        return Err(std::io::Error::other("normalized stream produced no text").into());
+    }
+    if normalized_stream.response.is_none() {
+        return Err(std::io::Error::other("normalized stream omitted its terminal record").into());
     }
     Ok(())
 }

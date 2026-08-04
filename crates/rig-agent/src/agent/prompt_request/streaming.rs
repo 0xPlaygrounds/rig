@@ -598,8 +598,9 @@ where
                     }
 
                     // The attempt is now committed: advance `previous_model`
-                    // immediately before invoking the selected model's unary or
-                    // streaming operation. An issued attempt counts even when
+                    // immediately before the model turn is driven (the
+                    // streaming request is issued on first poll of the turn
+                    // stream). An issued attempt counts even when
                     // the provider returns an error; every stop/error path
                     // above left `previous_model` untouched.
                     previous_model = Some(selected_model);
@@ -1311,6 +1312,20 @@ impl TurnSource for StreamingTurnSource {
                 return;
             }
 
+            // The provider stream ended without its terminal record. Per the
+            // emission contract (`rig_core::streaming`), that absence means
+            // truncation and must never be treated as a successful zero-usage
+            // completion: reject the turn before any usage fallback, assembly,
+            // history mutation, or tool dispatch can occur.
+            if !provider_final_seen {
+                yield Err(CompletionError::ResponseError(
+                    "provider stream ended without a terminal record; treating the turn as truncated"
+                        .to_string(),
+                )
+                .into());
+                return;
+            }
+
             if let Some(err) = assembler.pending_delta_error() {
                 yield Err(err.into());
                 return;
@@ -1715,6 +1730,64 @@ mod migrated_tests {
                     if reason == "agent streaming stopped")
         ));
         assert_eq!(model.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
+        let model =
+            MockCompletionModel::from_stream_turns([[MockStreamEvent::text("partial answer")]]);
+        let agent = Arc::new(AgentBuilder::new(model.clone()).build());
+
+        let mut stream = StreamingPromptRequest::new(agent, "go").await;
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            if let Err(error) = item {
+                assert!(
+                    error.to_string().contains("terminal record"),
+                    "truncation should surface as a terminal-record error, got: {error}"
+                );
+                saw_error = true;
+                break;
+            }
+        }
+        assert!(
+            saw_error,
+            "a stream ending without a terminal record must be rejected, not \
+             treated as a successful completion"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_call_stream_without_terminal_record_dispatches_no_tools() {
+        let calls = Arc::new(AtomicU32::new(0));
+        let add_tool = CountingAddTool {
+            calls: calls.clone(),
+        };
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::tool_call(
+            "tool_call_1",
+            "add",
+            serde_json::json!({"x": 1, "y": 2}),
+        )]]);
+        let agent = AgentBuilder::new(model.clone()).tool(add_tool).build();
+
+        let mut stream = agent.stream_prompt("go").max_turns(3).await;
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            if item.is_err() {
+                saw_error = true;
+                break;
+            }
+        }
+        assert!(
+            saw_error,
+            "a truncated tool-call turn must error rather than complete"
+        );
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "a tool call from a stream the provider never confirmed complete \
+             must not be dispatched"
+        );
     }
 
     #[test]
@@ -6100,6 +6173,10 @@ mod migrated_tests {
                     serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_1"),
+                // A genuine terminal whose usage is unreported: the completion
+                // call records the zero-usage sentinel. (A turn with no
+                // terminal at all is rejected as truncation instead.)
+                MockStreamEvent::final_response(Usage::new()),
             ],
             vec![
                 MockStreamEvent::text("done"),

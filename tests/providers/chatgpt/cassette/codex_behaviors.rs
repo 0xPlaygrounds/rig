@@ -84,7 +84,8 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
             // locally (the SSE rebuild `CompletionModel::completion` performs is
             // crate-private) and the cassette records a single interaction, so
             // the assistant-text check that used to ride along here now lives
-            // only in `codex_sessions`.
+            // only in `codex_sessions`. The marker prompt itself is kept
+            // verbatim so the request still matches the recorded cassette.
             let raw = model
                 .raw_completion(
                     model

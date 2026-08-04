@@ -580,24 +580,18 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-/// Map an OpenRouter `finish_reason` onto the normalized vocabulary.
-///
-/// OpenRouter normalizes upstream providers onto the OpenAI Chat Completions
-/// vocabulary in `finish_reason` and keeps the upstream provider's own spelling
-/// in `native_finish_reason` (e.g. Gemini's `"STOP"`). The normalized field
-/// wins; the native one is only consulted when OpenRouter omitted it, so a
-/// reason the gateway could not translate is still reported rather than lost.
-/// Either way an unrecognized value is preserved verbatim in
-/// [`FinishReason::Other`](completion::FinishReason::Other).
 /// Normalize OpenRouter's terminal reason for a choice.
 ///
 /// OpenRouter reports two fields: `finish_reason`, normalized by OpenRouter to
-/// the OpenAI vocabulary, and `native_finish_reason`, which is whatever the
-/// upstream provider said. The normalized field is preferred; the native one is
-/// only a fallback, and it must not be read with the OpenAI vocabulary — routing
-/// Gemini's `STOP` or Anthropic's `end_turn` through
+/// the OpenAI Chat Completions vocabulary, and `native_finish_reason`, which is
+/// whatever the upstream provider said (e.g. Gemini's `"STOP"`). The normalized
+/// field wins; the native one is only consulted when OpenRouter omitted the
+/// normalized field, so a reason the gateway could not translate is still
+/// reported rather than lost. The native value must not be read with the OpenAI
+/// vocabulary — routing Gemini's `STOP` or Anthropic's `end_turn` through
 /// [`map_openai_finish_reason`] would report a plain natural stop as
-/// [`completion::FinishReason::Other`].
+/// [`completion::FinishReason::Other`]. Either way an unrecognized value is
+/// preserved verbatim in [`FinishReason::Other`](completion::FinishReason::Other).
 pub(crate) fn map_finish_reason(choice: &Choice) -> Option<completion::FinishReason> {
     if let Some(reason) = choice
         .finish_reason
@@ -773,8 +767,10 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
         Ok(
             // OpenRouter's `id` identifies the generation, not an assistant
-            // message, so it is deliberately not carried as a message ID.
+            // message, so it is carried as a response ID rather than a
+            // message ID.
             completion::CompletionResponse::new(choice, usage, provider)
+                .with_response_id(response.id)
                 .with_model(response.model)
                 .with_optional_finish_reason(finish_reason),
         )

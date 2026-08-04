@@ -289,6 +289,7 @@ pub struct CompletionResponse {
     /// The Responses API path uses it to pair reasoning input items with their
     /// output items across turns, and it is what agent history promotes into
     /// [`Message::Assistant`]'s `id`.
+    #[serde(default)]
     pub message_id: Option<String>,
     /// The identifier the provider assigned to the response as a whole, when it
     /// reported one — an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`, a
@@ -303,6 +304,7 @@ pub struct CompletionResponse {
     /// field directly: the setter applies
     /// [`FinishReason::reconcile_with_output`], which a direct assignment
     /// skips.
+    #[serde(default)]
     pub finish_reason: Option<FinishReason>,
     /// Stable descriptor name of the provider that produced this response, for
     /// example `"openai"`. Always populated, including for responses derived
@@ -312,6 +314,7 @@ pub struct CompletionResponse {
     ///
     /// This is the model named by the wire response, not the model that was
     /// requested; it is `None` when the provider reports no identifier.
+    #[serde(default)]
     pub model: Option<String>,
 }
 

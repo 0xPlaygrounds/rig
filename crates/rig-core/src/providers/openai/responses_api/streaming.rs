@@ -14,7 +14,7 @@ use crate::wasm_compat::WasmCompatSend;
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, debug, enabled};
+use tracing::{Level, enabled};
 use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
@@ -717,9 +717,16 @@ pub(crate) async fn completion_response_from_sse_body(
         .and_then(|terminal| terminal.model.clone())
         .or_else(|| Some(raw_response.model.clone()).filter(|model| !model.is_empty()));
 
+    let response_id = stream
+        .response
+        .as_ref()
+        .and_then(|terminal| terminal.response_id.clone())
+        .or_else(|| Some(raw_response.id.clone()).filter(|id| !id.is_empty()));
+
     Ok(
         completion::CompletionResponse::new(stream.choice.clone(), usage, provider)
             .with_optional_message_id(message_id)
+            .with_optional_response_id(response_id)
             .with_optional_model(model)
             .with_optional_finish_reason(finish_reason),
     )
@@ -802,7 +809,7 @@ where
                         let Err(err) = data else {
                             continue;
                         };
-                        debug!(
+                        tracing::warn!(
                             "Couldn't deserialize SSE data as StreamingCompletionChunk: {:?}",
                             err
                         );
@@ -1619,6 +1626,60 @@ mod tests {
             stream.next().await.is_none(),
             "stream should terminate immediately after the first terminal error"
         );
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+        use crate::test_utils::MockStreamingClient;
+
+        // Deltas then EOF without `response.completed`: the accumulator's
+        // `saw_terminal` gate must withhold the terminal record rather than
+        // present the truncated turn as a successful completion.
+        let deltas = [
+            json!({
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "hel"
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 2,
+                "delta": "lo"
+            }),
+        ];
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&deltas),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hel", "lo"]);
+        assert!(
+            !saw_terminal,
+            "EOF without response.completed must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 
     #[tokio::test]

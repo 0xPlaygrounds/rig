@@ -403,6 +403,56 @@ mod tests {
         }
     }
 
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // Content deltas then EOF without `interaction.completed`: the
+        // truncated stream must deliver its content but never a synthesized
+        // terminal record.
+        let sse_bytes = bytes::Bytes::from(
+            [r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#]
+                .iter()
+                .map(|event| format!("data: {event}\n\n"))
+                .collect::<String>(),
+        );
+
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient { sse_bytes })
+            .build()
+            .expect("build client")
+            .interactions_api();
+        let model = client.completion_model("gemini-2.5-pro");
+        let request = model.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without interaction.completed must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
+    }
+
     #[test]
     fn test_content_delta_function_call_event() {
         let event_json = json!({

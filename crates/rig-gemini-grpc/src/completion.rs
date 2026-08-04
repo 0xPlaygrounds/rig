@@ -549,6 +549,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
                 .with_optional_finish_reason(finish_reason)
+                .with_optional_response_id(
+                    Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+                )
                 .with_optional_model(model),
         )
     }

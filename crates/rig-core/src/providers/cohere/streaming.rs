@@ -184,7 +184,7 @@ where
                         let event: StreamingEvent = match serde_json::from_str(data_str) {
                             Ok(ev) => ev,
                             Err(_) => {
-                                tracing::debug!("Couldn't parse SSE payload as StreamingEvent");
+                                tracing::warn!("Couldn't parse SSE payload as StreamingEvent");
                                 continue;
                             }
                         };
@@ -423,6 +423,57 @@ mod tests {
             "EOF without message-end must not synthesize a terminal record"
         );
         assert!(stream.response.is_none());
+    }
+
+    #[tokio::test]
+    async fn malformed_frame_is_skipped_and_the_terminal_still_arrives() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // A malformed frame between valid content and the genuine terminal
+        // must be skipped without derailing the rest of the stream.
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+                "{not json",
+                r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_error = false;
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                Ok(StreamedAssistantContent::Final(final_response)) => {
+                    terminal = Some(final_response)
+                }
+                Ok(_) => {}
+                Err(_) => saw_error = true,
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(!saw_error, "the malformed frame is skipped, not surfaced");
+        let terminal = terminal.expect("the genuine terminal record must still arrive");
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
     }
 
     #[tokio::test]

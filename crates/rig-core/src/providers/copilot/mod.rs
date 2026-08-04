@@ -693,19 +693,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: (usage.total_tokens - usage.prompt_tokens) as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .map(|d| d.cached_tokens as u64)
-                    .unwrap_or(0),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(|usage| usage.to_normalized())
             .unwrap_or_default();
 
         Ok(
@@ -875,18 +863,12 @@ where
                         span.record("gen_ai.response.id", response.id.as_str());
                         span.record("gen_ai.response.model", response.model.as_str());
                         if let Some(usage) = &response.usage {
-                            span.record("gen_ai.usage.input_tokens", usage.prompt_tokens);
-                            span.record(
-                                "gen_ai.usage.output_tokens",
-                                usage.total_tokens - usage.prompt_tokens,
-                            );
+                            let normalized = usage.to_normalized();
+                            span.record("gen_ai.usage.input_tokens", normalized.input_tokens);
+                            span.record("gen_ai.usage.output_tokens", normalized.output_tokens);
                             span.record(
                                 "gen_ai.usage.cache_read.input_tokens",
-                                usage
-                                    .prompt_tokens_details
-                                    .as_ref()
-                                    .map(|details| details.cached_tokens)
-                                    .unwrap_or(0),
+                                normalized.cached_input_tokens,
                             );
                         }
 
@@ -1688,7 +1670,7 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
             Ok(data) => data,
             Err(error) => {
-                tracing::debug!(?error, "Couldn't parse Copilot chat SSE payload");
+                tracing::warn!(?error, "Couldn't parse Copilot chat SSE payload");
                 return Ok(None);
             }
         };

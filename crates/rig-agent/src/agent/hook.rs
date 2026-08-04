@@ -453,6 +453,31 @@ pub struct ModelSelection<'a> {
     pub selected_model: &'a ModelHandle,
 }
 
+impl<'a> ModelSelection<'a> {
+    /// Construct a `ModelSelection` event from its parts.
+    ///
+    /// The struct is `#[non_exhaustive]`, so external code cannot build it
+    /// with a struct literal; this constructor exists so that custom
+    /// model-selection routers can be unit-tested outside this crate.
+    pub fn new(
+        prompt: &'a Message,
+        history: &'a [Message],
+        request_patch: Option<&'a RequestPatch>,
+        previous_model: Option<&'a ModelHandle>,
+        default_model: &'a ModelHandle,
+        selected_model: &'a ModelHandle,
+    ) -> Self {
+        Self {
+            prompt,
+            history,
+            request_patch,
+            previous_model,
+            default_model,
+            selected_model,
+        }
+    }
+}
+
 /// Canonical non-streaming completion response event.
 #[derive(Clone, Copy)]
 pub struct CompletionResponse<'a> {

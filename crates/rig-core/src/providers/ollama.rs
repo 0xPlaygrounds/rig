@@ -829,7 +829,13 @@ where
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    let response: CompletionResponse = serde_json::from_slice(&line)?;
+                    let response: CompletionResponse = match serde_json::from_slice(&line) {
+                        Ok(response) => response,
+                        Err(err) => {
+                            tracing::warn!(error = %err, "skipping malformed NDJSON line from Ollama");
+                            continue;
+                        }
+                    };
 
                     if response.done {
                         span.record("gen_ai.response.model", &response.model);
@@ -849,7 +855,7 @@ where
 
                         for tool_call in tool_calls {
                             yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
+                                crate::streaming::RawStreamingToolCall::new(tool_call.function.name.clone(), tool_call.function.name, tool_call.function.arguments)
                             );
                         }
                     }
@@ -2587,6 +2593,51 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0]["message"]["content"], "hi");
         assert_eq!(received[1]["done"], true);
+    }
+
+    // Proves a truncated NDJSON stream — content chunks then EOF without a
+    // `done: true` record — delivers its content but never a synthesized
+    // terminal record.
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without a done record must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 
     // Proves a non-success HTTP response from `/api/chat` preserves the

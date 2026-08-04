@@ -9,14 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete, carry normalized `finish_reason`/`provider`/`model`/`message_id`, and every provider model exposes typed `raw_completion`/`raw_stream` escape hatches
+- *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
 - *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
+
+### Changed
+
+- *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete and carry normalized `finish_reason`/`provider`/`model`/`message_id`
 
 ### Removed
 
 - *(completion)* [**breaking**] remove `CompletionModel::{Response, StreamingResponse, Client, make}`; model construction moves to the required `CompletionClient::completion_model`
 - *(completion)* [**breaking**] remove the `GetTokenUsage` trait — read `StreamFinal::usage`
 - *(completion)* [**breaking**] remove `CompletionResponse::raw_response` — use a provider model's `raw_completion`/`raw_stream`
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
 
 ### Added

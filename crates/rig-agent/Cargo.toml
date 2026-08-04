@@ -47,6 +47,9 @@ rmcp = { workspace = true, optional = true, features = ["client"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# `cargo test -p rig-agent` needs rig-core's mock models even when the
+# `test-utils` feature is not requested explicitly.
+rig-core = { path = "../rig-core", features = ["test-utils"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
