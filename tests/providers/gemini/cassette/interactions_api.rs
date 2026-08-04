@@ -45,17 +45,20 @@ async fn basic_interaction_returns_id() {
                 .preamble("Be concise.".to_string())
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let response = model
-                .completion(request)
+            // The interaction id is Gemini's continuation handle (fed back as
+            // `previous_interaction_id`), not an assistant message id, so it
+            // lives on the provider's own response rather than on the
+            // normalized one.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("completion should succeed");
 
+            let response: rig::completion::CompletionResponse =
+                raw.clone().try_into().expect("response should normalize");
             assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                response
-                    .message_id
-                    .as_deref()
-                    .is_some_and(|id| !id.is_empty()),
+                !raw.id.is_empty(),
                 "interactions api should return an interaction id"
             );
         },
@@ -70,7 +73,7 @@ async fn followup_with_previous_interaction_id() {
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
             let initial = model
-                .completion(
+                .raw_completion(
                     model
                         .completion_request("Give me one short fact about hummingbirds.")
                         .additional_params(
@@ -84,10 +87,9 @@ async fn followup_with_previous_interaction_id() {
                 )
                 .await
                 .expect("initial completion should succeed");
-            let interaction_id = initial
-                .message_id
-                .clone()
-                .expect("expected an interaction id");
+            // Gemini's continuation handle lives on the provider's own
+            // response; it is what `previous_interaction_id` echoes back.
+            let interaction_id = initial.id.clone();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -171,7 +173,7 @@ async fn tool_result_roundtrip() {
             };
 
             let initial = model
-                .completion(
+                .raw_completion(
                     model
                         .completion_request("Use the add tool to sum 7 and 11.")
                         .tool(tool)
@@ -188,16 +190,19 @@ async fn tool_result_roundtrip() {
                 .await
                 .expect("tool call completion should succeed");
 
+            // Gemini's continuation handle lives on the provider's own
+            // response; the normalized view of that same value supplies the
+            // tool call, so this still costs one interaction.
+            let interaction_id = initial.id.clone();
+            assert!(!interaction_id.is_empty(), "expected an interaction id");
+            let initial: rig::completion::CompletionResponse =
+                initial.try_into().expect("response should normalize");
+
             let tool_call = first_tool_call(&initial.choice).expect("expected a tool call");
             let call_id = tool_call
                 .call_id
                 .clone()
                 .unwrap_or_else(|| tool_call.id.clone());
-            let interaction_id = initial
-                .message_id
-                .clone()
-                .expect("expected an interaction id");
-            assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
                 .completion(

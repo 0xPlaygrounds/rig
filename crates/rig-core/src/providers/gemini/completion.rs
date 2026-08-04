@@ -548,10 +548,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .unwrap_or_default();
 
         Ok(
-            // No `message_id`: Gemini's `responseId` names the response, not an
-            // assistant message, and it is the streaming path's absence of one
-            // that would otherwise make the two paths disagree.
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_message_id(
+                    Some(response.response_id.as_str()).filter(|id| !id.is_empty()),
+                )
                 .with_optional_model(response.model_version.as_deref())
                 .with_optional_finish_reason(finish_reason),
         )

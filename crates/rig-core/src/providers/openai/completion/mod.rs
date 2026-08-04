@@ -1217,10 +1217,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            // Deliberately no `message_id`: chat completions report a
-            // response-scoped `chatcmpl-…` id, not an assistant message id, and
-            // the agent replays `message_id` into assistant history. The
-            // response id is still recorded on telemetry.
+            .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
             .with_model(response.model.as_str())
             .with_optional_finish_reason(finish_reason))
     }

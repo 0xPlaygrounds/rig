@@ -272,8 +272,14 @@ pub struct CompletionResponse {
     pub choice: OneOrMany<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
-    /// Used to pair reasoning input items with their output items in multi-turn.
+    /// The identifier the provider assigned to this response, when it reported
+    /// one — an OpenAI Responses `msg_` ID, an Anthropic `msg_` ID, a Gemini
+    /// `responseId`, and so on. Providers differ in whether this names the
+    /// assistant message or the whole response; it is preserved as reported.
+    ///
+    /// The Responses API path uses it to pair reasoning input items with their
+    /// output items across turns. It is not echoed back to providers on replay:
+    /// request conversion drops [`Message::Assistant`]'s `id`.
     pub message_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///

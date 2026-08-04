@@ -210,12 +210,9 @@ where
     U: Into<crate::completion::Usage>,
 {
     fn from((provider, response): (&str, StreamingCompletionResponse<U>)) -> Self {
-        // No `message_id`: the chat-completions `id` is response-scoped
-        // (`chatcmpl-…`), not the assistant message id that `message_id` names
-        // and that the agent replays into history. It stays on the raw terminal
-        // record for callers who want it.
         StreamFinal::new(provider, response.usage.into())
             .with_optional_finish_reason(response.finish_reason)
+            .with_optional_message_id(response.response_id)
             .with_optional_model(response.model)
     }
 }
