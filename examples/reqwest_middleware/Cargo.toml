@@ -8,7 +8,9 @@ publish = false
 workspace = true
 
 [dependencies]
-rig = { workspace = true }
+rig = { workspace = true, features = ["reqwest-middleware"] }
 anyhow = { workspace = true }
 reqwest = { workspace = true }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -1,37 +1,38 @@
-//! Demonstrates driving an agent over a caller-supplied HTTP stack.
+//! Demonstrates driving an agent over a caller-supplied middleware HTTP stack.
 //! Requires `ANTHROPIC_API_KEY`.
 //!
-//! Transport is no longer a type parameter. The concrete provider client
-//! builder accepts a live [`HttpRuntime`]: build your own
-//! `reqwest::Client` — timeouts, connection pool, default headers, proxy,
-//! TLS — hand it to [`HttpRuntime::from_reqwest`], then build agents from the
-//! resulting client. The same runtime is available through `client.http()` for
-//! low-level provider free functions.
-//!
-//! Note: `reqwest_middleware::ClientWithMiddleware` (this example's former
-//! subject) is not currently one of `HttpRuntime`'s transport arms, so
-//! retry/tracing middleware has to be expressed on the `reqwest::Client`
-//! itself or around the call site.
+//! Transport is not a provider or runtime type parameter. Instead,
+//! [`HttpRuntime::from_transport`] erases the configured middleware client at
+//! construction and the concrete provider client retains that runtime. The
+//! same runtime is available through `client.http()` for low-level provider
+//! free functions.
 
 use std::time::Duration;
 
 use anyhow::Result;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use rig::prelude::*;
 use rig::providers::anthropic;
 
-/// A preconfigured HTTP client: bounded timeouts and a warm connection pool.
-fn build_http_client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
+/// A preconfigured middleware client with bounded timeouts and retries.
+fn build_http_client() -> Result<ClientWithMiddleware> {
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .connect_timeout(Duration::from_secs(10))
         .pool_idle_timeout(Duration::from_secs(90))
         .pool_max_idle_per_host(8)
-        .build()?)
+        .build()?;
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
+
+    Ok(ClientBuilder::new(client)
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let http = HttpRuntime::from_reqwest(build_http_client()?);
+    let http = HttpRuntime::from_transport(build_http_client()?);
     let client = anthropic::Client::builder()
         .api_key(std::env::var("ANTHROPIC_API_KEY")?)
         .http_runtime(http)

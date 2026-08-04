@@ -1242,9 +1242,38 @@ let agent = AgentBuilder::new(ProviderConfig::Mock(script.clone())).build();
 // `script` (clone shares the cursor) exposes .calls() and .requests().
 ```
 
-Custom HTTP transports injected via `.http_client(...)` do not survive the
-bridge; inject them at the runtime instead:
-`AgentBuilder::new(provider).runtime(Arc::new(Runtime::with_http(HttpRuntime::recording(client))))`.
+### Custom HTTP transports move to `HttpRuntime`
+
+The deleted `.http_client(...)` provider generic is replaced by the public,
+transport-neutral `rig::http_client::HttpTransport` input protocol. Implement
+its buffered and streaming methods, then erase the value once at runtime
+construction:
+
+```rust
+let http = HttpRuntime::from_transport(my_transport);
+let client = provider::Client::builder()
+    // connection settings ...
+    .http_runtime(http.clone())
+    .build()?;
+
+let runtime = Arc::new(Runtime::with_http(http));
+let agent = AgentBuilder::new(provider_config).runtime(runtime).build();
+```
+
+The runtime, provider clients, configs, and provider free functions remain
+concrete; no transport type parameter is stored or threaded through provider
+APIs. A transport returns any HTTP status as an `Ok(Response)`, and Rig
+normalizes non-success buffered, multipart, and streaming responses while
+preserving their bodies for provider error handling. Implementations that do
+not support multipart may keep the default method, which returns the typed
+`Error::UnsupportedMultipart` capability error.
+
+`reqwest_middleware::ClientWithMiddleware` implements `HttpTransport` behind
+the `reqwest-middleware` feature, so pass it directly to
+`HttpRuntime::from_transport`; see `examples/reqwest_middleware` for retry
+middleware. `HttpRuntime::recording`, `sequenced`, and the other scripted
+constructors are test utilities behind `test-utils`, not production custom
+transport seams.
 
 ### Concrete completion and streaming payloads
 

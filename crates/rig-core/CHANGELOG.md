@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add the object-safe `HttpTransport` protocol,
+  `HttpRuntime::from_transport`, and a redacted shared `CustomTransport`
+  record. The adapter preserves status and body for non-success buffered,
+  multipart, and streaming responses; multipart has a typed unsupported
+  capability error. The existing `reqwest-middleware` feature now routes
+  `ClientWithMiddleware` through this production transport seam.
+
 ### Changed
 
 - [**breaking**] The live completion handle is renamed from
@@ -23,8 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into `responses_api::CompletionResponse` before normalization.
 - [**breaking**] The public boxed `InteractionEventStream` alias becomes a
   concrete live handle with private transport state and an inherent pin-free
-  `next()` method. Core's boxed byte-stream and SSE-event-source aliases are now
-  crate-private transport details.
+  `next()` method. Core's SSE-event-source alias remains a crate-private
+  transport detail; the boxed byte stream is public only as vocabulary for the
+  caller-supplied `HttpTransport` protocol.
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
 

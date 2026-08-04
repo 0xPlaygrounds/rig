@@ -1,14 +1,17 @@
-use crate::http_client::sse::BoxedStream;
-use bytes::Bytes;
+pub use crate::http_client::sse::BoxedStream;
+pub use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
 pub mod multipart;
 pub mod retry;
 pub mod sse;
+mod transport;
+pub use crate::wasm_compat::WasmBoxedFuture;
 use crate::wasm_compat::*;
 pub use multipart::MultipartForm;
 pub use reqwest::Client as ReqwestClient;
 use std::pin::Pin;
+pub use transport::{CustomTransport, HttpTransport};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -26,6 +29,9 @@ pub enum Error {
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
     InvalidContentType(HeaderValue),
+    /// The selected transport does not support multipart requests.
+    #[error("Multipart requests are not supported by this HTTP transport")]
+    UnsupportedMultipart,
     #[cfg(not(target_family = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
@@ -74,7 +80,8 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::InvalidStatusCodeWithMessage(status, message)
 }
 
-pub(crate) type StreamingResponse = Response<BoxedStream>;
+/// A streaming HTTP response whose body yields transport-neutral byte chunks.
+pub type StreamingResponse = Response<BoxedStream>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct NoBody;
@@ -248,8 +255,86 @@ macro_rules! impl_http_backend {
 
 impl_http_backend!(reqwest::Client);
 
-impl_http_backend!(
-    #[cfg(feature = "reqwest-middleware")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-    reqwest_middleware::ClientWithMiddleware
-);
+#[cfg(feature = "reqwest-middleware")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
+impl HttpTransport for reqwest_middleware::ClientWithMiddleware {
+    fn send(&self, req: Request<Vec<u8>>) -> WasmBoxedFuture<'static, Result<Response<Bytes>>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .body(body);
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_response(response).await
+        })
+    }
+
+    fn send_multipart(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> WasmBoxedFuture<'static, Result<Response<Bytes>>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .multipart(reqwest::multipart::Form::from(body));
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_response(response).await
+        })
+    }
+
+    fn send_streaming(
+        &self,
+        req: Request<Vec<u8>>,
+    ) -> WasmBoxedFuture<'static, Result<StreamingResponse>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .body(body);
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_streaming_response(response)
+        })
+    }
+}
+
+#[cfg(feature = "reqwest-middleware")]
+async fn into_unchecked_response(response: reqwest::Response) -> Result<Response<Bytes>> {
+    let mut result = Response::builder().status(response.status());
+
+    if let Some(headers) = result.headers_mut() {
+        *headers = response.headers().clone();
+    }
+
+    let bytes = response.bytes().await.map_err(instance_error)?;
+    result.body(bytes).map_err(Error::Protocol)
+}
+
+#[cfg(feature = "reqwest-middleware")]
+fn into_unchecked_streaming_response(response: reqwest::Response) -> Result<StreamingResponse> {
+    #[cfg(not(target_family = "wasm"))]
+    let mut result = Response::builder()
+        .status(response.status())
+        .version(response.version());
+
+    #[cfg(target_family = "wasm")]
+    let mut result = Response::builder().status(response.status());
+
+    if let Some(headers) = result.headers_mut() {
+        *headers = response.headers().clone();
+    }
+
+    use futures::StreamExt;
+    let body: BoxedStream = Box::pin(
+        response
+            .bytes_stream()
+            .map(|chunk| chunk.map_err(instance_error)),
+    );
+    result.body(body).map_err(Error::Protocol)
+}

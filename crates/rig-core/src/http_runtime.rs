@@ -2,17 +2,21 @@
 //!
 //! [`HttpRuntime`] is one plain struct owning the HTTP transport — the
 //! replacement for the deleted `H: HttpClientExt` type parameter that used to
-//! be threaded through every provider client alias and model. Transport variation is an enum, not a generic: the default arm
-//! is `reqwest`, and the `test-utils` arm replays scripted/recorded
-//! exchanges so the pure provider functions are exercisable by cassette-style
-//! tests without a network.
+//! be threaded through every provider client alias and model. Transport
+//! variation is an enum, not a generic: the default arm is `reqwest`, a custom
+//! arm holds one erased [`HttpTransport`], and the `test-utils` arms replay
+//! scripted/recorded exchanges so the pure provider functions are exercisable
+//! by cassette-style tests without a network.
 
 use http::StatusCode;
 
 use crate::completion::CompletionError;
-use crate::http_client::{self, Backend};
+use crate::http_client::{self, Backend, CustomTransport, HttpTransport};
 
 /// The concrete HTTP executor. Cheap to clone.
+///
+/// Use [`Self::from_transport`] to inject a production custom transport while
+/// keeping provider clients and operations concrete.
 #[derive(Clone)]
 pub struct HttpRuntime {
     transport: Transport,
@@ -21,6 +25,7 @@ pub struct HttpRuntime {
 #[derive(Clone)]
 pub(crate) enum Transport {
     Reqwest(reqwest::Client),
+    Custom(CustomTransport),
     #[cfg(any(test, feature = "test-utils"))]
     Recording(crate::test_utils::RecordingHttpClient),
     #[cfg(any(test, feature = "test-utils"))]
@@ -51,6 +56,18 @@ impl HttpRuntime {
     pub fn from_reqwest(client: reqwest::Client) -> Self {
         Self {
             transport: Transport::Reqwest(client),
+        }
+    }
+
+    /// A runtime over a caller-supplied HTTP transport.
+    ///
+    /// The transport is immediately erased into one concrete, cloneable
+    /// record; no transport generic is stored by the runtime or propagated to
+    /// provider APIs. Non-success responses returned as values are normalized
+    /// at this boundary with their response bodies preserved.
+    pub fn from_transport(transport: impl HttpTransport) -> Self {
+        Self {
+            transport: Transport::Custom(CustomTransport::new(transport)),
         }
     }
 
@@ -118,6 +135,9 @@ impl HttpRuntime {
             Transport::Reqwest(client) => {
                 boxed_event_source(client.clone(), request, allow_missing_content_type)
             }
+            Transport::Custom(transport) => {
+                boxed_event_source(transport.clone(), request, allow_missing_content_type)
+            }
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => {
                 boxed_event_source(client.clone(), request, allow_missing_content_type)
@@ -153,6 +173,7 @@ impl HttpRuntime {
     ) -> Result<crate::http_client::StreamingResponse, http_client::Error> {
         match &self.transport {
             Transport::Reqwest(client) => client.send_streaming(request).await,
+            Transport::Custom(transport) => transport.send_streaming(request).await,
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send_streaming(request).await,
             #[cfg(any(test, feature = "test-utils"))]
@@ -178,6 +199,7 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send(request).await,
+            Transport::Custom(transport) => transport.send(request).await,
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send(request).await,
             #[cfg(any(test, feature = "test-utils"))]
@@ -201,6 +223,7 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, Vec<u8>), http_client::Error> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send_multipart(request).await,
+            Transport::Custom(transport) => transport.send_multipart(request).await,
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send_multipart(request).await,
             #[cfg(any(test, feature = "test-utils"))]
@@ -245,6 +268,7 @@ impl HttpRuntime {
     ) -> Result<(StatusCode, String), CompletionError> {
         let sent = match &self.transport {
             Transport::Reqwest(client) => client.send(request).await,
+            Transport::Custom(transport) => transport.send(request).await,
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(client) => client.send(request).await,
             #[cfg(any(test, feature = "test-utils"))]
@@ -277,6 +301,7 @@ impl std::fmt::Debug for HttpRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let transport = match &self.transport {
             Transport::Reqwest(_) => "reqwest",
+            Transport::Custom(_) => "custom",
             #[cfg(any(test, feature = "test-utils"))]
             Transport::Recording(_) => "recording",
             #[cfg(any(test, feature = "test-utils"))]

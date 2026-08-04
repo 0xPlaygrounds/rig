@@ -28,7 +28,11 @@ use std::{
     time::Duration,
 };
 
-pub(crate) type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
+/// A type-erased stream of HTTP response-body byte chunks.
+///
+/// It is `Send` on native targets and local on browser WebAssembly, matching
+/// [`WasmBoxedFuture`](crate::wasm_compat::WasmBoxedFuture).
+pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
 
 /// A type-erased SSE event stream — the transport edge for the sans-IO
 /// provider stream parsers.

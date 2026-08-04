@@ -9717,6 +9717,8 @@ version = "0.41.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.4",
+ "reqwest-middleware",
+ "reqwest-retry",
  "rig",
  "tokio",
 ]
@@ -9939,6 +9941,7 @@ dependencies = [
  "as-any",
  "assert_fs",
  "async-stream",
+ "async-trait",
  "base64 0.22.1",
  "bytes",
  "epub",
