@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -52,7 +52,10 @@ async fn basic_interaction_returns_id() {
 
             assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.id.is_empty(),
+                response
+                    .message_id
+                    .as_deref()
+                    .is_some_and(|id| !id.is_empty()),
                 "interactions api should return an interaction id"
             );
         },
@@ -81,7 +84,10 @@ async fn followup_with_previous_interaction_id() {
                 )
                 .await
                 .expect("initial completion should succeed");
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -112,8 +118,11 @@ async fn google_search_tool_interaction() {
         "interactions_api/google_search_tool_interaction",
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
-            let response = model
-                .completion(
+            // The hosted-tool exchange log is provider-specific, so this asserts
+            // against the Interactions payload itself and then normalizes that same
+            // payload — one request, exactly as the cassette recorded it.
+            let raw = model
+                .raw_completion(
                     model
                         .completion_request("Who won the Euro 2024 tournament?")
                         .additional_params(
@@ -128,11 +137,15 @@ async fn google_search_tool_interaction() {
                 .await
                 .expect("search completion should succeed");
 
-            assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.google_search_exchanges().is_empty(),
+                !raw.google_search_exchanges().is_empty(),
                 "expected a search-backed exchange"
             );
+
+            let response: rig::completion::CompletionResponse = raw
+                .try_into()
+                .expect("interaction should normalize into a completion response");
+            assert_nonempty_response(&extract_text(&response.choice));
         },
     )
     .await;
@@ -180,7 +193,10 @@ async fn tool_result_roundtrip() {
                 .call_id
                 .clone()
                 .unwrap_or_else(|| tool_call.id.clone());
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -229,7 +245,7 @@ async fn streaming_interaction() {
                 match chunk.expect("stream chunk should succeed") {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
-                        saw_usage = response.token_usage().has_values();
+                        saw_usage = response.usage.has_values();
                     }
                     _ => {}
                 }
@@ -266,8 +282,8 @@ async fn streaming_final_metadata_exposes_model_version() {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.token_usage().has_values();
-                        final_model_version = response.model_version.clone();
+                        saw_usage = response.usage.has_values();
+                        final_model_version = response.model.clone();
                     }
                     _ => {}
                 }

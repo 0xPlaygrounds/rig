@@ -764,10 +764,6 @@ mod tests {
         StreamFinal::new(TEST_PROVIDER, usage)
     }
 
-    fn mock_final_usage(usage: Usage) -> StreamFinal {
-        StreamFinal::new(TEST_PROVIDER, usage)
-    }
-
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
         stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>

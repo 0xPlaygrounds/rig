@@ -7,7 +7,6 @@ use rig_core::OneOrMany;
 use rig_core::completion::{CompletionModel, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
-use rig_core::streaming::StreamedAssistantContent;
 use safetensors::tensor::{Dtype, View, serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -642,9 +641,7 @@ fn context_limit_boundaries_clamp_and_detect_conversion_overflow() {
 #[test]
 fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::from_safetensors(model_data()?)?;
-    let loaded = &model.state else {
-        return Err("loaded model did not enter ready state".into());
-    };
+    let loaded = &model.state;
     assert!(loaded.runtime.is_consistent_cpu());
     assert_eq!(
         loaded.profile.definition.loader,
@@ -709,9 +706,7 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
         .max_concurrent_requests(3)
         .build_async()
         .await?;
-    let loaded = &configured.state else {
-        return Err("async model did not enter ready state".into());
-    };
+    let loaded = &configured.state;
     assert_eq!(loaded.generation.max_tokens, 17);
     assert_eq!(loaded.generation.temperature, 0.25);
     assert_eq!(loaded.generation.top_k, Some(4));
@@ -736,8 +731,12 @@ async fn async_loading_preserves_typed_errors_and_converts_panics() {
 
     let panicked = join_model_load(tokio::task::spawn_blocking(|| {
         std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
+        // Never evaluated — the closure panics above. It exists only to pin the
+        // return type that `join_model_load` expects.
         #[allow(unreachable_code)]
-        Ok::<CandleModel, CandleError>(unreachable!())
+        Err::<CandleModel, CandleError>(CandleError::Configuration(
+            "unreachable: the closure panics above".to_owned(),
+        ))
     }))
     .await;
     assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
@@ -1167,9 +1166,7 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::builder(model_data()?).build()?;
-    let loaded = &model.state else {
-        return Err("loaded model was not ready".into());
-    };
+    let loaded = &model.state;
     loaded.concurrency.close();
     let completion_error = model
         .completion(request(vec![Message::user("hello")]))

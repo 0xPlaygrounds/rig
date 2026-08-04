@@ -217,9 +217,7 @@ impl CandleModel {
 
     /// Returns the validated conversation/output protocol.
     pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
-        match &self.state {
-            loaded => Some(loaded.profile.definition.protocol),
-        }
+        Some(self.state.profile.definition.protocol)
     }
 
     /// Backwards-compatible alias for [`Self::conversation_protocol`].
@@ -229,16 +227,12 @@ impl CandleModel {
 
     /// Returns the validated transformer architecture of the loaded checkpoint.
     pub fn architecture(&self) -> Option<ModelArchitecture> {
-        match &self.state {
-            loaded => Some(loaded.profile.definition.architecture),
-        }
+        Some(self.state.profile.definition.architecture)
     }
 
     /// Returns the detected checkpoint quantization, if the model is quantized.
     pub fn quantization(&self) -> Option<Quantization> {
-        match &self.state {
-            loaded => loaded.profile.definition.quantization,
-        }
+        self.state.profile.definition.quantization
     }
 }
 

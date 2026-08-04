@@ -46,10 +46,17 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .preamble(SYSTEM_PROMPT.to_owned())
                 .max_tokens(512)
                 .build();
-            let response = model
-                .completion(request)
+            // One cassette interaction: `raw_completion` yields the Responses API
+            // wire response (whose reasoning fields are provider-specific and not
+            // normalized), and the provider-local conversion yields exactly what
+            // `CompletionModel::completion` would have returned for it.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
+            let response: rig::completion::CompletionResponse = ("openai", raw.clone())
+                .try_into()
+                .expect("Responses API response should normalize");
             let text = response
                 .choice
                 .iter()
@@ -61,15 +68,13 @@ async fn responses_api_reasoning_plus_answer_completes() {
 
             assert_nonempty_response(&text);
             assert!(
-                response
-                    .raw_response
-                    .provider_reasoning
+                raw.provider_reasoning
                     .as_deref()
                     .is_some_and(|reasoning| !reasoning.trim().is_empty()),
                 "string-shaped provider reasoning should remain available"
             );
-            assert_eq!(response.raw_response.reasoning_metadata, None);
-            assert_eq!(response.raw_response.reasoning_context, None);
+            assert_eq!(raw.reasoning_metadata, None);
+            assert_eq!(raw.reasoning_context, None);
         },
     )
     .await;

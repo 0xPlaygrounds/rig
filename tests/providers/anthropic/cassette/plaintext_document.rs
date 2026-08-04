@@ -15,6 +15,10 @@ use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
 
+/// Descriptor name the Anthropic client normalizes responses under; needed
+/// when a test converts a `raw_completion` response itself.
+const ANTHROPIC_PROVIDER: &str = "anthropic";
+
 fn rust_document() -> String {
     r#"
 The Rust Programming Language
@@ -169,7 +173,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_turn = model
+            let first_request = model
                 .completion_request(prompt.clone())
                 .preamble(
                     "Answer using the supplied document and preserve citation metadata."
@@ -177,9 +181,18 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 )
                 .max_tokens(256)
                 .temperature(0.0)
-                .send()
+                .build();
+            // Raw-vs-normalized parity on a single recorded interaction: take
+            // Anthropic's own response once, then normalize that same value.
+            let first_turn_raw = model
+                .raw_completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
+            let first_turn_raw_text = first_turn_raw.get_text_response();
+            let first_turn: rig::completion::CompletionResponse =
+                (ANTHROPIC_PROVIDER, first_turn_raw)
+                    .try_into()
+                    .expect("first document citation turn should normalize");
 
             let first_turn_text = assistant_text(&first_turn.choice);
             assert_nonempty_response(&first_turn_text);
@@ -188,7 +201,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 &["safety", "speed", "concurrency"],
             );
             assert_eq!(
-                first_turn.raw_response.get_text_response().as_deref(),
+                first_turn_raw_text.as_deref(),
                 Some(first_turn_text.as_str())
             );
 

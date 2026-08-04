@@ -49,20 +49,28 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let response = client
-                .completion_model(openai::GPT_4O)
+            let model = client.completion_model(openai::GPT_4O);
+            let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .send()
+                .build();
+
+            // The cassette records exactly one interaction, so the raw wire
+            // response is fetched once and normalized through the provider's own
+            // conversion instead of issuing a second identical request.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("raw completions api request should succeed");
-
-            let normalized_text = assistant_text_response(&response.choice)
-                .expect("normalized completions api response should contain assistant text");
-            let raw_text = response
-                .raw_response
+            let raw_text = raw
                 .get_text_response()
                 .expect("raw completions api response should contain assistant text");
+
+            let response: rig::completion::CompletionResponse = ("openai", raw)
+                .try_into()
+                .expect("raw completions api response should normalize");
+            let normalized_text = assistant_text_response(&response.choice)
+                .expect("normalized completions api response should contain assistant text");
 
             assert_nonempty_response(&normalized_text);
             assert_nonempty_response(&raw_text);

@@ -15,19 +15,26 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
-            let response = client
+            let model = client
                 .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-                .with_system_instructions_as_messages()
+                .with_system_instructions_as_messages();
+            let request = model
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
                 .preamble(
                     "Return the requested text exactly, with no extra commentary.".to_string(),
                 )
-                .send()
+                .build();
+
+            // `service_tier` is Responses-API metadata rig does not normalize,
+            // so it is read off the provider's own wire response. `completion`
+            // sends exactly this request, so the cassette still sees one
+            // interaction.
+            let response = model
+                .raw_completion(request)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
             let service_tier = response
-                .raw_response
                 .additional_parameters
                 .service_tier
                 .as_ref()

@@ -13,7 +13,7 @@ use rig::completion::{CompletionModel, CompletionResponse};
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::RawStreamingChoice;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -57,22 +57,34 @@ struct StoredStreamingTurn {
     final_response: openai::responses_api::streaming::StreamingCompletionResponse,
 }
 
-async fn prompt_with_reasoning<M>(
-    model: &M,
+/// Issue one GPT-5.6 completion and return both the normalized response and the
+/// Responses API's own wire response, which is the only carrier of the
+/// reasoning metadata these tests lock down.
+///
+/// Each cassette records a single interaction, so the normalized response is
+/// derived from the same raw response through the provider's own conversion
+/// rather than by issuing a second identical request.
+async fn prompt_with_reasoning(
+    model: &openai::responses_api::ResponsesCompletionModel,
     reasoning: serde_json::Value,
-) -> CompletionResponse<M::Response>
-where
-    M: CompletionModel,
-{
+) -> (
+    CompletionResponse,
+    openai::responses_api::CompletionResponse,
+) {
     let request = model
         .completion_request(PROMPT)
         .additional_params(json!({ "reasoning": reasoning }))
         .build();
 
-    model
-        .completion(request)
+    let raw_response = model
+        .raw_completion(request)
         .await
-        .expect("completion with GPT-5.6 reasoning controls should succeed")
+        .expect("completion with GPT-5.6 reasoning controls should succeed");
+    let response = ("openai", raw_response.clone())
+        .try_into()
+        .expect("GPT-5.6 reasoning response should normalize");
+
+    (response, raw_response)
 }
 
 #[test]
@@ -84,27 +96,33 @@ fn model_constants() {
 }
 
 fn assert_reasoning_metadata(
-    response: &CompletionResponse<openai::responses_api::CompletionResponse>,
+    raw_response: &openai::responses_api::CompletionResponse,
     expected: Value,
 ) {
     let expected = expected
         .as_object()
         .expect("expected reasoning metadata should be an object");
     assert_eq!(
-        response.raw_response.reasoning_context.as_deref(),
+        raw_response.reasoning_context.as_deref(),
         expected.get("context").and_then(Value::as_str)
     );
+    assert_eq!(raw_response.reasoning_metadata.as_ref(), Some(expected));
     assert_eq!(
-        response.raw_response.reasoning_metadata.as_ref(),
-        Some(expected)
-    );
-    assert_eq!(
-        serde_json::to_value(&response.raw_response).expect("raw response should serialize")["reasoning"],
+        serde_json::to_value(raw_response).expect("raw response should serialize")["reasoning"],
         Value::Object(expected.clone())
     );
 }
 
-fn assert_has_text(response: &CompletionResponse<openai::responses_api::CompletionResponse>) {
+/// Rebuild the reasoning block the normalized stream would have produced for a
+/// [`RawStreamingChoice::Reasoning`] event: the same id and the single content
+/// block, verbatim. [`Reasoning`] is `#[non_exhaustive]`, so it is round-tripped
+/// through serde rather than constructed field-by-field.
+fn reasoning_block(id: Option<String>, content: rig::message::ReasoningContent) -> Reasoning {
+    serde_json::from_value(json!({ "id": id, "content": [content] }))
+        .expect("streamed reasoning block should rebuild")
+}
+
+fn assert_has_text(response: &CompletionResponse) {
     let text: String = response
         .choice
         .iter()
@@ -123,10 +141,11 @@ fn assert_has_text(response: &CompletionResponse<openai::responses_api::Completi
 async fn effort_max() {
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
         let model = client.completion_model(openai::GPT_5_6);
-        let response = prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
+        let (response, raw_response) =
+            prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
         assert_has_text(&response);
         assert_reasoning_metadata(
-            &response,
+            &raw_response,
             json!({
                 "context": "all_turns",
                 "effort": "max",
@@ -144,11 +163,11 @@ async fn mode_pro_with_independent_effort() {
         "gpt_5_6_reasoning/mode_pro_with_independent_effort",
         |client| async move {
             let model = client.completion_model(openai::GPT_5_6_SOL);
-            let response =
+            let (response, raw_response) =
                 prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
             assert_has_text(&response);
             assert_reasoning_metadata(
-                &response,
+                &raw_response,
                 json!({
                     "context": "all_turns",
                     "effort": "high",
@@ -167,14 +186,14 @@ async fn context_current_turn() {
         "gpt_5_6_reasoning/context_current_turn",
         |client| async move {
             let model = client.completion_model(openai::GPT_5_6_SOL);
-            let response = prompt_with_reasoning(
+            let (response, raw_response) = prompt_with_reasoning(
                 &model,
                 json!({ "effort": "low", "context": "current_turn" }),
             )
             .await;
             assert_has_text(&response);
             assert_reasoning_metadata(
-                &response,
+                &raw_response,
                 json!({
                     "context": "current_turn",
                     "effort": "low",
@@ -217,12 +236,20 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                         }
                     }))
                     .build();
-                let response = model.completion(request).await.unwrap_or_else(|error| {
+                // One request per turn: the raw wire response carries the
+                // reasoning metadata under test, and the normalized response is
+                // derived from it rather than re-requested.
+                let raw_response = model.raw_completion(request).await.unwrap_or_else(|error| {
                     panic!("turn {} should succeed: {error}", turn_index + 1)
                 });
+                let response: CompletionResponse = ("openai", raw_response.clone())
+                    .try_into()
+                    .unwrap_or_else(|error| {
+                        panic!("turn {} should normalize: {error}", turn_index + 1)
+                    });
 
                 assert_has_text(&response);
-                assert_reasoning_metadata(&response, expected_metadata.clone());
+                assert_reasoning_metadata(&raw_response, expected_metadata.clone());
                 let text = response
                     .choice
                     .iter()
@@ -238,8 +265,8 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     turn_index + 1
                 );
 
-                let raw_json = serde_json::to_value(&response.raw_response)
-                    .expect("raw response should serialize");
+                let raw_json =
+                    serde_json::to_value(&raw_response).expect("raw response should serialize");
                 let roundtripped: openai::responses_api::CompletionResponse =
                     serde_json::from_value(raw_json.clone())
                         .expect("raw response should deserialize after serialization");
@@ -257,7 +284,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                         id: response.message_id,
                         content: response.choice,
                     },
-                    raw_response: response.raw_response,
+                    raw_response,
                 });
                 let stored_json =
                     serde_json::to_value(&stored_turns).expect("all stored turns should serialize");
@@ -319,27 +346,36 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         }
                     }))
                     .build();
-                let mut stream = model.stream(request).await.unwrap_or_else(|error| {
+                // The terminal record under test is the Responses API's own
+                // streaming response, so the turn is driven off `raw_stream`;
+                // the normalized stream would hand back `StreamFinal`, which
+                // does not carry the reasoning metadata.
+                let mut stream = model.raw_stream(request).await.unwrap_or_else(|error| {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
                 });
                 let mut text = String::new();
                 let mut reasoning_blocks = Vec::new();
                 let mut reasoning_delta = String::new();
                 let mut final_response = None;
+                let mut message_id = None;
 
                 while let Some(item) = stream.next().await {
                     match item.unwrap_or_else(|error| {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
-                        StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                        StreamedAssistantContent::Reasoning(reasoning) => {
-                            reasoning_blocks.push(AssistantContent::Reasoning(reasoning));
+                        RawStreamingChoice::Message(delta) => text.push_str(&delta),
+                        RawStreamingChoice::Reasoning { id, content } => {
+                            reasoning_blocks
+                                .push(AssistantContent::Reasoning(reasoning_block(id, content)));
                         }
-                        StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+                        RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
                             reasoning_delta.push_str(&reasoning);
                         }
-                        StreamedAssistantContent::Final(response) => {
+                        RawStreamingChoice::FinalResponse(response) => {
                             final_response = Some(response);
+                        }
+                        RawStreamingChoice::MessageId(id) => {
+                            message_id = Some(id);
                         }
                         _ => {}
                     }
@@ -354,6 +390,10 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 let final_response = final_response.unwrap_or_else(|| {
                     panic!("turn {} should yield a final response", turn_index + 1)
                 });
+                // Same precedence the normalized stream applies: an explicit
+                // `MessageId` event wins, and the terminal record only fills a
+                // gap it left.
+                let message_id = message_id.or_else(|| final_response.message_id.clone());
                 assert_eq!(
                     final_response.reasoning_context.as_deref(),
                     Some("all_turns")
@@ -384,7 +424,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: stream.message_id.clone(),
+                        id: message_id,
                         content: rig::OneOrMany::many(reasoning_blocks)
                             .expect("streamed assistant message should not be empty"),
                     },
@@ -438,8 +478,10 @@ async fn streaming_reasoning_metadata() {
                     }
                 }))
                 .build();
+            // `raw_stream` keeps the terminal record provider-native; the
+            // normalized `StreamFinal` carries no reasoning metadata.
             let mut stream = model
-                .stream(request)
+                .raw_stream(request)
                 .await
                 .expect("GPT-5.6 reasoning stream should start");
             let expected = json!({
@@ -450,7 +492,7 @@ async fn streaming_reasoning_metadata() {
             });
 
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(response) =
+                if let RawStreamingChoice::FinalResponse(response) =
                     item.expect("GPT-5.6 reasoning stream should succeed")
                 {
                     assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));

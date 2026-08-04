@@ -16,21 +16,28 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_bedrock_cassette(
         "raw_completion/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let response = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .temperature(0.0)
-                .send()
+                .build();
+
+            // `completion` is `raw_completion` followed by exactly this
+            // conversion, so raw-vs-normalized parity is still checked against
+            // one recorded interaction.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("raw Bedrock request should succeed");
-
-            let normalized_text = assistant_text_response(&response.choice)
-                .expect("normalized Bedrock response should contain assistant text");
-            let raw_text = response
-                .raw_response
+            let raw_text = raw
                 .get_text_response()
                 .expect("raw Bedrock response should contain assistant text");
+            let response: rig::completion::CompletionResponse = raw
+                .try_into()
+                .expect("raw Bedrock response should normalize");
+            let normalized_text = assistant_text_response(&response.choice)
+                .expect("normalized Bedrock response should contain assistant text");
 
             assert_nonempty_response(&normalized_text);
             assert_nonempty_response(&raw_text);

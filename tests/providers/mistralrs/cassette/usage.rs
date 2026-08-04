@@ -11,16 +11,24 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
     with_mistralrs_completions_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
         |client| async move {
-            let response = client
-                .completion_model(model_name())
+            let model = client.completion_model(model_name());
+            let request = model
                 .completion_request("/no_think Explain usage accounting in one sentence.")
                 .preamble(SYSTEM_PROMPT.to_string())
                 .max_tokens(64)
-                .send()
+                .build();
+            // A single cassette interaction: keep mistral.rs's own wire response
+            // for the usage-shape assertions, and still check that the
+            // normalization the completion path applies accepts it.
+            let wire_response = model
+                .raw_completion(request)
                 .await
                 .expect("usage check completion should succeed");
-            let raw = serde_json::to_value(&response.raw_response)
+            let raw = serde_json::to_value(&wire_response)
                 .expect("raw chat completion response should serialize");
+            let _normalized: rig::completion::CompletionResponse = ("openai", wire_response)
+                .try_into()
+                .expect("usage check completion should normalize");
             let usage = raw
                 .get("usage")
                 .expect("mistral.rs response should include usage");

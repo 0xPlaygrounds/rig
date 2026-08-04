@@ -38,19 +38,23 @@ async fn responses_api_accepts_null_metadata() {
                 .max_tokens(8)
                 .build();
 
-            let response = model
-                .completion(request)
+            // `metadata` is a provider-native wire field, so it is read off the
+            // Responses API's own response type. The cassette records a single
+            // interaction, so the normalized response is derived from that same
+            // raw response instead of issuing a second request.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
 
             assert!(
-                response
-                    .raw_response
-                    .additional_parameters
-                    .metadata
-                    .is_empty(),
+                raw.additional_parameters.metadata.is_empty(),
                 "vLLM returns metadata: null; Rig should preserve the public map API as an empty map"
             );
+
+            let response: rig::completion::CompletionResponse = ("openai", raw)
+                .try_into()
+                .expect("vLLM Responses API completion should normalize");
             assert!(
                 response.choice.iter().next().is_some(),
                 "response should contain assistant content"
