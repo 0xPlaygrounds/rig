@@ -718,12 +718,9 @@ mod tests {
     fn test_stream_final_has_finish_reason_and_model_version() {
         use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let response = streaming::StreamFinal::new(
-            "gemini",
-            PartialUsage::default().token_usage(),
-        )
-        .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
-        .with_model("gemini-2.5-pro-preview-05-06");
+        let response = streaming::StreamFinal::new("gemini", PartialUsage::default().token_usage())
+            .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+            .with_model("gemini-2.5-pro-preview-05-06");
 
         assert!(matches!(
             response.finish_reason,

@@ -655,9 +655,7 @@ fn context_limit_boundaries_clamp_and_detect_conversion_overflow() {
 #[test]
 fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::from_safetensors(model_data()?)?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model did not enter ready state".into());
-    };
+    let ModelState::Ready(loaded) = &model.state;
     assert!(loaded.runtime.is_consistent_cpu());
     assert_eq!(
         loaded.profile.definition.loader,
@@ -722,9 +720,7 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
         .max_concurrent_requests(3)
         .build_async()
         .await?;
-    let ModelState::Ready(loaded) = &configured.state else {
-        return Err("async model did not enter ready state".into());
-    };
+    let ModelState::Ready(loaded) = &configured.state;
     assert_eq!(loaded.generation.max_tokens, 17);
     assert_eq!(loaded.generation.temperature, 0.25);
     assert_eq!(loaded.generation.top_k, Some(4));
@@ -747,13 +743,11 @@ async fn async_loading_preserves_typed_errors_and_converts_panics() {
     .await;
     assert!(matches!(invalid, Err(CandleError::Configuration(_))));
 
-    let panicked = join_model_load(tokio::task::spawn_blocking(|| {
-        std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
-        #[allow(unreachable_code)]
-        Ok(CandleModel {
-            state: ModelState::UnsupportedMake,
-        })
-    }))
+    let panicked = join_model_load(tokio::task::spawn_blocking(
+        || -> Result<CandleModel, CandleError> {
+            std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
+        },
+    ))
     .await;
     assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
 }
@@ -1185,9 +1179,7 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::builder(model_data()?).build()?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model was not ready".into());
-    };
+    let ModelState::Ready(loaded) = &model.state;
     loaded.concurrency.close();
     let completion_error = model
         .completion(request(vec![Message::user("hello")]))
@@ -1537,32 +1529,5 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.time_to_first_token_ms, Some(10));
     assert_eq!(response.generation_duration_ms, 20);
     assert_eq!(response.tokens_per_second, Some(100.0));
-    Ok(())
-}
-
-#[test]
-fn unsupported_make_fails_for_buffered_and_streaming()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    runtime.block_on(async {
-        let model = <LlamaModel as CompletionModel>::make(&(), "llama");
-        let completion_error = model
-            .completion(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(
-            completion_error
-                .to_string()
-                .contains("CompletionModel::make")
-        );
-        let stream_error = model
-            .stream(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(stream_error.to_string().contains("CompletionModel::make"));
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })?;
     Ok(())
 }

@@ -44,8 +44,7 @@ pub type StreamingResult =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
+pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -1629,8 +1628,8 @@ mod migrated_tests {
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
-        MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError,
-        MockTurn, SessionId,
+        MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn,
+        SessionId,
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
@@ -3093,16 +3092,15 @@ mod migrated_tests {
 
     #[test]
     fn final_response_serializes_completion_calls_with_missing_usage() {
-        let item: MultiTurnStreamItem =
-            MultiTurnStreamItem::final_response_with_completion_calls(
-                OneOrMany::one(AssistantContent::text("done")),
-                usage(3, 4),
-                vec![
-                    CompletionCall::new(0, Usage::new()),
-                    CompletionCall::new(1, usage(3, 4)),
-                ],
-                None,
-            );
+        let item: MultiTurnStreamItem = MultiTurnStreamItem::final_response_with_completion_calls(
+            OneOrMany::one(AssistantContent::text("done")),
+            usage(3, 4),
+            vec![
+                CompletionCall::new(0, Usage::new()),
+                CompletionCall::new(1, usage(3, 4)),
+            ],
+            None,
+        );
 
         if let MultiTurnStreamItem::FinalResponse(response) = &item {
             assert_eq!(response.requests(), 2);

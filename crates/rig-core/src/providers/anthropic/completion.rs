@@ -2466,22 +2466,26 @@ pub(super) fn build_tool_definitions(
     Ok(tools)
 }
 
+impl<Ext, T> From<(crate::client::Client<Ext, T>, String)> for GenericCompletionModel<Ext, T>
+where
+    T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
+{
+    fn from((client, model): (crate::client::Client<Ext, T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = crate::client::Client<Ext, T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
     // Anthropic's native structured outputs (constrained decoding) are designed
     // to compose with strict tool use, so the schema constraint does not suppress
     // tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
     }
 
     async fn completion(

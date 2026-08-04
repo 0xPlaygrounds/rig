@@ -36,7 +36,8 @@ async fn streaming() {
         // Wire-level reasoning assertions, re-checked against the recorded
         // SSE `response.completed` events (previously read from the typed
         // Copilot Responses stream final).
-        let bodies = crate::cassettes::recorded_response_bodies("copilot", "reasoning_roundtrip/streaming");
+        let bodies =
+            crate::cassettes::recorded_response_bodies("copilot", "reasoning_roundtrip/streaming");
         let mut completed_events = 0usize;
         for body in &bodies {
             for line in body.lines() {

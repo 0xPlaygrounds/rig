@@ -654,8 +654,7 @@ mod tests {
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
-        + 'static,
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
     ) -> StreamingResult {
         Box::pin(stream)
     }

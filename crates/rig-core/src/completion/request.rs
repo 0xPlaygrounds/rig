@@ -372,16 +372,38 @@ impl AddAssign for Usage {
     }
 }
 
+/// Provider behavior that affects how runtimes prepare completion requests.
+///
+/// Capabilities are immutable facts about a model implementation. Runtimes can
+/// snapshot this value when erasing a model instead of retaining callbacks into
+/// the concrete provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct ProviderCapabilities {
+    /// Whether native structured output can remain enabled while tools are
+    /// available without suppressing tool calls.
+    pub composes_native_output_with_tools: bool,
+}
+
+impl ProviderCapabilities {
+    /// Create the conservative capability set used by default.
+    pub const fn new() -> Self {
+        Self {
+            composes_native_output_with_tools: false,
+        }
+    }
+
+    /// Declare whether native structured output composes with tool calls.
+    pub const fn with_native_output_tool_composition(mut self, supported: bool) -> Self {
+        self.composes_native_output_with_tools = supported;
+        self
+    }
+}
+
 /// Trait defining a completion model that can be used to generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// Provider client type used to construct this model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
     /// Generates a completion response for the given completion request.
     ///
     /// The response is the concrete, normalized [`CompletionResponse`];
@@ -395,24 +417,21 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend;
 
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 
-    /// Whether this provider's native structured output (`output_schema` ->
-    /// `format`/`response_format`) composes with tool calls in the same
-    /// multi-turn request without suppressing them.
+    /// Provider behavior used while preparing completion requests.
     ///
-    /// Defaults to `false` (the safe assumption: the native constraint may make
-    /// the model emit schema JSON instead of calling its tools — see issue
-    /// #1928). Providers that enforce structured output *and* tool use together
-    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets runtimes keep
-    /// guaranteed native structured output active when tools are present.
-    fn composes_native_output_with_tools(&self) -> bool {
-        false
+    /// The default is conservative: native structured output is assumed not to
+    /// compose with tool calls. Implementations can override this method and
+    /// enable supported capabilities on [`ProviderCapabilities`].
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::default()
     }
 }
 

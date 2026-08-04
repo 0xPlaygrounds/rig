@@ -210,12 +210,6 @@ pub(crate) fn resolve_request_model(
 }
 
 impl completion::CompletionModel for CompletionModel {
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,

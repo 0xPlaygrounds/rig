@@ -4,7 +4,7 @@ use crate::completion::CompletionModel;
 /// Clone is required for conversions between client types.
 pub trait CompletionClient {
     /// The type of CompletionModel used by the client.
-    type CompletionModel: CompletionModel<Client = Self>;
+    type CompletionModel: CompletionModel;
 
     /// Create a completion model with the given model.
     ///
@@ -21,7 +21,5 @@ pub trait CompletionClient {
     /// # Ok(())
     /// # }
     /// ```
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        Self::CompletionModel::make(self, model)
-    }
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel;
 }

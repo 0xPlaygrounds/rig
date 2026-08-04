@@ -106,16 +106,19 @@ where
     }
 }
 
+impl<T> From<(InteractionsClient<T>, String)> for InteractionsCompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    fn from((client, model): (InteractionsClient<T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    type Client = InteractionsClient<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn completion(
         &self,
         completion_request: CompletionRequest,

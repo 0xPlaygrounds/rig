@@ -674,7 +674,7 @@ mod tests {
     use crate::agent::hook::InvalidToolCallAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
-        use rig_core::message::{Text, ToolResultContent, UserContent};
+    use rig_core::message::{Text, ToolResultContent, UserContent};
     use serde_json::json;
 
     fn tool_names(names: &[&str]) -> BTreeSet<String> {

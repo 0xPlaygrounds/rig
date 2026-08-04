@@ -257,12 +257,6 @@ impl MockCompletionModel {
 }
 
 impl CompletionModel for MockCompletionModel {
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self::default()
-    }
-
     async fn completion(
         &self,
         request: CompletionRequest,

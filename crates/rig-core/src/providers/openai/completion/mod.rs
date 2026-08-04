@@ -3,9 +3,7 @@
 // ================================================================
 
 use super::client::ApiResponse;
-use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest,
-};
+use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
@@ -1158,8 +1156,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
-        let finish_reason = (!choice.finish_reason.is_empty())
-            .then(|| map_finish_reason(&choice.finish_reason));
+        let finish_reason =
+            (!choice.finish_reason.is_empty()).then(|| map_finish_reason(&choice.finish_reason));
 
         let content = match &choice.message {
             Message::Assistant {
@@ -1603,6 +1601,16 @@ where
     }
 }
 
+impl<Ext, H> From<(crate::client::Client<Ext, H>, String)> for GenericCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
+{
+    fn from((client, model): (crate::client::Client<Ext, H>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CompletionRequest {
     pub model: String,
@@ -1931,12 +1939,6 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     // OpenAI Chat Completions *defers* `response_format` while tools are present
     // and no tool result exists yet (see `should_apply_response_format`), then
     // applies it once a tool result is in the history. So the native constraint
@@ -1944,12 +1946,13 @@ where
     // governs. (Caveat: a turn-1 answer with no tool call is therefore not
     // schema-constrained; `Native` is "guaranteed" only once tools have run.)
     // See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
+    fn capabilities(&self) -> completion::ProviderCapabilities {
         // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
         // false) cannot compose native structured output with tools; the
         // agent then falls back to tool-mode enforcement as their
         // pre-migration hand-rolled models did.
-        Ext::SUPPORTS_RESPONSE_FORMAT
+        completion::ProviderCapabilities::default()
+            .with_native_output_tool_composition(Ext::SUPPORTS_RESPONSE_FORMAT)
     }
 
     async fn completion(
@@ -3018,8 +3021,7 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse =
-            response.try_into().unwrap();
+        let response: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(response.choice.len(), 1);
 

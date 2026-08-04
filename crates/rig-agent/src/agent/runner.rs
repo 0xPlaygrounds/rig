@@ -3311,9 +3311,7 @@ mod migrated_tests {
         };
         use crate::streaming::StreamedAssistantContent;
         use crate::streaming::StreamingCompletionResponse;
-        use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn,
-        };
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
         use crate::tool::{ToolContext, ToolExecutionError};
         use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
@@ -3463,14 +3461,6 @@ mod migrated_tests {
         }
 
         impl CompletionModel for CompletionTelemetryModel {
-            type Client = ();
-
-            fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-                Self {
-                    inner: MockCompletionModel::default(),
-                }
-            }
-
             async fn completion(
                 &self,
                 request: CompletionRequest,
@@ -6796,12 +6786,6 @@ mod migrated_tests {
     }
 
     impl CompletionModel for PausingCompletionModel {
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::new(MockCompletionModel::default()).0
-        }
-
         async fn completion(
             &self,
             request: crate::completion::CompletionRequest,

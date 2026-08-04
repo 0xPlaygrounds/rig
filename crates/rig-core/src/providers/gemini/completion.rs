@@ -75,16 +75,19 @@ impl<T> CompletionModel<T> {
     }
 }
 
+impl<T> From<(Client<T>, String)> for CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    fn from((client, model): (Client<T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Client = super::Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -2677,10 +2680,8 @@ mod tests {
                 model_version: None,
             };
 
-            let err = crate::completion::CompletionResponse::try_from(
-                response,
-            )
-            .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::try_from(response)
+                .expect_err("tool protocol finish reason should fail");
 
             assert!(matches!(
                 err,

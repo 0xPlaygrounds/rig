@@ -107,7 +107,6 @@ const STREAM_CHANNEL_CAPACITY: usize = 8;
 #[derive(Clone)]
 enum ModelState {
     Ready(Arc<LoadedModel>),
-    UnsupportedMake,
 }
 
 /// A cheaply cloneable, CPU-only Candle completion model.
@@ -224,7 +223,6 @@ impl CandleModel {
     pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
         match &self.state {
             ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
         }
     }
 
@@ -237,7 +235,6 @@ impl CandleModel {
     pub fn architecture(&self) -> Option<ModelArchitecture> {
         match &self.state {
             ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
         }
     }
 
@@ -245,7 +242,6 @@ impl CandleModel {
     pub fn quantization(&self) -> Option<Quantization> {
         match &self.state {
             ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
         }
     }
 }
@@ -423,21 +419,11 @@ fn stream_infer(
 }
 
 impl CompletionModel for CandleModel {
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
     async fn completion(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+        let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -473,9 +459,7 @@ impl CompletionModel for CandleModel {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+        let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {

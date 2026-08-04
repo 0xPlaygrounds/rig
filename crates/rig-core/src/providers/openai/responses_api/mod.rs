@@ -1452,6 +1452,18 @@ where
     }
 }
 
+impl<Ext, H> From<(crate::client::Client<Ext, H>, String)>
+    for GenericResponsesCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
+    H: Clone + Default + std::fmt::Debug + 'static,
+{
+    fn from((client, model): (crate::client::Client<Ext, H>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<T> GenericResponsesCompletionModel<super::OpenAIResponsesExt, T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
@@ -2234,17 +2246,11 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     // The OpenAI Responses API constrains only the final assistant message via
     // `text.format`; tools are still called across turns, so native structured
     // output composes with tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
     }
 
     async fn completion(
@@ -2369,15 +2375,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .output
             .iter()
             .any(|item| matches!(item, Output::FunctionCall(_)));
-        let finish_reason = match finish_reason_from_status(
-            &response.status,
-            response.incomplete_details.as_ref(),
-        ) {
-            Some(completion::FinishReason::Stop) if has_tool_calls => {
-                Some(completion::FinishReason::ToolCalls)
-            }
-            other => other,
-        };
+        let finish_reason =
+            match finish_reason_from_status(&response.status, response.incomplete_details.as_ref())
+            {
+                Some(completion::FinishReason::Stop) if has_tool_calls => {
+                    Some(completion::FinishReason::ToolCalls)
+                }
+                other => other,
+            };
 
         let mut normalized = completion::CompletionResponse::new(choice, usage, "openai")
             .with_model(response.model.clone());

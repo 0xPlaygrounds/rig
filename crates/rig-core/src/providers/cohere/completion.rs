@@ -631,16 +631,19 @@ where
     }
 }
 
+impl<T> From<(Client<T>, String)> for CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    fn from((client, model): (Client<T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,

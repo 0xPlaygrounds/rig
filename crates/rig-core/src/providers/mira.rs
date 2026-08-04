@@ -343,9 +343,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                     .map(|usage| completion::Usage::from(usage.clone()))
                     .unwrap_or_default();
 
-                let finish_reason = choice.finish_reason.as_deref().map(
-                    crate::providers::openai::completion::map_finish_reason,
-                );
+                let finish_reason = choice
+                    .finish_reason
+                    .as_deref()
+                    .map(crate::providers::openai::completion::map_finish_reason);
 
                 // Convert RawMessage to message::Message
                 let message = message::Message::try_from(choice.message.clone())?;

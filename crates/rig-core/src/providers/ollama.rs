@@ -626,16 +626,19 @@ impl NdjsonBuffer {
     }
 }
 
+impl<T> From<(Client<T>, String)> for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    fn from((client, model): (Client<T>, String)) -> Self {
+        Self::new(client, &model)
+    }
+}
+
 impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into().as_str())
-    }
-
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -1353,8 +1356,7 @@ mod tests {
 
         let chat_resp: CompletionResponse =
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse =
-            chat_resp.try_into().unwrap();
+        let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"

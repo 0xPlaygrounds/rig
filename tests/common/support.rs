@@ -604,9 +604,7 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation(
-    stream: &mut StreamingResult,
-) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {

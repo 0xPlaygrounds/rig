@@ -5,8 +5,7 @@ use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
 use rig_core::completion::{
-    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
-    CompletionResponse,
+    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
 use rig_core::streaming::StreamingCompletionResponse;
 
@@ -59,12 +58,6 @@ impl CompletionModel {
 }
 
 impl CompletionModelTrait for CompletionModel {
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
     async fn completion(
         &self,
         request: CompletionRequest,
