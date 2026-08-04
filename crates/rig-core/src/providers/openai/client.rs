@@ -474,6 +474,7 @@ mod tests {
                 assert_eq!(
                     tool_calls[0],
                     ToolCall {
+                        index: None,
                         id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
                         r#type: ToolType::Function,
                         function: Function {

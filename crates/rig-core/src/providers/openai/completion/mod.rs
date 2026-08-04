@@ -443,6 +443,8 @@ impl ToolResultContentValue {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
+    #[serde(default)]
+    pub index: Option<usize>,
     pub id: String,
     #[serde(default)]
     pub r#type: ToolType,
@@ -915,6 +917,7 @@ impl TryFrom<message::Message> for Vec<Message> {
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
+            index: None,
             // Keep the assistant echo consistent with the tool-result side,
             // which prefers the provider-issued `call_id` over the rig-level
             // id (e.g. Responses-API history replayed via chat completions).
@@ -1301,6 +1304,9 @@ pub struct PromptTokensDetails {
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct CompletionTokensDetails {
+    /// Audio tokens reported by Azure/OpenAI-compatible providers.
+    #[serde(default)]
+    pub audio_tokens: usize,
     /// Reasoning tokens reported by reasoning-capable providers.
     #[serde(default)]
     pub reasoning_tokens: usize,
@@ -2991,6 +2997,55 @@ mod tests {
             panic!("expected tool call assistant content");
         };
         assert_eq!(tool_call.id, "xxx");
+        assert_eq!(tool_call.function.name, "submit");
+        assert_eq!(tool_call.function.arguments, serde_json::json!({"file_names": []}));
+    }
+
+    #[test]
+    fn azure_completion_response_accepts_tool_call_with_empty_content() {
+        let request = r#"{
+            "id":"chatcmpl-E93FGlGSBNwR0P3CbrfFKGXBKenr8",
+            "object":"chat.completion",
+            "created":1785826134,
+            "model":"gpt-5.4-2026-03-05",
+            "choices":[{
+                "finish_reason":"tool_calls",
+                "index":0,
+                "message":{
+                    "role":"assistant",
+                    "content":"",
+                    "reasoning_content":"",
+                    "tool_calls":[{
+                        "index":0,
+                        "id":"call_uxzJMRFj67ATO3PUXoRVEkiL",
+                        "type":"function",
+                        "function":{"name":"submit","arguments":"{\"file_names\":[]}"}
+                    }]
+                }
+            }],
+            "prompt_filter_results":null,
+            "usage":{
+                "completion_tokens":17,
+                "prompt_tokens":503,
+                "total_tokens":520,
+                "completion_tokens_details":{"audio_tokens":0,"reasoning_tokens":0},
+                "prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}
+            }
+        }"#;
+
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("azure tool call response should convert");
+
+        assert_eq!(completion.choice.len(), 1);
+        let completion::AssistantContent::ToolCall(tool_call) = completion.choice.first() else {
+            panic!("expected tool call assistant content");
+        };
+        assert_eq!(tool_call.id, "call_uxzJMRFj67ATO3PUXoRVEkiL");
         assert_eq!(tool_call.function.name, "submit");
         assert_eq!(tool_call.function.arguments, serde_json::json!({"file_names": []}));
     }
