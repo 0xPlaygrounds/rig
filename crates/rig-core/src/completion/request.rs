@@ -546,7 +546,13 @@ impl ProviderCapabilities {
 /// provider's side of this boundary, reachable through its inherent
 /// `raw_completion`/`raw_stream` methods. Model construction belongs to
 /// [`crate::client::completion::CompletionClient`], not to this trait.
-pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
+///
+/// The trait demands only async service behavior — no `Clone` supertrait, in
+/// the spirit of `tower::Service`: cloning or sharing a model is the caller's
+/// concern (wrap it in an `Arc` if needed). The [`Self::completion_request`]
+/// convenience gates on `Self: Clone` individually, which every built-in
+/// provider model satisfies.
+pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     /// Generates a completion response for the given completion request.
     fn completion(
         &self,
@@ -561,7 +567,10 @@ pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
     + WasmCompatSend;
 
     /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
+    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
+    where
+        Self: Sized + Clone,
+    {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 
@@ -1012,6 +1021,16 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
     /// Builds the completion request.
     pub fn build(self) -> CompletionRequest {
+        self.into_model_and_request().1
+    }
+
+    /// Moves the model out and builds the request from the remaining fields.
+    ///
+    /// `build`, `send`, and `stream` all funnel through this single
+    /// destructuring, so the built request cannot drift between them and the
+    /// terminal methods need no model clone.
+    fn into_model_and_request(self) -> (M, CompletionRequest) {
+        let model = self.model;
         // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
         let prompt = self.prompt;
@@ -1028,7 +1047,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             self.provider_tools,
         );
 
-        CompletionRequest {
+        let request = CompletionRequest {
             model: self.request_model,
             preamble: None,
             chat_history,
@@ -1040,19 +1059,20 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
-        }
+        };
+        (model, request)
     }
 
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
-        let model = self.model.clone();
-        model.completion(self.build()).await
+        let (model, request) = self.into_model_and_request();
+        model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
-        let model = self.model.clone();
-        model.stream(self.build()).await
+        let (model, request) = self.into_model_and_request();
+        model.stream(request).await
     }
 }
 

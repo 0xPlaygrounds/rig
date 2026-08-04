@@ -1922,7 +1922,7 @@ where
 /// Runs all portable tool-choice modes directly against a completion model.
 pub async fn tool_choice_modes<M>(model: M) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    M: CompletionModel + Clone + 'static,
 {
     let definition = |name: &str| ToolDefinition {
         name: name.to_string(),

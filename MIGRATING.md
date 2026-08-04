@@ -458,6 +458,16 @@ Instead, implement the public `ConstructCompletionModel<Client<Ext, H>>` hook
 on your model type; the blanket `CompletionClient` implementation over
 `Client<Ext, H>` then supplies `completion_model` for you.
 
+`CompletionModel` also no longer requires `Clone` — the trait demands only
+async service behavior, in the spirit of `tower::Service`; cloning or sharing
+a model is the caller's concern (wrap it in an `Arc` if needed). Implementors
+can drop `Clone` derives they only carried for the bound (keeping them is
+harmless). Generic code that cloned a model through the trait must now bound
+`M: CompletionModel + Clone` explicitly or take the model by value. The
+`completion_request` convenience gates on `Self: Clone` individually; every
+built-in provider model and `ModelHandle` satisfy it, so call sites on
+concrete types compile unchanged.
+
 ### Provider behavior is reported through capabilities
 
 `CompletionModel::composes_native_output_with_tools()` is replaced by

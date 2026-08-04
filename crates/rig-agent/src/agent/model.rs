@@ -18,41 +18,59 @@ use rig_core::{
         ProviderCapabilities,
     },
     streaming::StreamingCompletionResponse,
-    wasm_compat::WasmBoxedFuture,
+    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-// The `Send + Sync` bounds are dropped exactly where `rig-core`'s `WasmCompat*`
-// markers go no-op — browser wasm.
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-type CompleteCallback = dyn Fn(CompletionRequest) -> WasmBoxedFuture<'static, Result<CompletionResponse, CompletionError>>
-    + Send
-    + Sync;
+/// Private object-safe mirror of [`CompletionModel`], the same shape
+/// `tower::BoxService` uses: the public trait stays generic (RPITIT futures),
+/// this dyn-safe twin exists only so [`ModelHandle`] can store one vtable.
+///
+/// The `WasmCompat*` supertraits carry the cfg fork (no-op markers on browser
+/// wasm), mirroring `ErasedTool` in `crate::tool`. Capabilities are
+/// deliberately absent: they are construction-time data captured alongside the
+/// erased model, not behavior to call back into.
+trait ErasedModel: WasmCompatSend + WasmCompatSync {
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse, CompletionError>>;
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-type CompleteCallback =
-    dyn Fn(
-        CompletionRequest,
-    ) -> WasmBoxedFuture<'static, Result<CompletionResponse, CompletionError>>;
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<StreamingCompletionResponse, CompletionError>>;
+}
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-type StreamCallback = dyn Fn(
-        CompletionRequest,
-    ) -> WasmBoxedFuture<'static, Result<StreamingCompletionResponse, CompletionError>>
-    + Send
-    + Sync;
+/// Every completion model erases; the borrowed futures delegate straight to
+/// the RPITIT methods, so erasure adds one `Box::pin` per attempt and never
+/// clones the model.
+impl<M> ErasedModel for M
+where
+    M: CompletionModel + 'static,
+{
+    fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<CompletionResponse, CompletionError>> {
+        Box::pin(CompletionModel::completion(self, request))
+    }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-type StreamCallback =
-    dyn Fn(
-        CompletionRequest,
-    ) -> WasmBoxedFuture<'static, Result<StreamingCompletionResponse, CompletionError>>;
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> WasmBoxedFuture<'_, Result<StreamingCompletionResponse, CompletionError>> {
+        Box::pin(CompletionModel::stream(self, request))
+    }
+}
 
-struct ModelDriver {
-    complete: Box<CompleteCallback>,
-    open_stream: Box<StreamCallback>,
+/// The handle's single allocation: snapshot data first, the unsized erased
+/// model last, so `Arc<ModelDriver<M>>` unsize-coerces to
+/// `Arc<ModelDriver<dyn ErasedModel>>` without a second box.
+struct ModelDriver<M: ?Sized> {
     /// Capability snapshot taken at erasure time (see [`ProviderCapabilities`]).
     capabilities: ProviderCapabilities,
     label: Option<String>,
+    model: M,
 }
 
 /// A cloneable, opaque handle to live completion-model behavior.
@@ -88,7 +106,7 @@ struct ModelDriver {
 /// ```
 #[derive(Clone)]
 pub struct ModelHandle {
-    inner: Arc<ModelDriver>,
+    inner: Arc<ModelDriver<dyn ErasedModel>>,
 }
 
 impl ModelHandle {
@@ -115,28 +133,15 @@ impl ModelHandle {
     where
         M: CompletionModel + 'static,
     {
-        // Capture the capability snapshot once, at erasure time.
+        // Capture the capability snapshot once, at erasure time; the model is
+        // consumed by value and never cloned again (pinned by the
+        // `erasure_never_clones_the_model` test below).
         let capabilities = model.capabilities();
-        // Both callbacks share one retained model instance and clone only the
-        // `Arc` per attempt, so a model with interior-mutable state keeps that
-        // state across attempts instead of re-running on an erasure-time copy.
-        let model = Arc::new(model);
-        let complete_model = Arc::clone(&model);
-        let complete: Box<CompleteCallback> = Box::new(move |request| {
-            let model = Arc::clone(&complete_model);
-            Box::pin(async move { model.completion(request).await })
-        });
-        let open_stream: Box<StreamCallback> = Box::new(move |request| {
-            let model = Arc::clone(&model);
-            Box::pin(async move { model.stream(request).await })
-        });
-
         Self {
             inner: Arc::new(ModelDriver {
-                complete,
-                open_stream,
                 capabilities,
                 label,
+                model,
             }),
         }
     }
@@ -155,7 +160,7 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        (self.inner.complete)(request)
+        self.inner.model.completion(request)
     }
 
     fn stream(
@@ -163,7 +168,7 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        (self.inner.open_stream)(request)
+        self.inner.model.stream(request)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -178,5 +183,104 @@ impl fmt::Debug for ModelHandle {
             .field("label", &self.label())
             .field("capabilities", &self.inner.capabilities)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use crate::test_utils::{MockCompletionModel, MockTurn};
+
+    /// Wraps the mock model and counts every `Clone` of itself.
+    struct CloneCountingModel {
+        inner: MockCompletionModel,
+        clones: Arc<AtomicUsize>,
+    }
+
+    impl Clone for CloneCountingModel {
+        fn clone(&self) -> Self {
+            self.clones.fetch_add(1, Ordering::SeqCst);
+            Self {
+                inner: self.inner.clone(),
+                clones: Arc::clone(&self.clones),
+            }
+        }
+    }
+
+    impl CompletionModel for CloneCountingModel {
+        fn completion(
+            &self,
+            request: CompletionRequest,
+        ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
+        + rig_core::wasm_compat::WasmCompatSend {
+            CompletionModel::completion(&self.inner, request)
+        }
+
+        fn stream(
+            &self,
+            request: CompletionRequest,
+        ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+        + rig_core::wasm_compat::WasmCompatSend {
+            CompletionModel::stream(&self.inner, request)
+        }
+    }
+
+    /// Erasure consumes the model by value: no code path may ever clone it,
+    /// no matter how many attempts run through the handle. This pins the
+    /// shared-instance semantics structurally, not just in prose.
+    #[tokio::test]
+    async fn erasure_never_clones_the_model() {
+        let clones = Arc::new(AtomicUsize::new(0));
+        let model = CloneCountingModel {
+            inner: MockCompletionModel::from_turns([
+                MockTurn::text("one"),
+                MockTurn::text("two"),
+                MockTurn::text("three"),
+            ]),
+            clones: Arc::clone(&clones),
+        };
+
+        let handle = ModelHandle::new(model);
+        let request = handle.completion_request("go").build();
+        CompletionModel::completion(&handle, request.clone())
+            .await
+            .expect("first scripted turn");
+        CompletionModel::completion(&handle, request.clone())
+            .await
+            .expect("second scripted turn");
+        CompletionModel::completion(&handle, request)
+            .await
+            .expect("third scripted turn");
+
+        let stream_clones = Arc::new(AtomicUsize::new(0));
+        let stream_model = CloneCountingModel {
+            inner: MockCompletionModel::from_stream_turns([
+                vec![
+                    crate::test_utils::MockStreamEvent::text("a"),
+                    crate::test_utils::MockStreamEvent::final_response_with_default_usage(),
+                ],
+                vec![
+                    crate::test_utils::MockStreamEvent::text("b"),
+                    crate::test_utils::MockStreamEvent::final_response_with_default_usage(),
+                ],
+            ]),
+            clones: Arc::clone(&stream_clones),
+        };
+        let stream_handle = ModelHandle::new(stream_model);
+        let stream_request = stream_handle.completion_request("go").build();
+        CompletionModel::stream(&stream_handle, stream_request.clone())
+            .await
+            .expect("first scripted stream turn");
+        CompletionModel::stream(&stream_handle, stream_request)
+            .await
+            .expect("second scripted stream turn");
+
+        assert_eq!(
+            clones.load(Ordering::SeqCst) + stream_clones.load(Ordering::SeqCst),
+            0,
+            "erasure and attempts must never clone the model"
+        );
     }
 }
