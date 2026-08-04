@@ -29,33 +29,38 @@ where
 
 #[tokio::test]
 async fn responses_api_accepts_null_metadata() {
-    with_openai_vllm_cassette(
-        "vllm/responses_api_accepts_null_metadata",
-        |client| async move {
-            let model = client.completion_model("Qwen/Qwen3-0.6B");
-            let request = model
-                .completion_request("Reply with a short acknowledgement.")
-                .max_tokens(8)
-                .build();
+    const SCENARIO: &str = "vllm/responses_api_accepts_null_metadata";
+    with_openai_vllm_cassette("vllm/responses_api_accepts_null_metadata", |client| async move {
+        let model = client.completion_model("Qwen/Qwen3-0.6B");
+        let request = model
+            .completion_request("Reply with a short acknowledgement.")
+            .max_tokens(8)
+            .build();
 
-            let response = model
-                .completion(request)
-                .await
-                .expect("vLLM Responses API completion with null metadata should deserialize");
+        let response = model
+            .completion(request)
+            .await
+            .expect("vLLM Responses API completion with null metadata should deserialize");
 
+        assert!(
+            response.choice.iter().next().is_some(),
+            "response should contain assistant content"
+        );
+
+        // The `metadata: null` normalization is wire-level behavior; check it
+        // by deserializing the recorded body into the provider response type
+        // (replay only: the cassette file is written after the test body in
+        // record mode).
+        if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+            let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
+            assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+            let raw: openai::responses_api::CompletionResponse = serde_json::from_str(&bodies[0])
+                .expect("recorded vLLM body should deserialize as a Responses API response");
             assert!(
-                response
-                    .raw_response
-                    .additional_parameters
-                    .metadata
-                    .is_empty(),
+                raw.additional_parameters.metadata.is_empty(),
                 "vLLM returns metadata: null; Rig should preserve the public map API as an empty map"
             );
-            assert!(
-                response.choice.iter().next().is_some(),
-                "response should contain assistant content"
-            );
-        },
-    )
+        }
+    })
     .await;
 }

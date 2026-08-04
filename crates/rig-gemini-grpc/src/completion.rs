@@ -39,21 +39,12 @@ impl CompletionModel {
             model: model.into(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = super::streaming::StreamingCompletionResponse;
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a Gemini gRPC completion and return the generated protobuf response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request = create_grpc_request(self.model.clone(), completion_request)?;
 
         let mut grpc_client = self
@@ -61,24 +52,64 @@ impl completion::CompletionModel for CompletionModel {
             .grpc_client()
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        let response = grpc_client
+        grpc_client
             .generate_content(request)
             .await
-            .map_err(rpc_error)?
-            .into_inner();
+            .map_err(rpc_error)
+            .map(tonic::Response::into_inner)
+    }
 
-        response.try_into()
+    /// Execute a streaming Gemini gRPC completion and preserve its native terminal response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<rig_core::streaming::RawStreamingResult<GenerateContentResponse>, CompletionError>
+    {
+        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        super::streaming::stream(self.client.clone(), self.model.clone(), request).await
+    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = rig_core::streaming::normalize_stream(stream, |response| {
+            Ok(normalize_terminal_response(response))
+        });
+        Ok(rig_core::streaming::StreamingCompletionResponse::stream(
+            stream,
+        ))
     }
+}
+
+fn normalize_terminal_response(
+    response: GenerateContentResponse,
+) -> rig_core::streaming::StreamFinal {
+    let mut final_response =
+        rig_core::streaming::StreamFinal::new("gemini-grpc", response.token_usage());
+    if let Some(finish_reason) = response
+        .candidates
+        .first()
+        .and_then(|candidate| map_finish_reason(candidate.finish_reason))
+    {
+        final_response = final_response.with_finish_reason(finish_reason);
+    }
+    if !response.response_id.is_empty() {
+        final_response = final_response.with_message_id(response.response_id);
+    }
+    if !response.model_version.is_empty() {
+        final_response = final_response.with_model(response.model_version);
+    }
+    final_response
 }
 
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
@@ -391,8 +422,32 @@ fn rig_assistant_content_to_grpc_part(
     }
 }
 
+/// Map a Gemini proto finish reason code onto rig's normalized finish reason.
+/// `FINISH_REASON_UNSPECIFIED` (0) means the provider reported nothing.
+pub(crate) fn map_finish_reason(code: i32) -> Option<completion::FinishReason> {
+    let Ok(reason) = proto::candidate::FinishReason::try_from(code) else {
+        return Some(completion::FinishReason::Other(code.to_string()));
+    };
+    match reason {
+        proto::candidate::FinishReason::Unspecified => None,
+        proto::candidate::FinishReason::Stop => Some(completion::FinishReason::Stop),
+        proto::candidate::FinishReason::MaxTokens => Some(completion::FinishReason::Length),
+        proto::candidate::FinishReason::Safety
+        | proto::candidate::FinishReason::Blocklist
+        | proto::candidate::FinishReason::ProhibitedContent
+        | proto::candidate::FinishReason::Spii
+        | proto::candidate::FinishReason::ImageSafety
+        | proto::candidate::FinishReason::ImageProhibitedContent => {
+            Some(completion::FinishReason::ContentFilter)
+        }
+        other => Some(completion::FinishReason::Other(
+            other.as_str_name().to_owned(),
+        )),
+    }
+}
+
 // Convert gRPC GenerateContentResponse to Rig CompletionResponse
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -495,12 +550,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut completion_response =
+            completion::CompletionResponse::new(choice, usage, "gemini-grpc");
+        if let Some(finish_reason) = map_finish_reason(candidate.finish_reason) {
+            completion_response = completion_response.with_finish_reason(finish_reason);
+        }
+        if !response.response_id.is_empty() {
+            completion_response = completion_response.with_message_id(response.response_id.clone());
+        }
+        if !response.model_version.is_empty() {
+            completion_response = completion_response.with_model(response.model_version.clone());
+        }
+
+        Ok(completion_response)
     }
 }
 
@@ -726,6 +788,84 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
+
+    fn stopped_tool_response() -> GenerateContentResponse {
+        GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                            name: "lookup".to_owned(),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                finish_reason: proto::candidate::FinishReason::Stop as i32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_numeric_value() {
+        assert_eq!(
+            map_finish_reason(proto::candidate::FinishReason::Stop as i32),
+            Some(completion::FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(proto::candidate::FinishReason::MaxTokens as i32),
+            Some(completion::FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(98_765),
+            Some(completion::FinishReason::Other("98765".to_owned()))
+        );
+    }
+
+    #[test]
+    fn unary_stop_after_function_call_normalizes_to_tool_calls() {
+        let response = completion::CompletionResponse::try_from(stopped_tool_response())
+            .expect("tool response should normalize");
+
+        assert_eq!(
+            response.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_stop_after_function_call_normalizes_to_tool_calls() {
+        let raw: rig_core::streaming::RawStreamingResult<GenerateContentResponse> =
+            Box::pin(futures::stream::iter(vec![
+                Ok(rig_core::streaming::RawStreamingChoice::ToolCall(
+                    rig_core::streaming::RawStreamingToolCall::new(
+                        "call_1".to_owned(),
+                        "lookup".to_owned(),
+                        serde_json::json!({}),
+                    ),
+                )),
+                Ok(rig_core::streaming::RawStreamingChoice::FinalResponse(
+                    stopped_tool_response(),
+                )),
+            ]));
+        let mut normalized = rig_core::streaming::normalize_stream(raw, |response| {
+            Ok(normalize_terminal_response(response))
+        });
+        let mut finish_reason = None;
+        while let Some(item) = normalized.next().await {
+            if let rig_core::streaming::RawStreamingChoice::FinalResponse(response) =
+                item.expect("stream item")
+            {
+                finish_reason = response.finish_reason;
+            }
+        }
+
+        assert_eq!(finish_reason, Some(completion::FinishReason::ToolCalls));
+    }
 
     // ============================================================
     // rpc_error — pins the from_provider_body usage on the RPC error path

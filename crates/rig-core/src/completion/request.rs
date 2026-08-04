@@ -43,7 +43,6 @@ use crate::{
     message::{Message, UserContent},
 };
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
@@ -207,48 +206,103 @@ impl ProviderToolDefinition {
     }
 }
 
-/// General completion response struct that contains the high-level completion choice
-/// and the raw response. The completion choice contains one or more assistant content.
-#[derive(Debug)]
-pub struct CompletionResponse<T> {
+/// Why the model stopped generating, normalized across providers.
+///
+/// Providers report this under different names and vocabularies
+/// (`finish_reason`, `stop_reason`, `stopReason`, …); each provider's
+/// response conversion maps its wire value onto these variants and preserves
+/// anything unmapped verbatim in [`FinishReason::Other`]. Closes #2090/#1886.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    /// Natural end of the response.
+    Stop,
+    /// The response hit the output-token limit.
+    Length,
+    /// The model stopped to call one or more tools.
+    ToolCalls,
+    /// The provider filtered the content.
+    ContentFilter,
+    /// A provider-specific reason outside the normalized vocabulary,
+    /// carried verbatim.
+    Other(String),
+}
+
+impl FinishReason {
+    pub(crate) fn for_output(self, has_tool_call: bool) -> Self {
+        if has_tool_call && matches!(self, Self::Stop) {
+            Self::ToolCalls
+        } else {
+            self
+        }
+    }
+}
+
+/// General completion response struct: the completion choice plus normalized
+/// response metadata. The completion choice contains one or more assistant
+/// content items.
+///
+/// This type is concrete — it carries no provider-typed payload. Callers who
+/// need a provider's raw typed response call that model's inherent
+/// `raw_completion` or `raw_stream` method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// The raw response returned by the completion model provider
-    pub raw_response: T,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Why the model stopped generating, when the provider reported it.
+    pub finish_reason: Option<FinishReason>,
+    /// Name of the provider that produced this response (descriptor name,
+    /// e.g. `"openai"`).
+    pub provider: String,
+    /// Provider-reported model identifier for the response, when available.
+    pub model: Option<String>,
 }
 
-/// A trait for grabbing the token usage of a completion response.
-///
-/// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
-pub trait GetTokenUsage {
-    /// Returns token usage for this response. Zero-valued usage is
-    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
-    /// response types that carry no usage return [`Usage::new`].
-    fn token_usage(&self) -> crate::completion::Usage;
-}
-
-impl GetTokenUsage for () {
-    fn token_usage(&self) -> crate::completion::Usage {
-        crate::completion::Usage::new()
-    }
-}
-
-impl<T> GetTokenUsage for Option<T>
-where
-    T: GetTokenUsage,
-{
-    fn token_usage(&self) -> crate::completion::Usage {
-        if let Some(usage) = self {
-            usage.token_usage()
-        } else {
-            crate::completion::Usage::new()
+impl CompletionResponse {
+    /// Create a response from its required parts; optional metadata starts
+    /// unset and is filled with the `with_*` helpers.
+    pub fn new(
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        provider: impl Into<String>,
+    ) -> Self {
+        Self {
+            choice,
+            usage,
+            message_id: None,
+            finish_reason: None,
+            provider: provider.into(),
+            model: None,
         }
+    }
+
+    /// Attach the provider-assigned message ID.
+    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.message_id = Some(message_id.into());
+        self
+    }
+
+    /// Attach the normalized finish reason.
+    pub fn with_finish_reason(mut self, finish_reason: FinishReason) -> Self {
+        let has_tool_call = self
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        self.finish_reason = Some(finish_reason.for_output(has_tool_call));
+        self
+    }
+
+    /// Attach the provider-reported model identifier.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 }
 
@@ -332,58 +386,66 @@ impl AddAssign for Usage {
     }
 }
 
+/// Provider behavior that affects how runtimes prepare completion requests.
+///
+/// Capabilities are immutable facts about a model implementation. Runtimes can
+/// snapshot this value when erasing a model instead of retaining callbacks into
+/// the concrete provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct ProviderCapabilities {
+    /// Whether native structured output can remain enabled while tools are
+    /// available without suppressing tool calls.
+    pub composes_native_output_with_tools: bool,
+}
+
+impl ProviderCapabilities {
+    /// Create the conservative capability set used by default.
+    pub const fn new() -> Self {
+        Self {
+            composes_native_output_with_tools: false,
+        }
+    }
+
+    /// Declare whether native structured output composes with tool calls.
+    pub const fn with_native_output_tool_composition(mut self, supported: bool) -> Self {
+        self.composes_native_output_with_tools = supported;
+        self
+    }
+}
+
 /// Trait defining a completion model that can be used to generate completion responses.
 /// This trait is meant to be implemented by the user to define a custom completion model,
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// The raw response type returned by the underlying completion model.
-    type Response: WasmCompatSend + WasmCompatSync + Serialize + DeserializeOwned;
-    /// The raw response type returned by the underlying completion model when streaming.
-    type StreamingResponse: Clone
-        + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
-        + Serialize
-        + DeserializeOwned
-        + GetTokenUsage;
-
-    /// Provider client type used to construct this model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
     /// Generates a completion response for the given completion request.
+    ///
+    /// The response is the concrete, normalized [`CompletionResponse`];
+    /// provider-typed payloads live on the provider's own side of the
+    /// boundary (its parse functions), not in this trait.
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend;
 
     fn stream(
         &self,
         request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + WasmCompatSend;
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend;
 
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
         CompletionRequestBuilder::new(self.clone(), prompt)
     }
 
-    /// Whether this provider's native structured output (`output_schema` ->
-    /// `format`/`response_format`) composes with tool calls in the same
-    /// multi-turn request without suppressing them.
+    /// Provider behavior used while preparing completion requests.
     ///
-    /// Defaults to `false` (the safe assumption: the native constraint may make
-    /// the model emit schema JSON instead of calling its tools — see issue
-    /// #1928). Providers that enforce structured output *and* tool use together
-    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets runtimes keep
-    /// guaranteed native structured output active when tools are present.
-    fn composes_native_output_with_tools(&self) -> bool {
-        false
+    /// The default is conservative: native structured output is assumed not to
+    /// compose with tool calls. Implementations can override this method and
+    /// enable supported capabilities on [`ProviderCapabilities`].
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::default()
     }
 }
 
@@ -857,19 +919,13 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
+    pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let model = self.model.clone();
         model.completion(self.build()).await
     }
 
     /// Stream the completion request
-    pub async fn stream<'a>(
-        self,
-    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError>
-    where
-        <M as CompletionModel>::StreamingResponse: 'a,
-        Self: 'a,
-    {
+    pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
         let model = self.model.clone();
         model.stream(self.build()).await
     }
@@ -877,6 +933,71 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    use crate::message::AssistantContent;
+
+    #[test]
+    fn normalized_response_types_round_trip_through_serde() {
+        use super::{CompletionResponse, FinishReason, Usage};
+
+        let reason = FinishReason::Other("provider_specific_stop".to_owned());
+        let encoded_reason = serde_json::to_string(&reason).expect("serialize finish reason");
+        let decoded_reason = serde_json::from_str::<FinishReason>(&encoded_reason)
+            .expect("deserialize finish reason");
+        assert_eq!(decoded_reason, reason);
+
+        let response = CompletionResponse::new(
+            OneOrMany::one(AssistantContent::text("hello")),
+            Usage {
+                input_tokens: 3,
+                output_tokens: 2,
+                total_tokens: 5,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 1,
+            },
+            "example",
+        )
+        .with_message_id("msg_123")
+        .with_finish_reason(reason)
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(&response).expect("serialize completion response");
+        let decoded = serde_json::from_value::<CompletionResponse>(encoded.clone())
+            .expect("deserialize completion response");
+        assert_eq!(
+            serde_json::to_value(decoded).expect("serialize round-tripped response"),
+            encoded
+        );
+    }
+
+    #[test]
+    fn stop_reason_with_tool_call_normalizes_to_tool_calls() {
+        use super::{CompletionResponse, FinishReason, Usage};
+
+        let response = CompletionResponse::new(
+            OneOrMany::one(AssistantContent::tool_call(
+                "call_1",
+                "lookup",
+                serde_json::json!({"query": "rig"}),
+            )),
+            Usage::new(),
+            "example",
+        )
+        .with_finish_reason(FinishReason::Stop);
+
+        assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
+    }
+
+    #[test]
+    fn provider_capabilities_are_externally_configurable_from_default() {
+        let capabilities =
+            ProviderCapabilities::default().with_native_output_tool_composition(true);
+
+        assert!(capabilities.composes_native_output_with_tools);
+        assert!(!ProviderCapabilities::new().composes_native_output_with_tools);
+    }
+
     #[test]
     fn usage_has_values_reflects_the_zero_sentinel() {
         use super::Usage;

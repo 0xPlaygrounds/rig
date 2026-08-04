@@ -1,6 +1,5 @@
 use async_stream::stream;
 use futures::{Stream, StreamExt};
-use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
@@ -12,25 +11,13 @@ use super::interactions_api_types::{
     InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use serde_json::{Map, Value};
-
-/// Final metadata yielded by an Interactions streaming response.
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct StreamingCompletionResponse {
-    pub usage: Option<InteractionUsage>,
-    pub interaction: Option<Interaction>,
-    /// Resolved model identifier (e.g. `gemini-2.5-pro-preview-05-06`), extracted from
-    /// `Interaction.model`. The Interactions API has no `FinishReason` field; use
-    /// `interaction.status` for lifecycle state.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_version: Option<String>,
-}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type InteractionEventStream =
@@ -40,24 +27,15 @@ pub type InteractionEventStream =
 pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage
-            .as_ref()
-            .map(|usage| usage.token_usage())
-            .unwrap_or_default()
-    }
-}
-
 impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming interaction and preserve the terminal native interaction.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<Interaction>, CompletionError> {
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
             &self.model,
@@ -118,12 +96,20 @@ where
                         match data {
                             InteractionSseEvent::StepDelta { delta, .. } => {
                                 if let Some(choice) = content_delta_to_choice(delta) {
-                                    yield Ok(choice);
+                                    yield choice.try_map_final(|_| {
+                                        Err(CompletionError::ResponseError(
+                                            "Gemini emitted an unexpected terminal interaction delta".to_owned(),
+                                        ))
+                                    });
                                 }
                             }
                             InteractionSseEvent::StepStart { step, .. } => {
                                 if let Some(choice) = step_start_to_choice(step) {
-                                    yield Ok(choice);
+                                    yield choice.try_map_final(|_| {
+                                        Err(CompletionError::ResponseError(
+                                            "Gemini emitted an unexpected terminal interaction start".to_owned(),
+                                        ))
+                                    });
                                 }
                             }
                             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
@@ -134,10 +120,11 @@ where
                                 }
 
                                 if let Some(usage) = interaction.usage.clone() {
-                                    span.record_token_usage(&usage);
+                                    span.record_token_usage(&usage.token_usage());
                                     final_usage = Some(usage);
                                 }
                                 final_interaction = Some(interaction);
+                                break;
                             }
                             InteractionSseEvent::Error { .. } => {
                                 // Preserve the full provider error payload (code +
@@ -166,18 +153,36 @@ where
 
             event_source.close();
 
-            let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
-                interaction: final_interaction,
-                model_version,
-            }));
+            if let Some(mut interaction) = final_interaction {
+                if interaction.usage.is_none() {
+                    interaction.usage = final_usage;
+                }
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(interaction));
+            }
         }
         .instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(stream, |interaction| {
+            let mut response = streaming::StreamFinal::new("gemini", interaction.token_usage());
+            if !interaction.id.is_empty() {
+                response = response.with_message_id(interaction.id);
+            }
+            response.model = interaction.model;
+            response.finish_reason = interaction
+                .status
+                .as_ref()
+                .map(super::map_interaction_finish_reason);
+            Ok(response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
@@ -225,9 +230,7 @@ where
     Box::pin(stream)
 }
 
-fn step_start_to_choice(
-    step: Step,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+fn step_start_to_choice(step: Step) -> Option<streaming::RawStreamingChoice> {
     match step {
         Step::ModelOutput { content } => content.into_iter().find_map(content_to_choice),
         Step::FunctionCall(FunctionCallContent {
@@ -250,9 +253,7 @@ fn step_start_to_choice(
     }
 }
 
-fn content_to_choice(
-    content: Content,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+fn content_to_choice(content: Content) -> Option<streaming::RawStreamingChoice> {
     match content {
         Content::Text(text) if !text.text.is_empty() => {
             Some(streaming::RawStreamingChoice::Message(text.text))
@@ -262,9 +263,7 @@ fn content_to_choice(
     }
 }
 
-fn content_delta_to_choice(
-    delta: ContentDelta,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+fn content_delta_to_choice(delta: ContentDelta) -> Option<streaming::RawStreamingChoice> {
     match delta {
         ContentDelta::Text(TextDelta {
             text: Some(text), ..
@@ -302,25 +301,40 @@ fn content_delta_to_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
     use serde_json::json;
 
+    fn model_with_sse(
+        events: &[serde_json::Value],
+    ) -> InteractionsCompletionModel<MockStreamingClient> {
+        let client = crate::providers::gemini::InteractionsClient::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(crate::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+    }
+
     #[test]
-    fn test_streaming_completion_response_has_model_version() {
-        let response = StreamingCompletionResponse {
-            usage: None,
-            interaction: None,
-            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-        };
+    fn test_stream_final_has_model_version() {
+        let response = streaming::StreamFinal::new("gemini", crate::completion::Usage::default())
+            .with_model("gemini-2.5-pro-preview-05-06");
 
         assert_eq!(
-            response.model_version.as_deref(),
+            response.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
 
         let json = serde_json::to_string(&response).unwrap();
-        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: streaming::StreamFinal = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            deserialized.model_version.as_deref(),
+            deserialized.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
     }
@@ -376,5 +390,48 @@ mod tests {
             }
             other => panic!("unexpected choice: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_interaction() {
+        let model = model_with_sse(&[json!({
+            "event_type": "step.stop",
+            "index": 0
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(streaming::RawStreamingChoice::FinalResponse(_))))
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_error_does_not_emit_terminal_interaction() {
+        let model = model_with_sse(&[json!({
+            "event_type": "error",
+            "error": {"code": "UNAVAILABLE", "message": "boom"}
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(items.iter().any(Result::is_err));
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(streaming::RawStreamingChoice::FinalResponse(_))))
+        );
     }
 }

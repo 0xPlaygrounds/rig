@@ -2,18 +2,16 @@
 
 use crate::{
     agent::StreamingPromptRequest,
-    completion::{CompletionModel, GetTokenUsage, Message},
+    completion::{CompletionModel, Message},
 };
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use rig_core::streaming::*;
 
 /// High-level one-shot streaming prompt interface.
-pub trait StreamingPrompt<M, R>
+pub trait StreamingPrompt<M>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
 {
     /// Create a classic streaming request for `prompt`.
     fn stream_prompt(
@@ -23,11 +21,9 @@ where
 }
 
 /// High-level streaming chat interface with caller-provided history.
-pub trait StreamingChat<M, R>: WasmCompatSend + WasmCompatSync
+pub trait StreamingChat<M>: WasmCompatSend + WasmCompatSync
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: WasmCompatSend,
-    R: Clone + Unpin + GetTokenUsage,
 {
     /// Create a classic streaming request with canonical chat history.
     fn stream_chat<I, T>(

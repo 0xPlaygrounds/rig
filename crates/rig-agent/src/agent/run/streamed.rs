@@ -44,7 +44,7 @@ use rig_core::{
 
 use crate::{
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
-    completion::{CompletionError, GetTokenUsage, Message, Usage},
+    completion::{CompletionError, Message, Usage},
     json_utils,
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
 };
@@ -385,13 +385,10 @@ impl StreamedTurnAssembler {
     /// Returns an error when the provider stream is inconsistent (argument
     /// deltas finishing without a validated tool name) or when an invalid
     /// tool call is still awaiting resolution.
-    pub fn ingest<R>(
+    pub fn ingest(
         &mut self,
-        item: &StreamedAssistantContent<R>,
-    ) -> Result<Vec<StreamedTurnEvent>, CompletionError>
-    where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+        item: &StreamedAssistantContent,
+    ) -> Result<Vec<StreamedTurnEvent>, CompletionError> {
         if self.pending_invalid.is_some() {
             return Err(CompletionError::ResponseError(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
@@ -501,7 +498,7 @@ impl StreamedTurnAssembler {
                     return Err(err);
                 }
 
-                let usage = final_response.token_usage();
+                let usage = final_response.usage;
                 let emit_final = self.saw_text;
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
@@ -677,7 +674,6 @@ mod tests {
     use crate::agent::hook::InvalidToolCallAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
-    use crate::test_utils::MockResponse;
     use rig_core::message::{Text, ToolResultContent, UserContent};
     use serde_json::json;
 
@@ -689,7 +685,7 @@ mod tests {
         StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
     }
 
-    fn text_item(text: &str) -> StreamedAssistantContent<MockResponse> {
+    fn text_item(text: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::Text(Text::new(text.to_string()))
     }
 
@@ -700,18 +696,18 @@ mod tests {
         )
     }
 
-    fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent<MockResponse> {
+    fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCall {
             tool_call: tool_call(id, name),
             internal_call_id: format!("internal_{id}"),
         }
     }
 
-    fn final_item() -> StreamedAssistantContent<MockResponse> {
-        StreamedAssistantContent::Final(MockResponse::with_usage(Usage::new()))
+    fn final_item() -> StreamedAssistantContent {
+        StreamedAssistantContent::Final(rig_core::streaming::StreamFinal::new("mock", Usage::new()))
     }
 
-    fn name_delta(id: &str, name: &str) -> StreamedAssistantContent<MockResponse> {
+    fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
             id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
@@ -719,7 +715,7 @@ mod tests {
         }
     }
 
-    fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent<MockResponse> {
+    fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
             id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
@@ -755,7 +751,7 @@ mod tests {
             .expect("ingest text should succeed");
 
         let events = asm
-            .ingest(&StreamedAssistantContent::<MockResponse>::Unknown(
+            .ingest(&StreamedAssistantContent::Unknown(
                 json!({ "type": "web_search_call", "id": "ws_1" }),
             ))
             .expect("ingest unknown should succeed");
@@ -816,7 +812,7 @@ mod tests {
     #[test]
     fn finish_orders_reasoning_text_then_tool_calls() {
         let mut asm = assembler();
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ReasoningDelta {
+        asm.ingest(&StreamedAssistantContent::ReasoningDelta {
             id: Some("rs_1".to_string()),
             reasoning: "think".to_string(),
         })
@@ -1161,12 +1157,12 @@ mod tests {
         run.next_step().expect("next_step");
 
         let mut asm = assembler();
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+        asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
             internal_call_id: "internal_a".to_string(),
         })
         .expect("ingest should succeed");
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+        asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
             internal_call_id: "internal_b".to_string(),
         })

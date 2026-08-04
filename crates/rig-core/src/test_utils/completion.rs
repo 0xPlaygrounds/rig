@@ -15,7 +15,7 @@ use crate::{
     streaming::{StreamingCompletionResponse, StreamingResult},
 };
 
-use super::streaming::{MockResponse, MockStreamEvent};
+use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
 
 /// Scripted error returned by [`MockCompletionModel`].
 #[derive(Clone, Debug)]
@@ -144,14 +144,14 @@ impl MockTurn {
         self
     }
 
-    fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
+    fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
-        Ok(CompletionResponse {
-            choice: response.choice,
-            usage: response.usage,
-            raw_response: MockResponse::with_usage(response.usage),
-            message_id: response.message_id,
-        })
+        let mut completion =
+            CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER);
+        if let Some(message_id) = response.message_id {
+            completion = completion.with_message_id(message_id);
+        }
+        Ok(completion)
     }
 }
 
@@ -257,18 +257,10 @@ impl MockCompletionModel {
 }
 
 impl CompletionModel for MockCompletionModel {
-    type Response = MockResponse;
-    type StreamingResponse = MockResponse;
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self::default()
-    }
-
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         self.record_request(request);
         let Some(turn) = self.next_turn() else {
             return Err(CompletionError::ProviderError(
@@ -282,7 +274,7 @@ impl CompletionModel for MockCompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         self.record_request(request);
         let Some(events) = self.next_stream_turn() else {
             return Err(CompletionError::ProviderError(
@@ -295,7 +287,7 @@ impl CompletionModel for MockCompletionModel {
                 yield event.into_raw_choice();
             }
         };
-        let stream: StreamingResult<Self::StreamingResponse> = Box::pin(stream);
+        let stream: StreamingResult = Box::pin(stream);
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }
@@ -304,7 +296,6 @@ impl CompletionModel for MockCompletionModel {
 mod tests {
     use super::*;
     use crate::{
-        completion::GetTokenUsage,
         message::Message,
         streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     };
@@ -415,12 +406,12 @@ mod tests {
                 }
                 StreamedAssistantContent::Final(response) => {
                     saw_final = matches!(
-                        response.token_usage(),
+                        response.usage,
                         Usage {
                             total_tokens: 7,
                             ..
                         }
-                    );
+                    ) && response.provider == "mock";
                 }
                 _ => {}
             }

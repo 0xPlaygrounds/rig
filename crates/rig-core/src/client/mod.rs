@@ -757,12 +757,13 @@ where
 impl<M, Ext, H> CompletionClient for Client<Ext, H>
 where
     Ext: Capabilities<H, Completion = Capable<M>>,
-    M: CompletionModel<Client = Self>,
+    M: CompletionModel + From<(Client<Ext, H>, String)>,
+    Client<Ext, H>: Clone,
 {
     type CompletionModel = M;
 
     fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        M::make(self, model)
+        M::from(((*self).clone(), model.into()))
     }
 }
 

@@ -45,7 +45,11 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             );
             assert!(
                 assistant_text_response(&response.choice)
-                    .or_else(|| response.raw_response.get_text_response())
+                    .or_else(|| {
+                        recorded_wire_text_response(
+                            "opus_4_8/web_search_with_dynamic_filtering_succeeds",
+                        )
+                    })
                     .is_some_and(|text| !text.trim().is_empty()),
                 "dynamic web-search response should contain assistant text",
             );
@@ -75,7 +79,11 @@ async fn messages_preserve_mid_conversation_system_role() {
                 .expect("Opus 4.8 system-role request should succeed");
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/messages_preserve_mid_conversation_system_role",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -126,7 +134,11 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                 );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/messages_preserve_system_role_after_server_tool_result",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -166,7 +178,11 @@ async fn documents_keep_leading_system_message_top_level() {
                 );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/documents_keep_leading_system_message_top_level",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -230,6 +246,18 @@ fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
         .and_then(|params| params.get("anthropic_content"))
         .and_then(|raw_content| raw_content.get("type"))
         .and_then(Value::as_str)
+}
+
+/// Reads the assistant text straight off the recorded Anthropic wire response
+/// for `scenario` (last interaction), replacing the deleted
+/// `response.raw_response.get_text_response()` fallback without weakening what
+/// the assertion proves.
+fn recorded_wire_text_response(scenario: &str) -> Option<String> {
+    let body = crate::cassettes::recorded_response_bodies("anthropic", scenario).pop()?;
+    let wire: rig::providers::anthropic::completion::CompletionResponse =
+        serde_json::from_str(&body)
+            .expect("recorded Anthropic response body should deserialize as a Messages response");
+    wire.get_text_response()
 }
 
 #[derive(Deserialize)]

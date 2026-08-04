@@ -900,8 +900,6 @@ impl<M> TurnSource<M> for UnaryTurnSource
 where
     M: CompletionModel,
 {
-    type Raw = M::Response;
-
     fn open_chat_span(
         &self,
         runner: &AgentRunner<M>,
@@ -920,7 +918,7 @@ where
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
         current_prompt: Message,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
@@ -1055,7 +1053,7 @@ where
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
         // skips building them.
@@ -1088,7 +1086,7 @@ where
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem<M::Response>> {
+    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None
@@ -1948,8 +1946,7 @@ mod migrated_tests {
         let streaming_hook = CanonicalResponseHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
-            MockStreamEvent::final_response(canonical_usage()),
-            MockStreamEvent::message_id("msg-canonical"),
+            MockStreamEvent::final_response_with_message_id(canonical_usage(), "msg-canonical"),
         ]]))
         .add_hook(streaming_hook.clone())
         .build()
@@ -3313,9 +3310,7 @@ mod migrated_tests {
         };
         use crate::streaming::StreamedAssistantContent;
         use crate::streaming::StreamingCompletionResponse;
-        use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn,
-        };
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
         use crate::tool::{ToolContext, ToolExecutionError};
         use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
@@ -3465,20 +3460,10 @@ mod migrated_tests {
         }
 
         impl CompletionModel for CompletionTelemetryModel {
-            type Response = MockResponse;
-            type StreamingResponse = MockResponse;
-            type Client = ();
-
-            fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-                Self {
-                    inner: MockCompletionModel::default(),
-                }
-            }
-
             async fn completion(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            ) -> Result<CompletionResponse, CompletionError> {
                 let span = CompletionSpanBuilder::new(
                     "fixture-provider",
                     "fixture-model",
@@ -3491,8 +3476,7 @@ mod migrated_tests {
             async fn stream(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-            {
+            ) -> Result<StreamingCompletionResponse, CompletionError> {
                 let span = CompletionSpanBuilder::new(
                     "fixture-provider",
                     "fixture-model",
@@ -4387,8 +4371,8 @@ mod migrated_tests {
 
     /// Drive a stream to completion, panicking on any stream error, and return
     /// its final response.
-    async fn drive_to_final_response<R: Send + 'static>(
-        mut stream: crate::agent::prompt_request::streaming::StreamingResult<R>,
+    async fn drive_to_final_response(
+        mut stream: crate::agent::prompt_request::streaming::StreamingResult,
     ) -> crate::agent::prompt_request::PromptResponse {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
@@ -6801,21 +6785,11 @@ mod migrated_tests {
     }
 
     impl CompletionModel for PausingCompletionModel {
-        type Response = crate::test_utils::MockResponse;
-        type StreamingResponse = crate::test_utils::MockResponse;
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::new(MockCompletionModel::default()).0
-        }
-
         async fn completion(
             &self,
             request: crate::completion::CompletionRequest,
-        ) -> Result<
-            crate::completion::CompletionResponse<Self::Response>,
-            crate::completion::CompletionError,
-        > {
+        ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError>
+        {
             self.inspect_and_pause(&request).await;
             self.inner.completion(request).await
         }
@@ -6823,10 +6797,8 @@ mod migrated_tests {
         async fn stream(
             &self,
             request: crate::completion::CompletionRequest,
-        ) -> Result<
-            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-            crate::completion::CompletionError,
-        > {
+        ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
+        {
             self.inspect_and_pause(&request).await;
             self.inner.stream(request).await
         }

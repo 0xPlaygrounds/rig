@@ -70,7 +70,7 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::{RawStreamingChoice, RawStreamingResult, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -105,7 +105,6 @@ const STREAM_CHANNEL_CAPACITY: usize = 8;
 #[derive(Clone)]
 enum ModelState {
     Ready(Arc<LoadedModel>),
-    UnsupportedMake,
 }
 
 /// A cheaply cloneable, CPU-only Candle completion model.
@@ -222,7 +221,6 @@ impl CandleModel {
     pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
         match &self.state {
             ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
         }
     }
 
@@ -235,7 +233,6 @@ impl CandleModel {
     pub fn architecture(&self) -> Option<ModelArchitecture> {
         match &self.state {
             ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
         }
     }
 
@@ -243,7 +240,6 @@ impl CandleModel {
     pub fn quantization(&self) -> Option<Quantization> {
         match &self.state {
             ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
         }
     }
 }
@@ -410,7 +406,11 @@ fn stream_infer(
             control.record_delivery_attempt();
         }
         sender
-            .blocking_send(Ok(choice))
+            .blocking_send(choice.try_map_final(|_| {
+                Err(CompletionError::ResponseError(
+                    "Candle emitted an unexpected intermediate terminal response".to_owned(),
+                ))
+            }))
             .map_err(|_| CandleError::StreamingChannelClosed)
     })?;
     sender
@@ -418,24 +418,12 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    type Response = CandleCompletionResponse;
-    type StreamingResponse = CandleCompletionResponse;
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
-    async fn completion(
+impl CandleModel {
+    async fn completion_pair(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<(CompletionResponse, CandleCompletionResponse), CompletionError> {
+        let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -463,13 +451,20 @@ impl CompletionModel for CandleModel {
         }
     }
 
-    async fn stream(
+    /// Execute local inference and return Candle's native generation response.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<CandleCompletionResponse, CompletionError> {
+        self.completion_pair(request).await.map(|(_, raw)| raw)
+    }
+
+    /// Execute local streaming inference and preserve Candle's native terminal response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<RawStreamingResult<CandleCompletionResponse>, CompletionError> {
+        let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -495,27 +490,56 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult<CandleCompletionResponse> =
+            let stream: RawStreamingResult<CandleCompletionResponse> =
                 Box::pin(CandleReceiverStream {
                     receiver,
                     cancellation,
                 });
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
 
         #[cfg(target_family = "wasm")]
         {
             let mut events = Vec::new();
             let response = stream_generate(loaded, request, &CancellationSignal, |choice| {
-                events.push(Ok(choice));
+                events.push(choice.try_map_final(|_| {
+                    Err(CompletionError::ResponseError(
+                        "Candle emitted an unexpected intermediate terminal response".to_owned(),
+                    ))
+                }));
                 Ok(())
             })?;
             events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: StreamingResult<CandleCompletionResponse> =
+            let stream: RawStreamingResult<CandleCompletionResponse> =
                 Box::pin(futures::stream::iter(events));
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
+    }
+}
+
+impl CompletionModel for CandleModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        self.completion_pair(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = rig_core::streaming::normalize_stream(stream, |response| {
+            Ok(
+                rig_core::streaming::StreamFinal::new("candle", response.token_usage())
+                    .with_finish_reason(response.finish_reason.normalized()),
+            )
+        });
+        Ok(StreamingCompletionResponse::stream(stream))
     }
 }
 

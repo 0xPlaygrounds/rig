@@ -313,39 +313,41 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl crate::completion::GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.total_tokens.saturating_sub(self.prompt_tokens) as u64;
-        usage.total_tokens = self.total_tokens as u64;
+        usage.input_tokens = value.prompt_tokens as u64;
+        usage.output_tokens = value.total_tokens.saturating_sub(value.prompt_tokens) as u64;
+        usage.total_tokens = value.total_tokens as u64;
         usage
     }
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, usage) = match &response {
-            CompletionResponse::Structured { choices, usage, .. } => {
+        let (content, usage, model, message_id, finish_reason) = match &response {
+            CompletionResponse::Structured {
+                id,
+                choices,
+                usage,
+                model,
+                ..
+            } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
                 })?;
 
                 let usage = usage
                     .as_ref()
-                    .map(|usage| completion::Usage {
-                        input_tokens: usage.prompt_tokens as u64,
-                        output_tokens: usage.total_tokens.saturating_sub(usage.prompt_tokens)
-                            as u64,
-                        total_tokens: usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    })
+                    .map(|usage| completion::Usage::from(usage.clone()))
                     .unwrap_or_default();
+
+                let finish_reason = choice
+                    .finish_reason
+                    .as_deref()
+                    .map(crate::providers::openai::completion::map_finish_reason);
 
                 // Convert RawMessage to message::Message
                 let message = message::Message::try_from(choice.message.clone())?;
@@ -390,11 +392,20 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     }
                 };
 
-                (content, usage)
+                (
+                    content,
+                    usage,
+                    Some(model.clone()),
+                    Some(id.clone()),
+                    finish_reason,
+                )
             }
             CompletionResponse::Simple(text) => (
                 vec![completion::AssistantContent::text(text)],
                 completion::Usage::new(),
+                None,
+                None,
+                None,
             ),
         };
 
@@ -404,12 +415,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        Ok(completion::CompletionResponse {
+        let mut normalized = completion::CompletionResponse::new(
             choice,
             usage,
-            raw_response: response,
-            message_id: None,
-        })
+            <MiraExt as crate::providers::openai::completion::OpenAICompatibleProvider>::PROVIDER_NAME,
+        );
+        if let Some(model) = model {
+            normalized = normalized.with_model(model);
+        }
+        if let Some(message_id) = message_id {
+            normalized = normalized.with_message_id(message_id);
+        }
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -454,13 +472,13 @@ mod tests {
             }),
         };
 
-        let completion_response: completion::CompletionResponse<CompletionResponse> =
-            mira_response.try_into().unwrap();
+        let completion_response: completion::CompletionResponse = mira_response.try_into().unwrap();
 
         assert_eq!(
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+        assert_eq!(completion_response.message_id.as_deref(), Some("resp_123"));
     }
     #[test]
     fn test_client_initialization() {

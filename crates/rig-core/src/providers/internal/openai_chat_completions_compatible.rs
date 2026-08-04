@@ -13,7 +13,7 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -41,10 +41,22 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     Some(crate::provider_response::completion_error_from_body(data))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
+    Stop,
+    Length,
     ToolCalls,
-    Other,
+    ContentFilter,
+    Other(String),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleStreamFinal<U> {
+    pub(crate) usage: U,
+    pub(crate) response_id: Option<String>,
+    pub(crate) response_model: Option<String>,
+    pub(crate) finish_reason: Option<CompatibleFinishReason>,
+    pub(crate) emitted_tool_calls: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +94,7 @@ impl CompatibleToolCallChunk {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoice<D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) finish_reason: Option<CompatibleFinishReason>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
@@ -91,7 +103,7 @@ pub(crate) struct CompatibleChoice<D> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleChoiceData<T, D> {
-    pub(crate) finish_reason: CompatibleFinishReason,
+    pub(crate) finish_reason: Option<CompatibleFinishReason>,
     pub(crate) text: Option<String>,
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
@@ -155,14 +167,17 @@ where
         .collect()
 }
 
-pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+pub(crate) trait CompatibleStreamProfile: Clone + WasmCompatSend {
+    type Usage: Clone + Default + Into<crate::completion::Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    /// Build the normalized terminal record from provider stream metadata.
+    fn build_final_response(
+        &self,
+        final_response: CompatibleStreamFinal<Self::Usage>,
+    ) -> crate::streaming::StreamFinal;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -219,10 +234,31 @@ pub(crate) async fn send_compatible_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
     profile: P,
-) -> Result<streaming::StreamingCompletionResponse<P::FinalResponse>, CompletionError>
+) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
+{
+    let final_profile = profile.clone();
+    let stream =
+        send_compatible_raw_streaming_request(http_client, req, profile, move |response| {
+            final_profile.build_final_response(response)
+        })
+        .await?;
+    Ok(streaming::StreamingCompletionResponse::stream(stream))
+}
+
+pub(crate) async fn send_compatible_raw_streaming_request<T, P, R, F>(
+    http_client: T,
+    req: Request<Vec<u8>>,
+    profile: P,
+    build_final_response: F,
+) -> Result<streaming::RawStreamingResult<R>, CompletionError>
+where
+    T: HttpClientExt + Clone + 'static,
+    P: CompatibleStreamProfile + 'static,
+    R: WasmCompatSend + 'static,
+    F: Fn(CompatibleStreamFinal<P::Usage>) -> R + WasmCompatSend + 'static,
 {
     let span = tracing::Span::current();
     let instrument_span = span.clone();
@@ -231,6 +267,10 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
+        let mut final_response_id = None;
+        let mut final_response_model = None;
+        let mut final_finish_reason = None;
+        let mut emitted_tool_calls = false;
         let mut terminated_with_error = false;
 
         while let Some(event_result) = event_source.next().await {
@@ -266,6 +306,13 @@ where
                         chunk.response_model.as_deref(),
                     );
 
+                    if chunk.response_id.is_some() {
+                        final_response_id = chunk.response_id.clone();
+                    }
+                    if chunk.response_model.is_some() {
+                        final_response_model = chunk.response_model.clone();
+                    }
+
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
                     }
@@ -274,7 +321,12 @@ where
                         continue;
                     };
 
+                    if let Some(reason) = choice.finish_reason.clone() {
+                        final_finish_reason = Some(reason);
+                    }
+
                     for incoming in choice.tool_calls {
+                        emitted_tool_calls = true;
                         if let Some(existing) = tool_calls.get(&incoming.index)
                             && profile.should_evict(existing, &incoming)
                             && let Some(evicted) = tool_calls.remove(&incoming.index)
@@ -351,7 +403,7 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
-                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                    if choice.finish_reason == Some(CompatibleFinishReason::ToolCalls) {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
                             DroppedToolCallContext::ToolCallsFinishReason,
@@ -385,27 +437,28 @@ where
         }
 
         let final_usage = final_usage.unwrap_or_default();
-        record_usage(&span, &final_usage);
-        yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
-        ));
+        let normalized_usage: crate::completion::Usage = final_usage.clone().into();
+        record_usage(&span, &normalized_usage);
+        yield Ok(RawStreamingChoice::FinalResponse(build_final_response(
+            CompatibleStreamFinal {
+                usage: final_usage,
+                response_id: final_response_id,
+                response_model: final_response_model,
+                finish_reason: final_finish_reason,
+                emitted_tool_calls,
+            },
+        )));
     }
     .instrument(instrument_span);
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
 }
 
-fn record_usage<T>(span: &tracing::Span, usage: &T)
-where
-    T: GetTokenUsage,
-{
+fn record_usage(span: &tracing::Span, usage: &crate::completion::Usage) {
     if span.is_disabled() {
         return;
     }
 
-    let usage = usage.token_usage();
     if !usage.has_values() {
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
@@ -576,7 +629,6 @@ fn take_finalized_tool_calls(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::completion::GetTokenUsage;
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -607,14 +659,12 @@ pub(crate) mod test_support {
         )
     }
 
-    pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
-        mut stream: streaming::StreamingCompletionResponse<R>,
+    pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
+        mut stream: streaming::StreamingCompletionResponse,
         expected_id: &str,
         expected_name: &str,
         expect_final_response: bool,
-    ) where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+    ) {
         let mut saw_final = false;
         let mut collected_tool_calls = Vec::new();
 

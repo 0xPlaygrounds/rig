@@ -33,11 +33,10 @@ use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::gemini::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -76,22 +75,24 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> From<(Client<T>, String)> for CompletionModel<T>
+where
+    T: HttpClientExt,
+{
+    fn from((client, model): (Client<T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = super::Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a Gemini completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
@@ -147,7 +148,13 @@ where
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
-                span.record_token_usage(&response.usage_metadata);
+                span.record_token_usage(
+                    &response
+                        .usage_metadata
+                        .as_ref()
+                        .map(gemini_api_types::UsageMetadata::token_usage)
+                        .unwrap_or_default(),
+                );
 
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -157,7 +164,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -174,14 +181,23 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }
@@ -406,7 +422,42 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+/// Maps Gemini's wire `finishReason` onto the normalized
+/// [`completion::FinishReason`] vocabulary, carrying unmapped values
+/// verbatim (in their wire SCREAMING_SNAKE_CASE form) in `Other`.
+pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReason {
+    match reason {
+        FinishReason::Stop => completion::FinishReason::Stop,
+        FinishReason::MaxTokens => completion::FinishReason::Length,
+        FinishReason::Safety
+        | FinishReason::Blocklist
+        | FinishReason::ProhibitedContent
+        | FinishReason::Spii => completion::FinishReason::ContentFilter,
+        FinishReason::FinishReasonUnspecified => {
+            completion::FinishReason::Other("FINISH_REASON_UNSPECIFIED".to_string())
+        }
+        FinishReason::Recitation => completion::FinishReason::Other("RECITATION".to_string()),
+        FinishReason::Language => completion::FinishReason::Other("LANGUAGE".to_string()),
+        FinishReason::Other(value) => completion::FinishReason::Other(value.clone()),
+        FinishReason::MalformedFunctionCall => {
+            completion::FinishReason::Other("MALFORMED_FUNCTION_CALL".to_string())
+        }
+        FinishReason::UnexpectedToolCall => {
+            completion::FinishReason::Other("UNEXPECTED_TOOL_CALL".to_string())
+        }
+        FinishReason::MissingThoughtSignature => {
+            completion::FinishReason::Other("MISSING_THOUGHT_SIGNATURE".to_string())
+        }
+        FinishReason::TooManyToolCalls => {
+            completion::FinishReason::Other("TOO_MANY_TOOL_CALLS".to_string())
+        }
+        FinishReason::MalformedResponse => {
+            completion::FinishReason::Other("MALFORMED_RESPONSE".to_string())
+        }
+    }
+}
+
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -421,23 +472,21 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             return Err(err);
         }
 
-        let content = candidate
-            .content
-            .as_ref()
-            .ok_or_else(|| {
-                let reason = candidate
-                    .finish_reason
-                    .as_ref()
-                    .map(|r| format!("finish_reason={r:?}"))
-                    .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
-                let message = candidate
-                    .finish_message
-                    .as_deref()
-                    .unwrap_or("no finish message provided");
-                CompletionError::ResponseError(format!(
-                    "Gemini candidate missing content ({reason}, finish_message={message})"
-                ))
-            })?
+        let candidate_content = candidate.content.as_ref().ok_or_else(|| {
+            let reason = candidate
+                .finish_reason
+                .as_ref()
+                .map(|r| format!("finish_reason={r:?}"))
+                .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
+            let message = candidate
+                .finish_message
+                .as_deref()
+                .unwrap_or("no finish message provided");
+            CompletionError::ResponseError(format!(
+                "Gemini candidate missing content ({reason}, finish_message={message})"
+            ))
+        })?;
+        let content = candidate_content
             .parts
             .iter()
             .map(
@@ -513,15 +562,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(gemini_api_types::UsageMetadata::token_usage)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = candidate.finish_reason.as_ref().map(map_finish_reason);
+
+        let mut converted = completion::CompletionResponse::new(choice, usage, "gemini");
+        if !response.response_id.is_empty() {
+            converted = converted.with_message_id(response.response_id.clone());
+        }
+        if let Some(finish_reason) = finish_reason {
+            converted = converted.with_finish_reason(finish_reason);
+        }
+        if let Some(model_version) = response.model_version.as_deref() {
+            converted = converted.with_model(model_version);
+        }
+
+        Ok(converted)
     }
 }
 
@@ -535,7 +592,6 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::completion::GetTokenUsage;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         completion::CompletionError,
@@ -1424,8 +1480,9 @@ pub mod gemini_api_types {
         }
     }
 
-    impl GetTokenUsage for UsageMetadata {
-        fn token_usage(&self) -> crate::completion::Usage {
+    impl UsageMetadata {
+        /// Normalizes Gemini usage metadata into Rig's [`crate::completion::Usage`].
+        pub fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
             usage.input_tokens = self.prompt_token_count as u64;
@@ -1481,8 +1538,6 @@ pub mod gemini_api_types {
         Recitation,
         /// The response candidate content was flagged for using an unsupported language.
         Language,
-        /// Unknown reason.
-        Other,
         /// Token generation stopped because the content contains forbidden terms.
         Blocklist,
         /// Token generation stopped for potentially containing prohibited content.
@@ -1499,6 +1554,9 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
+        /// An unrecognized provider value, preserved verbatim.
+        #[serde(untagged)]
+        Other(String),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2208,6 +2266,54 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn finish_reason_mapping_preserves_unknown_wire_value() {
+        let reason: FinishReason =
+            serde_json::from_str(r#""FUTURE_REASON""#).expect("deserialize finish reason");
+        assert!(matches!(
+            &reason,
+            FinishReason::Other(value) if value == "FUTURE_REASON"
+        ));
+        assert_eq!(
+            map_finish_reason(&reason),
+            completion::FinishReason::Other("FUTURE_REASON".to_owned())
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::Safety),
+            completion::FinishReason::ContentFilter
+        );
+    }
+
+    #[test]
+    fn stop_after_function_call_normalizes_to_tool_calls() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "resp_tool_1",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "lookup",
+                            "args": {"query": "rig"}
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP",
+                "finishMessage": "Model generated function call(s).",
+                "index": 0
+            }]
+        }))
+        .expect("Gemini response should deserialize");
+
+        let response = completion::CompletionResponse::try_from(response)
+            .expect("Gemini response should normalize");
+
+        assert_eq!(
+            response.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {
         // Gemini's proto3-JSON encoding omits fields whose value is the default (0),
         // so `totalTokenCount` is absent on short/empty/blocked generations.
@@ -2563,7 +2669,7 @@ mod tests {
             model_version: None,
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
         let first = converted.choice.first();
         assert!(matches!(
@@ -2634,10 +2740,8 @@ mod tests {
                 model_version: None,
             };
 
-            let err = crate::completion::CompletionResponse::<GenerateContentResponse>::try_from(
-                response,
-            )
-            .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::try_from(response)
+                .expect_err("tool protocol finish reason should fail");
 
             assert!(matches!(
                 err,
@@ -2688,7 +2792,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
 
         assert_eq!(converted.usage.input_tokens, 40);
@@ -2778,7 +2882,7 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
             panic!("expected a tool call");

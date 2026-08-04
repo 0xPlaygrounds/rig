@@ -7,6 +7,18 @@ use rig_candle::{CandleModel, ModelData};
 use rig_core::completion::CompletionModel;
 use rig_core::streaming::StreamedAssistantContent;
 
+/// Concatenated visible text from a buffered completion's choice.
+fn choice_text(response: &rig_core::completion::CompletionResponse) -> String {
+    response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig_core::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires RIG_CANDLE_MODEL_DIR with local Llama 3 safetensors or SmolLM2 GGUF artifacts"]
 async fn loads_and_generates_with_a_real_local_model()
@@ -38,16 +50,16 @@ async fn loads_and_generates_with_a_real_local_model()
     };
     let request = model.completion_request(prompt).build();
     let response = model.completion(request.clone()).await?;
-    if response.raw_response.text.is_empty() {
+    let buffered_text = choice_text(&response);
+    if buffered_text.is_empty() {
         return Err(std::io::Error::other("real model returned empty generated text").into());
     }
     if response.usage.input_tokens == 0 || response.usage.output_tokens == 0 {
         return Err(std::io::Error::other("real model returned zero token usage").into());
     }
-    if is_gguf && !response.raw_response.text.contains("Paris") {
+    if is_gguf && !buffered_text.contains("Paris") {
         return Err(std::io::Error::other(format!(
-            "SmolLM2 coherence regression: {:?}",
-            response.raw_response.text
+            "SmolLM2 coherence regression: {buffered_text:?}"
         ))
         .into());
     }
@@ -63,10 +75,10 @@ async fn loads_and_generates_with_a_real_local_model()
     }
     let final_response = final_response
         .ok_or_else(|| std::io::Error::other("real model stream omitted final metadata"))?;
-    if streamed_text != response.raw_response.text || final_response.text != streamed_text {
+    if streamed_text != buffered_text {
         return Err(std::io::Error::other("buffered and streamed output differed").into());
     }
-    if final_response.generated_tokens != response.raw_response.generated_tokens {
+    if final_response.usage.output_tokens != response.usage.output_tokens {
         return Err(std::io::Error::other("buffered and streamed usage differed").into());
     }
     Ok(())

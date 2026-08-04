@@ -1,8 +1,8 @@
 # Migrating Rig
 
-This guide covers every breaking change from 0.30 through 0.41. Releases 0.36,
-0.37, 0.40 and 0.41 were the disruptive ones; 0.40 alone carried 31 breaking
-changes, and 0.37 renamed `rig-core`'s library target.
+This guide covers every breaking change from 0.30 through the unreleased changes
+after 0.41. Releases 0.36, 0.37, 0.40 and 0.41 were the disruptive ones; 0.40
+alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library target.
 
 ## Which sections apply to you
 
@@ -11,6 +11,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → next](#041--next) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -28,6 +29,94 @@ first.** Those are the changes that leave your code compiling and make it do
 something different — the ones a compiler upgrade will not point at.
 
 ---
+
+## 0.41 → next
+
+### Completion responses are concrete and normalized
+
+`CompletionResponse<T>` is now `CompletionResponse`. The provider-native
+`raw_response` field was removed; the normalized response instead carries:
+
+- `usage`, with all-zero values still meaning the provider supplied no metrics;
+- a normalized `finish_reason: Option<FinishReason>`;
+- the stable `provider` descriptor name;
+- the provider-reported `model`, or `None` when the wire response omitted it;
+- and the provider-assigned `message_id`, when available.
+
+`FinishReason` normalizes natural stops, limits, tool calls, and filtering as
+`Stop`, `Length`, `ToolCalls`, and `ContentFilter`. Unknown provider values are
+preserved verbatim as `Other(String)`.
+
+Call a built-in provider model's inherent `raw_completion(request)` when you
+need its concrete unary wire response. Use `raw_stream(request)` for a stream
+whose terminal `RawStreamingChoice::FinalResponse` remains provider-native.
+These APIs reuse the same request, transport, parsing, telemetry, and error path
+as their normalized counterparts.
+
+### Ordinary streaming types no longer carry a response parameter
+
+`StreamingCompletionResponse<R>`, `StreamingResult<R>`, and downstream agent
+streaming types are now concrete. Their terminal record is `StreamFinal`, which
+contains normalized usage, finish reason, provider, provider-reported model,
+and message ID. `GetTokenUsage` was removed; read `StreamFinal::usage` directly.
+
+Provider implementations use `RawStreamingResult<NativeTerminal>` internally
+and in their inherent raw API, then map that terminal once into `StreamFinal`
+for ordinary `CompletionModel::stream` callers.
+
+### `CompletionModel` no longer owns response or construction types
+
+Remove `CompletionModel::{Response, StreamingResponse, Client}` and
+`CompletionModel::make` from custom implementations. A custom model now only
+implements the normalized operations (and optionally `capabilities`):
+
+```rust,ignore
+impl CompletionModel for MyModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        // Build your normalized response.
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        // Build your normalized stream.
+    }
+}
+```
+
+Client construction is a separate opt-in. `CompletionClient::completion_model`
+is now required and calls the model's inherent constructor at the provider
+boundary:
+
+```rust,ignore
+impl CompletionClient for MyClient {
+    type CompletionModel = MyModel;
+
+    fn completion_model(&self, model: impl Into<String>) -> MyModel {
+        MyModel::new(self.clone(), model.into())
+    }
+}
+```
+
+This preserves `client.completion_model(model)` and `client.agent(model)` while
+allowing an externally implemented model to exist without any client type.
+
+### Provider behavior is reported through capabilities
+
+Replace `CompletionModel::composes_native_output_with_tools()` overrides and
+calls with `CompletionModel::capabilities()`. The public non-exhaustive
+`ProviderCapabilities` starts conservatively and can be updated externally:
+
+```rust
+# use rig_core::completion::ProviderCapabilities;
+let capabilities = ProviderCapabilities::default()
+    .with_native_output_tool_composition(true);
+assert!(capabilities.composes_native_output_with_tools);
+```
 
 ## Silent behavior changes
 

@@ -14,13 +14,11 @@ use super::Client;
 use super::GenerateContentResponse;
 use super::proto;
 
-pub type StreamingCompletionResponse = GenerateContentResponse;
-
-pub(crate) async fn stream(
+pub(crate) async fn raw_stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
+) -> Result<streaming::RawStreamingResult<GenerateContentResponse>, CompletionError> {
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
@@ -34,8 +32,7 @@ pub(crate) async fn stream(
         .into_inner();
 
     let stream = stream! {
-        let mut last_resp: Option<StreamingCompletionResponse> = None;
-        let mut final_resp: Option<StreamingCompletionResponse> = None;
+        let mut final_resp: Option<GenerateContentResponse> = None;
 
         while let Some(item) = response_stream.next().await {
             match item {
@@ -53,12 +50,12 @@ pub(crate) async fn stream(
                                 match &part.data {
                                     Some(proto::part::Data::Text(text)) => {
                                         if part.thought {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::ReasoningDelta {
                                                 id: None,
                                                 reasoning: text.clone(),
                                             });
                                         } else {
-                                            yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
+                                            yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::Message(text.clone()));
                                         }
                                     }
                                     Some(proto::part::Data::FunctionCall(function_call)) => {
@@ -85,7 +82,7 @@ pub(crate) async fn stream(
                                             tool_call = tool_call.with_call_id(function_call.id.clone());
                                         }
 
-                                        yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+                                        yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::ToolCall(tool_call));
                                     }
                                     _ => {}
                                 }
@@ -96,8 +93,6 @@ pub(crate) async fn stream(
                     if is_final {
                         final_resp = Some(resp);
                         break;
-                    } else {
-                        last_resp = Some(resp);
                     }
                 }
                 Err(status) => {
@@ -107,13 +102,12 @@ pub(crate) async fn stream(
             }
         }
 
-        let resp = final_resp.or(last_resp).unwrap_or_default();
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        if let Some(resp) = final_resp {
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        }
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(core)* normalized `finish_reason` on completion and streaming responses — every provider maps its wire stop/finish vocabulary onto a shared `FinishReason` enum (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), closing #2090 and #1886; responses also carry `provider` and `model` metadata
+- *(providers)* inherent `raw_completion` and `raw_stream` APIs preserve concrete provider-native unary and terminal streaming responses while ordinary completion APIs remain normalized
+- *(core)* public `ProviderCapabilities` data replaces the one-off native-output/tool-composition model method
+
+### Other
+
+- *(core,agent)* [**breaking**] concrete completion/streaming payloads: `CompletionResponse<T>` is now the concrete `CompletionResponse` (no `raw_response`; use provider-model `raw_completion`/`raw_stream`); the ordinary provider-typed streaming final is now normalized `StreamFinal` (usage is a field and `GetTokenUsage` is removed); `StreamingResult`/`StreamingCompletionResponse`/`StreamedAssistantContent`/`MultiTurnStreamItem` lose their response type parameters; `CompletionModel` loses `Response`, `StreamingResponse`, `Client`, and `make`; `CompletionClient::completion_model` becomes required; `StreamingPrompt`/`StreamingChat` lose their response parameter
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
 ### Added

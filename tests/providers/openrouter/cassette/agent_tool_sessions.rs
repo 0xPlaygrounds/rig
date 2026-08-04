@@ -664,14 +664,36 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                response
-                    .raw_response
-                    .choices
-                    .iter()
-                    .all(|choice| choice.finish_reason.is_some()),
-                "raw response should preserve finish reasons"
+                response.finish_reason.is_some(),
+                "response should preserve the finish reason"
             );
-            assert_nonempty_response(&response.raw_response.model);
+            assert_nonempty_response(
+                response
+                    .model
+                    .as_deref()
+                    .expect("response should carry the provider-reported model"),
+            );
+            // The normalized response only surfaces the first choice's finish
+            // reason; assert every recorded choice against the wire body
+            // (replay only: the cassette file is written after the test body
+            // in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies(
+                    "openrouter",
+                    "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+                );
+                anyhow::ensure!(bodies.len() == 1, "scenario should record a single interaction");
+                let raw: rig::providers::openrouter::CompletionResponse =
+                    serde_json::from_str(&bodies[0])
+                        .expect("recorded body should deserialize as an OpenRouter response");
+                anyhow::ensure!(
+                    raw.choices
+                        .iter()
+                        .all(|choice| choice.finish_reason.is_some()),
+                    "raw response should preserve finish reasons"
+                );
+                assert_nonempty_response(&raw.model);
+            }
 
             Ok(())
         },

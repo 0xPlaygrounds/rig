@@ -1256,7 +1256,7 @@ where
                 streamed_text.push_str(&text.text);
             }
             crate::streaming::StreamedAssistantContent::Final(response) => {
-                streamed_usage = Some(crate::completion::GetTokenUsage::token_usage(&response));
+                streamed_usage = Some(response.usage);
             }
             crate::streaming::StreamedAssistantContent::ToolCall { .. }
             | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
@@ -2095,7 +2095,7 @@ mod tests {
     use super::*;
     use crate::{
         completion::Usage,
-        test_utils::{MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
+        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     };
     use rig_core::{
         OneOrMany,
@@ -2221,11 +2221,11 @@ mod tests {
                     "add",
                     serde_json::json!({"a": 17, "b": 25}),
                 ),
-                MockStreamEvent::FinalResponse(MockResponse::with_usage(usage(10, 2))),
+                MockStreamEvent::final_response(usage(10, 2)),
             ],
             vec![
                 MockStreamEvent::text("42"),
-                MockStreamEvent::FinalResponse(MockResponse::with_usage(usage(14, 1))),
+                MockStreamEvent::final_response(usage(14, 1)),
             ],
         ]);
         let report = streaming_tool(model, |builder| builder).await?;

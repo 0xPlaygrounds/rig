@@ -4,9 +4,11 @@
 use futures::StreamExt;
 use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::{AssistantContent, GetTokenUsage, ToolDefinition},
+    completion::{AssistantContent, ToolDefinition},
     embeddings::Embedding,
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
+    streaming::{
+        StreamFinal, StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse,
+    },
     tool::PortableTool,
     tool::Tool,
 };
@@ -477,8 +479,8 @@ pub(crate) fn assert_embeddings_nonempty_and_consistent(
     }
 }
 
-pub(crate) async fn collect_stream_final_response<R>(
-    stream: &mut StreamingResult<R>,
+pub(crate) async fn collect_stream_final_response(
+    stream: &mut StreamingResult,
 ) -> Result<String, StreamingError> {
     let mut final_response = None;
 
@@ -491,9 +493,9 @@ pub(crate) async fn collect_stream_final_response<R>(
     Ok(final_response.expect("stream should yield a final response"))
 }
 
-pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
-    stream: &mut StreamingResult<R>,
-) -> Result<(String, R), StreamingError> {
+pub(crate) async fn collect_stream_final_response_and_provider_final(
+    stream: &mut StreamingResult,
+) -> Result<(String, StreamFinal), StreamingError> {
     let mut final_response = None;
     let mut provider_final = None;
 
@@ -515,13 +517,11 @@ pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
     ))
 }
 
-pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named<R>(
-    mut stream: StreamingCompletionResponse<R>,
+pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
+    mut stream: StreamingCompletionResponse,
     expected_name: &str,
     expect_final_response: bool,
-) where
-    R: Clone + Unpin + GetTokenUsage,
-{
+) {
     let mut saw_final = false;
     let mut saw_matching_tool_call = false;
 
@@ -604,9 +604,7 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation<R>(
-    stream: &mut StreamingResult<R>,
-) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {
@@ -663,12 +661,9 @@ pub(crate) async fn collect_stream_observation<R>(
     observation
 }
 
-pub(crate) async fn collect_raw_stream_observation<R>(
-    mut stream: StreamingCompletionResponse<R>,
-) -> RawStreamObservation
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
+pub(crate) async fn collect_raw_stream_observation(
+    mut stream: StreamingCompletionResponse,
+) -> RawStreamObservation {
     let mut observation = RawStreamObservation::new();
 
     while let Some(item) = stream.next().await {

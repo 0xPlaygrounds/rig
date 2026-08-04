@@ -447,25 +447,38 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<mistral::CompletionResponse>,
-) {
-    assert_nonempty_response(&response.raw_response.id);
+fn assert_response_metadata(response: &rig::completion::CompletionResponse, scenario: &str) {
+    // The normalized response no longer carries the raw provider payload, so
+    // wire-specific data (raw id equality, raw choice finish reasons, raw
+    // usage counters) is re-checked against the recorded cassette body.
+    let bodies = crate::cassettes::recorded_response_bodies("mistral", scenario);
+    let raw_response: mistral::CompletionResponse = serde_json::from_str(
+        bodies
+            .last()
+            .expect("cassette should contain a recorded response body"),
+    )
+    .expect("recorded Mistral body should deserialize as a wire completion response");
+
+    assert_nonempty_response(&raw_response.id);
     assert_eq!(
         response.message_id.as_deref(),
-        Some(response.raw_response.id.as_str())
+        Some(raw_response.id.as_str()),
+        "normalized message_id should match the raw Mistral id"
     );
-    assert_nonempty_response(&response.raw_response.model);
+    assert_nonempty_response(&raw_response.model);
     assert!(
-        response
-            .raw_response
-            .choices
-            .iter()
-            .all(|choice| !choice.finish_reason.is_empty()),
+        !raw_response.choices.is_empty()
+            && raw_response
+                .choices
+                .iter()
+                .all(|choice| !choice.finish_reason.is_empty()),
         "raw Mistral choices should preserve finish reasons"
     );
-    let raw_usage = response
-        .raw_response
+    assert!(
+        response.finish_reason.is_some(),
+        "normalized response should preserve the finish reason"
+    );
+    let raw_usage = raw_response
         .usage
         .as_ref()
         .expect("raw response should preserve usage");
@@ -754,7 +767,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+            );
 
             Ok(())
         },
@@ -879,7 +895,10 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
 
             let serialized = plan.to_string();
             assert_contains_all_case_insensitive(&serialized, &["canary", "low", "compile", "replay"]);
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/json_object_response_format_roundtrip",
+            );
 
             Ok(())
         },
@@ -923,7 +942,10 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
             anyhow::ensure!(plan.risk.eq_ignore_ascii_case("low"));
             anyhow::ensure!(plan.checks.compile);
             anyhow::ensure!(plan.checks.replay);
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/json_schema_structured_output_roundtrip",
+            );
 
             Ok(())
         },

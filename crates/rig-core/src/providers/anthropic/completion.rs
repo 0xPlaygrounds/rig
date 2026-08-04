@@ -1,11 +1,10 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
     client::Provider,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
@@ -130,8 +129,10 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl Usage {
+    /// Normalize Anthropic's token accounting; the wire `input_tokens` value
+    /// excludes cache reads/writes, so totals add all four counters.
+    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens;
@@ -214,7 +215,17 @@ pub enum SystemContent {
     },
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Map Anthropic's `stop_reason` onto the normalized [`completion::FinishReason`].
+pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
+    match stop_reason {
+        "end_turn" | "stop_sequence" => completion::FinishReason::Stop,
+        "max_tokens" => completion::FinishReason::Length,
+        "tool_use" => completion::FinishReason::ToolCalls,
+        other => completion::FinishReason::Other(other.to_owned()),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -253,12 +264,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             reasoning_tokens: 0,
         };
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "anthropic")
+            .with_message_id(response.id.clone())
+            .with_model(response.model.clone());
+        if let Some(stop_reason) = response.stop_reason.as_deref() {
+            converted = converted.with_finish_reason(map_finish_reason(stop_reason));
+        }
+        Ok(converted)
     }
 }
 
@@ -2454,30 +2466,29 @@ pub(super) fn build_tool_definitions(
     Ok(tools)
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+impl<Ext, T> From<(crate::client::Client<Ext, T>, String)> for GenericCompletionModel<Ext, T>
+where
+    T: HttpClientExt,
+    Ext: AnthropicCompatibleProvider + Clone + 'static,
+{
+    fn from((client, model): (crate::client::Client<Ext, T>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = crate::client::Client<Ext, T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
+    /// Execute a completion and return Anthropic's native response.
+    ///
+    /// Use [`completion::CompletionModel::completion`] for Rig's normalized
+    /// response type.
+    pub async fn raw_completion(
         &self,
         mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -2493,7 +2504,6 @@ where
         )
         .build();
 
-        // Check if max_tokens is set, required for Anthropic
         if completion_request.max_tokens.is_none() {
             if let Some(tokens) = self.default_max_tokens {
                 completion_request.max_tokens = Some(tokens);
@@ -2522,19 +2532,16 @@ where
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
-
             let req = self
                 .client
                 .post("/v1/messages")?
                 .body(request)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;
-
             let response = self
                 .client
                 .send::<_, Bytes>(req)
                 .await
                 .map_err(CompletionError::HttpError)?;
-
             let status = response.status();
             let body = response
                 .into_body()
@@ -2552,7 +2559,7 @@ where
                 ApiResponse::Message(completion) => {
                     let span = tracing::Span::current();
                     span.record_response_metadata(&completion);
-                    span.record_token_usage(&completion.usage);
+                    span.record_token_usage(&completion.usage.token_usage());
                     if enabled!(Level::TRACE) {
                         tracing::trace!(
                             target: "rig::completions",
@@ -2560,7 +2567,7 @@ where
                             serde_json::to_string_pretty(&completion)?
                         );
                     }
-                    completion.try_into()
+                    Ok(completion)
                 }
                 ApiResponse::Error(ApiErrorResponse { message }) => {
                     tracing::warn!(message = %message, "provider returned an error response");
@@ -2574,14 +2581,34 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+where
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // Anthropic's native structured outputs (constrained decoding) are designed
+    // to compose with strict tool use, so the schema constraint does not suppress
+    // tool calls. See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        let mut converted: completion::CompletionResponse = response.try_into()?;
+        converted.provider = Ext::PROVIDER_NAME.to_string();
+        Ok(converted)
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
     }
 }
@@ -2603,6 +2630,26 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_values() {
+        assert_eq!(
+            map_finish_reason("end_turn"),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason("max_tokens"),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("tool_use"),
+            completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason("future_stop"),
+            completion::FinishReason::Other("future_stop".to_owned())
+        );
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {
@@ -4993,7 +5040,7 @@ mod tests {
             },
         };
 
-        let parsed: completion::CompletionResponse<CompletionResponse> = response
+        let parsed: completion::CompletionResponse = response
             .try_into()
             .expect("empty end_turn should not error");
 
@@ -5021,7 +5068,7 @@ mod tests {
             },
         };
 
-        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+        let err = completion::CompletionResponse::try_from(response)
             .expect_err("empty non-end_turn should remain an error");
 
         assert!(matches!(
@@ -5283,11 +5330,11 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let raw_text = response.get_text_response();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         assert_eq!(converted.choice.len(), 3);
         assert_eq!(
-            converted.raw_response.get_text_response().as_deref(),
+            raw_text.as_deref(),
             Some("Claude Shannon was born on April 30, 1916.")
         );
 
@@ -5370,8 +5417,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
             panic!("expected raw web_search_tool_result metadata");
         };
@@ -5476,8 +5522,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
         else {
             panic!("expected raw code_execution_tool_result metadata");

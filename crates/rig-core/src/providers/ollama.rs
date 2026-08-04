@@ -42,7 +42,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::{GetTokenUsage, Usage};
+use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
@@ -321,7 +321,31 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub eval_duration: Option<u64>,
 }
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+
+/// Ollama's provider-native terminal streaming metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingCompletionResponse {
+    pub model: String,
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
+/// Maps Ollama's `done_reason` onto the normalized
+/// [`completion::FinishReason`] vocabulary, carrying unmapped values
+/// verbatim in `Other`.
+fn map_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "stop" => completion::FinishReason::Stop,
+        "length" => completion::FinishReason::Length,
+        other => completion::FinishReason::Other(other.to_string()),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
         match resp.message {
@@ -342,9 +366,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     };
                 // Preserve the model's reasoning so it round-trips into agent
                 // history and is echoed back to Ollama on the next turn (issue
-                // #1926). Without this, non-streaming `thinking` is kept only in
-                // `raw_response` and lost from `choice`, unlike the streaming path
-                // (see `RawStreamingChoice::ReasoningDelta` below).
+                // #1926). Without this, non-streaming `thinking` would be lost
+                // from `choice`, unlike the streaming path (see
+                // `RawStreamingChoice::ReasoningDelta` below).
                 if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
                     assistant_contents.push(completion::AssistantContent::reasoning(thinking));
                 }
@@ -371,40 +395,23 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
                 let completion_tokens = resp.eval_count.unwrap_or(0);
 
-                let raw_response = CompletionResponse {
-                    model: resp.model,
-                    created_at: resp.created_at,
-                    done: resp.done,
-                    done_reason: resp.done_reason,
-                    total_duration: resp.total_duration,
-                    load_duration: resp.load_duration,
-                    prompt_eval_count: resp.prompt_eval_count,
-                    prompt_eval_duration: resp.prompt_eval_duration,
-                    eval_count: resp.eval_count,
-                    eval_duration: resp.eval_duration,
-                    message: Message::Assistant {
-                        content,
-                        thinking,
-                        images: None,
-                        name: None,
-                        tool_calls,
-                    },
+                let usage = Usage {
+                    input_tokens: prompt_tokens,
+                    output_tokens: completion_tokens,
+                    total_tokens: prompt_tokens + completion_tokens,
+                    cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: 0,
                 };
 
-                Ok(completion::CompletionResponse {
-                    choice,
-                    usage: Usage {
-                        input_tokens: prompt_tokens,
-                        output_tokens: completion_tokens,
-                        total_tokens: prompt_tokens + completion_tokens,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    },
-                    raw_response,
-                    message_id: None,
-                })
+                let mut converted = completion::CompletionResponse::new(choice, usage, "ollama")
+                    .with_model(resp.model);
+                if let Some(done_reason) = resp.done_reason.as_deref() {
+                    converted = converted.with_finish_reason(map_finish_reason(done_reason));
+                }
+
+                Ok(converted)
             }
             _ => Err(CompletionError::ResponseError(
                 "Chat response does not include an assistant message".into(),
@@ -600,30 +607,6 @@ enum Level {
 
 // ---------- CompletionModel Implementation ----------
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct StreamingCompletionResponse {
-    pub done_reason: Option<String>,
-    pub total_duration: Option<u64>,
-    pub load_duration: Option<u64>,
-    pub prompt_eval_count: Option<u64>,
-    pub prompt_eval_duration: Option<u64>,
-    pub eval_count: Option<u64>,
-    pub eval_duration: Option<u64>,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        let input_tokens = self.prompt_eval_count.unwrap_or_default();
-        let output_tokens = self.eval_count.unwrap_or_default();
-        usage.input_tokens = input_tokens;
-        usage.output_tokens = output_tokens;
-        usage.total_tokens = input_tokens + output_tokens;
-
-        usage
-    }
-}
-
 /// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
 ///
 /// `bytes_stream` makes no promises about chunk boundaries, so a single NDJSON
@@ -656,23 +639,24 @@ impl NdjsonBuffer {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> From<(Client<T>, String)> for CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into().as_str())
+    fn from((client, model): (Client<T>, String)) -> Self {
+        Self::new(client, &model)
     }
+}
 
-    async fn completion(
+impl<T> CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    /// Execute an Ollama completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -726,20 +710,17 @@ where
                 );
             }
 
-            let response: completion::CompletionResponse<CompletionResponse> =
-                response.try_into()?;
-
             Ok(response)
         };
 
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    async fn stream(
+    /// Execute a streaming Ollama completion and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -808,7 +789,7 @@ where
                         span.record("gen_ai.response.model", &response.model);
                     }
 
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message.clone() {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
                             yield RawStreamingChoice::ReasoningDelta {
                                 id: None,
@@ -830,26 +811,59 @@ where
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield RawStreamingChoice::FinalResponse(
-                            StreamingCompletionResponse {
-                                total_duration: response.total_duration,
-                                load_duration: response.load_duration,
-                                prompt_eval_count: response.prompt_eval_count,
-                                prompt_eval_duration: response.prompt_eval_duration,
-                                eval_count: response.eval_count,
-                                eval_duration: response.eval_duration,
-                                done_reason: response.done_reason,
-                            }
-                        );
+                        yield RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            model: response.model,
+                            done_reason: response.done_reason,
+                            total_duration: response.total_duration,
+                            load_duration: response.load_duration,
+                            prompt_eval_count: response.prompt_eval_count,
+                            prompt_eval_duration: response.prompt_eval_duration,
+                            eval_count: response.eval_count,
+                            eval_duration: response.eval_duration,
+                        });
                         break;
                     }
                 }
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let input_tokens = response.prompt_eval_count.unwrap_or_default();
+            let output_tokens = response.eval_count.unwrap_or_default();
+            let usage = Usage {
+                input_tokens,
+                output_tokens,
+                total_tokens: input_tokens + output_tokens,
+                ..Usage::new()
+            };
+            let mut final_response =
+                streaming::StreamFinal::new("ollama", usage).with_model(response.model);
+            if let Some(done_reason) = response.done_reason.as_deref() {
+                final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
+            }
+            Ok(final_response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
@@ -1311,7 +1325,25 @@ pub struct ImageUrl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
     use serde_json::json;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_values() {
+        assert_eq!(map_finish_reason("stop"), completion::FinishReason::Stop);
+        assert_eq!(
+            map_finish_reason("length"),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("future_reason"),
+            completion::FinishReason::Other("future_reason".to_owned())
+        );
+    }
 
     #[test]
     fn splits_legacy_reasoning_with_or_without_opening_marker() {
@@ -1385,8 +1417,7 @@ mod tests {
 
         let chat_resp: CompletionResponse =
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse<CompletionResponse> =
-            chat_resp.try_into().unwrap();
+        let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"
@@ -1677,7 +1708,7 @@ mod tests {
 
         let raw: CompletionResponse =
             serde_json::from_value(sample_response).expect("deserialize ollama response");
-        let completed: completion::CompletionResponse<CompletionResponse> =
+        let completed: completion::CompletionResponse =
             raw.try_into().expect("convert to completion response");
 
         let reasoning = completed.choice.iter().find_map(|c| match c {
@@ -1690,6 +1721,10 @@ mod tests {
             .any(|c| matches!(c, completion::AssistantContent::ToolCall(_)));
 
         assert!(has_tool_call, "tool call should survive the conversion");
+        assert_eq!(
+            completed.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
         let reasoning = reasoning.expect(
             "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
         );
@@ -1697,6 +1732,44 @@ mod tests {
             reasoning.display_text(),
             "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_stop_after_tool_call_normalizes_to_tool_calls() {
+        let response = json!({
+            "model": "qwen3:4b",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": {"location": "Berlin"}}
+                }]
+            },
+            "done": true,
+            "done_reason": "stop",
+            "prompt_eval_count": 10,
+            "eval_count": 5
+        });
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: Bytes::from(format!("{response}\n")),
+            })
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("qwen3:4b");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("normalized stream");
+        let mut finish_reason = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) = item.expect("stream item") {
+                finish_reason = response.finish_reason;
+            }
+        }
+
+        assert_eq!(finish_reason, Some(completion::FinishReason::ToolCalls));
     }
 
     // Test empty thinking content is handled correctly

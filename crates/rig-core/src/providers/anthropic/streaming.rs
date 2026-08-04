@@ -9,13 +9,11 @@ use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
     Content, GenericCompletionModel, Usage,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
-use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
-};
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
@@ -156,8 +154,10 @@ pub struct PartialUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl PartialUsage {
+    /// Normalize the streamed partial usage; totals add cache reads/writes to
+    /// the base input tokens, mirroring the unary conversion.
+    pub(crate) fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
@@ -170,6 +170,19 @@ impl GetTokenUsage for PartialUsage {
             + usage.output_tokens;
         usage
     }
+}
+
+/// Provider-native terminal record produced by an Anthropic raw stream.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StreamingCompletionResponse {
+    /// Anthropic's streamed usage payload.
+    pub usage: PartialUsage,
+    /// Provider-assigned message identifier, when reported.
+    pub message_id: Option<String>,
+    /// Provider-reported model identifier, when reported.
+    pub model: Option<String>,
+    /// Anthropic's raw `stop_reason`, preserved verbatim.
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Default)]
@@ -193,37 +206,16 @@ struct ThinkingState {
     signature: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StreamingCompletionResponse {
-    pub usage: PartialUsage,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
-        usage.output_tokens = self.usage.output_tokens as u64;
-        usage.cached_input_tokens = self.usage.cache_read_input_tokens.unwrap_or(0);
-        usage.cache_creation_input_tokens = self.usage.cache_creation_input_tokens.unwrap_or(0);
-        usage.total_tokens = usage.input_tokens
-            + usage.cached_input_tokens
-            + usage.cache_creation_input_tokens
-            + usage.output_tokens;
-
-        usage
-    }
-}
-
 impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal item retains Anthropic's native metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -276,13 +268,18 @@ where
         let stream = GenericEventSource::new(self.client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
+        let stream: streaming::RawStreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut message_id: Option<String> = None;
+            let mut response_model: Option<String> = None;
+            let mut stop_reason: Option<String> = None;
+            let mut completed = false;
+            let mut stream_failed = false;
 
             let mut text_content = String::new();
 
@@ -296,13 +293,16 @@ where
                                 match &event {
                                     StreamingEvent::MessageStart { message } => {
                                         input_tokens = message.usage.input_tokens;
+                                        message_id = Some(message.id.clone());
+                                        response_model = Some(message.model.clone());
 
                                         let span = tracing::Span::current();
                                         span.record("gen_ai.response.id", &message.id);
                                         span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
-                                        if delta.stop_reason.is_some() {
+                                        if let Some(raw_reason) = delta.stop_reason.as_deref() {
+                                            stop_reason = Some(raw_reason.to_owned());
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -314,8 +314,9 @@ where
                                             };
 
                                             let span = tracing::Span::current();
-                                            span.record_token_usage(&usage);
+                                            span.record_token_usage(&usage.token_usage());
                                             final_usage = Some(usage);
+                                            completed = true;
                                             break;
                                         }
                                     }
@@ -331,19 +332,35 @@ where
                                     if let Ok(RawStreamingChoice::Message(ref text)) = result {
                                         text_content += text;
                                     }
-                                    yield result;
+                                    match result.and_then(|choice| {
+                                        choice.try_map_final(|_| {
+                                            Err(CompletionError::ResponseError(
+                                                "Anthropic emitted an unexpected intermediate terminal response".to_owned(),
+                                            ))
+                                        })
+                                    }) {
+                                        Ok(choice) => yield Ok(choice),
+                                        Err(error) => {
+                                            stream_failed = true;
+                                            yield Err(error);
+                                            break;
+                                        }
+                                    }
                                 }
                             },
                             Err(e) => {
                                 if !sse.data.trim().is_empty() {
+                                    stream_failed = true;
                                     yield Err(CompletionError::ResponseError(
                                         format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
                                     ));
+                                    break;
                                 }
                             }
                         }
                     },
                     Err(e) => {
+                        stream_failed = true;
                         yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
@@ -353,11 +370,39 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
-            }))
+            if completed && !stream_failed {
+                yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage: final_usage.unwrap_or_default(),
+                    message_id,
+                    model: response_model,
+                    stop_reason,
+                }))
+            }
         }.instrument(span));
 
+        Ok(stream)
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let mut final_response =
+                streaming::StreamFinal::new(Ext::PROVIDER_NAME, response.usage.token_usage());
+            if let Some(stop_reason) = response.stop_reason {
+                final_response = final_response
+                    .with_finish_reason(super::completion::map_finish_reason(&stop_reason));
+            }
+            if let Some(message_id) = response.message_id {
+                final_response = final_response.with_message_id(message_id);
+            }
+            if let Some(model) = response.model {
+                final_response = final_response.with_model(model);
+            }
+            Ok(final_response)
+        });
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
@@ -367,7 +412,7 @@ fn handle_event(
     current_tool_call: &mut Option<ToolCallState>,
     server_tool_uses: &mut HashMap<usize, ServerToolUseState>,
     current_thinking: &mut Option<ThinkingState>,
-) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+) -> Option<Result<RawStreamingChoice, CompletionError>> {
     match event {
         StreamingEvent::ContentBlockDelta { index, delta } => match delta {
             ContentDelta::TextDelta { text } => {
@@ -555,27 +600,50 @@ mod tests {
     };
     use super::*;
     use crate::OneOrMany;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
     use async_stream::stream;
     use futures::StreamExt;
 
+    fn model_with_sse(
+        events: &[serde_json::Value],
+    ) -> super::super::completion::CompletionModel<MockStreamingClient> {
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(CLAUDE_OPUS_4_8)
+    }
+
+    fn request_for<T>(model: &super::super::completion::CompletionModel<T>) -> CompletionRequest
+    where
+        T: crate::http_client::HttpClientExt + Clone + Default + 'static,
+    {
+        let mut request = model.completion_request("hello").build();
+        request.max_tokens = Some(64);
+        request
+    }
+
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
-        stream: impl futures::Stream<
-            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-        > + Send
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
+        + Send
         + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+    ) -> crate::streaming::StreamingResult {
         Box::pin(stream)
     }
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
-        stream: impl futures::Stream<
-            Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
-        > + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
+    ) -> crate::streaming::StreamingResult {
         Box::pin(stream)
     }
 
@@ -606,6 +674,51 @@ mod tests {
         assert!(tools[0].get("cache_control").is_none());
         assert_eq!(tools[1]["name"], "provider_tool");
         assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_response() {
+        let model = model_with_sse(&[json!({"type": "ping"})]);
+        let items: Vec<_> = model
+            .raw_stream(request_for(&model))
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
+    }
+
+    #[tokio::test]
+    async fn transport_error_does_not_emit_terminal_response() {
+        let http_client = SequencedStreamingHttpClient::new(vec![Err(
+            crate::http_client::Error::InvalidStatusCode(http::StatusCode::BAD_GATEWAY),
+        )]);
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model(CLAUDE_OPUS_4_8);
+        let mut request = model.completion_request("hello").build();
+        request.max_tokens = Some(64);
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(items.iter().any(Result::is_err));
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
     }
 
     #[test]
@@ -859,7 +972,7 @@ mod tests {
         event: &StreamingEvent,
         current_tool_call: &mut Option<ToolCallState>,
         current_thinking: &mut Option<ThinkingState>,
-    ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
+    ) -> Option<Result<RawStreamingChoice, CompletionError>> {
         let mut server_tool_uses = HashMap::new();
         super::handle_event(
             event,
@@ -1617,9 +1730,10 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "anthropic",
+                PartialUsage::default().token_usage(),
+            )));
         };
 
         let mut stream =
@@ -1762,9 +1876,10 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "anthropic",
+                PartialUsage::default().token_usage(),
+            )));
         };
 
         let mut stream =

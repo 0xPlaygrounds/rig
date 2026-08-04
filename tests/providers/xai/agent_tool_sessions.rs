@@ -394,15 +394,29 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<xai::CompletionResponse>,
-) {
-    assert_nonempty_response(&response.raw_response.id);
-    assert_nonempty_response(&response.raw_response.model);
-    assert_eq!(response.raw_response.status.as_deref(), Some("completed"));
+fn assert_response_metadata(response: &rig::completion::CompletionResponse, scenario: &str) {
+    // The normalized response no longer carries the raw provider payload, so
+    // wire-specific fields (raw id/model, Responses `status`, raw usage
+    // presence) are re-checked against the recorded cassette body.
+    let raw_response = recorded_wire_response(scenario);
+    assert_nonempty_response(&raw_response.id);
+    assert_nonempty_response(&raw_response.model);
+    assert_eq!(raw_response.status.as_deref(), Some("completed"));
     assert!(
-        response.raw_response.usage.is_some(),
+        raw_response.usage.is_some(),
         "raw xAI response should preserve usage metadata"
+    );
+    assert_nonempty_response(
+        response
+            .message_id
+            .as_deref()
+            .expect("response should preserve the xAI response id"),
+    );
+    assert_nonempty_response(
+        response
+            .model
+            .as_deref()
+            .expect("response should preserve the xAI model"),
     );
     assert!(
         response
@@ -412,6 +426,18 @@ fn assert_response_metadata(
         "xAI Responses message id should be preserved, got {:?}",
         response.message_id
     );
+}
+
+/// Deserializes the last recorded response body for the scenario as an xAI
+/// wire (Responses API) completion response.
+fn recorded_wire_response(scenario: &str) -> xai::CompletionResponse {
+    let bodies = crate::cassettes::recorded_response_bodies("xai", scenario);
+    serde_json::from_str(
+        bodies
+            .last()
+            .expect("cassette should contain a recorded response body"),
+    )
+    .expect("recorded xAI body should deserialize as a wire completion response")
 }
 
 fn image_content() -> UserContent {
@@ -692,7 +718,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "usage should be populated on long-history replay: {:?}",
                 response.usage
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+            );
 
             Ok(())
         },
@@ -808,9 +837,11 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                     .any(|content| matches!(content, AssistantContent::Reasoning(_))),
                 "xAI reasoning response should preserve a reasoning content block"
             );
+            let raw_response = recorded_wire_response(
+                "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
+            );
             anyhow::ensure!(
-                response
-                    .raw_response
+                raw_response
                     .output
                     .iter()
                     .any(|output| matches!(output, Output::Reasoning { .. })),
@@ -821,8 +852,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 "core usage should preserve xAI reasoning tokens: {:?}",
                 response.usage
             );
-            let raw_reasoning_tokens = response
-                .raw_response
+            let raw_reasoning_tokens = raw_response
                 .usage
                 .as_ref()
                 .and_then(|usage| usage.output_tokens_details.as_ref())
@@ -832,7 +862,10 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
                 "usage reasoning tokens should match raw provider details"
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
+            );
 
             Ok(())
         },
@@ -912,7 +945,10 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                     .any(|check| check["name"] == "replay" && check["required"] == true),
                 "structured output should include replay=true"
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
+            );
 
             Ok(())
         },

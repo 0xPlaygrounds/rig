@@ -435,7 +435,7 @@ where
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         self.send(completion_request).await?;
         let response = self.wait_for_completed_response().await?;
         response.try_into()
@@ -543,7 +543,8 @@ where
                     }
                     Some(ResponseStatus::Failed)
                     | Some(ResponseStatus::Incomplete)
-                    | Some(ResponseStatus::Cancelled) => {
+                    | Some(ResponseStatus::Cancelled)
+                    | Some(ResponseStatus::Other(_)) => {
                         self.previous_response_id = None;
                     }
                     Some(ResponseStatus::InProgress | ResponseStatus::Queued) | None => {}

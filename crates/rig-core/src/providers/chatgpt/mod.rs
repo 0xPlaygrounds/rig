@@ -27,7 +27,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
-use crate::streaming::StreamingCompletionResponse;
+use crate::streaming::{self, StreamingCompletionResponse};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
@@ -442,8 +442,7 @@ where
     async fn completion_from_sse(
         &self,
         request: ResponsesRequest,
-    ) -> Result<completion::CompletionResponse<responses_api::CompletionResponse>, CompletionError>
-    {
+    ) -> Result<(responses_api::CompletionResponse, String), CompletionError> {
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
@@ -467,14 +466,11 @@ where
 
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
 
-        match raw_response.clone().try_into() {
-            Ok(response) => Ok(response),
-            Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
-                responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
-                    .await
-            }
-            Err(error) => Err(error),
-        }
+        let span = tracing::Span::current();
+        span.record("gen_ai.response.id", raw_response.id.as_str());
+        span.record("gen_ai.response.model", raw_response.model.as_str());
+
+        Ok((raw_response, text))
     }
 }
 
@@ -487,23 +483,25 @@ where
     }
 }
 
+impl<H> From<(Client<H>, String)> for ResponsesCompletionModel<H>
+where
+    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn from((client, model): (Client<H>, String)) -> Self {
+        Self::new(client, model)
+    }
+}
+
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = responses_api::CompletionResponse;
-    type StreamingResponse = responses_api::streaming::StreamingCompletionResponse;
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
@@ -513,10 +511,20 @@ where
 
         tracing_futures::Instrument::instrument(
             async move {
-                let response = self.completion_from_sse(request).await?;
+                let (raw_response, body) = self.completion_from_sse(request).await?;
+                let response = match raw_response.clone().try_into() {
+                    Ok(response) => response,
+                    Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
+                        responses_api::streaming::completion_response_from_sse_body(
+                            &body,
+                            raw_response,
+                        )
+                        .await?
+                    }
+                    Err(error) => return Err(error),
+                };
+                let response = normalize_chatgpt_response(response);
                 let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.raw_response.id);
-                span.record("gen_ai.response.model", &response.raw_response.model);
                 span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
                 span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
                 span.record(
@@ -533,9 +541,16 @@ where
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }
+}
+
+fn normalize_chatgpt_response(
+    mut response: completion::CompletionResponse,
+) -> completion::CompletionResponse {
+    response.provider = "chatgpt".to_owned();
+    response
 }
 
 impl<H> ResponsesCompletionModel<H>
@@ -543,11 +558,42 @@ where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub async fn stream(
+    /// Execute a ChatGPT completion and return its native Responses API payload.
+    pub async fn raw_completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<responses_api::CompletionResponse, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
+        let request = self.create_request(completion_request)?;
+        let span = CompletionSpanBuilder::new("chatgpt", &request.model, CompletionOperation::Chat)
+            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
+            .build();
+        tracing_futures::Instrument::instrument(
+            async move {
+                let (response, _) = self.completion_from_sse(request).await?;
+                if let Some(usage) = response.usage.as_ref() {
+                    let usage: completion::Usage = usage.clone().into();
+                    let span = tracing::Span::current();
+                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                    span.record(
+                        "gen_ai.usage.cache_read.input_tokens",
+                        usage.cached_input_tokens,
+                    );
+                }
+                Ok(response)
+            },
+            span,
+        )
+        .await
+    }
+
+    /// Execute a streaming ChatGPT completion and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<
-        StreamingCompletionResponse<responses_api::streaming::StreamingCompletionResponse>,
+        streaming::RawStreamingResult<responses_api::streaming::StreamingCompletionResponse>,
         CompletionError,
     > {
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -587,10 +633,26 @@ where
         let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
             .allow_missing_content_type();
 
-        Ok(responses_api::streaming::stream_from_event_source(
-            event_source,
-            span,
-        ))
+        Ok(
+            responses_api::streaming::raw_stream_from_event_source_with_options(
+                event_source,
+                span,
+                responses_api::streaming::ResponsesStreamOptions::strict(),
+            ),
+        )
+    }
+
+    pub async fn stream(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(raw, |response| {
+            Ok(responses_api::streaming::normalize_terminal_response(
+                "chatgpt", response,
+            ))
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
@@ -814,6 +876,7 @@ data: [DONE]"#;
             responses_api::streaming::completion_response_from_sse_body(body, raw_response)
                 .await
                 .expect("fallback response");
+        let response = normalize_chatgpt_response(response);
 
         let text: String = response
             .choice
@@ -826,6 +889,7 @@ data: [DONE]"#;
 
         assert_eq!(text, "hi");
         assert_eq!(response.usage.total_tokens, 2);
+        assert_eq!(response.provider, "chatgpt");
     }
 
     #[tokio::test]

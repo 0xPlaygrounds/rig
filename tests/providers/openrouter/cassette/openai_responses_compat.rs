@@ -12,22 +12,34 @@ const DEFAULT_OPENAI_COMPAT_MODEL: &str = "google/gemini-3-flash-preview";
 
 #[tokio::test]
 async fn openai_responses_raw_response_accepts_service_tier_metadata() {
-    with_openrouter_openai_cassette(
-        "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
-        |client| async move {
-            let response = client
-                .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-                .with_system_instructions_as_messages()
-                .completion_request("Reply with exactly: openrouter responses service tier ok")
-                .preamble(
-                    "Return the requested text exactly, with no extra commentary.".to_string(),
-                )
-                .send()
-                .await
-                .expect("OpenRouter Responses API completion should deserialize");
+    const SCENARIO: &str =
+        "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata";
+    with_openrouter_openai_cassette("openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata", |client| async move {
+        let response = client
+            .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
+            .with_system_instructions_as_messages()
+            .completion_request("Reply with exactly: openrouter responses service tier ok")
+            .preamble("Return the requested text exactly, with no extra commentary.".to_string())
+            .send()
+            .await
+            .expect("OpenRouter Responses API completion should deserialize");
 
-            let service_tier = response
-                .raw_response
+        assert!(
+            response.choice.iter().next().is_some(),
+            "response should contain assistant content"
+        );
+
+        // `service_tier` is provider wire metadata; the normalized response no
+        // longer carries the provider-typed raw response, so parse the
+        // recorded body (replay only: the cassette file is written after the
+        // test body in record mode).
+        if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+            let bodies = crate::cassettes::recorded_response_bodies("openrouter", SCENARIO);
+            assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+            let raw: rig::providers::openai::responses_api::CompletionResponse =
+                serde_json::from_str(&bodies[0])
+                    .expect("recorded body should deserialize as a Responses API response");
+            let service_tier = raw
                 .additional_parameters
                 .service_tier
                 .as_ref()
@@ -37,8 +49,8 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 !format!("{service_tier:?}").is_empty(),
                 "expected OpenRouter model {DEFAULT_OPENAI_COMPAT_MODEL} to return service_tier metadata"
             );
-        },
-    )
+        }
+    })
     .await;
 }
 

@@ -5,7 +5,7 @@ use crate::{
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::GetTokenUsage;
+use rig_core::completion::FinishReason;
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
@@ -16,9 +16,21 @@ use rig_core::{
 use serde::{Deserialize, Serialize};
 use tracing_futures::Instrument;
 
+fn map_stream_finish_reason(reason: &str) -> FinishReason {
+    match reason {
+        "end_turn" | "stop_sequence" => FinishReason::Stop,
+        "max_tokens" => FinishReason::Length,
+        "tool_use" => FinishReason::ToolCalls,
+        "content_filtered" | "guardrail_intervened" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
     pub usage: Option<BedrockUsage>,
+    /// Provider-native Converse stop reason, when emitted.
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,8 +44,9 @@ pub struct BedrockUsage {
     pub cache_write_input_tokens: Option<i32>,
 }
 
-impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
+impl BedrockStreamingResponse {
+    /// Token usage reported by the Converse stream, zero-valued when missing.
+    pub fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage
             .as_ref()
             .map(|u| rig_core::completion::Usage {
@@ -72,9 +85,7 @@ struct ReasoningState {
 /// Field required` when the conversation is replayed to Bedrock. We must emit
 /// whenever either the content or the signature is present; both-empty is
 /// still skipped.
-fn finalize_reasoning(
-    state: ReasoningState,
-) -> Option<RawStreamingChoice<BedrockStreamingResponse>> {
+fn finalize_reasoning(state: ReasoningState) -> Option<RawStreamingChoice> {
     if state.content.is_empty() && state.signature.is_none() {
         return None;
     }
@@ -88,10 +99,12 @@ fn finalize_reasoning(
 }
 
 impl CompletionModel {
-    pub(crate) async fn stream(
+    /// Execute a Bedrock stream and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
+    ) -> Result<rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>, CompletionError>
+    {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -136,6 +149,7 @@ impl CompletionModel {
         let stream = Box::pin(stream! {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
+            let mut stop_reason: Option<String> = None;
             let mut current_reasoning: Option<ReasoningState> = None;
             let mut stream = response.stream;
             loop {
@@ -224,31 +238,30 @@ impl CompletionModel {
                     aws_bedrock::ConverseStreamOutput::ContentBlockStop(_event) => {
                         if let Some(reasoning_state) = current_reasoning.take()
                             && let Some(choice) = finalize_reasoning(reasoning_state) {
-                                yield Ok(choice)
+                                yield choice.try_map_final(|_| {
+                                    Err(CompletionError::ResponseError(
+                                        "Bedrock emitted an unexpected terminal reasoning block".to_owned(),
+                                    ))
+                                })
                             }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
-                        match message_stop_event.stop_reason {
-                            aws_bedrock::StopReason::ToolUse => {
-                                if let Some(tool_call) = current_tool_call.take() {
-                                    // Handle empty input_json for tools with no parameters
-                                    let tool_input = if tool_call.input_json.is_empty() {
-                                        serde_json::json!({})
-                                    } else {
-                                        serde_json::from_str(tool_call.input_json.as_str())?
-                                    };
-                                    yield Ok(RawStreamingChoice::ToolCall(
-                                        RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
-                                            .with_internal_call_id(tool_call.internal_call_id)
-                                    ));
+                        stop_reason = Some(message_stop_event.stop_reason.as_str().to_owned());
+                        if message_stop_event.stop_reason == aws_bedrock::StopReason::ToolUse {
+                            if let Some(tool_call) = current_tool_call.take() {
+                                // Handle empty input_json for tools with no parameters
+                                let tool_input = if tool_call.input_json.is_empty() {
+                                    serde_json::json!({})
                                 } else {
-                                    yield Err(CompletionError::ProviderError("Failed to call tool".into()))
-                                }
+                                    serde_json::from_str(tool_call.input_json.as_str())?
+                                };
+                                yield Ok(RawStreamingChoice::ToolCall(
+                                    RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
+                                        .with_internal_call_id(tool_call.internal_call_id)
+                                ));
+                            } else {
+                                yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                             }
-                            aws_bedrock::StopReason::MaxTokens => {
-                                yield Err(CompletionError::ProviderError("Exceeded max tokens".into()))
-                            }
-                            _ => {}
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
@@ -262,8 +275,9 @@ impl CompletionModel {
                                     cache_read_input_tokens: usage.cache_read_input_tokens,
                                     cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
+                                stop_reason: stop_reason.take(),
                             };
-                            span.record_token_usage(&final_response);
+                            span.record_token_usage(&final_response.token_usage());
                             yield Ok(RawStreamingChoice::FinalResponse(final_response));
                         }
                     },
@@ -272,6 +286,23 @@ impl CompletionModel {
             }
         }.instrument(span));
 
+        Ok(stream)
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: rig_core::completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = rig_core::streaming::normalize_stream(stream, |response| {
+            let mut final_response =
+                rig_core::streaming::StreamFinal::new("bedrock", response.token_usage());
+            final_response.finish_reason = response
+                .stop_reason
+                .as_deref()
+                .map(map_stream_finish_reason);
+            Ok(final_response)
+        });
         Ok(StreamingCompletionResponse::stream(stream))
     }
 }
@@ -279,6 +310,18 @@ impl CompletionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_finish_reason_mapping_covers_stop_and_filter_aliases() {
+        assert_eq!(
+            map_stream_finish_reason("stop_sequence"),
+            FinishReason::Stop
+        );
+        assert_eq!(
+            map_stream_finish_reason("guardrail_intervened"),
+            FinishReason::ContentFilter
+        );
+    }
 
     #[test]
     fn test_bedrock_usage_creation() {
@@ -305,6 +348,7 @@ mod tests {
                 cache_read_input_tokens: Some(40),
                 cache_write_input_tokens: Some(10),
             }),
+            stop_reason: None,
         };
 
         assert_eq!(
@@ -323,7 +367,10 @@ mod tests {
 
     #[test]
     fn test_bedrock_streaming_response_without_usage() {
-        let response = BedrockStreamingResponse { usage: None };
+        let response = BedrockStreamingResponse {
+            usage: None,
+            stop_reason: None,
+        };
 
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
@@ -332,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_usage_trait() {
+    fn token_usage_converts_native_stream_usage() {
         let response = BedrockStreamingResponse {
             usage: Some(BedrockUsage {
                 input_tokens: 448,
@@ -341,9 +388,10 @@ mod tests {
                 cache_read_input_tokens: Some(80),
                 cache_write_input_tokens: Some(20),
             }),
+            stop_reason: None,
         };
 
-        // Test that GetTokenUsage trait is properly implemented
+        // Test that the token_usage conversion is properly implemented
         assert_eq!(
             response.token_usage(),
             rig_core::completion::Usage {
@@ -399,6 +447,7 @@ mod tests {
                 cache_read_input_tokens: Some(30),
                 cache_write_input_tokens: Some(15),
             }),
+            stop_reason: Some("end_turn".to_owned()),
         };
 
         // Test serialization

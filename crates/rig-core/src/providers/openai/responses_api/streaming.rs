@@ -1,6 +1,6 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
-use crate::completion::{self, CompletionError, GetTokenUsage};
+use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
@@ -17,7 +17,7 @@ use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output};
 
-type StreamingRawChoice = RawStreamingChoice<StreamingCompletionResponse>;
+type StreamingRawChoice = RawStreamingChoice;
 
 // ================================================================
 // OpenAI Responses Streaming API
@@ -34,7 +34,10 @@ pub enum StreamingCompletionChunk {
     Delta(ItemChunk),
 }
 
-/// The final streaming response from the OpenAI Responses API.
+/// Wire-level aggregate of the terminal Responses API stream event (usage plus
+/// reasoning metadata). The normalized stream terminates with
+/// [`crate::streaming::StreamFinal`]; this type remains for parsing by
+/// downstream Responses-compatible providers (e.g. Copilot).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
     /// Token usage
@@ -45,6 +48,46 @@ pub struct StreamingCompletionResponse {
     /// The effective reasoning context from the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_context: Option<String>,
+    /// Provider-assigned response identifier, when emitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// Provider-assigned assistant message identifier, when emitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Provider-reported model identifier, when emitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Provider-native terminal response status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<super::ResponseStatus>,
+    /// Provider-native incomplete-response details, when emitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_details: Option<super::IncompleteDetailsReason>,
+    /// Whether the stream emitted at least one function call.
+    pub has_tool_calls: bool,
+}
+
+/// Map a Responses-family raw terminal into Rig's normalized terminal record.
+///
+/// `response_id` deliberately remains raw-only: a top-level `resp_...` ID is
+/// not an assistant `msg_...` item ID and cannot be replayed as one.
+pub(crate) fn normalize_terminal_response(
+    provider: &str,
+    response: StreamingCompletionResponse,
+) -> streaming::StreamFinal {
+    let mut final_response = streaming::StreamFinal::new(provider, response.usage.into());
+    final_response.finish_reason = response.status.as_ref().and_then(|status| {
+        let reason = super::finish_reason_from_status(status, response.incomplete_details.as_ref());
+        match reason {
+            Some(completion::FinishReason::Stop) if response.has_tool_calls => {
+                Some(completion::FinishReason::ToolCalls)
+            }
+            other => other,
+        }
+    });
+    final_response.message_id = response.message_id;
+    final_response.model = response.model;
+    final_response
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
@@ -52,7 +95,7 @@ pub(crate) fn reasoning_choices_from_done_item(
     summary: &[ReasoningSummary],
     content: &[String],
     encrypted_content: Option<&str>,
-) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
+) -> Vec<RawStreamingChoice> {
     let mut choices = summary
         .iter()
         .map(|reasoning_summary| match reasoning_summary {
@@ -79,12 +122,6 @@ pub(crate) fn reasoning_choices_from_done_item(
     }
 
     choices
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage.token_usage()
-    }
 }
 
 /// A response chunk from OpenAI's response API.
@@ -219,6 +256,12 @@ pub(crate) fn parse_sse_completion_body(
 
 struct RawChoiceAccumulator {
     final_usage: ResponsesUsage,
+    finish_reason: Option<completion::FinishReason>,
+    model: Option<String>,
+    response_id: Option<String>,
+    message_id: Option<String>,
+    status: Option<super::ResponseStatus>,
+    incomplete_details: Option<super::IncompleteDetailsReason>,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
@@ -229,6 +272,12 @@ impl RawChoiceAccumulator {
     fn new(initial_usage: ResponsesUsage) -> Self {
         Self {
             final_usage: initial_usage,
+            finish_reason: None,
+            model: None,
+            response_id: None,
+            message_id: None,
+            status: None,
+            incomplete_details: None,
             reasoning_metadata: None,
             reasoning_context: None,
             tool_calls: Vec::new(),
@@ -318,15 +367,19 @@ impl RawChoiceAccumulator {
     ) -> Result<(), CompletionError> {
         match kind {
             ResponseChunkKind::ResponseCompleted => {
+                self.response_id = Some(response.id.clone());
                 if let Some(usage) = response.usage {
                     self.final_usage = usage;
                 }
-                if response.reasoning_metadata.is_some() {
-                    self.reasoning_metadata = response.reasoning_metadata;
-                }
-                if response.reasoning_context.is_some() {
-                    self.reasoning_context = response.reasoning_context;
-                }
+                self.model = Some(response.model);
+                self.status = Some(response.status.clone());
+                self.incomplete_details = response.incomplete_details.clone();
+                self.reasoning_metadata = response.reasoning_metadata.clone();
+                self.reasoning_context = response.reasoning_context.clone();
+                self.finish_reason = super::finish_reason_from_status(
+                    &response.status,
+                    response.incomplete_details.as_ref(),
+                );
                 Ok(())
             }
             ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => Err(
@@ -376,6 +429,7 @@ impl RawChoiceAccumulator {
                 ));
             }
             Output::Message(message) => {
+                self.message_id = Some(message.id.clone());
                 immediate.push(streaming::RawStreamingChoice::MessageId(message.id));
             }
             // An unmodeled output item (e.g. a hosted-tool result such as
@@ -390,15 +444,57 @@ impl RawChoiceAccumulator {
 
     fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
+        // Any tool call seen during the stream (held back or emitted
+        // immediately) registers an internal call ID.
+        let emitted_tool_calls = !self.tool_call_internal_ids.is_empty();
         choices.append(&mut self.tool_calls);
+
+        let finish_reason = match self.finish_reason {
+            Some(completion::FinishReason::Stop) if emitted_tool_calls => {
+                Some(completion::FinishReason::ToolCalls)
+            }
+            other => other,
+        };
+
+        let mut final_response =
+            crate::streaming::StreamFinal::new("openai", self.final_usage.into());
+        final_response.finish_reason = finish_reason;
+        final_response.model = self.model;
+
+        choices.push(RawStreamingChoice::FinalResponse(final_response));
+        choices
+    }
+
+    fn finish_raw(
+        mut self,
+    ) -> Result<Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>>, CompletionError>
+    {
+        let emitted_tool_calls = !self.tool_call_internal_ids.is_empty();
+        let mut choices = self
+            .tool_calls
+            .drain(..)
+            .map(|choice| {
+                choice.try_map_final(|_| {
+                    Err(CompletionError::ResponseError(
+                        "OpenAI queued an unexpected terminal response".to_owned(),
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
+                response_id: self.response_id,
+                message_id: self.message_id,
+                model: self.model,
+                status: self.status,
+                incomplete_details: self.incomplete_details,
+                has_tool_calls: emitted_tool_calls,
             },
         ));
-        choices
+        Ok(choices)
     }
 }
 
@@ -535,7 +631,7 @@ pub(crate) fn raw_choices_from_sse_body(
 pub(crate) async fn completion_response_from_sse_body(
     body: &str,
     raw_response: CompletionResponse,
-) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+) -> Result<completion::CompletionResponse, CompletionError> {
     let raw_choices = raw_choices_from_sse_body(
         body,
         raw_response
@@ -561,19 +657,31 @@ pub(crate) async fn completion_response_from_sse_body(
         ));
     }
 
-    Ok(completion::CompletionResponse {
-        usage: stream
-            .response
-            .as_ref()
-            .map(GetTokenUsage::token_usage)
-            .unwrap_or_else(|| usage_from_raw_response(&raw_response)),
-        message_id: stream
-            .message_id
-            .clone()
-            .or_else(|| message_id_from_response(&raw_response)),
-        choice: stream.choice,
-        raw_response,
-    })
+    let usage = stream
+        .response
+        .as_ref()
+        .map(|final_response| final_response.usage)
+        .unwrap_or_else(|| usage_from_raw_response(&raw_response));
+    let message_id = stream
+        .message_id
+        .clone()
+        .or_else(|| message_id_from_response(&raw_response));
+    let finish_reason = stream
+        .response
+        .as_ref()
+        .and_then(|final_response| final_response.finish_reason.clone())
+        .or_else(|| {
+            super::finish_reason_from_status(
+                &raw_response.status,
+                raw_response.incomplete_details.as_ref(),
+            )
+        });
+
+    let mut normalized = completion::CompletionResponse::new(stream.choice, usage, "openai")
+        .with_model(raw_response.model.clone());
+    normalized.message_id = message_id;
+    normalized.finish_reason = finish_reason;
+    Ok(normalized)
 }
 
 fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
@@ -596,14 +704,16 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
     response
         .usage
         .as_ref()
-        .map(GetTokenUsage::token_usage)
+        .cloned()
+        .map(Into::into)
         .unwrap_or_default()
 }
 
+#[cfg(test)]
 pub(crate) fn stream_from_event_source<HttpClient, RequestBody>(
     event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
-) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+) -> streaming::StreamingCompletionResponse
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
@@ -611,11 +721,28 @@ where
     stream_from_event_source_with_options(event_source, span, ResponsesStreamOptions::strict())
 }
 
+#[cfg(test)]
 pub(crate) fn stream_from_event_source_with_options<HttpClient, RequestBody>(
+    event_source: GenericEventSource<HttpClient, RequestBody>,
+    span: tracing::Span,
+    options: ResponsesStreamOptions,
+) -> streaming::StreamingCompletionResponse
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
+{
+    let raw = raw_stream_from_event_source_with_options(event_source, span, options);
+    let normalized = streaming::normalize_stream(raw, |response| {
+        Ok(normalize_terminal_response("openai", response))
+    });
+    streaming::StreamingCompletionResponse::stream(normalized)
+}
+
+pub(crate) fn raw_stream_from_event_source_with_options<HttpClient, RequestBody>(
     mut event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     options: ResponsesStreamOptions,
-) -> streaming::StreamingCompletionResponse<StreamingCompletionResponse>
+) -> streaming::RawStreamingResult<StreamingCompletionResponse>
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
@@ -659,7 +786,11 @@ where
                     match data {
                         StreamingCompletionChunk::Delta(chunk) => {
                             for choice in accumulator.decode_item_chunk(chunk, options) {
-                                yield Ok(choice);
+                                yield choice.try_map_final(|_| {
+                                    Err(CompletionError::ResponseError(
+                                        "OpenAI emitted an unexpected terminal delta chunk".to_owned(),
+                                    ))
+                                });
                             }
                         }
                         StreamingCompletionChunk::Response(chunk) => {
@@ -700,7 +831,7 @@ where
 
         let final_usage = accumulator.final_usage.clone();
 
-        for tool_call in accumulator.finish() {
+        for tool_call in accumulator.finish_raw()? {
             yield Ok(tool_call)
         }
 
@@ -716,7 +847,7 @@ where
     }
     .instrument(span);
 
-    streaming::StreamingCompletionResponse::stream(Box::pin(stream))
+    Box::pin(stream)
 }
 
 /// An item message chunk from OpenAI's Responses API.
@@ -856,11 +987,12 @@ where
     Ext: crate::client::Provider + super::ResponsesProviderExt + Clone + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming Responses API completion and preserve the native
+    /// terminal response record.
+    pub async fn raw_stream(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request = self.create_completion_request(completion_request)?;
@@ -892,15 +1024,30 @@ where
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
 
-        Ok(stream_from_event_source(event_source, span))
+        Ok(raw_stream_from_event_source_with_options(
+            event_source,
+            span,
+            ResponsesStreamOptions::strict(),
+        ))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+        let normalized = streaming::normalize_stream(raw, |response| {
+            Ok(normalize_terminal_response("openai", response))
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(normalized))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
-        reasoning_choices_from_done_item,
+        ItemChunkKind, StreamingCompletionChunk, StreamingCompletionResponse,
+        normalize_terminal_response, raw_choices_from_sse_body, reasoning_choices_from_done_item,
     };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
@@ -936,6 +1083,52 @@ mod tests {
         }
     }
 
+    fn sample_stream_terminal(
+        response_id: Option<&str>,
+        message_id: Option<&str>,
+        has_tool_calls: bool,
+    ) -> StreamingCompletionResponse {
+        StreamingCompletionResponse {
+            usage: ResponsesUsage::new(),
+            reasoning_metadata: None,
+            reasoning_context: None,
+            response_id: response_id.map(str::to_owned),
+            message_id: message_id.map(str::to_owned),
+            model: Some("gpt-5.4".to_owned()),
+            status: Some(ResponseStatus::Completed),
+            incomplete_details: None,
+            has_tool_calls,
+        }
+    }
+
+    #[test]
+    fn normalized_terminal_never_uses_response_id_as_message_id() {
+        let normalized = normalize_terminal_response(
+            "openai",
+            sample_stream_terminal(Some("resp_123"), None, true),
+        );
+
+        assert_eq!(normalized.message_id, None);
+        assert_eq!(
+            normalized.finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
+    fn normalized_terminal_preserves_actual_assistant_message_id() {
+        let normalized = normalize_terminal_response(
+            "openai",
+            sample_stream_terminal(Some("resp_123"), Some("msg_123"), false),
+        );
+
+        assert_eq!(normalized.message_id.as_deref(), Some("msg_123"));
+        assert_eq!(
+            normalized.finish_reason,
+            Some(crate::completion::FinishReason::Stop)
+        );
+    }
+
     async fn first_error_from_event(
         event: serde_json::Value,
     ) -> crate::completion::CompletionError {
@@ -957,9 +1150,7 @@ mod tests {
             .expect_err("stream should surface a provider error")
     }
 
-    async fn final_response_from_event(
-        event: serde_json::Value,
-    ) -> super::StreamingCompletionResponse {
+    async fn final_response_from_event(event: serde_json::Value) -> crate::streaming::StreamFinal {
         let client = openai::Client::builder()
             .http_client(MockStreamingClient {
                 sse_bytes: sse_bytes_from_json_events(&[event]),
@@ -1595,9 +1786,30 @@ mod tests {
         });
         event["response"]["reasoning"] = metadata.clone();
 
-        let response = final_response_from_event(event).await;
-        assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
-        assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
+        // Reasoning metadata is preserved at the wire-parsing layer (still
+        // consumed by Responses-compatible providers such as Copilot); the
+        // normalized final record carries the usage and provider identity.
+        let chunk: StreamingCompletionChunk =
+            serde_json::from_value(event.clone()).expect("terminal event should parse");
+        let StreamingCompletionChunk::Response(chunk) = chunk else {
+            panic!("terminal event should parse as a response chunk");
+        };
+        assert_eq!(
+            chunk.response.reasoning_context.as_deref(),
+            Some("all_turns")
+        );
+        assert_eq!(
+            chunk.response.reasoning_metadata.as_ref(),
+            metadata.as_object()
+        );
+
+        let final_response = final_response_from_event(event).await;
+        assert_eq!(final_response.provider, "openai");
+        assert_eq!(final_response.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(
+            final_response.finish_reason,
+            Some(crate::completion::FinishReason::Stop)
+        );
     }
 
     #[tokio::test]

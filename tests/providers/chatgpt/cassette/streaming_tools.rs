@@ -11,6 +11,36 @@ use serde_json::json;
 use super::super::support::with_chatgpt_cassette;
 use crate::support::zero_arg_tool_definition;
 
+const SCENARIO: &str = "streaming_tools/tool_call_completed_response_without_output";
+
+/// Assert against the recorded SSE body that the terminal `response.completed`
+/// event carries an empty `output` array. The normalized response no longer
+/// exposes the provider-typed raw response, so this wire-shape contract is
+/// checked from the cassette directly (replay only: the cassette file is
+/// written after the test body in record mode).
+fn assert_recorded_completed_event_output_is_empty() {
+    if crate::cassettes::CassetteMode::current() != crate::cassettes::CassetteMode::Replay {
+        return;
+    }
+    let bodies = crate::cassettes::recorded_response_bodies("chatgpt", SCENARIO);
+    assert_eq!(
+        bodies.len(),
+        1,
+        "scenario should record a single interaction"
+    );
+    let completed = bodies[0]
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str::<serde_json::Value>(data.trim()).ok())
+        .find(|event| event["type"] == "response.completed")
+        .expect("recorded SSE body should contain a response.completed event");
+    assert_eq!(
+        completed["response"]["output"],
+        json!([]),
+        "cassette should keep the terminal response.completed output empty"
+    );
+}
+
 #[tokio::test]
 async fn nonstreaming_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
@@ -30,10 +60,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
                 .await
                 .expect("non-streaming completion should reconstruct streamed tool call");
 
-            assert!(
-                response.raw_response.output.is_empty(),
-                "cassette should keep the terminal response.completed output empty"
-            );
+            assert_recorded_completed_event_output_is_empty();
 
             let tool_call = response.choice.iter().find_map(|content| match content {
                 AssistantContent::ToolCall(tool_call) if tool_call.function.name == "ping" => {
