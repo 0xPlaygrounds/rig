@@ -228,6 +228,16 @@ pub enum FinishReason {
     Other(String),
 }
 
+impl FinishReason {
+    pub(crate) fn for_output(self, has_tool_call: bool) -> Self {
+        if has_tool_call && matches!(self, Self::Stop) {
+            Self::ToolCalls
+        } else {
+            self
+        }
+    }
+}
+
 /// General completion response struct: the completion choice plus normalized
 /// response metadata. The completion choice contains one or more assistant
 /// content items.
@@ -281,7 +291,11 @@ impl CompletionResponse {
 
     /// Attach the normalized finish reason.
     pub fn with_finish_reason(mut self, finish_reason: FinishReason) -> Self {
-        self.finish_reason = Some(finish_reason);
+        let has_tool_call = self
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+        self.finish_reason = Some(finish_reason.for_output(has_tool_call));
         self
     }
 
@@ -955,6 +969,24 @@ mod tests {
             serde_json::to_value(decoded).expect("serialize round-tripped response"),
             encoded
         );
+    }
+
+    #[test]
+    fn stop_reason_with_tool_call_normalizes_to_tool_calls() {
+        use super::{CompletionResponse, FinishReason, Usage};
+
+        let response = CompletionResponse::new(
+            OneOrMany::one(AssistantContent::tool_call(
+                "call_1",
+                "lookup",
+                serde_json::json!({"query": "rig"}),
+            )),
+            Usage::new(),
+            "example",
+        )
+        .with_finish_reason(FinishReason::Stop);
+
+        assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
     }
 
     #[test]

@@ -1529,5 +1529,20 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.time_to_first_token_ms, Some(10));
     assert_eq!(response.generation_duration_ms, 20);
     assert_eq!(response.tokens_per_second, Some(100.0));
+
+    let normalized = rig_core::completion::CompletionResponse::new(
+        OneOrMany::one(rig_core::completion::AssistantContent::tool_call(
+            "call_1",
+            "lookup",
+            serde_json::json!({"query": "rig"}),
+        )),
+        usage,
+        "candle",
+    )
+    .with_finish_reason(response.finish_reason.normalized());
+    assert_eq!(
+        normalized.finish_reason,
+        Some(rig_core::completion::FinishReason::ToolCalls)
+    );
     Ok(())
 }

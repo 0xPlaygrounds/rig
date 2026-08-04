@@ -16,6 +16,16 @@ use rig_core::{
 use serde::{Deserialize, Serialize};
 use tracing_futures::Instrument;
 
+fn map_stream_finish_reason(reason: &str) -> FinishReason {
+    match reason {
+        "end_turn" | "stop_sequence" => FinishReason::Stop,
+        "max_tokens" => FinishReason::Length,
+        "tool_use" => FinishReason::ToolCalls,
+        "content_filtered" | "guardrail_intervened" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
     pub usage: Option<BedrockUsage>,
@@ -287,14 +297,10 @@ impl CompletionModel {
         let stream = rig_core::streaming::normalize_stream(stream, |response| {
             let mut final_response =
                 rig_core::streaming::StreamFinal::new("bedrock", response.token_usage());
-            final_response.finish_reason =
-                response.stop_reason.as_deref().map(|reason| match reason {
-                    "end_turn" => FinishReason::Stop,
-                    "max_tokens" => FinishReason::Length,
-                    "tool_use" => FinishReason::ToolCalls,
-                    "content_filtered" => FinishReason::ContentFilter,
-                    other => FinishReason::Other(other.to_owned()),
-                });
+            final_response.finish_reason = response
+                .stop_reason
+                .as_deref()
+                .map(map_stream_finish_reason);
             Ok(final_response)
         });
         Ok(StreamingCompletionResponse::stream(stream))
@@ -304,6 +310,18 @@ impl CompletionModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_finish_reason_mapping_covers_stop_and_filter_aliases() {
+        assert_eq!(
+            map_stream_finish_reason("stop_sequence"),
+            FinishReason::Stop
+        );
+        assert_eq!(
+            map_stream_finish_reason("guardrail_intervened"),
+            FinishReason::ContentFilter
+        );
+    }
 
     #[test]
     fn test_bedrock_usage_creation() {

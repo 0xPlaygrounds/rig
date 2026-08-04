@@ -349,6 +349,8 @@ mod tests {
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
 
+        assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
+
         match response.choice.first() {
             AssistantContent::ToolCall(ToolCall { id, function, .. }) => {
                 assert_eq!(id, "add");

@@ -161,6 +161,11 @@ impl MockStreamEvent {
         Self::FinalResponse(StreamFinal::new(MOCK_PROVIDER, usage))
     }
 
+    /// Create a final response event with usage and a provider message ID.
+    pub fn final_response_with_message_id(usage: Usage, message_id: impl Into<String>) -> Self {
+        Self::FinalResponse(StreamFinal::new(MOCK_PROVIDER, usage).with_message_id(message_id))
+    }
+
     /// Create a final response event with default zero usage.
     pub fn final_response_with_default_usage() -> Self {
         Self::final_response(Usage::new())

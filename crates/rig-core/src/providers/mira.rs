@@ -327,8 +327,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, usage, model, finish_reason) = match &response {
+        let (content, usage, model, message_id, finish_reason) = match &response {
             CompletionResponse::Structured {
+                id,
                 choices,
                 usage,
                 model,
@@ -391,11 +392,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                     }
                 };
 
-                (content, usage, Some(model.clone()), finish_reason)
+                (
+                    content,
+                    usage,
+                    Some(model.clone()),
+                    Some(id.clone()),
+                    finish_reason,
+                )
             }
             CompletionResponse::Simple(text) => (
                 vec![completion::AssistantContent::text(text)],
                 completion::Usage::new(),
+                None,
                 None,
                 None,
             ),
@@ -414,6 +422,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         );
         if let Some(model) = model {
             normalized = normalized.with_model(model);
+        }
+        if let Some(message_id) = message_id {
+            normalized = normalized.with_message_id(message_id);
         }
         normalized.finish_reason = finish_reason;
         Ok(normalized)
@@ -467,6 +478,7 @@ mod tests {
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+        assert_eq!(completion_response.message_id.as_deref(), Some("resp_123"));
     }
     #[test]
     fn test_client_initialization() {

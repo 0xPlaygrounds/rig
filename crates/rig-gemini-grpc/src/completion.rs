@@ -83,27 +83,33 @@ impl completion::CompletionModel for CompletionModel {
     ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
         let stream = self.raw_stream(request).await?;
         let stream = rig_core::streaming::normalize_stream(stream, |response| {
-            let mut final_response =
-                rig_core::streaming::StreamFinal::new("gemini-grpc", response.token_usage());
-            if let Some(finish_reason) = response
-                .candidates
-                .first()
-                .and_then(|candidate| map_finish_reason(candidate.finish_reason))
-            {
-                final_response = final_response.with_finish_reason(finish_reason);
-            }
-            if !response.response_id.is_empty() {
-                final_response = final_response.with_message_id(response.response_id);
-            }
-            if !response.model_version.is_empty() {
-                final_response = final_response.with_model(response.model_version);
-            }
-            Ok(final_response)
+            Ok(normalize_terminal_response(response))
         });
         Ok(rig_core::streaming::StreamingCompletionResponse::stream(
             stream,
         ))
     }
+}
+
+fn normalize_terminal_response(
+    response: GenerateContentResponse,
+) -> rig_core::streaming::StreamFinal {
+    let mut final_response =
+        rig_core::streaming::StreamFinal::new("gemini-grpc", response.token_usage());
+    if let Some(finish_reason) = response
+        .candidates
+        .first()
+        .and_then(|candidate| map_finish_reason(candidate.finish_reason))
+    {
+        final_response = final_response.with_finish_reason(finish_reason);
+    }
+    if !response.response_id.is_empty() {
+        final_response = final_response.with_message_id(response.response_id);
+    }
+    if !response.model_version.is_empty() {
+        final_response = final_response.with_model(response.model_version);
+    }
+    final_response
 }
 
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
@@ -782,6 +788,27 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
+
+    fn stopped_tool_response() -> GenerateContentResponse {
+        GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                            name: "lookup".to_owned(),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+                finish_reason: proto::candidate::FinishReason::Stop as i32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn finish_reason_mapping_preserves_unknown_numeric_value() {
@@ -797,6 +824,47 @@ mod tests {
             map_finish_reason(98_765),
             Some(completion::FinishReason::Other("98765".to_owned()))
         );
+    }
+
+    #[test]
+    fn unary_stop_after_function_call_normalizes_to_tool_calls() {
+        let response = completion::CompletionResponse::try_from(stopped_tool_response())
+            .expect("tool response should normalize");
+
+        assert_eq!(
+            response.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[tokio::test]
+    async fn streaming_stop_after_function_call_normalizes_to_tool_calls() {
+        let raw: rig_core::streaming::RawStreamingResult<GenerateContentResponse> =
+            Box::pin(futures::stream::iter(vec![
+                Ok(rig_core::streaming::RawStreamingChoice::ToolCall(
+                    rig_core::streaming::RawStreamingToolCall::new(
+                        "call_1".to_owned(),
+                        "lookup".to_owned(),
+                        serde_json::json!({}),
+                    ),
+                )),
+                Ok(rig_core::streaming::RawStreamingChoice::FinalResponse(
+                    stopped_tool_response(),
+                )),
+            ]));
+        let mut normalized = rig_core::streaming::normalize_stream(raw, |response| {
+            Ok(normalize_terminal_response(response))
+        });
+        let mut finish_reason = None;
+        while let Some(item) = normalized.next().await {
+            if let rig_core::streaming::RawStreamingChoice::FinalResponse(response) =
+                item.expect("stream item")
+            {
+                finish_reason = response.finish_reason;
+            }
+        }
+
+        assert_eq!(finish_reason, Some(completion::FinishReason::ToolCalls));
     }
 
     // ============================================================

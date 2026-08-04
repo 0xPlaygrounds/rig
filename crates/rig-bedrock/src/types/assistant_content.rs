@@ -91,10 +91,8 @@ pub(crate) fn map_finish_reason(stop_reason: &StopReason) -> completion::FinishR
         StopReason::MaxTokens => completion::FinishReason::Length,
         StopReason::ToolUse => completion::FinishReason::ToolCalls,
         StopReason::ContentFiltered => completion::FinishReason::ContentFilter,
-        StopReason::GuardrailIntervened => {
-            completion::FinishReason::Other("guardrail_intervened".to_owned())
-        }
-        StopReason::StopSequence => completion::FinishReason::Other("stop_sequence".to_owned()),
+        StopReason::GuardrailIntervened => completion::FinishReason::ContentFilter,
+        StopReason::StopSequence => completion::FinishReason::Stop,
         StopReason::Unknown(value) => completion::FinishReason::Other(value.to_string()),
     }
 }
@@ -292,7 +290,11 @@ mod tests {
         );
         assert_eq!(
             map_finish_reason(&StopReason::StopSequence),
-            completion::FinishReason::Other("stop_sequence".to_owned())
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason(&StopReason::GuardrailIntervened),
+            completion::FinishReason::ContentFilter
         );
     }
 

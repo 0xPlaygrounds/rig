@@ -83,6 +83,8 @@ pub struct StreamingCompletionResponse {
     pub model_version: Option<String>,
     /// Provider-native finish reason, when emitted.
     pub finish_reason: Option<FinishReason>,
+    /// Provider-native finish detail, when emitted.
+    pub finish_message: Option<String>,
     /// Provider-native usage metadata, when emitted.
     pub usage_metadata: Option<PartialUsage>,
 }
@@ -136,8 +138,10 @@ where
         let stream = stream! {
             let mut final_usage = None;
             let mut final_finish_reason: Option<FinishReason> = None;
+            let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
             let mut final_response_id: Option<String> = None;
+            let mut completed = false;
             let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -185,6 +189,10 @@ where
                         let should_stop = choice.finish_reason.is_some();
                         if let Some(fr) = &choice.finish_reason {
                             final_finish_reason = Some(fr.clone());
+                            completed = true;
+                        }
+                        if let Some(message) = &choice.finish_message {
+                            final_finish_message = Some(message.clone());
                         }
                         if let Some(err) = tool_protocol_finish_reason_error(&choice) {
                             stream_failed = true;
@@ -288,12 +296,13 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            if !stream_failed {
+            if completed && !stream_failed {
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(
                     StreamingCompletionResponse {
                         response_id: final_response_id,
                         model_version: final_model_version,
                         finish_reason: final_finish_reason,
+                        finish_message: final_finish_message,
                         usage_metadata: final_usage,
                     },
                 ));
@@ -325,7 +334,24 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
     use serde_json::json;
+
+    fn model_with_sse(events: &[serde_json::Value]) -> CompletionModel<MockStreamingClient> {
+        let client = crate::providers::gemini::Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(crate::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+    }
 
     #[test]
     fn test_deserialize_stream_response_with_single_text_part() {
@@ -338,6 +364,7 @@ mod tests {
                     "role": "model"
                 },
                 "finishReason": "STOP",
+                "finishMessage": "natural stop",
                 "index": 0
             }],
             "usageMetadata": {
@@ -353,6 +380,10 @@ mod tests {
             response.candidates[0].finish_reason,
             Some(FinishReason::Stop)
         ));
+        assert_eq!(
+            response.candidates[0].finish_message.as_deref(),
+            Some("natural stop")
+        );
         let content = response.candidates[0]
             .content
             .as_ref()
@@ -368,6 +399,62 @@ mod tests {
         } else {
             panic!("Expected text part");
         }
+    }
+
+    #[tokio::test]
+    async fn stop_after_function_call_normalizes_to_tool_calls() {
+        let model = model_with_sse(&[json!({
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "lookup",
+                            "args": {"query": "rig"}
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP",
+                "finishMessage": "Model generated function call(s).",
+                "index": 0
+            }]
+        })]);
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("normalized stream");
+        let mut finish_reason = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) = item.expect("stream item") {
+                finish_reason = response.finish_reason;
+            }
+        }
+
+        assert_eq!(
+            finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_response() {
+        let model = model_with_sse(&[json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "partial"}], "role": "model"},
+                "index": 0
+            }]
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(streaming::RawStreamingChoice::FinalResponse(_))))
+        );
     }
 
     #[test]
@@ -423,6 +510,21 @@ mod tests {
                         && message.contains(finish_message)
             ));
         }
+    }
+
+    #[test]
+    fn raw_stream_terminal_preserves_finish_message() {
+        let response = StreamingCompletionResponse {
+            finish_reason: Some(FinishReason::Stop),
+            finish_message: Some("natural stop".to_owned()),
+            ..StreamingCompletionResponse::default()
+        };
+
+        let encoded = serde_json::to_value(&response).expect("raw terminal should serialize");
+        assert_eq!(encoded["finishMessage"], "natural stop");
+        let decoded: StreamingCompletionResponse =
+            serde_json::from_value(encoded).expect("raw terminal should deserialize");
+        assert_eq!(decoded.finish_message.as_deref(), Some("natural stop"));
     }
 
     #[test]

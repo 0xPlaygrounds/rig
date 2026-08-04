@@ -211,6 +211,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(model_response, usage, "cohere")
+                .with_message_id(response.id.clone())
                 .with_finish_reason((&response.finish_reason).into()),
         )
     }
@@ -793,6 +794,11 @@ mod tests {
         let result: Result<CompletionResponse, _> = deserialize(&mut deserializer);
 
         let response = result.unwrap();
+        let normalized: completion::CompletionResponse =
+            serde_json::from_str::<CompletionResponse>(json_data)
+                .expect("completion response should deserialize")
+                .try_into()
+                .expect("completion response should normalize");
         let (_, citations, tool_calls) = response.message().expect("assistant message");
         let CompletionResponse {
             id,
@@ -803,6 +809,7 @@ mod tests {
 
         assert_eq!(id, "abc123");
         assert_eq!(finish_reason, FinishReason::ToolCall);
+        assert_eq!(normalized.message_id.as_deref(), Some("abc123"));
 
         let Usage {
             billed_units,

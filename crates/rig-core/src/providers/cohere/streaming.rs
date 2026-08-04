@@ -15,7 +15,7 @@ use tracing_futures::Instrument;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 enum StreamingEvent {
-    MessageStart,
+    MessageStart { id: Option<String> },
     ContentStart,
     ContentDelta { delta: Option<Delta> },
     ContentEnd,
@@ -63,6 +63,8 @@ struct MessageEndDelta {
 /// Cohere's provider-native terminal streaming payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
+    /// Provider-assigned message identifier from the `message-start` event.
+    pub message_id: Option<String>,
     /// Usage carried by the `message-end` event, when present.
     pub usage: Option<Usage>,
     /// Provider-native finish reason from the `message-end` event.
@@ -136,8 +138,11 @@ where
 
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
+            let mut message_id = None;
             let mut final_usage = None;
             let mut final_finish_reason = None;
+            let mut completed = false;
+            let mut stream_failed = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -161,6 +166,10 @@ where
                         };
 
                         match event {
+                            StreamingEvent::MessageStart { id } => {
+                                message_id = id;
+                            },
+
                             StreamingEvent::ContentDelta { delta: Some(delta) } => {
                                 let Some(message) = &delta.message else { continue; };
                                 let Some(content) = &message.content else { continue; };
@@ -169,12 +178,15 @@ where
                                 yield Ok(RawStreamingChoice::Message(text.clone()));
                             },
 
-                            StreamingEvent::MessageEnd { delta: Some(delta) } => {
-                                let span = tracing::Span::current();
-                                let token_usage = streamed_token_usage(delta.usage.as_ref());
-                                span.record_token_usage(&token_usage);
-                                final_usage = delta.usage;
-                                final_finish_reason = delta.finish_reason;
+                            StreamingEvent::MessageEnd { delta } => {
+                                if let Some(delta) = delta {
+                                    let span = tracing::Span::current();
+                                    let token_usage = streamed_token_usage(delta.usage.as_ref());
+                                    span.record_token_usage(&token_usage);
+                                    final_usage = delta.usage;
+                                    final_finish_reason = delta.finish_reason;
+                                }
+                                completed = true;
                                 break;
                             },
 
@@ -232,6 +244,7 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
+                        stream_failed = true;
                         yield Err(CompletionError::from_stream_transport(err));
                         break;
                     }
@@ -241,10 +254,13 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage,
-                finish_reason: final_finish_reason,
-            }))
+            if completed && !stream_failed {
+                yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    message_id,
+                    usage: final_usage,
+                    finish_reason: final_finish_reason,
+                }))
+            }
         }.instrument(span);
 
         Ok(Box::pin(stream))
@@ -260,6 +276,7 @@ where
                 "cohere",
                 streamed_token_usage(response.usage.as_ref()),
             );
+            final_response.message_id = response.message_id;
             final_response.finish_reason = response
                 .finish_reason
                 .as_ref()
@@ -273,7 +290,23 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
     use serde_json::json;
+
+    fn model_with_sse(events: &[serde_json::Value]) -> CompletionModel<MockStreamingClient> {
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(crate::providers::cohere::COMMAND_R)
+    }
 
     #[test]
     fn test_message_content_delta_deserialization() {
@@ -298,6 +331,20 @@ mod tests {
             }
             _ => panic!("Expected ContentDelta"),
         }
+    }
+
+    #[test]
+    fn message_start_deserializes_provider_message_id() {
+        let event: StreamingEvent = serde_json::from_value(json!({
+            "type": "message-start",
+            "id": "msg_cohere_123"
+        }))
+        .expect("message-start should deserialize");
+
+        assert!(matches!(
+            event,
+            StreamingEvent::MessageStart { id: Some(id) } if id == "msg_cohere_123"
+        ));
     }
 
     #[test]
@@ -490,5 +537,85 @@ mod tests {
                 result.err()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn completed_stream_preserves_and_normalizes_message_id() {
+        let events = [
+            json!({"type": "message-start", "id": "msg_cohere_123"}),
+            json!({
+                "type": "message-end",
+                "delta": {"finish_reason": "COMPLETE"}
+            }),
+        ];
+        let model = model_with_sse(&events);
+        let request = model.completion_request("hello").build();
+        let mut raw = model.raw_stream(request).await.expect("raw stream");
+        let mut raw_message_id = None;
+        while let Some(item) = raw.next().await {
+            if let RawStreamingChoice::FinalResponse(response) = item.expect("raw item") {
+                raw_message_id = response.message_id;
+            }
+        }
+        assert_eq!(raw_message_id.as_deref(), Some("msg_cohere_123"));
+
+        let model = model_with_sse(&events);
+        let request = model.completion_request("hello").build();
+        let mut normalized = model.stream(request).await.expect("normalized stream");
+        let mut normalized_message_id = None;
+        while let Some(item) = normalized.next().await {
+            if let StreamedAssistantContent::Final(response) = item.expect("normalized item") {
+                normalized_message_id = response.message_id;
+            }
+        }
+        assert_eq!(normalized_message_id.as_deref(), Some("msg_cohere_123"));
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_response() {
+        let model = model_with_sse(&[json!({
+            "type": "content-delta",
+            "delta": {"message": {"content": {"text": "partial"}}}
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
+    }
+
+    #[tokio::test]
+    async fn transport_error_does_not_emit_terminal_response() {
+        let http_client = SequencedStreamingHttpClient::new(vec![Err(
+            crate::http_client::Error::InvalidStatusCode(http::StatusCode::BAD_GATEWAY),
+        )]);
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(items.iter().any(Result::is_err));
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
     }
 }

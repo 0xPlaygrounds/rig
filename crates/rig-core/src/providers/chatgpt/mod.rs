@@ -523,6 +523,7 @@ where
                     }
                     Err(error) => return Err(error),
                 };
+                let response = normalize_chatgpt_response(response);
                 let span = tracing::Span::current();
                 span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
                 span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
@@ -543,6 +544,13 @@ where
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }
+}
+
+fn normalize_chatgpt_response(
+    mut response: completion::CompletionResponse,
+) -> completion::CompletionResponse {
+    response.provider = "chatgpt".to_owned();
+    response
 }
 
 impl<H> ResponsesCompletionModel<H>
@@ -640,22 +648,9 @@ where
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let raw = self.raw_stream(completion_request).await?;
         let stream = streaming::normalize_stream(raw, |response| {
-            let mut final_response = streaming::StreamFinal::new("chatgpt", response.usage.into());
-            final_response.finish_reason = response.status.as_ref().and_then(|status| {
-                let reason = responses_api::finish_reason_from_status(
-                    status,
-                    response.incomplete_details.as_ref(),
-                );
-                match reason {
-                    Some(completion::FinishReason::Stop) if response.has_tool_calls => {
-                        Some(completion::FinishReason::ToolCalls)
-                    }
-                    other => other,
-                }
-            });
-            final_response.message_id = response.message_id.or(response.response_id);
-            final_response.model = response.model;
-            Ok(final_response)
+            Ok(responses_api::streaming::normalize_terminal_response(
+                "chatgpt", response,
+            ))
         });
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
@@ -881,6 +876,7 @@ data: [DONE]"#;
             responses_api::streaming::completion_response_from_sse_body(body, raw_response)
                 .await
                 .expect("fallback response");
+        let response = normalize_chatgpt_response(response);
 
         let text: String = response
             .choice
@@ -893,6 +889,7 @@ data: [DONE]"#;
 
         assert_eq!(text, "hi");
         assert_eq!(response.usage.total_tokens, 2);
+        assert_eq!(response.provider, "chatgpt");
     }
 
     #[tokio::test]

@@ -472,23 +472,21 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             return Err(err);
         }
 
-        let content = candidate
-            .content
-            .as_ref()
-            .ok_or_else(|| {
-                let reason = candidate
-                    .finish_reason
-                    .as_ref()
-                    .map(|r| format!("finish_reason={r:?}"))
-                    .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
-                let message = candidate
-                    .finish_message
-                    .as_deref()
-                    .unwrap_or("no finish message provided");
-                CompletionError::ResponseError(format!(
-                    "Gemini candidate missing content ({reason}, finish_message={message})"
-                ))
-            })?
+        let candidate_content = candidate.content.as_ref().ok_or_else(|| {
+            let reason = candidate
+                .finish_reason
+                .as_ref()
+                .map(|r| format!("finish_reason={r:?}"))
+                .unwrap_or_else(|| "finish_reason=<unknown>".to_string());
+            let message = candidate
+                .finish_message
+                .as_deref()
+                .unwrap_or("no finish message provided");
+            CompletionError::ResponseError(format!(
+                "Gemini candidate missing content ({reason}, finish_message={message})"
+            ))
+        })?;
+        let content = candidate_content
             .parts
             .iter()
             .map(
@@ -2282,6 +2280,36 @@ mod tests {
         assert_eq!(
             map_finish_reason(&FinishReason::Safety),
             completion::FinishReason::ContentFilter
+        );
+    }
+
+    #[test]
+    fn stop_after_function_call_normalizes_to_tool_calls() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "responseId": "resp_tool_1",
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "functionCall": {
+                            "name": "lookup",
+                            "args": {"query": "rig"}
+                        }
+                    }],
+                    "role": "model"
+                },
+                "finishReason": "STOP",
+                "finishMessage": "Model generated function call(s).",
+                "index": 0
+            }]
+        }))
+        .expect("Gemini response should deserialize");
+
+        let response = completion::CompletionResponse::try_from(response)
+            .expect("Gemini response should normalize");
+
+        assert_eq!(
+            response.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
         );
     }
 

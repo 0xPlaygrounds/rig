@@ -614,7 +614,7 @@ fn map_finish_reason(reason: &str) -> completion::FinishReason {
     match reason {
         "stop" => completion::FinishReason::Stop,
         "length" => completion::FinishReason::Length,
-        "tool_calls" => completion::FinishReason::ToolCalls,
+        "tool_calls" | "function_call" => completion::FinishReason::ToolCalls,
         "content_filter" => completion::FinishReason::ContentFilter,
         other => completion::FinishReason::Other(other.to_string()),
     }
@@ -1333,6 +1333,11 @@ where
                             openai::completion::streaming::FinishReason::ContentFilter => {
                                 completion::FinishReason::ContentFilter
                             }
+                            openai::completion::streaming::FinishReason::Other(value)
+                                if value == "function_call" =>
+                            {
+                                completion::FinishReason::ToolCalls
+                            }
                             openai::completion::streaming::FinishReason::Other(value) => {
                                 completion::FinishReason::Other(value)
                             }
@@ -1340,23 +1345,7 @@ where
                     final_response
                 }
                 CopilotStreamingResponse::Responses(response) => {
-                    let mut final_response =
-                        streaming::StreamFinal::new("copilot", response.usage.into());
-                    final_response.finish_reason = response.status.as_ref().and_then(|status| {
-                        let reason = responses_api::finish_reason_from_status(
-                            status,
-                            response.incomplete_details.as_ref(),
-                        );
-                        match reason {
-                            Some(completion::FinishReason::Stop) if response.has_tool_calls => {
-                                Some(completion::FinishReason::ToolCalls)
-                            }
-                            other => other,
-                        }
-                    });
-                    final_response.message_id = response.message_id.or(response.response_id);
-                    final_response.model = response.model;
-                    final_response
+                    responses_api::streaming::normalize_terminal_response("copilot", response)
                 }
             };
             Ok(final_response)
@@ -1705,6 +1694,9 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                         ChatFinishReason::Stop => CompatibleFinishReason::Stop,
                         ChatFinishReason::ContentFilter => CompatibleFinishReason::ContentFilter,
                         ChatFinishReason::Length => CompatibleFinishReason::Length,
+                        ChatFinishReason::Other(value) if value == "function_call" => {
+                            CompatibleFinishReason::ToolCalls
+                        }
                         ChatFinishReason::Other(value) => {
                             CompatibleFinishReason::Other(value.clone())
                         }
@@ -1837,6 +1829,10 @@ mod tests {
         );
         assert_eq!(
             map_finish_reason("tool_calls"),
+            crate::completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason("function_call"),
             crate::completion::FinishReason::ToolCalls
         );
         assert_eq!(
@@ -2368,7 +2364,7 @@ mod tests {
                 item.expect("completed stream should not error")
             {
                 assert_eq!(response.provider, "copilot");
-                assert_eq!(response.message_id.as_deref(), Some("resp_123"));
+                assert_eq!(response.message_id, None);
                 assert_eq!(response.model.as_deref(), Some("gpt-5.3-codex"));
                 return;
             }

@@ -1325,6 +1325,11 @@ pub struct ImageUrl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::streaming::StreamedAssistantContent;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
     use serde_json::json;
 
     #[test]
@@ -1716,6 +1721,10 @@ mod tests {
             .any(|c| matches!(c, completion::AssistantContent::ToolCall(_)));
 
         assert!(has_tool_call, "tool call should survive the conversion");
+        assert_eq!(
+            completed.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
         let reasoning = reasoning.expect(
             "non-streaming response must surface `thinking` as AssistantContent::Reasoning (issue #1926)",
         );
@@ -1723,6 +1732,44 @@ mod tests {
             reasoning.display_text(),
             "The user asked for the weather in Berlin. I should call get_weather with location=Berlin.",
         );
+    }
+
+    #[tokio::test]
+    async fn streaming_stop_after_tool_call_normalizes_to_tool_calls() {
+        let response = json!({
+            "model": "qwen3:4b",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": {"location": "Berlin"}}
+                }]
+            },
+            "done": true,
+            "done_reason": "stop",
+            "prompt_eval_count": 10,
+            "eval_count": 5
+        });
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: Bytes::from(format!("{response}\n")),
+            })
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("qwen3:4b");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("normalized stream");
+        let mut finish_reason = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(response) = item.expect("stream item") {
+                finish_reason = response.finish_reason;
+            }
+        }
+
+        assert_eq!(finish_reason, Some(completion::FinishReason::ToolCalls));
     }
 
     // Test empty thinking content is handled correctly

@@ -1946,8 +1946,7 @@ mod migrated_tests {
         let streaming_hook = CanonicalResponseHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
             MockStreamEvent::text("canonical response"),
-            MockStreamEvent::final_response(canonical_usage()),
-            MockStreamEvent::message_id("msg-canonical"),
+            MockStreamEvent::final_response_with_message_id(canonical_usage(), "msg-canonical"),
         ]]))
         .add_hook(streaming_hook.clone())
         .build()

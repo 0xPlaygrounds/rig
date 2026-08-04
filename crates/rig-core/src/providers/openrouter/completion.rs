@@ -734,6 +734,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .unwrap_or_default();
 
         let mut normalized = completion::CompletionResponse::new(choice, usage, "openrouter")
+            .with_message_id(response.id.clone())
             .with_model(response.model.clone());
         normalized.finish_reason = finish_reason;
         Ok(normalized)
@@ -2830,6 +2831,7 @@ mod tests {
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
         let converted: completion::CompletionResponse = response.try_into().unwrap();
+        assert_eq!(converted.message_id.as_deref(), Some("resp_123"));
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
         assert!(items.iter().any(|item| matches!(

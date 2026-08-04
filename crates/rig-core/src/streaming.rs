@@ -184,8 +184,9 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         reasoning: String,
     },
 
-    /// The provider's normalized terminal record; must be yielded if you want
-    /// the `response` field to be populated on the `StreamingCompletionResponse`
+    /// The terminal record: normalized [`StreamFinal`] for the default type,
+    /// or provider-native `R` for a [`RawStreamingResult`]. It must be yielded
+    /// to populate a normalized [`StreamingCompletionResponse::response`].
     FinalResponse(R),
 
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
@@ -341,7 +342,24 @@ where
     R: 'static,
     F: FnMut(R) -> Result<StreamFinal, CompletionError> + Send + 'static,
 {
-    Box::pin(stream.map(move |item| item.and_then(|choice| choice.try_map_final(&mut map))))
+    let mut emitted_tool_call = false;
+    Box::pin(stream.map(move |item| {
+        item.and_then(|choice| {
+            if matches!(
+                &choice,
+                RawStreamingChoice::ToolCall(_) | RawStreamingChoice::ToolCallDelta { .. }
+            ) {
+                emitted_tool_call = true;
+            }
+            choice.try_map_final(|response| {
+                let mut response = map(response)?;
+                response.finish_reason = response
+                    .finish_reason
+                    .map(|reason| reason.for_output(emitted_tool_call));
+                Ok(response)
+            })
+        })
+    }))
 }
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -351,7 +369,24 @@ where
     R: 'static,
     F: FnMut(R) -> Result<StreamFinal, CompletionError> + 'static,
 {
-    Box::pin(stream.map(move |item| item.and_then(|choice| choice.try_map_final(&mut map))))
+    let mut emitted_tool_call = false;
+    Box::pin(stream.map(move |item| {
+        item.and_then(|choice| {
+            if matches!(
+                &choice,
+                RawStreamingChoice::ToolCall(_) | RawStreamingChoice::ToolCallDelta { .. }
+            ) {
+                emitted_tool_call = true;
+            }
+            choice.try_map_final(|response| {
+                let mut response = map(response)?;
+                response.finish_reason = response
+                    .finish_reason
+                    .map(|reason| reason.for_output(emitted_tool_call));
+                Ok(response)
+            })
+        })
+    }))
 }
 
 /// The response from a streaming completion request;
@@ -537,6 +572,10 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
             .as_ref()
             .map(|response| response.usage)
             .unwrap_or_default();
+        let has_tool_call = value
+            .choice
+            .iter()
+            .any(|content| matches!(content, AssistantContent::ToolCall(_)));
         CompletionResponse {
             choice: value.choice,
             usage,
@@ -549,7 +588,8 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
             finish_reason: value
                 .response
                 .as_ref()
-                .and_then(|response| response.finish_reason.clone()),
+                .and_then(|response| response.finish_reason.clone())
+                .map(|reason| reason.for_output(has_tool_call)),
             provider: value
                 .response
                 .as_ref()
@@ -667,6 +707,9 @@ impl Stream for StreamingCompletionResponse {
                         stream.poll_next_unpin(cx)
                     } else {
                         // Set the final response field and return the next item in the stream
+                        if stream.message_id.is_none() {
+                            stream.message_id = response.message_id.clone();
+                        }
                         stream.response = Some(response.clone());
                         stream
                             .final_response_yielded
@@ -890,6 +933,60 @@ mod tests {
         // ...and the From conversion carries it instead of a zero sentinel.
         let response: CompletionResponse = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn final_response_message_id_populates_stream_level_id() {
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final(1).with_message_id("msg-from-final"),
+            ));
+        }));
+
+        while stream.next().await.is_some() {}
+
+        assert_eq!(stream.message_id.as_deref(), Some("msg-from-final"));
+    }
+
+    #[tokio::test]
+    async fn explicit_message_id_takes_precedence_over_final_response_id() {
+        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
+            yield Ok(RawStreamingChoice::MessageId("msg-explicit".to_owned()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final(1).with_message_id("msg-from-final"),
+            ));
+        }));
+
+        while stream.next().await.is_some() {}
+
+        assert_eq!(stream.message_id.as_deref(), Some("msg-explicit"));
+    }
+
+    #[tokio::test]
+    async fn normalize_stream_disambiguates_stop_after_tool_call() {
+        let raw = to_stream_result(stream! {
+            yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                "call_1".to_owned(),
+                "lookup".to_owned(),
+                serde_json::json!({"query": "rig"}),
+            )));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final(1)));
+        });
+        let normalized = normalize_stream(raw, |mut response| {
+            response.finish_reason = Some(crate::completion::FinishReason::Stop);
+            Ok(response)
+        });
+        let mut stream = StreamingCompletionResponse::stream(normalized);
+
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream
+                .response
+                .as_ref()
+                .and_then(|response| response.finish_reason.clone()),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
     }
 
     #[tokio::test]

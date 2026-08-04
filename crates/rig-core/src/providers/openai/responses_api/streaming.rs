@@ -67,6 +67,29 @@ pub struct StreamingCompletionResponse {
     pub has_tool_calls: bool,
 }
 
+/// Map a Responses-family raw terminal into Rig's normalized terminal record.
+///
+/// `response_id` deliberately remains raw-only: a top-level `resp_...` ID is
+/// not an assistant `msg_...` item ID and cannot be replayed as one.
+pub(crate) fn normalize_terminal_response(
+    provider: &str,
+    response: StreamingCompletionResponse,
+) -> streaming::StreamFinal {
+    let mut final_response = streaming::StreamFinal::new(provider, response.usage.into());
+    final_response.finish_reason = response.status.as_ref().and_then(|status| {
+        let reason = super::finish_reason_from_status(status, response.incomplete_details.as_ref());
+        match reason {
+            Some(completion::FinishReason::Stop) if response.has_tool_calls => {
+                Some(completion::FinishReason::ToolCalls)
+            }
+            other => other,
+        }
+    });
+    final_response.message_id = response.message_id;
+    final_response.model = response.model;
+    final_response
+}
+
 pub(crate) fn reasoning_choices_from_done_item(
     id: &str,
     summary: &[ReasoningSummary],
@@ -710,20 +733,7 @@ where
 {
     let raw = raw_stream_from_event_source_with_options(event_source, span, options);
     let normalized = streaming::normalize_stream(raw, |response| {
-        let mut final_response = streaming::StreamFinal::new("openai", response.usage.into());
-        final_response.finish_reason = response.status.as_ref().and_then(|status| {
-            let reason =
-                super::finish_reason_from_status(status, response.incomplete_details.as_ref());
-            match reason {
-                Some(completion::FinishReason::Stop) if response.has_tool_calls => {
-                    Some(completion::FinishReason::ToolCalls)
-                }
-                other => other,
-            }
-        });
-        final_response.message_id = response.message_id.or(response.response_id);
-        final_response.model = response.model;
-        Ok(final_response)
+        Ok(normalize_terminal_response("openai", response))
     });
     streaming::StreamingCompletionResponse::stream(normalized)
 }
@@ -1027,20 +1037,7 @@ where
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let raw = self.raw_stream(completion_request).await?;
         let normalized = streaming::normalize_stream(raw, |response| {
-            let mut final_response = streaming::StreamFinal::new("openai", response.usage.into());
-            final_response.finish_reason = response.status.as_ref().and_then(|status| {
-                let reason =
-                    super::finish_reason_from_status(status, response.incomplete_details.as_ref());
-                match reason {
-                    Some(completion::FinishReason::Stop) if response.has_tool_calls => {
-                        Some(completion::FinishReason::ToolCalls)
-                    }
-                    other => other,
-                }
-            });
-            final_response.message_id = response.message_id.or(response.response_id);
-            final_response.model = response.model;
-            Ok(final_response)
+            Ok(normalize_terminal_response("openai", response))
         });
         Ok(streaming::StreamingCompletionResponse::stream(normalized))
     }
@@ -1049,8 +1046,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
-        reasoning_choices_from_done_item,
+        ItemChunkKind, StreamingCompletionChunk, StreamingCompletionResponse,
+        normalize_terminal_response, raw_choices_from_sse_body, reasoning_choices_from_done_item,
     };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
@@ -1084,6 +1081,52 @@ mod tests {
             tools: Vec::new(),
             additional_parameters: AdditionalParameters::default(),
         }
+    }
+
+    fn sample_stream_terminal(
+        response_id: Option<&str>,
+        message_id: Option<&str>,
+        has_tool_calls: bool,
+    ) -> StreamingCompletionResponse {
+        StreamingCompletionResponse {
+            usage: ResponsesUsage::new(),
+            reasoning_metadata: None,
+            reasoning_context: None,
+            response_id: response_id.map(str::to_owned),
+            message_id: message_id.map(str::to_owned),
+            model: Some("gpt-5.4".to_owned()),
+            status: Some(ResponseStatus::Completed),
+            incomplete_details: None,
+            has_tool_calls,
+        }
+    }
+
+    #[test]
+    fn normalized_terminal_never_uses_response_id_as_message_id() {
+        let normalized = normalize_terminal_response(
+            "openai",
+            sample_stream_terminal(Some("resp_123"), None, true),
+        );
+
+        assert_eq!(normalized.message_id, None);
+        assert_eq!(
+            normalized.finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
+    fn normalized_terminal_preserves_actual_assistant_message_id() {
+        let normalized = normalize_terminal_response(
+            "openai",
+            sample_stream_terminal(Some("resp_123"), Some("msg_123"), false),
+        );
+
+        assert_eq!(normalized.message_id.as_deref(), Some("msg_123"));
+        assert_eq!(
+            normalized.finish_reason,
+            Some(crate::completion::FinishReason::Stop)
+        );
     }
 
     async fn first_error_from_event(

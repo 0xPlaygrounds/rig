@@ -278,6 +278,8 @@ where
             let mut message_id: Option<String> = None;
             let mut response_model: Option<String> = None;
             let mut stop_reason: Option<String> = None;
+            let mut completed = false;
+            let mut stream_failed = false;
 
             let mut text_content = String::new();
 
@@ -314,6 +316,7 @@ where
                                             let span = tracing::Span::current();
                                             span.record_token_usage(&usage.token_usage());
                                             final_usage = Some(usage);
+                                            completed = true;
                                             break;
                                         }
                                     }
@@ -329,25 +332,35 @@ where
                                     if let Ok(RawStreamingChoice::Message(ref text)) = result {
                                         text_content += text;
                                     }
-                                    yield result.and_then(|choice| {
+                                    match result.and_then(|choice| {
                                         choice.try_map_final(|_| {
                                             Err(CompletionError::ResponseError(
                                                 "Anthropic emitted an unexpected intermediate terminal response".to_owned(),
                                             ))
                                         })
-                                    });
+                                    }) {
+                                        Ok(choice) => yield Ok(choice),
+                                        Err(error) => {
+                                            stream_failed = true;
+                                            yield Err(error);
+                                            break;
+                                        }
+                                    }
                                 }
                             },
                             Err(e) => {
                                 if !sse.data.trim().is_empty() {
+                                    stream_failed = true;
                                     yield Err(CompletionError::ResponseError(
                                         format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
                                     ));
+                                    break;
                                 }
                             }
                         }
                     },
                     Err(e) => {
+                        stream_failed = true;
                         yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
@@ -357,12 +370,14 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default(),
-                message_id,
-                model: response_model,
-                stop_reason,
-            }))
+            if completed && !stream_failed {
+                yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage: final_usage.unwrap_or_default(),
+                    message_id,
+                    model: response_model,
+                    stop_reason,
+                }))
+            }
         }.instrument(span));
 
         Ok(stream)
@@ -585,10 +600,36 @@ mod tests {
     };
     use super::*;
     use crate::OneOrMany;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
     use async_stream::stream;
     use futures::StreamExt;
+
+    fn model_with_sse(
+        events: &[serde_json::Value],
+    ) -> super::super::completion::CompletionModel<MockStreamingClient> {
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(CLAUDE_OPUS_4_8)
+    }
+
+    fn request_for<T>(model: &super::super::completion::CompletionModel<T>) -> CompletionRequest
+    where
+        T: crate::http_client::HttpClientExt + Clone + Default + 'static,
+    {
+        let mut request = model.completion_request("hello").build();
+        request.max_tokens = Some(64);
+        request
+    }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
@@ -633,6 +674,51 @@ mod tests {
         assert!(tools[0].get("cache_control").is_none());
         assert_eq!(tools[1]["name"], "provider_tool");
         assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_response() {
+        let model = model_with_sse(&[json!({"type": "ping"})]);
+        let items: Vec<_> = model
+            .raw_stream(request_for(&model))
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
+    }
+
+    #[tokio::test]
+    async fn transport_error_does_not_emit_terminal_response() {
+        let http_client = SequencedStreamingHttpClient::new(vec![Err(
+            crate::http_client::Error::InvalidStatusCode(http::StatusCode::BAD_GATEWAY),
+        )]);
+        let client = crate::providers::anthropic::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model(CLAUDE_OPUS_4_8);
+        let mut request = model.completion_request("hello").build();
+        request.max_tokens = Some(64);
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(items.iter().any(Result::is_err));
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(RawStreamingChoice::FinalResponse(_))))
+        );
     }
 
     #[test]

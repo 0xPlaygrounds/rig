@@ -124,6 +124,7 @@ where
                                     final_usage = Some(usage);
                                 }
                                 final_interaction = Some(interaction);
+                                break;
                             }
                             InteractionSseEvent::Error { .. } => {
                                 // Preserve the full provider error payload (code +
@@ -152,11 +153,12 @@ where
 
             event_source.close();
 
-            let mut interaction = final_interaction.unwrap_or_default();
-            if interaction.usage.is_none() {
-                interaction.usage = final_usage;
+            if let Some(mut interaction) = final_interaction {
+                if interaction.usage.is_none() {
+                    interaction.usage = final_usage;
+                }
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(interaction));
             }
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(interaction));
         }
         .instrument(span);
 
@@ -299,7 +301,25 @@ fn content_delta_to_choice(delta: ContentDelta) -> Option<streaming::RawStreamin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::CompletionClient as _;
+    use crate::completion::CompletionModel as _;
+    use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
     use serde_json::json;
+
+    fn model_with_sse(
+        events: &[serde_json::Value],
+    ) -> InteractionsCompletionModel<MockStreamingClient> {
+        let client = crate::providers::gemini::InteractionsClient::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(events),
+            })
+            .build()
+            .expect("client should build");
+        client.completion_model(crate::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+    }
 
     #[test]
     fn test_stream_final_has_model_version() {
@@ -370,5 +390,48 @@ mod tests {
             }
             other => panic!("unexpected choice: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_emit_terminal_interaction() {
+        let model = model_with_sse(&[json!({
+            "event_type": "step.stop",
+            "index": 0
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(streaming::RawStreamingChoice::FinalResponse(_))))
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_error_does_not_emit_terminal_interaction() {
+        let model = model_with_sse(&[json!({
+            "event_type": "error",
+            "error": {"code": "UNAVAILABLE", "message": "boom"}
+        })]);
+        let request = model.completion_request("hello").build();
+        let items: Vec<_> = model
+            .raw_stream(request)
+            .await
+            .expect("raw stream")
+            .collect()
+            .await;
+
+        assert!(items.iter().any(Result::is_err));
+        assert!(
+            items
+                .iter()
+                .all(|item| !matches!(item, Ok(streaming::RawStreamingChoice::FinalResponse(_))))
+        );
     }
 }
