@@ -549,7 +549,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_message_id(
+                .with_optional_response_id(
                     Some(response.response_id.as_str()).filter(|id| !id.is_empty()),
                 )
                 .with_optional_model(response.model_version.as_deref())
@@ -2877,7 +2877,8 @@ mod tests {
 
         assert_eq!(converted.provider, PROVIDER_NAME);
         assert_eq!(converted.model.as_deref(), Some("gemini-2.0-flash-001"));
-        assert_eq!(converted.message_id.as_deref(), Some("resp-meta"));
+        assert_eq!(converted.response_id.as_deref(), Some("resp-meta"));
+        assert_eq!(converted.message_id, None);
         assert_eq!(
             converted.finish_reason,
             Some(crate::completion::FinishReason::Length)

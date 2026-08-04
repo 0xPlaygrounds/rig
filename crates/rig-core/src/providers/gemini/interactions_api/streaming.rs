@@ -74,7 +74,7 @@ fn map_stream_final(
 
     Ok(streaming::StreamFinal::new(PROVIDER_NAME, usage)
         .with_optional_finish_reason(finish_reason)
-        .with_optional_message_id(message_id)
+        .with_optional_response_id(message_id)
         .with_optional_model(response.model_version.as_deref()))
 }
 

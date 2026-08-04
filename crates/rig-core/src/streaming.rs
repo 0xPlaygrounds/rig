@@ -102,8 +102,14 @@ pub struct StreamFinal {
     /// provider mapper does not need to (and cannot — it has no view of the
     /// preceding events).
     pub finish_reason: Option<crate::completion::FinishReason>,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned *assistant message* ID, when available — only IDs the
+    /// provider would recognize on a replayed assistant message. Response-scoped
+    /// identifiers belong in [`StreamFinal::response_id`].
     pub message_id: Option<String>,
+    /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
+    /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
+    #[serde(default)]
+    pub response_id: Option<String>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// Provider-reported model identifier, when available.
@@ -119,6 +125,7 @@ impl StreamFinal {
             usage,
             finish_reason: None,
             message_id: None,
+            response_id: None,
             provider: provider.into(),
             model: None,
         }
@@ -146,6 +153,18 @@ impl StreamFinal {
     /// Attach the provider-assigned message ID when the provider reported one.
     pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
         self.message_id = message_id.map(Into::into);
+        self
+    }
+
+    /// Attach the provider-assigned response-scoped ID.
+    pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
+        self.with_optional_response_id(Some(response_id.into()))
+    }
+
+    /// Attach the provider-assigned response-scoped ID when the provider
+    /// reported one.
+    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
+        self.response_id = response_id.map(Into::into);
         self
     }
 
@@ -610,6 +629,7 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
                 .message_id
                 .or_else(|| terminal.and_then(|response| response.message_id.clone())),
         )
+        .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
         .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
         .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }

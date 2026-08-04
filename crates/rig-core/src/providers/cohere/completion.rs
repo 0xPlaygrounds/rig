@@ -228,7 +228,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             // Cohere's `/v2/chat` payload reports no model identifier, so the
             // normalized `model` stays unset.
             completion::CompletionResponse::new(model_response, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
                 .with_finish_reason(map_finish_reason(&response.finish_reason)),
         )
     }
@@ -901,7 +901,8 @@ mod tests {
             response.try_into().expect("normalization should succeed");
 
         assert_eq!(normalized.provider, PROVIDER_NAME);
-        assert_eq!(normalized.message_id.as_deref(), Some("abc123"));
+        assert_eq!(normalized.response_id.as_deref(), Some("abc123"));
+        assert_eq!(normalized.message_id, None);
         assert_eq!(normalized.model, None);
         assert_eq!(
             normalized.finish_reason,

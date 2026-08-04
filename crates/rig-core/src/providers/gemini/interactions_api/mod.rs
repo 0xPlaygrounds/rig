@@ -530,7 +530,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
                 .with_optional_model(response.model.as_deref())
                 .with_optional_finish_reason(finish_reason),
         )
@@ -3384,7 +3384,8 @@ mod tests {
 
         assert_eq!(response.provider, PROVIDER_NAME);
         assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
-        assert_eq!(response.message_id.as_deref(), Some("interaction-meta"));
+        assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
+        assert_eq!(response.message_id, None);
         assert_eq!(
             response.finish_reason,
             Some(crate::completion::FinishReason::Length)

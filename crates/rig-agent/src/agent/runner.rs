@@ -1928,6 +1928,50 @@ mod migrated_tests {
     }
 
     #[tokio::test]
+    async fn response_scoped_id_is_not_promoted_into_history() {
+        let prompt = Message::user("prompt");
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+            .with_response_id("chatcmpl-123")]))
+        .build()
+        .runner(prompt)
+        .run()
+        .await
+        .expect("blocking response");
+
+        let messages = response.messages.expect("history enabled");
+        let assistant_ids: Vec<_> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(assistant_ids, [None]);
+    }
+
+    #[tokio::test]
+    async fn message_id_is_promoted_into_history() {
+        let prompt = Message::user("prompt");
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+            .with_message_id("msg_abc")]))
+        .build()
+        .runner(prompt)
+        .run()
+        .await
+        .expect("blocking response");
+
+        let messages = response.messages.expect("history enabled");
+        let assistant_ids: Vec<_> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
+    }
+
+    #[tokio::test]
     async fn streaming_response_finish_matches_blocking_canonical_fields() {
         let prompt = Message::user("canonical prompt");
         let blocking_hook = CanonicalResponseHook::default();

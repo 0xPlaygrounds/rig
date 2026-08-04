@@ -145,7 +145,7 @@ pub(crate) async fn stream(
         Ok(
             streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage)
                 .with_optional_finish_reason(finish_reason)
-                .with_optional_message_id(
+                .with_optional_response_id(
                     Some(response.response_id.clone()).filter(|id| !id.is_empty()),
                 )
                 .with_optional_model(

@@ -2483,6 +2483,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
             .with_optional_message_id(message_id)
+            .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
             .with_optional_model(Some(response.model.as_str()).filter(|model| !model.is_empty()))
             .with_optional_finish_reason(finish_reason))
     }

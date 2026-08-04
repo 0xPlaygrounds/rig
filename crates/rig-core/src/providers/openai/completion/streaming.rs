@@ -212,7 +212,7 @@ where
     fn from((provider, response): (&str, StreamingCompletionResponse<U>)) -> Self {
         StreamFinal::new(provider, response.usage.into())
             .with_optional_finish_reason(response.finish_reason)
-            .with_optional_message_id(response.response_id)
+            .with_optional_response_id(response.response_id)
             .with_optional_model(response.model)
     }
 }
@@ -833,7 +833,8 @@ mod tests {
 
         let res = final_response.expect("expected a final response");
         assert_eq!(res.provider, "openai");
-        assert_eq!(res.message_id.as_deref(), Some("chatcmpl-42"));
+        assert_eq!(res.response_id.as_deref(), Some("chatcmpl-42"));
+        assert_eq!(res.message_id, None);
         assert_eq!(res.model.as_deref(), Some("gpt-5.2-2026-01-01"));
         assert_eq!(res.finish_reason, Some(NormalizedFinishReason::Length));
     }

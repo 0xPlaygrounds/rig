@@ -430,7 +430,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         })?;
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_message_id(message_id)
+            .with_optional_response_id(message_id)
             .with_optional_model(model)
             .with_optional_finish_reason(finish_reason))
     }
@@ -495,7 +495,8 @@ mod tests {
             completion::AssistantContent::text("Test response")
         );
         assert_eq!(completion_response.provider, "mira");
-        assert_eq!(completion_response.message_id.as_deref(), Some("resp_123"));
+        assert_eq!(completion_response.response_id.as_deref(), Some("resp_123"));
+        assert_eq!(completion_response.message_id, None);
         assert_eq!(completion_response.model.as_deref(), Some("deepseek-r1"));
         assert_eq!(completion_response.finish_reason, Some(FinishReason::Stop));
         assert_eq!(completion_response.usage.input_tokens, 10);

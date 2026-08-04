@@ -105,7 +105,7 @@ impl From<StreamingCompletionResponse> for StreamFinal {
         // normalized `model` stays unset.
         StreamFinal::new(PROVIDER_NAME, crate::completion::Usage::from(&response))
             .with_optional_finish_reason(response.finish_reason.as_ref().map(map_finish_reason))
-            .with_optional_message_id(response.message_id)
+            .with_optional_response_id(response.message_id)
     }
 }
 
@@ -364,7 +364,8 @@ mod tests {
 
         let terminal = terminal.expect("stream should yield a terminal record");
         assert_eq!(terminal.provider, PROVIDER_NAME);
-        assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
+        assert_eq!(terminal.message_id, None);
         assert_eq!(
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Length)

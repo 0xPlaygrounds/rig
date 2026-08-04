@@ -289,6 +289,7 @@ pub struct CompletionResponse {
     pub choice: OneOrMany<AssistantContent>,
     pub usage: Usage,
     pub message_id: Option<String>,
+    pub response_id: Option<String>,
     pub finish_reason: Option<FinishReason>,
     pub provider: String,
     pub model: Option<String>,
@@ -300,6 +301,7 @@ pub struct CompletionResponse {
 | `response.raw_response.model` | `response.model` |
 | provider stop/finish reason off `raw_response` | `response.finish_reason` |
 | provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
+| response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
 | a genuinely provider-specific field | `model.raw_completion(request).await?` |
 
 `usage` is unchanged, including the rule that all-zero values mean the provider
@@ -307,6 +309,16 @@ supplied no metrics. `model` is the identifier the *wire response* reported, not
 the one you requested — it is `None` when the provider omits it. `provider` is
 always populated, including on a response derived from a stream that ended
 before its terminal record.
+
+`message_id` and `response_id` are distinct on purpose. `message_id` holds only
+identifiers the provider would recognize on a *replayed assistant message* (an
+OpenAI Responses output-message `msg_*` ID, an Anthropic `msg_*` ID); it is what
+agent history promotes into `Message::Assistant`'s `id`. `response_id` holds
+identifiers that name the response as a whole (an OpenAI chat `chatcmpl-*` ID, a
+Gemini `responseId`, a Cohere generation ID) — useful for logging and support,
+never echoed back to a provider. Code that previously read a chat provider's
+`message_id` should read `response_id` instead; for those providers
+`message_id` is now `None`.
 
 `CompletionResponse` is `#[non_exhaustive]`; build it with
 `CompletionResponse::new(choice, usage, provider)` plus the `with_*` helpers.

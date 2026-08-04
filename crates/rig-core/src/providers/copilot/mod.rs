@@ -710,7 +710,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
                 .with_model(response.model.as_str())
                 .with_optional_finish_reason(finish_reason),
         )

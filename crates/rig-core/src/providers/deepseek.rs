@@ -417,7 +417,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         let usage = crate::completion::Usage::from(&response.usage);
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_message_id(response.id.as_deref().filter(|id| !id.is_empty()))
+            .with_optional_response_id(response.id.as_deref().filter(|id| !id.is_empty()))
             .with_optional_model(response.model.as_deref().filter(|model| !model.is_empty()))
             .with_optional_finish_reason(finish_reason))
     }
@@ -761,7 +761,8 @@ mod tests {
         assert_eq!(raw.model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(raw.system_fingerprint.as_deref(), Some("fp_123"));
         assert_eq!(converted.provider, "deepseek");
-        assert_eq!(converted.message_id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_123"));
+        assert_eq!(converted.message_id, None);
         assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(converted.finish_reason, Some(FinishReason::Stop));
         assert_eq!(converted.usage.input_tokens, 10);

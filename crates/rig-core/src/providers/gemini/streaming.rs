@@ -87,6 +87,8 @@ pub struct StreamingCompletionResponse {
     pub finish_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
 }
 
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
@@ -114,6 +116,7 @@ fn map_stream_final(
     Ok(
         streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
             .with_optional_finish_reason(finish_reason)
+            .with_optional_response_id(response.response_id)
             .with_optional_model(response.model_version),
     )
 }
@@ -174,6 +177,7 @@ where
             let mut final_finish_reason: Option<FinishReason> = None;
             let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
+            let mut final_response_id: Option<String> = None;
             let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -200,6 +204,7 @@ where
                         let span = tracing::Span::current();
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
+                            final_response_id = Some(response_id.to_owned());
                         }
                         if let Some(model_version) = &data.model_version {
                             span.record("gen_ai.response.model", model_version.as_str());
@@ -336,6 +341,7 @@ where
                     finish_reason: final_finish_reason,
                     finish_message: final_finish_message,
                     model_version: final_model_version,
+                    response_id: final_response_id,
                 }));
             }
         }.instrument(span);
@@ -784,6 +790,7 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+            response_id: None,
         };
 
         assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
@@ -823,6 +830,7 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.0-flash-001".to_string()),
+            response_id: None,
         };
 
         let token_usage = crate::completion::Usage::from(&response);

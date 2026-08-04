@@ -272,15 +272,24 @@ pub struct CompletionResponse {
     pub choice: OneOrMany<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// The identifier the provider assigned to this response, when it reported
-    /// one — an OpenAI Responses `msg_` ID, an Anthropic `msg_` ID, a Gemini
-    /// `responseId`, and so on. Providers differ in whether this names the
-    /// assistant message or the whole response; it is preserved as reported.
+    /// The identifier the provider assigned to the *assistant message* itself,
+    /// when it issued one — an OpenAI Responses output-message `msg_` ID or an
+    /// Anthropic `msg_` ID. Only IDs the provider would recognize on a replayed
+    /// assistant message belong here; identifiers that name the whole response
+    /// (an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`) go in
+    /// [`CompletionResponse::response_id`] instead.
     ///
     /// The Responses API path uses it to pair reasoning input items with their
-    /// output items across turns. It is not echoed back to providers on replay:
-    /// request conversion drops [`Message::Assistant`]'s `id`.
+    /// output items across turns, and it is what agent history promotes into
+    /// [`Message::Assistant`]'s `id`.
     pub message_id: Option<String>,
+    /// The identifier the provider assigned to the response as a whole, when it
+    /// reported one — an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`, a
+    /// Cohere generation ID. Response-scoped: useful for logging, telemetry
+    /// (`gen_ai.response.id`), and support requests, but never replayed to a
+    /// provider as a message ID.
+    #[serde(default)]
+    pub response_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///
     /// Prefer [`CompletionResponse::with_finish_reason`] over assigning this
@@ -311,6 +320,7 @@ impl CompletionResponse {
             choice,
             usage,
             message_id: None,
+            response_id: None,
             finish_reason: None,
             provider: provider.into(),
             model: None,
@@ -326,6 +336,19 @@ impl CompletionResponse {
     /// Attach the provider-assigned message ID when the provider reported one.
     pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
         self.message_id = message_id.map(Into::into);
+        self
+    }
+
+    /// Attach the provider-assigned response-scoped ID.
+    pub fn with_response_id(mut self, response_id: impl Into<String>) -> Self {
+        self.response_id = Some(response_id.into());
+        self
+    }
+
+    /// Attach the provider-assigned response-scoped ID when the provider
+    /// reported one.
+    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
+        self.response_id = response_id.map(Into::into);
         self
     }
 

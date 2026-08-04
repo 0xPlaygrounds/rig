@@ -238,7 +238,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_message_id(response.id.as_str())
+            .with_response_id(response.id.as_str())
             .with_model(response.model.as_str())
             .with_optional_finish_reason(finish_reason))
     }
