@@ -442,9 +442,17 @@ where
     /// Execute a ChatGPT completion and return the Responses API's own wire
     /// response.
     ///
-    /// This is the escape hatch for fields rig does not normalize;
-    /// [`completion::CompletionModel::completion`] calls it and maps the
-    /// result, so there is exactly one request either way.
+    /// This is the escape hatch for fields rig does not normalize, and it
+    /// issues the same single request the normalized path does.
+    ///
+    /// One caveat is specific to this provider: `/responses` answers with an
+    /// SSE body even for a non-streaming request, so the value returned here is
+    /// reassembled from the terminal `response.completed` event. That event
+    /// sometimes carries an empty `output`, in which case the assistant content
+    /// exists only in the preceding events and
+    /// [`completion::CompletionModel::completion`] rebuilds it from them. When
+    /// you need the provider's events in full fidelity rather than just its
+    /// terminal record, use [`ResponsesCompletionModel::raw_stream`].
     pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
