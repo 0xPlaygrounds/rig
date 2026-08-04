@@ -384,6 +384,13 @@ including streams cut off mid-response. A stream that ends without a terminal
 record was truncated; treat the missing record as an incomplete turn, not a
 zero-usage success.
 
+The agent surface enforces this: `agent.stream_prompt(...)` now yields
+`Err("provider stream ended without a terminal record; treating the turn as
+truncated")` for a stream the provider never confirmed complete, where it
+previously finished "successfully" with zero usage. If you see this error
+behind a flaky provider or proxy, the connection was cut mid-response — retry
+the turn rather than trusting the partial content.
+
 `StreamingCompletionResponse::stream` takes the provider descriptor name first:
 
 ```rust

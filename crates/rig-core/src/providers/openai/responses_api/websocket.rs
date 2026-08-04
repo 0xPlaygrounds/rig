@@ -539,13 +539,16 @@ where
     fn update_state_for_event(&mut self, event: &ResponsesWebSocketEvent) {
         match event {
             ResponsesWebSocketEvent::Response(chunk) => match chunk.kind {
-                ResponseChunkKind::ResponseCompleted => {
+                // An incomplete turn still produced a response the next turn
+                // can chain from, so it keeps `previous_response_id` like a
+                // completed one.
+                ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
                     let response_id = chunk.response.id.clone();
                     self.previous_response_id = Some(response_id.clone());
                     self.pending_done_response_id = Some(response_id);
                     self.in_flight = false;
                 }
-                ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+                ResponseChunkKind::ResponseFailed => {
                     self.pending_done_response_id = Some(chunk.response.id.clone());
                     self.previous_response_id = None;
                     self.in_flight = false;
@@ -554,14 +557,12 @@ where
             },
             ResponsesWebSocketEvent::Done(done) => {
                 match done.status() {
-                    Some(ResponseStatus::Completed) => {
+                    Some(ResponseStatus::Completed) | Some(ResponseStatus::Incomplete) => {
                         if let Some(response_id) = done.response_id() {
                             self.previous_response_id = Some(response_id.to_string());
                         }
                     }
-                    Some(ResponseStatus::Failed)
-                    | Some(ResponseStatus::Incomplete)
-                    | Some(ResponseStatus::Cancelled) => {
+                    Some(ResponseStatus::Failed) | Some(ResponseStatus::Cancelled) => {
                         self.previous_response_id = None;
                     }
                     Some(ResponseStatus::InProgress | ResponseStatus::Queued) | None => {}
@@ -659,16 +660,11 @@ fn terminal_response_result(
                 "failed response",
             ))),
         },
-        ResponseStatus::Incomplete => {
-            let reason = response
-                .incomplete_details
-                .as_ref()
-                .map(|details| details.reason.as_str())
-                .unwrap_or("unknown reason");
-            Err(CompletionError::ProviderError(format!(
-                "OpenAI websocket response was incomplete: {reason}"
-            )))
-        }
+        // An incomplete response (e.g. hitting `max_output_tokens`) is a
+        // genuine terminal: the partial output and usage are kept, and the
+        // normalization path maps the status/incomplete_details to a finish
+        // reason via `map_finish_reason`, matching the unary and SSE paths.
+        ResponseStatus::Incomplete => Ok(response),
         other => Err(CompletionError::ProviderError(format!(
             "OpenAI websocket response ended in state {other:?}"
         ))),
@@ -850,8 +846,10 @@ mod tests {
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
+    use crate::completion::NormalizeCompletionResponse;
     use crate::providers::openai::responses_api::{
-        CompletionResponse, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
+        CompletionResponse, IncompleteDetailsReason, Output, ResponseError, ResponseObject,
+        ResponseStatus, ResponsesUsage,
     };
     use futures::{SinkExt, StreamExt};
     use serde_json::json;
@@ -1061,6 +1059,44 @@ mod tests {
         let failed = terminal_response_result(sample_response(ResponseStatus::Failed))
             .expect_err("failed response should error");
         assert!(failed.to_string().contains("failed response"));
+    }
+
+    #[test]
+    fn terminal_incomplete_response_is_a_successful_terminal_with_mapped_finish_reason() {
+        let mut response = sample_response(ResponseStatus::Incomplete);
+        response.incomplete_details = Some(IncompleteDetailsReason {
+            reason: "max_output_tokens".to_string(),
+        });
+        response.output = vec![
+            serde_json::from_value::<Output>(json!({
+                "type": "message",
+                "id": "msg_incomplete_1",
+                "status": "incomplete",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "annotations": [], "text": "partial" }]
+            }))
+            .expect("output message should deserialize"),
+        ];
+
+        let response = terminal_response_result(response)
+            .expect("incomplete response should be a successful terminal");
+
+        // The partial output and usage survive, and normalization maps the
+        // incomplete status to the same finish reason as the unary path.
+        let normalized = response
+            .normalize("openai")
+            .expect("incomplete response should normalize");
+        assert_eq!(
+            normalized.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(normalized.usage.input_tokens, 1);
+        assert_eq!(normalized.usage.output_tokens, 2);
+        assert_eq!(normalized.usage.total_tokens, 3);
+        assert!(matches!(
+            normalized.choice.first(),
+            crate::completion::AssistantContent::Text(text) if text.text == "partial"
+        ));
     }
 
     #[test]

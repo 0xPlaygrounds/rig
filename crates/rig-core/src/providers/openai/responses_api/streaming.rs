@@ -262,11 +262,14 @@ pub(crate) fn parse_sse_completion_body(
             if let StreamingCompletionChunk::Response(chunk) = chunk {
                 let ResponseChunk { kind, response, .. } = *chunk;
                 match kind {
-                    ResponseChunkKind::ResponseCompleted => {
+                    // `response.incomplete` is a genuine terminal; the unary
+                    // conversion maps its status to a finish reason.
+                    ResponseChunkKind::ResponseCompleted
+                    | ResponseChunkKind::ResponseIncomplete => {
                         completed = Some(response);
                         break;
                     }
-                    ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => {
+                    ResponseChunkKind::ResponseFailed => {
                         return Err(crate::provider_response::completion_error_from_body(data));
                     }
                     _ => {}
@@ -281,13 +284,13 @@ pub(crate) fn parse_sse_completion_body(
         };
 
         match value.get("type").and_then(serde_json::Value::as_str) {
-            Some("response.completed") => {
+            Some("response.completed") | Some("response.incomplete") => {
                 if let Some(response) = value.get("response") {
                     completed = Some(serde_json::from_value(response.clone())?);
                     break;
                 }
             }
-            Some("response.failed") | Some("response.incomplete") => {
+            Some("response.failed") => {
                 return Err(crate::provider_response::completion_error_from_body(data));
             }
             Some("error") => {
@@ -315,8 +318,9 @@ struct RawChoiceAccumulator {
     model: Option<String>,
     tool_calls: Vec<StreamingRawChoice>,
     tool_call_internal_ids: std::collections::HashMap<String, String>,
-    /// Whether a genuine `response.completed` event arrived. Without it the
-    /// stream was truncated, and `finish` withholds the terminal record.
+    /// Whether a genuine terminal event (`response.completed` or
+    /// `response.incomplete`) arrived. Without one the stream was truncated,
+    /// and `finish` withholds the terminal record.
     saw_terminal: bool,
 }
 
@@ -418,7 +422,11 @@ impl RawChoiceAccumulator {
         raw_event_data: &str,
     ) -> Result<(), CompletionError> {
         match kind {
-            ResponseChunkKind::ResponseCompleted => {
+            // `response.incomplete` is a genuine terminal (e.g. hitting
+            // `max_output_tokens`): the partial output and usage are kept, and
+            // the recorded status/incomplete_details map to the finish reason
+            // downstream, matching the unary path's `map_finish_reason`.
+            ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
                 self.saw_terminal = true;
                 // The terminal event is the only place the stream learns how the
                 // turn ended, which model answered, and which assistant message
@@ -447,7 +455,7 @@ impl RawChoiceAccumulator {
                 }
                 Ok(())
             }
-            ResponseChunkKind::ResponseFailed | ResponseChunkKind::ResponseIncomplete => Err(
+            ResponseChunkKind::ResponseFailed => Err(
                 crate::provider_response::completion_error_from_body(raw_event_data),
             ),
             _ => Ok(()),
@@ -509,8 +517,9 @@ impl RawChoiceAccumulator {
     fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
         choices.append(&mut self.tool_calls);
-        // Only a genuine `response.completed` event counts as the provider
-        // completing the turn; a stream that ended without one was truncated,
+        // Only a genuine terminal event (`response.completed` or
+        // `response.incomplete`) counts as the provider ending the turn; a
+        // stream that ended without one was truncated,
         // and a synthesized terminal record would present the partial turn as
         // a successful, default-usage completion.
         if !self.saw_terminal {
@@ -1547,28 +1556,68 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn response_incomplete_chunk_uses_incomplete_details_reason() {
+    async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_reason() {
+        let text_delta = json!({
+            "type": "response.output_text.delta",
+            "content_index": 0,
+            "delta": "partial",
+            "item_id": "msg_incomplete_1",
+            "output_index": 0,
+            "sequence_number": 1,
+        });
+
         let mut response = sample_response(ResponseStatus::Incomplete);
         response.incomplete_details = Some(IncompleteDetailsReason {
             reason: "max_output_tokens".to_string(),
         });
+        response.usage = Some(ResponsesUsage {
+            input_tokens: 10,
+            input_tokens_details: None,
+            output_tokens: 5,
+            output_tokens_details: Some(OutputTokensDetails {
+                reasoning_tokens: 0,
+            }),
+            total_tokens: 15,
+        });
 
-        let event = json!({
+        let incomplete = json!({
             "type": "response.incomplete",
-            "sequence_number": 1,
+            "sequence_number": 2,
             "response": response,
         });
 
-        let err = first_error_from_event(event).await;
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[text_delta, incomplete]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
 
-        assert!(matches!(
-            err,
-            crate::completion::CompletionError::ProviderResponse(_)
-        ));
-        assert_eq!(err.provider_response_status(), None);
-        assert!(err.provider_response_body().is_some_and(|body| {
-            body.contains("response.incomplete") && body.contains("max_output_tokens")
-        }));
+        let mut text = String::new();
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("incomplete stream should not error") {
+                StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
+                StreamedAssistantContent::Final(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        // The partial output survives, and the terminal record maps the
+        // incomplete status to the same finish reason as the unary path.
+        assert_eq!(text, "partial");
+        let final_response = final_response.expect("stream should yield a final response");
+        assert_eq!(
+            final_response.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(final_response.usage.input_tokens, 10);
+        assert_eq!(final_response.usage.output_tokens, 5);
+        assert_eq!(final_response.usage.total_tokens, 15);
     }
 
     #[tokio::test]

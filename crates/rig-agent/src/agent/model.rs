@@ -66,9 +66,10 @@ struct ModelDriver {
 /// Cloning is cheap and shares the retained model through an [`Arc`]. Replacing
 /// a handle on one cloned agent has value semantics and does not mutate other
 /// agent clones; each in-flight attempt owns its own handle clone, so in-flight
-/// work never rebinds. The erased model itself is cloned once per
-/// completion/stream attempt, so a model whose `Clone` is expensive should be
-/// wrapped in an [`Arc`] before erasure.
+/// work never rebinds. The erased model is retained in a shared [`Arc`], so
+/// each completion/stream attempt runs against the same instance: no per-call
+/// clone of the model itself, and interior-mutable model state (counters,
+/// rotating endpoints, local caches) persists across attempts.
 ///
 /// The absence of serde implementations is intentional:
 ///
@@ -116,13 +117,17 @@ impl ModelHandle {
     {
         // Capture the capability snapshot once, at erasure time.
         let capabilities = model.capabilities();
-        let complete_model = model.clone();
+        // Both callbacks share one retained model instance and clone only the
+        // `Arc` per attempt, so a model with interior-mutable state keeps that
+        // state across attempts instead of re-running on an erasure-time copy.
+        let model = Arc::new(model);
+        let complete_model = Arc::clone(&model);
         let complete: Box<CompleteCallback> = Box::new(move |request| {
-            let model = complete_model.clone();
+            let model = Arc::clone(&complete_model);
             Box::pin(async move { model.completion(request).await })
         });
         let open_stream: Box<StreamCallback> = Box::new(move |request| {
-            let model = model.clone();
+            let model = Arc::clone(&model);
             Box::pin(async move { model.stream(request).await })
         });
 

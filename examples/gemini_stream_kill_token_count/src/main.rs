@@ -18,8 +18,8 @@
 //! Disruptions reach a consumer in four different shapes:
 //!   1. Manual kill / drop          -> stream ends with `None`, no `Final`
 //!   2. Transport/server error      -> stream yields `Some(Err(..))`
-//!   3. Premature clean close       -> stream ends with no `Final` (absence of
-//!                                     a terminal record = truncation)
+//!   3. Premature clean close       -> stream ends with no `Final`
+//!      (absence of a terminal record = truncation)
 //!   4. Stall / half-open socket    -> `next()` never returns
 //!
 //! Rather than branch on *why* the stream stopped, we key on a single question:

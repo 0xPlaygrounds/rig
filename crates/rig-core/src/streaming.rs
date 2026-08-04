@@ -459,7 +459,6 @@ pub struct StreamingCompletionResponse {
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
     pub final_response_yielded: AtomicBool,
-
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     pub message_id: Option<String>,
 }

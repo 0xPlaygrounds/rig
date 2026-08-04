@@ -256,8 +256,10 @@ impl CompletionModel {
                                 ),
                             ),
                         );
-                        match message_stop_event.stop_reason {
-                            aws_bedrock::StopReason::ToolUse => {
+                        // Other stop reasons (including MaxTokens) are genuine provider
+                        // terminals, not errors: the Metadata path emits the terminal
+                        // record with the mapped finish reason via `final_stop_reason`.
+                        if message_stop_event.stop_reason == aws_bedrock::StopReason::ToolUse {
                                 if let Some(tool_call) = current_tool_call.take() {
                                     // Handle empty input_json for tools with no parameters
                                     let tool_input = if tool_call.input_json.is_empty() {
@@ -280,11 +282,6 @@ impl CompletionModel {
                                 } else {
                                     yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                                 }
-                            }
-                            // MaxTokens is a genuine provider terminal (truncation), not an
-                            // error: the Metadata path emits the terminal record with the
-                            // Length finish reason via `final_stop_reason`.
-                            _ => {}
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
