@@ -368,6 +368,16 @@ usage, finish reason, provider, provider-reported model, and message ID.
 `GetTokenUsage` is deleted — read `StreamFinal::usage` (or
 `StreamingCompletionResponse::usage()`) directly. A stream that ends without a
 terminal record still reports `Usage::new()`, the documented zero sentinel.
+With `GetTokenUsage` gone, the telemetry helper
+`SpanCombinator::record_token_usage` takes `&Usage` instead of a
+`GetTokenUsage`-bounded generic.
+
+A terminal record is now emitted only when the provider signaled genuine
+completion (its own end-of-response event). Previously, several provider
+streams synthesized a default-usage terminal record when the connection ended —
+including streams cut off mid-response. A stream that ends without a terminal
+record was truncated; treat the missing record as an incomplete turn, not a
+zero-usage success.
 
 `StreamingCompletionResponse::stream` takes the provider descriptor name first:
 
