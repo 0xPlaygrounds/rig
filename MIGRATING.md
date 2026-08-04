@@ -11,6 +11,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → unreleased](#041--unreleased) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -26,6 +27,59 @@ above it, in order. Each one is self-contained.
 **Everyone should read [Silent behavior changes](#silent-behavior-changes)
 first.** Those are the changes that leave your code compiling and make it do
 something different — the ones a compiler upgrade will not point at.
+
+---
+
+## 0.41 → unreleased
+
+### High-level agent values no longer carry a model type parameter
+
+The classic runtime now erases a `CompletionModel` into an opaque
+`ModelHandle` when the model enters an agent. Remove the model parameter from
+long-lived high-level types:
+
+```rust,ignore
+// Before
+fn build_agent() -> Agent<MyModel> { /* ... */ }
+let agents: Vec<Agent<MyModel>> = vec![agent];
+
+// After
+fn build_agent() -> Agent { /* ... */ }
+let agents: Vec<Agent> = vec![first_provider_agent, second_provider_agent];
+```
+
+The same change applies to `AgentRunner`, `PromptRequest`, streaming request
+and item types, `Extractor<T>`, and `ExtractorBuilder<T>`. `AgentBuilder` keeps
+only its tool typestate parameter. Custom provider models still implement
+`CompletionModel`, and direct low-level calls continue to return their typed
+raw unary and streaming responses.
+
+Use `Agent::set_model` or `set_model_handle` to replace the default for later
+runs and `.using_model(handle)` to replace one run's default candidate. Route
+at each model-call boundary by implementing synchronous
+`AgentHook::on_model_select` and returning `ModelSelectionAction::Select`.
+Selection hooks chain in registration order, the last selection wins, and a
+stop is terminal. A runner snapshots the agent default and hook stack when it
+is created. In-flight calls never rebind, while retries and post-tool calls may
+select again. `using_model` changes the initial candidate without suppressing
+routing hooks; append an unconditional selecting hook last when one run must
+force a model. Blocking and streaming prompts share the same routing lifecycle.
+
+For extraction, use
+`extractor.using_model(handle).extract(...)` (or `using_model_value(model)`) to
+change one extraction's default candidate, including all of its retries.
+Routing hooks may replace that candidate. Later calls through the extractor
+still use its original default.
+
+High-level stream types no longer expose the provider streaming-response type.
+Provider final events become `AgentStreamFinal`, with the original final
+serialized in `raw_response` and its reported `usage` preserved. If code needs
+the provider's typed final, call `CompletionModel::stream` directly.
+
+`ModelHandle` is live behavior, not configuration, and therefore has no serde
+implementation. Persist your own provider/model key and resolve it to a handle
+when the process starts. Provider-specific `additional_params` are not assumed
+to be portable when a run switches providers.
 
 ---
 

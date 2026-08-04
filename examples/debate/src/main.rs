@@ -8,8 +8,8 @@ use rig::{
 };
 
 struct Debater {
-    gpt_4: Agent<openai::responses_api::ResponsesCompletionModel>,
-    coral: Agent<cohere::CompletionModel>,
+    gpt_4: Agent,
+    coral: Agent,
 }
 
 impl Debater {

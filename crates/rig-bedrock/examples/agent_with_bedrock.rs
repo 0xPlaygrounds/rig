@@ -33,8 +33,7 @@ fn client() -> Result<Client, anyhow::Error> {
     Ok(Client::from_env()?)
 }
 
-fn partial_agent() -> Result<AgentBuilder<rig_bedrock::completion::CompletionModel>, anyhow::Error>
-{
+fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {
     Ok(client()?.agent(AMAZON_NOVA_LITE))
 }
 

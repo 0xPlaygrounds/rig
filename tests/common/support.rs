@@ -3,7 +3,7 @@
 
 use futures::StreamExt;
 use rig::{
-    agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
+    agent::{AgentStreamFinal, MultiTurnStreamItem, StreamingError, StreamingResult},
     completion::{AssistantContent, GetTokenUsage, ToolDefinition},
     embeddings::Embedding,
     streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
@@ -477,8 +477,8 @@ pub(crate) fn assert_embeddings_nonempty_and_consistent(
     }
 }
 
-pub(crate) async fn collect_stream_final_response<R>(
-    stream: &mut StreamingResult<R>,
+pub(crate) async fn collect_stream_final_response(
+    stream: &mut StreamingResult,
 ) -> Result<String, StreamingError> {
     let mut final_response = None;
 
@@ -491,9 +491,9 @@ pub(crate) async fn collect_stream_final_response<R>(
     Ok(final_response.expect("stream should yield a final response"))
 }
 
-pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
-    stream: &mut StreamingResult<R>,
-) -> Result<(String, R), StreamingError> {
+pub(crate) async fn collect_stream_final_response_and_provider_final(
+    stream: &mut StreamingResult,
+) -> Result<(String, AgentStreamFinal), StreamingError> {
     let mut final_response = None;
     let mut provider_final = None;
 
@@ -604,9 +604,7 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation<R>(
-    stream: &mut StreamingResult<R>,
-) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {

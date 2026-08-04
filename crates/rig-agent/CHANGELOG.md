@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Add opaque, cloneable `ModelHandle` values plus default replacement,
+  per-run default override, and hook-driven per-call selection.
+- Add run-local extractor default-model overrides used across retries.
+
+### Changed
+
+- [**breaking**] Remove concrete model parameters from long-lived classic
+  runtime types and normalize high-level stream finals to `AgentStreamFinal`.
+  Direct provider-model completion and streaming APIs remain typed.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.0.0...rig-agent-v0.41.0) - 2026-07-28
 
 ### Added
