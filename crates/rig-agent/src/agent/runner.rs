@@ -40,7 +40,7 @@ use super::{
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
-    model::{ModelHandle, ModelSelectionContext, ModelSelector},
+    model::ModelHandle,
     prompt_request::{
         PromptResponse,
         streaming::{
@@ -201,9 +201,6 @@ pub struct AgentRunner {
     pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
     pub(crate) model: ModelHandle,
-    /// Optional per-call selector. When present it takes precedence over the
-    /// run-local fixed/default model at each `CallModel` boundary.
-    pub(crate) model_selector: Option<ModelSelector>,
     pub(crate) agent_name: Option<String>,
     pub(crate) preamble: Option<String>,
     pub(crate) static_context: Vec<Document>,
@@ -238,7 +235,6 @@ impl AgentRunner {
             max_turns: agent.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
             model: agent.model.clone(),
-            model_selector: None,
             agent_name: agent.name.clone(),
             preamble: agent.preamble.clone(),
             static_context: agent.static_context.clone(),
@@ -265,10 +261,11 @@ impl AgentRunner {
 
     /// Append a hook to the stack (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use their event-specific terminal action). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use their
+    /// event-specific terminal action). See the [`hook`](crate::agent::hook)
+    /// module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -287,40 +284,22 @@ impl AgentRunner {
         self
     }
 
-    /// Pin every model attempt in this run to `model`.
+    /// Set the default model candidate for this run.
     ///
-    /// This clears any selector installed earlier. Calling [`Self::select_model`]
-    /// afterwards installs per-call routing again, with this handle as the
-    /// selector context's `default_model`.
+    /// This does not suppress registered model-selection hooks, which may
+    /// replace the candidate before each model call. Append an unconditional
+    /// selecting hook last when the run must always use one model.
     pub fn using_model(mut self, model: ModelHandle) -> Self {
         self.model = model;
-        self.model_selector = None;
         self
     }
 
-    /// Erase and pin a typed completion model for this run.
+    /// Erase and set a typed default model for this run.
     pub fn using_model_value<M>(self, model: M) -> Self
     where
         M: CompletionModel + 'static,
     {
         self.using_model(ModelHandle::new(model))
-    }
-
-    /// Select a model synchronously before every model call in this run.
-    ///
-    /// The selector runs exactly once per `AgentRunStep::CallModel`, including
-    /// calls after tools and retries. Its returned handle is bound to request
-    /// preparation and execution for that attempt. Installing a selector after
-    /// [`Self::using_model`] gives the selector precedence.
-    pub fn select_model<F>(mut self, selector: F) -> Self
-    where
-        F: for<'a> Fn(ModelSelectionContext<'a>) -> ModelHandle
-            + rig_core::wasm_compat::WasmCompatSend
-            + rig_core::wasm_compat::WasmCompatSync
-            + 'static,
-    {
-        self.model_selector = Some(ModelSelector::new(selector));
-        self
     }
 
     /// Set the typed context cloned for every tool dispatch in this run.

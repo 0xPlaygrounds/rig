@@ -627,7 +627,8 @@ impl Agent {
     /// Replace the default model used by runners created after this call.
     ///
     /// Existing runners retain their model snapshot, and replacing one cloned
-    /// agent does not mutate another clone.
+    /// agent does not mutate another clone. Model-selection hooks may replace
+    /// the captured default at each model-call boundary.
     pub fn set_model_handle(&mut self, model: ModelHandle) {
         self.model = model;
     }
@@ -641,6 +642,8 @@ impl Agent {
     }
 
     /// Return this agent with a replacement default model handle.
+    ///
+    /// Model-selection hooks may replace this default for individual calls.
     pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
         self.set_model_handle(model);
         self

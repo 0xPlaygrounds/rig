@@ -55,16 +55,21 @@ only its tool typestate parameter. Custom provider models still implement
 raw unary and streaming responses.
 
 Use `Agent::set_model` or `set_model_handle` to replace the default for later
-runs, `.using_model(handle)` for one run, and `.select_model(...)` to route at
-each model-call boundary. A runner snapshots the agent default when it is
-created. Selection after a fixed override takes precedence; a later fixed
-override clears the selector. In-flight calls never rebind, while retries and
-post-tool calls may select again.
+runs and `.using_model(handle)` to replace one run's default candidate. Route
+at each model-call boundary by implementing synchronous
+`AgentHook::on_model_select` and returning `ModelSelectionAction::Select`.
+Selection hooks chain in registration order, the last selection wins, and a
+stop is terminal. A runner snapshots the agent default and hook stack when it
+is created. In-flight calls never rebind, while retries and post-tool calls may
+select again. `using_model` changes the initial candidate without suppressing
+routing hooks; append an unconditional selecting hook last when one run must
+force a model. Blocking and streaming prompts share the same routing lifecycle.
 
 For extraction, use
 `extractor.using_model(handle).extract(...)` (or `using_model_value(model)`) to
-pin one extraction, including all of its retries. Later calls through the
-extractor still use its original default.
+change one extraction's default candidate, including all of its retries.
+Routing hooks may replace that candidate. Later calls through the extractor
+still use its original default.
 
 High-level stream types no longer expose the provider streaming-response type.
 Provider final events become `AgentStreamFinal`, with the original final

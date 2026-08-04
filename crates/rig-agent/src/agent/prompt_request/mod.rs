@@ -170,33 +170,21 @@ macro_rules! forward_prompt_setters {
             self
         }
 
-        /// Pin every model call in this run to an opaque model handle.
+        /// Set the default model candidate for this run.
         ///
-        /// This clears a selector installed earlier. Installing a selector
-        /// afterwards restores per-call routing with this handle as its default.
+        /// This does not suppress registered model-selection hooks, which may
+        /// replace this candidate before each model call.
         pub fn using_model(mut self, model: $crate::agent::ModelHandle) -> Self {
             self.$recv = self.$recv.using_model(model);
             self
         }
 
-        /// Erase and pin a typed completion model for this run.
+        /// Erase and set a typed default model for this run.
         pub fn using_model_value<M>(mut self, model: M) -> Self
         where
             M: crate::completion::CompletionModel + 'static,
         {
             self.$recv = self.$recv.using_model_value(model);
-            self
-        }
-
-        /// Select a model before each model call in this run.
-        pub fn select_model<F>(mut self, selector: F) -> Self
-        where
-            F: for<'a> Fn($crate::agent::ModelSelectionContext<'a>) -> $crate::agent::ModelHandle
-                + rig_core::wasm_compat::WasmCompatSend
-                + rig_core::wasm_compat::WasmCompatSync
-                + 'static,
-        {
-            self.$recv = self.$recv.select_model(selector);
             self
         }
     };
@@ -285,10 +273,11 @@ where
 
     /// Append a hook for this request (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use first-non-`Continue`-wins). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use
+    /// first-non-`Continue`-wins). See the [`hook`](crate::agent::hook) module
+    /// docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -782,7 +771,8 @@ where
     }
 
     /// Append a hook to this request's hook stack (on top of any the agent
-    /// already carries).
+    /// already carries). Model-selection hooks may replace this request's
+    /// default model candidate before each model call.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,

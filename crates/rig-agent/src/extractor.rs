@@ -82,10 +82,11 @@ where
     retries: u64,
 }
 
-/// A single extraction run pinned to a runtime-selected model.
+/// A single extraction run with an overridden default model.
 ///
-/// The selected model is used for every retry in this run. The originating
-/// [`Extractor`]'s default model is unchanged.
+/// The model is the initial candidate for every retry in this run;
+/// model-selection hooks may replace it. The originating [`Extractor`]'s
+/// default model is unchanged.
 #[must_use = "an extraction override does nothing until an extract method is awaited"]
 pub struct ExtractorRun<'a, T>
 where
@@ -99,15 +100,16 @@ impl<T> Extractor<T>
 where
     T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
-    /// Pin a different model for this extractor's subsequent attempts.
+    /// Set a different default model for this extractor's subsequent attempts.
     pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
         self.agent.set_model_handle(model);
         self
     }
 
-    /// Pin a model to one extraction run without changing this extractor.
+    /// Set one extraction run's default model without changing this extractor.
     ///
-    /// Every retry initiated through the returned run uses the same handle.
+    /// Every retry starts from this handle, which model-selection hooks may
+    /// replace before request preparation.
     pub fn using_model(&self, model: ModelHandle) -> ExtractorRun<'_, T> {
         ExtractorRun {
             extractor: self,
@@ -115,7 +117,7 @@ where
         }
     }
 
-    /// Erase and pin a typed completion model to one extraction run.
+    /// Erase and set a typed default model for one extraction run.
     pub fn using_model_value<M>(&self, model: M) -> ExtractorRun<'_, T>
     where
         M: CompletionModel + 'static,

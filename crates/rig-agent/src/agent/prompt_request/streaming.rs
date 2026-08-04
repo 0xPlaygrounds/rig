@@ -5,10 +5,12 @@ use rig_core::{
 };
 
 use crate::{
+    agent::AgentStreamFinal,
     agent::completion::{PreparedModelAttempt, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelTurnFinished, StepEventKind,
-        StreamResponseFinish, TextDelta, ToolCallDelta,
+        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
+        ModelSelectionAction, ModelTurnFinished, StepEventKind, StreamResponseFinish, TextDelta,
+        ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -20,7 +22,6 @@ use crate::{
         append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
-    agent::{AgentStreamFinal, ModelSelectionContext},
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
@@ -331,9 +332,10 @@ impl StreamingPromptRequest {
 
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries). Hooks run in registration order; how their results
-    /// compose is event-dependent (`CompletionCall` request patches accumulate
-    /// and merge, `ToolCall`/`ToolResult` rewrites chain, while model-turn
-    /// steering and observe-only/recovery events use first-non-`Continue`-wins). See the
+    /// compose is event-dependent (model selections and
+    /// `ToolCall`/`ToolResult` rewrites chain, `CompletionCall` request patches
+    /// accumulate and merge, while model-turn steering and
+    /// observe-only/recovery events use first-non-`Continue`-wins). See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
@@ -505,22 +507,27 @@ where
                     }
                     hook_ctx.set_turn(turn);
 
-                    // Select exactly once at the model-call boundary. The
+                    // Resolve routing once at the model-call boundary. The
                     // resulting handle is cloned into the prepared attempt and
                     // used for both capability inspection and execution.
-                    let selected_model = runner.model_selector.as_ref().map_or_else(
-                        || runner.model.clone(),
-                        |selector| {
-                            selector.select(ModelSelectionContext {
-                                turn,
-                                prompt: &prompt,
-                                history: &history,
-                                is_streaming,
-                                previous_model: previous_model.as_ref(),
-                                default_model: &runner.model,
-                            })
+                    let selected_model = match runner.hooks.on_model_select(
+                        &hook_ctx,
+                        ModelSelection {
+                            prompt: &prompt,
+                            history: &history,
+                            previous_model: previous_model.as_ref(),
+                            default_model: &runner.model,
+                            selected_model: &runner.model,
                         },
-                    );
+                    ) {
+                        ModelSelectionAction::Continue => runner.model.clone(),
+                        ModelSelectionAction::Select(model) => model,
+                        ModelSelectionAction::Stop(reason) => {
+                            store_error_usage(&runner, &run);
+                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                            break 'outer;
+                        }
+                    };
                     previous_model = Some(selected_model.clone());
 
                     let request_patch =

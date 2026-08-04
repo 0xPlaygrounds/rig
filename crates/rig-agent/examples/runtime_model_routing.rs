@@ -3,7 +3,7 @@
 //! The first scripted model calls a search tool. After Rig commits the tool
 //! result to provider-neutral history, the second scripted model writes the
 //! final answer. Real applications can put handles from different providers in
-//! the same map and apply the same selection policy.
+//! the same map and apply the same hook policy.
 
 use std::convert::Infallible;
 
@@ -11,6 +11,7 @@ use anyhow::Result;
 use futures::stream;
 use rig_agent::{
     AgentBuilder, ModelHandle,
+    agent::{AgentHook, HookContext, ModelSelection, ModelSelectionAction},
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
         Prompt, Usage,
@@ -194,6 +195,26 @@ impl Tool for Search {
     }
 }
 
+#[derive(Clone)]
+struct RouteModels {
+    fast: ModelHandle,
+    strong: ModelHandle,
+}
+
+impl AgentHook for RouteModels {
+    fn on_model_select(
+        &self,
+        context: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        if context.turn() == 1 {
+            ModelSelectionAction::select(self.fast.clone())
+        } else {
+            ModelSelectionAction::select(self.strong.clone())
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let fast = ModelHandle::named("fast", FastResearchModel);
@@ -205,12 +226,9 @@ async fn main() -> Result<()> {
     let answer = agent
         .prompt("Research this, then synthesize a careful answer")
         .max_turns(2)
-        .select_model(move |context| {
-            if context.turn == 1 {
-                fast.clone()
-            } else {
-                strong.clone()
-            }
+        .add_hook(RouteModels {
+            fast: fast.clone(),
+            strong: strong.clone(),
         })
         .await?;
 

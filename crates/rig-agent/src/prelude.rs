@@ -12,8 +12,8 @@ pub use rig_core::client::audio_generation::AudioGenerationClient;
 pub use rig_core::client::image_generation::ImageGenerationClient;
 
 pub use crate::agent::{
-    Agent, AgentStreamFinal, ModelHandle, ModelSelectionContext, MultiTurnStreamItem,
-    StreamingResult,
+    Agent, AgentHook, AgentStreamFinal, HookContext, ModelHandle, ModelSelection,
+    ModelSelectionAction, MultiTurnStreamItem, StreamingResult,
 };
 pub use crate::client::{AgentClientExt, AgentModelExt};
 pub use crate::completion::{

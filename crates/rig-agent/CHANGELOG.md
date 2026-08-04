@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add opaque, cloneable `ModelHandle` values plus default replacement,
-  per-run override, and per-call selection APIs.
-- Add run-local extractor model overrides that remain fixed across retries.
+  per-run default override, and hook-driven per-call selection.
+- Add run-local extractor default-model overrides used across retries.
 
 ### Changed
 

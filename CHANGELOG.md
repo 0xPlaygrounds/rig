@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(agent)* Add opaque `ModelHandle` values with between-run replacement,
-  per-run overrides, and per-model-call routing across heterogeneous providers.
+  per-run default overrides, and hook-driven per-model-call routing across
+  heterogeneous providers.
 
 ### Changed
 

@@ -26,9 +26,9 @@ use futures::{Stream, StreamExt};
 use rig_core::{
     OneOrMany,
     completion::{CompletionError, CompletionModel, CompletionRequest, GetTokenUsage, Usage},
-    message::{AssistantContent, Message},
+    message::AssistantContent,
     streaming::{StreamedAssistantContent, StreamingCompletionResponse},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize};
 
@@ -50,55 +50,6 @@ pub struct AgentStreamFinal {
 impl GetTokenUsage for AgentStreamFinal {
     fn token_usage(&self) -> Usage {
         self.usage
-    }
-}
-
-/// Borrowed inputs supplied to a run-local model selector before a model call.
-///
-/// Selection happens once for each `AgentRunStep::CallModel`, before request
-/// preparation. The selected handle is then bound to that attempt, so it cannot
-/// change while a unary future or provider stream is in flight.
-pub struct ModelSelectionContext<'a> {
-    /// One-based model-call index reported by the agent run state machine.
-    pub turn: usize,
-    /// Prompt for the pending model call.
-    pub prompt: &'a Message,
-    /// Canonical history visible to the pending model call.
-    pub history: &'a [Message],
-    /// Whether the run is using the streaming surface.
-    pub is_streaming: bool,
-    /// Handle selected for the previous model call in this run, if any.
-    pub previous_model: Option<&'a ModelHandle>,
-    /// Run-local default handle used when no selector is installed.
-    pub default_model: &'a ModelHandle,
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-type SelectorCallback = dyn for<'a> Fn(ModelSelectionContext<'a>) -> ModelHandle + Send + Sync;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-type SelectorCallback = dyn for<'a> Fn(ModelSelectionContext<'a>) -> ModelHandle;
-
-#[derive(Clone)]
-pub(crate) struct ModelSelector {
-    callback: Arc<SelectorCallback>,
-}
-
-impl ModelSelector {
-    pub(crate) fn new<F>(selector: F) -> Self
-    where
-        F: for<'a> Fn(ModelSelectionContext<'a>) -> ModelHandle
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
-    {
-        Self {
-            callback: Arc::new(selector),
-        }
-    }
-
-    pub(crate) fn select(&self, context: ModelSelectionContext<'_>) -> ModelHandle {
-        (self.callback)(context)
     }
 }
 

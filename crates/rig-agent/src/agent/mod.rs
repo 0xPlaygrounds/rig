@@ -117,12 +117,12 @@ pub use completion::Agent;
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
-    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
-    ObservationAction, RequestPatch, RetryRequest, RunId, Scratchpad, StepEventKind,
-    StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-    ToolResultEvent,
+    HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
+    ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch, RetryRequest, RunId,
+    Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
+    ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
-pub use model::{AgentStreamFinal, ModelHandle, ModelSelectionContext};
+pub use model::{AgentStreamFinal, ModelHandle};
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };

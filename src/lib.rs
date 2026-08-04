@@ -41,8 +41,8 @@ pub use rig_core::*;
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub use rig_agent::{
-    Agent, AgentBuilder, AgentRun, AgentRunner, AgentStreamFinal, ExtractionResponse, ModelHandle,
-    ModelSelectionContext,
+    Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, AgentStreamFinal, ExtractionResponse,
+    HookContext, ModelHandle, ModelSelection, ModelSelectionAction,
 };
 
 /// Direct access to the portable provider and data contracts.
@@ -114,9 +114,10 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, AgentStreamFinal, Chat, ModelHandle,
-        ModelSelectionContext, MultiTurnStreamItem, Prompt, PromptError, StreamingChat,
-        StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet, TypedPrompt,
+        Agent, AgentClientExt, AgentHook, AgentModelExt, AgentStreamFinal, Chat, HookContext,
+        ModelHandle, ModelSelection, ModelSelectionAction, MultiTurnStreamItem, Prompt,
+        PromptError, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError,
+        ToolSet, TypedPrompt,
     };
     pub use rig_core::prelude::*;
 }

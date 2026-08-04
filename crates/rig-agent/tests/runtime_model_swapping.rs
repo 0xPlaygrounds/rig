@@ -15,13 +15,14 @@ use futures::{Stream, StreamExt, stream};
 use rig_agent::{
     Agent, AgentBuilder, AgentStreamFinal, ModelHandle,
     agent::{
-        AgentHook, CompletionCallAction, HookContext, InvalidToolCallAction, ModelTurnAction,
-        ModelTurnFinished, NoToolConfig, PromptRequest, Standard, StreamingError, StreamingResult,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentHook, CompletionCallAction, HookContext, InvalidToolCallAction, ModelSelection,
+        ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig, PromptRequest,
+        Standard, StreamingError, StreamingResult, ToolCall as ToolCallEvent, ToolCallAction,
+        ToolResultAction, ToolResultEvent,
     },
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, GetTokenUsage,
-        Message, Prompt, TypedPrompt, Usage,
+        Message, Prompt, PromptError, TypedPrompt, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
@@ -42,6 +43,45 @@ async fn wait_for_notification(notify: &Notify) {
     tokio::time::timeout(Duration::from_secs(5), notify.notified())
         .await
         .expect("model was polled before timeout");
+}
+
+struct SelectWith<F>(F);
+
+impl<F> AgentHook for SelectWith<F>
+where
+    F: for<'a> Fn(&HookContext, ModelSelection<'a>) -> ModelSelectionAction + Send + Sync,
+{
+    fn on_model_select(
+        &self,
+        context: &HookContext,
+        event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        (self.0)(context, event)
+    }
+}
+
+#[derive(Clone)]
+struct StopSelection {
+    completion_calls: Arc<AtomicUsize>,
+}
+
+impl AgentHook for StopSelection {
+    fn on_model_select(
+        &self,
+        _context: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        ModelSelectionAction::stop("routing denied")
+    }
+
+    async fn on_completion_call(
+        &self,
+        _context: &HookContext,
+        _event: rig_agent::agent::CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        self.completion_calls.fetch_add(1, Ordering::SeqCst);
+        CompletionCallAction::continue_run()
+    }
 }
 
 fn usage(total_tokens: u64) -> Usage {
@@ -520,30 +560,128 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         .expect("typed override");
     assert_eq!(typed.value, "typed beta");
 
+    let observed_candidates = Arc::new(Mutex::new(Vec::new()));
+    let observed_for_hook = observed_candidates.clone();
     assert_eq!(
         original
-            .prompt("selector after fixed")
-            .using_model(alpha_handle.clone())
-            .select_model(move |_| beta_handle.clone())
+            .prompt("hook after run default")
+            .using_model(alpha_handle)
+            .add_hook(SelectWith(
+                move |_context: &HookContext, event: ModelSelection<'_>| {
+                    observed_for_hook
+                        .lock()
+                        .expect("candidate observations")
+                        .push((
+                            event.default_model.label().map(str::to_owned),
+                            event.selected_model.label().map(str::to_owned),
+                        ));
+                    ModelSelectionAction::select(beta_handle.clone())
+                }
+            ))
             .await
-            .expect("selector takes precedence"),
+            .expect("hook overrides run default"),
         "beta"
     );
-
-    let beta_for_cleared_selector = ModelHandle::new(beta);
     assert_eq!(
-        original
-            .prompt("fixed after selector")
-            .select_model(move |_| beta_for_cleared_selector.clone())
-            .using_model(alpha_handle)
-            .await
-            .expect("fixed override clears selector"),
-        "alpha"
+        observed_candidates
+            .lock()
+            .expect("candidate observations")
+            .as_slice(),
+        &[(Some("alpha".to_owned()), Some("alpha".to_owned()))]
     );
 }
 
 #[tokio::test]
-async fn extraction_override_is_run_local_and_pins_all_retries() {
+async fn agent_and_request_model_selection_hooks_have_expected_scope() {
+    let default = ModelHandle::named("default", alpha_static("default"));
+    let routed = ModelHandle::named("routed", beta_static("agent routed"));
+    let request = ModelHandle::named("request", alpha_static("request routed"));
+    let routed_for_hook = routed.clone();
+    let agent = AgentBuilder::from_model_handle(default)
+        .add_hook(SelectWith(
+            move |_context: &HookContext, _event: ModelSelection<'_>| {
+                ModelSelectionAction::select(routed_for_hook.clone())
+            },
+        ))
+        .build();
+
+    assert_eq!(
+        agent.prompt("agent hook").await.expect("agent hook route"),
+        "agent routed"
+    );
+
+    assert_eq!(
+        agent
+            .prompt("request hook")
+            .add_hook(SelectWith(
+                move |_context: &HookContext, event: ModelSelection<'_>| {
+                    assert_eq!(event.selected_model.label(), Some("routed"));
+                    ModelSelectionAction::select(request.clone())
+                }
+            ))
+            .await
+            .expect("request hook route"),
+        "request routed"
+    );
+
+    assert_eq!(
+        agent
+            .prompt("agent hook remains")
+            .await
+            .expect("agent hook remains"),
+        "agent routed"
+    );
+}
+
+#[tokio::test]
+async fn model_selection_stop_cancels_before_provider_execution() {
+    let blocking_model = alpha_static("must not execute");
+    let blocking_script = blocking_model.0.clone();
+    let blocking_completion_calls = Arc::new(AtomicUsize::new(0));
+    let error = AgentBuilder::new(blocking_model)
+        .build()
+        .prompt("stop before execution")
+        .add_hook(StopSelection {
+            completion_calls: blocking_completion_calls.clone(),
+        })
+        .await
+        .expect_err("selection stop should cancel the run");
+
+    assert!(matches!(
+        error,
+        PromptError::PromptCancelled { reason, .. } if reason == "routing denied"
+    ));
+    assert!(blocking_script.requests().is_empty());
+    assert_eq!(blocking_completion_calls.load(Ordering::SeqCst), 0);
+
+    let streaming_model = alpha_static("must not stream");
+    let streaming_script = streaming_model.0.clone();
+    let streaming_completion_calls = Arc::new(AtomicUsize::new(0));
+    let mut stream = AgentBuilder::new(streaming_model)
+        .build()
+        .stream_prompt("stop before streaming")
+        .add_hook(StopSelection {
+            completion_calls: streaming_completion_calls.clone(),
+        })
+        .await;
+    let error = stream
+        .next()
+        .await
+        .expect("selection stop should emit an error")
+        .expect_err("selection stop should cancel the stream");
+
+    assert!(matches!(
+        error,
+        StreamingError::Prompt(error)
+            if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+                if reason == "routing denied")
+    ));
+    assert!(streaming_script.requests().is_empty());
+    assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn extraction_override_is_run_local_and_sets_each_retry_default() {
     let default_turn = Turn::Tool {
         id: "default-submit".to_owned(),
         name: "submit".to_owned(),
@@ -602,6 +740,64 @@ async fn extraction_override_is_run_local_and_pins_all_retries() {
         .expect("default extraction remains unchanged");
     assert_eq!(default.value, "default");
     assert_eq!(default_script.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn extraction_retries_reenter_model_selection_hooks() {
+    let default = alpha_static("default must not execute");
+    let default_script = default.0.clone();
+    let first = alpha_static("retry without submit");
+    let first_script = first.0.clone();
+    let submit_turn = Turn::Tool {
+        id: "routed-submit".to_owned(),
+        name: "submit".to_owned(),
+        arguments: serde_json::json!({"value": "hook selected"}),
+        usage: usage(2),
+        message_id: "routed-extraction".to_owned(),
+    };
+    let second = BetaModel(Script::new("second", [submit_turn.clone()], submit_turn));
+    let second_script = second.0.clone();
+    let first = ModelHandle::named("first", first);
+    let second = ModelHandle::named("second", second);
+    let selections = Arc::new(Mutex::new(Vec::new()));
+    let selections_for_hook = selections.clone();
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_hook = attempts.clone();
+    let extractor = ExtractorBuilder::<ExtractedValue>::new(default)
+        .add_hook(SelectWith(
+            move |context: &HookContext, event: ModelSelection<'_>| {
+                selections_for_hook.lock().expect("selection log").push((
+                    context.turn(),
+                    event
+                        .previous_model
+                        .and_then(ModelHandle::label)
+                        .map(str::to_owned),
+                ));
+                let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
+                ModelSelectionAction::select(if attempt == 0 {
+                    first.clone()
+                } else {
+                    second.clone()
+                })
+            },
+        ))
+        .retries(1)
+        .build();
+
+    let extracted = extractor
+        .extract("repair the structured output")
+        .await
+        .expect("hook-routed extraction retry");
+
+    assert_eq!(extracted.value, "hook selected");
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(first_script.requests().len(), 1);
+    assert_eq!(second_script.requests().len(), 1);
+    assert!(default_script.requests().is_empty());
+    assert_eq!(
+        selections.lock().expect("selection log").as_slice(),
+        &[(1, None), (1, None)]
+    );
 }
 
 #[derive(Clone)]
@@ -704,6 +900,27 @@ fn history_has_tool_result(request: &CompletionRequest) -> bool {
 }
 
 #[tokio::test]
+async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
+    let first = Turn::tool("lookup", 2, "default-tool-message");
+    let second = Turn::text("default final", 3, "default-final-message");
+    let model = AlphaModel(Script::new("default", [first, second.clone()], second));
+    let script = model.0.clone();
+
+    let output = AgentBuilder::new(model)
+        .tool(LookupTool {
+            calls: Arc::new(AtomicUsize::new(0)),
+        })
+        .build()
+        .prompt("use the default twice")
+        .max_turns(2)
+        .await
+        .expect("default multi-turn run");
+
+    assert_eq!(output, "default final");
+    assert_eq!(script.requests().len(), 2);
+}
+
+#[tokio::test]
 async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
     async fn run_blocking() -> (
         rig_agent::agent::PromptResponse,
@@ -728,17 +945,19 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             .build()
             .prompt("research then synthesize")
             .max_turns(3)
-            .select_model(move |context| {
-                selected_for_router
-                    .lock()
-                    .expect("selection lock")
-                    .push(context.turn);
-                if context.turn == 1 {
-                    alpha_handle.clone()
-                } else {
-                    beta_handle.clone()
-                }
-            })
+            .add_hook(SelectWith(
+                move |context: &HookContext, _event: ModelSelection<'_>| {
+                    selected_for_router
+                        .lock()
+                        .expect("selection lock")
+                        .push(context.turn());
+                    ModelSelectionAction::select(if context.turn() == 1 {
+                        alpha_handle.clone()
+                    } else {
+                        beta_handle.clone()
+                    })
+                },
+            ))
             .extended_details()
             .await
             .expect("blocking routed run");
@@ -781,17 +1000,19 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         let mut stream = agent
             .stream_prompt("research then synthesize")
             .max_turns(3)
-            .select_model(move |context| {
-                selected_for_router
-                    .lock()
-                    .expect("selection lock")
-                    .push(context.turn);
-                if context.turn == 1 {
-                    alpha_handle.clone()
-                } else {
-                    beta_handle.clone()
-                }
-            })
+            .add_hook(SelectWith(
+                move |context: &HookContext, _event: ModelSelection<'_>| {
+                    selected_for_router
+                        .lock()
+                        .expect("selection lock")
+                        .push(context.turn());
+                    ModelSelectionAction::select(if context.turn() == 1 {
+                        alpha_handle.clone()
+                    } else {
+                        beta_handle.clone()
+                    })
+                },
+            ))
             .await;
         let mut final_response = None;
         let mut events = Vec::new();
@@ -919,20 +1140,22 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .build()
         .prompt("try twice")
         .max_turns(2)
-        .select_model(move |context| {
-            selections_for_router.lock().expect("selection lock").push((
-                context.turn,
-                context
-                    .previous_model
-                    .and_then(ModelHandle::label)
-                    .map(str::to_owned),
-            ));
-            if context.turn == 1 {
-                alpha_handle.clone()
-            } else {
-                beta_handle.clone()
-            }
-        })
+        .add_hook(SelectWith(
+            move |context: &HookContext, event: ModelSelection<'_>| {
+                selections_for_router.lock().expect("selection lock").push((
+                    context.turn(),
+                    event
+                        .previous_model
+                        .and_then(ModelHandle::label)
+                        .map(str::to_owned),
+                ));
+                ModelSelectionAction::select(if context.turn() == 1 {
+                    alpha_handle.clone()
+                } else {
+                    beta_handle.clone()
+                })
+            },
+        ))
         .extended_details()
         .await
         .expect("retry routed run");
@@ -990,24 +1213,29 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
         .prompt("recover from an invalid tool")
         .max_turns(2)
         .max_invalid_tool_call_retries(1)
-        .select_model(move |context| {
-            selections_for_router
-                .lock()
-                .expect("selection lock")
-                .push(context.turn);
-            if context.turn == 1 {
-                alpha_handle.clone()
-            } else {
-                beta_handle.clone()
-            }
-        })
+        .add_hook(SelectWith(
+            move |context: &HookContext, event: ModelSelection<'_>| {
+                selections_for_router.lock().expect("selection lock").push((
+                    context.turn(),
+                    event
+                        .previous_model
+                        .and_then(ModelHandle::label)
+                        .map(str::to_owned),
+                ));
+                ModelSelectionAction::select(if context.turn() == 1 {
+                    alpha_handle.clone()
+                } else {
+                    beta_handle.clone()
+                })
+            },
+        ))
         .await
         .expect("invalid-tool retry run");
 
     assert_eq!(output, "recovered after invalid tool");
     assert_eq!(
         selections.lock().expect("selection lock").as_slice(),
-        &[1, 2]
+        &[(1, None), (2, Some("alpha".to_owned()))]
     );
 }
 
@@ -1161,13 +1389,15 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
         .build()
         .prompt("capability routing")
         .max_turns(2)
-        .select_model(move |context| {
-            if context.turn == 1 {
-                composing_handle.clone()
-            } else {
-                noncomposing_handle.clone()
-            }
-        })
+        .add_hook(SelectWith(
+            move |context: &HookContext, _event: ModelSelection<'_>| {
+                ModelSelectionAction::select(if context.turn() == 1 {
+                    composing_handle.clone()
+                } else {
+                    noncomposing_handle.clone()
+                })
+            },
+        ))
         .await
         .expect("capability run");
 
@@ -1270,13 +1500,15 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
         agent
             .prompt("bind the attempt")
             .max_turns(2)
-            .select_model(move |_| {
-                if use_beta_for_router.load(Ordering::SeqCst) {
-                    beta_handle.clone()
-                } else {
-                    gated_handle.clone()
-                }
-            })
+            .add_hook(SelectWith(
+                move |_context: &HookContext, _event: ModelSelection<'_>| {
+                    ModelSelectionAction::select(if use_beta_for_router.load(Ordering::SeqCst) {
+                        beta_handle.clone()
+                    } else {
+                        gated_handle.clone()
+                    })
+                },
+            ))
             .await
     });
 
@@ -1444,12 +1676,16 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
     let beta_handle = ModelHandle::named("beta", beta_static("beta concurrent"));
     let agent = AgentBuilder::from_model_handle(alpha_handle.clone()).build();
 
-    let alpha_run = agent
-        .prompt("alpha run")
-        .select_model(move |_| alpha_handle.clone());
-    let beta_run = agent
-        .prompt("beta run")
-        .select_model(move |_| beta_handle.clone());
+    let alpha_run = agent.prompt("alpha run").add_hook(SelectWith(
+        move |_context: &HookContext, _event: ModelSelection<'_>| {
+            ModelSelectionAction::select(alpha_handle.clone())
+        },
+    ));
+    let beta_run = agent.prompt("beta run").add_hook(SelectWith(
+        move |_context: &HookContext, _event: ModelSelection<'_>| {
+            ModelSelectionAction::select(beta_handle.clone())
+        },
+    ));
     let (alpha, beta) = tokio::join!(alpha_run, beta_run);
     assert_eq!(alpha.expect("alpha concurrent run"), "alpha concurrent");
     assert_eq!(beta.expect("beta concurrent run"), "beta concurrent");
