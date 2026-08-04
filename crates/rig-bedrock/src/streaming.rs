@@ -237,24 +237,21 @@ impl CompletionModel {
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
                         stop_reason = Some(message_stop_event.stop_reason.as_str().to_owned());
-                        match message_stop_event.stop_reason {
-                            aws_bedrock::StopReason::ToolUse => {
-                                if let Some(tool_call) = current_tool_call.take() {
-                                    // Handle empty input_json for tools with no parameters
-                                    let tool_input = if tool_call.input_json.is_empty() {
-                                        serde_json::json!({})
-                                    } else {
-                                        serde_json::from_str(tool_call.input_json.as_str())?
-                                    };
-                                    yield Ok(RawStreamingChoice::ToolCall(
-                                        RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
-                                            .with_internal_call_id(tool_call.internal_call_id)
-                                    ));
+                        if message_stop_event.stop_reason == aws_bedrock::StopReason::ToolUse {
+                            if let Some(tool_call) = current_tool_call.take() {
+                                // Handle empty input_json for tools with no parameters
+                                let tool_input = if tool_call.input_json.is_empty() {
+                                    serde_json::json!({})
                                 } else {
-                                    yield Err(CompletionError::ProviderError("Failed to call tool".into()))
-                                }
+                                    serde_json::from_str(tool_call.input_json.as_str())?
+                                };
+                                yield Ok(RawStreamingChoice::ToolCall(
+                                    RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
+                                        .with_internal_call_id(tool_call.internal_call_id)
+                                ));
+                            } else {
+                                yield Err(CompletionError::ProviderError("Failed to call tool".into()))
                             }
-                            _ => {}
                         }
                     },
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
@@ -364,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_usage_trait() {
+    fn token_usage_converts_native_stream_usage() {
         let response = BedrockStreamingResponse {
             usage: Some(BedrockUsage {
                 input_tokens: 448,

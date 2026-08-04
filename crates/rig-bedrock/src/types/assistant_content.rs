@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn get_token_usage_delegates_to_provider_response_ext() {
+    fn token_usage_delegates_to_provider_response_ext() {
         let out = make_output("x", Some(make_usage(10, 20, 30)));
         assert_eq!(
             out.token_usage(),
@@ -381,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn get_token_usage_zero_when_no_usage() {
+    fn token_usage_is_zero_when_no_usage() {
         let out = make_output("x", None);
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
