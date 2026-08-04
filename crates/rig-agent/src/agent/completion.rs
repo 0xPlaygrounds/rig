@@ -1,4 +1,5 @@
 use super::hook::{HookStack, RequestPatch};
+use super::model::ModelHandle;
 use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
@@ -19,8 +20,11 @@ use super::UNKNOWN_AGENT_NAME;
 
 /// A prepared completion request plus the executable Rig tool names advertised
 /// to the provider for this turn.
-pub(crate) struct PreparedCompletionRequest<M: CompletionModel> {
-    pub(crate) builder: CompletionRequestBuilder<M>,
+pub(crate) struct PreparedCompletionRequest {
+    /// Builder carrying the selected model handle: request preparation ran
+    /// against this handle's captured capabilities, and the same handle
+    /// executes the prepared request.
+    pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
     /// Exact implementations behind this turn's provider definitions.
     pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
     pub(crate) executable_tool_names: BTreeSet<String>,
@@ -215,8 +219,8 @@ pub(crate) fn allowed_tool_names_for_choice(
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
-    model: &Arc<M>,
+pub(crate) async fn build_prepared_completion_request(
+    model: &ModelHandle,
     prompt: Message,
     chat_history: &[Message],
     preamble: Option<&str>,
@@ -233,7 +237,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
     output_tool_description: Option<&str>,
     augment_output_preamble: bool,
     request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest<M>, CompletionError> {
+) -> Result<PreparedCompletionRequest, CompletionError> {
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
     // unset fields inherit it, `additional_params` is shallow-merged, and
@@ -548,16 +552,13 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
 /// ```
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct Agent<M>
-where
-    M: CompletionModel,
-{
+pub struct Agent {
     /// Name of the agent used for logging and debugging
     pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     pub(crate) description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    pub(crate) model: Arc<M>,
+    pub(crate) model: ModelHandle,
     /// System prompt
     pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
@@ -596,10 +597,7 @@ where
     pub(crate) default_conversation_id: Option<String>,
 }
 
-impl<M> Agent<M>
-where
-    M: CompletionModel,
-{
+impl Agent {
     /// Returns the configured agent name.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -617,8 +615,47 @@ where
     /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
     /// agent's default hook stack. Attach more hooks with
     /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner<M> {
+    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
         AgentRunner::from_agent(self, prompt)
+    }
+
+    /// Returns the agent's current default model handle.
+    pub fn model_handle(&self) -> &ModelHandle {
+        &self.model
+    }
+
+    /// Replace the default model used by runners created after this call.
+    ///
+    /// Existing runners retain their model snapshot, and replacing one cloned
+    /// agent does not mutate another clone. Model-selection hooks may replace
+    /// the captured default at each model-call boundary.
+    pub fn set_model_handle(&mut self, model: ModelHandle) {
+        self.model = model;
+    }
+
+    /// Erase and install a typed completion model as this agent's new default.
+    pub fn set_model<M>(&mut self, model: M)
+    where
+        M: CompletionModel + 'static,
+    {
+        self.set_model_handle(ModelHandle::new(model));
+    }
+
+    /// Return this agent with a replacement default model handle.
+    ///
+    /// Model-selection hooks may replace this default for individual calls.
+    pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
+        self.set_model_handle(model);
+        self
+    }
+
+    /// Return this agent with an erased typed model as its new default.
+    pub fn with_model<M>(mut self, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        self.set_model(model);
+        self
     }
 
     /// Resolve the provider-facing tool definitions available for a prompt.
@@ -641,37 +678,28 @@ where
 //  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
 
 #[allow(refining_impl_trait)]
-impl<M> Prompt for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Prompt for Agent {
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard, M> {
+    ) -> PromptRequest<prompt_request::Standard> {
         PromptRequest::from_agent(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
-impl<M> Prompt for &Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Prompt for &Agent {
     #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
     fn prompt(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard, M> {
-        PromptRequest::from_agent(*self, prompt)
+    ) -> PromptRequest<prompt_request::Standard> {
+        PromptRequest::from_agent(self, prompt)
     }
 }
 
 #[allow(refining_impl_trait)]
-impl<M> Chat for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl Chat for Agent {
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     async fn chat(
         &self,
@@ -691,32 +719,23 @@ where
     }
 }
 
-impl<M> StreamingPrompt<M> for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
-    fn stream_prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> StreamingPromptRequest<M> {
-        StreamingPromptRequest::<M>::from_agent(self, prompt)
+impl StreamingPrompt for Agent {
+    fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> StreamingPromptRequest {
+        StreamingPromptRequest::from_agent(self, prompt)
     }
 }
 
-impl<M> StreamingChat<M> for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl StreamingChat for Agent {
     fn stream_chat<I, T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: I,
-    ) -> StreamingPromptRequest<M>
+    ) -> StreamingPromptRequest
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        StreamingPromptRequest::<M>::from_agent(self, prompt).history(chat_history)
+        StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
     }
 }
 
@@ -725,12 +744,9 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
 #[allow(refining_impl_trait)]
-impl<M> TypedPrompt for Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl TypedPrompt for Agent {
     type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard, M>
+        = TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
@@ -769,7 +785,7 @@ where
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard, M>
+    ) -> TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
@@ -778,23 +794,20 @@ where
 }
 
 #[allow(refining_impl_trait)]
-impl<M> TypedPrompt for &Agent<M>
-where
-    M: CompletionModel + 'static,
-{
+impl TypedPrompt for &Agent {
     type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard, M>
+        = TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
 
     fn prompt_typed<T>(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard, M>
+    ) -> TypedPromptRequest<T, prompt_request::Standard>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
-        TypedPromptRequest::from_agent(*self, prompt)
+        TypedPromptRequest::from_agent(self, prompt)
     }
 }
 

@@ -965,7 +965,7 @@ pub async fn parallel_tools<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
@@ -1060,7 +1060,7 @@ pub async fn zero_argument_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1110,7 +1110,7 @@ pub async fn tool_output_serialization<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();
@@ -1172,7 +1172,7 @@ pub async fn complex_tool_arguments<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
@@ -1308,7 +1308,7 @@ where
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
     let started = Instant::now();
-    let response = crate::extractor::ExtractorBuilder::<M, ExtractedPerson>::new(model)
+    let response = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(model)
         .max_tokens(384)
         .retries(0)
         .build()
@@ -1376,7 +1376,7 @@ pub async fn invalid_tool_recovery<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
@@ -1567,7 +1567,7 @@ pub async fn hook_rewrites_and_request_patch<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
@@ -1641,7 +1641,7 @@ pub async fn cancellation_and_max_turns<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + Clone + 'static,
-    F: Fn(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
     const REASON: &str = "portable result veto";
@@ -1718,7 +1718,7 @@ pub async fn optional_argument<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1753,7 +1753,7 @@ where
 pub async fn sequential_tools<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
@@ -1792,7 +1792,7 @@ where
 pub async fn streaming_tool<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1889,7 +1889,7 @@ pub async fn structured_after_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -2034,7 +2034,7 @@ pub async fn streaming_structured_after_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();

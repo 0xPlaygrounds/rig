@@ -42,7 +42,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, OutputMode},
+    agent::{Agent, AgentBuilder, AgentHook, ModelHandle, OutputMode},
     completion::{CompletionError, CompletionModel, PromptError, Usage},
 };
 
@@ -73,21 +73,58 @@ pub enum ExtractionError {
 }
 
 /// Extractor for structured data from text
-pub struct Extractor<M, T>
+pub struct Extractor<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
-    agent: Agent<M>,
+    agent: Agent,
     _t: PhantomData<T>,
     retries: u64,
 }
 
-impl<M, T> Extractor<M, T>
+/// A single extraction run with an overridden default model.
+///
+/// The model is the default candidate for every retry in this run;
+/// model-selection hooks may replace it before each attempt. The originating
+/// [`Extractor`]'s default model is unchanged.
+#[must_use = "an extraction override does nothing until an extract method is awaited"]
+pub struct ExtractorRun<'a, T>
 where
-    M: CompletionModel,
+    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+{
+    extractor: &'a Extractor<T>,
+    model: ModelHandle,
+}
+
+impl<T> Extractor<T>
+where
     T: JsonSchema + for<'a> Deserialize<'a> + WasmCompatSend + WasmCompatSync,
 {
+    /// Set a different default model for this extractor's subsequent attempts.
+    pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
+        self.agent.set_model_handle(model);
+        self
+    }
+
+    /// Set one extraction run's default model without changing this extractor.
+    ///
+    /// The handle is the default candidate for every retry of the run — not a
+    /// hard pin: model-selection hooks may replace it before each attempt.
+    pub fn using_model(&self, model: ModelHandle) -> ExtractorRun<'_, T> {
+        ExtractorRun {
+            extractor: self,
+            model,
+        }
+    }
+
+    /// Erase and set a typed default model for one extraction run.
+    pub fn using_model_value<M>(&self, model: M) -> ExtractorRun<'_, T>
+    where
+        M: CompletionModel + 'static,
+    {
+        self.using_model(ModelHandle::new(model))
+    }
+
     /// Attempts to extract data from the given text with a number of retries.
     ///
     /// The function will retry the extraction if the initial attempt fails or
@@ -98,7 +135,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), vec![]).await?;
+        let (data, _usage) = self.retry_extract(text.into(), vec![], None).await?;
         Ok(data)
     }
 
@@ -113,7 +150,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), chat_history).await?;
+        let (data, _usage) = self.retry_extract(text.into(), chat_history, None).await?;
         Ok(data)
     }
 
@@ -134,7 +171,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), vec![]).await?;
+        let (data, usage) = self.retry_extract(text.into(), vec![], None).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
@@ -157,7 +194,7 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), chat_history).await?;
+        let (data, usage) = self.retry_extract(text.into(), chat_history, None).await?;
         Ok(ExtractionResponse { data, usage })
     }
 
@@ -170,6 +207,7 @@ where
         &self,
         text: Message,
         chat_history: Vec<Message>,
+        model: Option<&ModelHandle>,
     ) -> Result<(T, Usage), ExtractionError> {
         let mut last_error = None;
         let mut usage = Usage::new();
@@ -179,7 +217,9 @@ where
                 "Attempting to extract JSON. Retries left: {retries}",
                 retries = self.retries - i
             );
-            let (result, attempt_usage) = self.extract_json_with_usage(&text, &chat_history).await;
+            let (result, attempt_usage) = self
+                .extract_json_with_usage(&text, &chat_history, model)
+                .await;
             usage += attempt_usage;
             match result {
                 Ok(data) => return Ok((data, usage)),
@@ -205,11 +245,18 @@ where
         &self,
         text: &Message,
         messages: &[Message],
+        model: Option<&ModelHandle>,
     ) -> (Result<T, ExtractionError>, Usage) {
-        let (result, error_usage) = self
+        let mut runner = self
             .agent
             .runner(text.clone())
-            .history(messages.iter().cloned())
+            .history(messages.iter().cloned());
+        // A run-local model is the default candidate for THIS attempt only;
+        // model-selection hooks may still replace it per retry.
+        if let Some(model) = model {
+            runner = runner.using_model(model.clone());
+        }
+        let (result, error_usage) = runner
             .max_turns(1)
             .output_tool(
                 SUBMIT_TOOL_NAME,
@@ -248,25 +295,86 @@ where
     }
 }
 
-/// Builder for the Extractor
-pub struct ExtractorBuilder<M, T>
+impl<T> ExtractorRun<'_, T>
 where
-    M: CompletionModel,
+    T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
+{
+    /// Extract structured data with the run-local model.
+    pub async fn extract(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+    ) -> Result<T, ExtractionError> {
+        let (data, _usage) = self
+            .extractor
+            .retry_extract(text.into(), vec![], Some(&self.model))
+            .await?;
+        Ok(data)
+    }
+
+    /// Extract structured data with chat history and the run-local model.
+    pub async fn extract_with_chat_history(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+        chat_history: Vec<Message>,
+    ) -> Result<T, ExtractionError> {
+        let (data, _usage) = self
+            .extractor
+            .retry_extract(text.into(), chat_history, Some(&self.model))
+            .await?;
+        Ok(data)
+    }
+
+    /// Extract structured data and usage with the run-local model.
+    pub async fn extract_with_usage(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+    ) -> Result<ExtractionResponse<T>, ExtractionError> {
+        let (data, usage) = self
+            .extractor
+            .retry_extract(text.into(), vec![], Some(&self.model))
+            .await?;
+        Ok(ExtractionResponse { data, usage })
+    }
+
+    /// Extract structured data with chat history and usage using the run-local model.
+    pub async fn extract_with_chat_history_with_usage(
+        &self,
+        text: impl Into<Message> + WasmCompatSend,
+        chat_history: Vec<Message>,
+    ) -> Result<ExtractionResponse<T>, ExtractionError> {
+        let (data, usage) = self
+            .extractor
+            .retry_extract(text.into(), chat_history, Some(&self.model))
+            .await?;
+        Ok(ExtractionResponse { data, usage })
+    }
+}
+
+/// Builder for the Extractor
+pub struct ExtractorBuilder<T>
+where
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    agent_builder: AgentBuilder<M>,
+    agent_builder: AgentBuilder,
     _t: PhantomData<T>,
     retries: Option<u64>,
 }
 
-impl<M, T> ExtractorBuilder<M, T>
+impl<T> ExtractorBuilder<T>
 where
-    M: CompletionModel,
     T: JsonSchema + for<'a> Deserialize<'a> + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub fn new(model: M) -> Self {
+    pub fn new<M>(model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        Self::from_model_handle(ModelHandle::new(model))
+    }
+
+    /// Create an extractor builder from an opaque runtime model handle.
+    pub fn from_model_handle(model: ModelHandle) -> Self {
         Self {
-            agent_builder: AgentBuilder::new(model)
+            agent_builder: AgentBuilder::from_model_handle(model)
                 .preamble("\
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
@@ -343,7 +451,7 @@ where
     }
 
     /// Build the Extractor
-    pub fn build(self) -> Extractor<M, T> {
+    pub fn build(self) -> Extractor<T> {
         Extractor {
             agent: self.agent_builder.build(),
             _t: PhantomData,
@@ -381,10 +489,7 @@ mod tests {
         }
     }
 
-    fn extractor(
-        model: MockCompletionModel,
-        retries: u64,
-    ) -> Extractor<MockCompletionModel, Person> {
+    fn extractor(model: MockCompletionModel, retries: u64) -> Extractor<Person> {
         ExtractorBuilder::new(model).retries(retries).build()
     }
 
@@ -595,7 +700,7 @@ mod tests {
     async fn extractor_runs_through_full_response_lifecycle() {
         let model = MockCompletionModel::new([submit_turn("John")]);
         let counts = LifecycleCounts::default();
-        let response = ExtractorBuilder::<_, Person>::new(model.clone())
+        let response = ExtractorBuilder::<Person>::new(model.clone())
             .add_hook(counts.clone())
             .build()
             .extract("John")
@@ -614,7 +719,7 @@ mod tests {
         let capture = ExtractorResponseCapture::default();
         let expected_usage = usage(23);
         let response =
-            ExtractorBuilder::<_, Person>::new(MockCompletionModel::new([submit_turn("John")
+            ExtractorBuilder::<Person>::new(MockCompletionModel::new([submit_turn("John")
                 .with_usage(expected_usage)
                 .with_message_id("extractor-message")]))
             .add_hook(capture.clone())
@@ -646,7 +751,7 @@ mod tests {
         let model = MockCompletionModel::new([submit_turn("John")]);
         let probe = model.clone();
         let queries = Arc::new(Mutex::new(Vec::new()));
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(model)
             .dynamic_context(
                 2,
                 ExtractorContextIndex {
@@ -677,7 +782,7 @@ mod tests {
     #[tokio::test]
     async fn extractor_completion_call_stop_prevents_provider_io() {
         let model = MockCompletionModel::new([submit_turn("John")]);
-        let error = ExtractorBuilder::<_, Person>::new(model.clone())
+        let error = ExtractorBuilder::<Person>::new(model.clone())
             .add_hook(StopBeforeCompletion)
             .build()
             .extract("John")
@@ -718,7 +823,7 @@ mod tests {
             submit_turn("ignored").with_usage(usage(10)),
             submit_turn("John").with_usage(usage(5)),
         ]);
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(model)
             .retries(1)
             .add_hook(StopFirstBilledResponse {
                 phase,
@@ -767,7 +872,7 @@ mod tests {
         ]);
         let counts = LifecycleCounts::default();
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(model)
             .retries(1)
             .add_hook(counts.clone())
             .build()
@@ -787,7 +892,7 @@ mod tests {
         let model =
             MockCompletionModel::new([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
 
-        let error = ExtractorBuilder::<_, Person>::new(model)
+        let error = ExtractorBuilder::<Person>::new(model)
             .add_hook(StopOnInvalidToolCall)
             .build()
             .extract("John")
@@ -809,7 +914,7 @@ mod tests {
             json!({ "name": "John" }),
         )]);
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(model)
             .add_hook(RepairUnexpectedAsSubmit)
             .build()
             .extract("John")
@@ -828,7 +933,7 @@ mod tests {
         .expect("two tool calls");
         let model = MockCompletionModel::new([turn]);
 
-        let response = ExtractorBuilder::<_, Person>::new(model)
+        let response = ExtractorBuilder::<Person>::new(model)
             .add_hook(SkipUnexpected)
             .build()
             .extract("John")

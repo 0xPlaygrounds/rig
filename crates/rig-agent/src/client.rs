@@ -23,12 +23,15 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 /// the full `completion_model` + `agent` + `extractor` surface.
 pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
     /// Construct a classic agent builder for `model`.
-    fn agent(&self, model: impl Into<String>) -> AgentBuilder<Self::CompletionModel> {
+    fn agent(&self, model: impl Into<String>) -> AgentBuilder
+    where
+        Self::CompletionModel: 'static,
+    {
         AgentBuilder::new(self.completion_model(model))
     }
 
     /// Construct a classic typed extractor builder for `model`.
-    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<Self::CompletionModel, T>
+    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
     where
         T: JsonSchema
             + for<'de> Deserialize<'de>
@@ -36,6 +39,7 @@ pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
             + WasmCompatSend
             + WasmCompatSync
             + 'static,
+        Self::CompletionModel: 'static,
     {
         ExtractorBuilder::new(self.completion_model(model))
     }
@@ -46,7 +50,10 @@ impl<C: rig_core::client::completion::CompletionClient> AgentClientExt for C {}
 /// Adds classic agent construction to every portable completion model.
 pub trait AgentModelExt: rig_core::completion::CompletionModel + Sized {
     /// Convert this model into a classic agent builder.
-    fn into_agent_builder(self) -> AgentBuilder<Self> {
+    fn into_agent_builder(self) -> AgentBuilder
+    where
+        Self: 'static,
+    {
         AgentBuilder::new(self)
     }
 }

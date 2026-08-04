@@ -7,8 +7,9 @@ use rig_core::{
 use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
-        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelTurnFinished, StepEventKind,
-        StreamResponseFinish, TextDelta, ToolCallDelta,
+        AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
+        ModelSelectionAction, ModelTurnFinished, StepEventKind, StreamResponseFinish, TextDelta,
+        ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -30,8 +31,8 @@ use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
-    agent::Agent,
-    completion::{CompletionError, CompletionModel, PromptError},
+    agent::{Agent, model::ModelHandle},
+    completion::{CompletionError, PromptError},
 };
 use rig_core::message::{Message, Text};
 
@@ -283,27 +284,21 @@ impl From<rig_core::memory::MemoryError> for StreamingError {
 /// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
 /// configured or implicit budget; a tool call followed by a model-authored final
 /// answer generally requires at least two model calls.
-pub struct StreamingPromptRequest<M>
-where
-    M: CompletionModel,
-{
+pub struct StreamingPromptRequest {
     /// The hook-aware driver this streaming request configures and runs.
-    runner: AgentRunner<M>,
+    runner: AgentRunner,
 }
 
-impl<M> StreamingPromptRequest<M>
-where
-    M: CompletionModel + 'static,
-{
+impl StreamingPromptRequest {
     /// Create a new `StreamingPromptRequest` from an agent, including its
     /// default hooks.
-    pub fn new(agent: Arc<Agent<M>>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
+    pub fn new(agent: Arc<Agent>, prompt: impl Into<Message>) -> StreamingPromptRequest {
         Self::from_agent(agent.as_ref(), prompt)
     }
 
     /// Create a new StreamingPromptRequest from an agent, cloning the agent's
     /// data and default hook stack.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> StreamingPromptRequest<M> {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> StreamingPromptRequest {
         StreamingPromptRequest {
             runner: AgentRunner::from_agent(agent, prompt),
         }
@@ -336,8 +331,8 @@ where
 
     /// Append a hook to this request's hook stack (on top of any the agent
     /// already carries). Hooks run in registration order; how their results
-    /// compose is event-dependent (`CompletionCall` request patches accumulate
-    /// and merge, `ToolCall`/`ToolResult` rewrites chain, while model-turn
+    /// compose is event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while model-turn
     /// steering and observe-only/recovery events use first-non-`Continue`-wins). See the
     /// [`hook`](crate::agent::hook) module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
@@ -396,15 +391,12 @@ pub(crate) enum DriveItem {
 /// genuinely divergent pieces are behind this trait. Invalid-tool-call recovery
 /// is one of them — it lives inside each source's `run_model_turn` (end-of-turn
 /// for blocking, mid-stream for streaming), not in `drive_agent`.
-pub(crate) trait TurnSource<M>: WasmCompatSend
-where
-    M: CompletionModel,
-{
+pub(crate) trait TurnSource: WasmCompatSend {
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span;
 
@@ -414,10 +406,10 @@ where
     #[allow(clippy::too_many_arguments)]
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         prompt: Message,
@@ -427,7 +419,7 @@ where
     /// yielding any intermediate items.
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
@@ -458,10 +450,7 @@ pub(crate) fn streaming_error_into_prompt(err: StreamingError) -> PromptError {
     }
 }
 
-pub(crate) fn store_error_usage<M>(runner: &AgentRunner<M>, run: &AgentRun)
-where
-    M: CompletionModel,
-{
+pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     if let Some(usage) = &runner.error_usage {
         *usage.lock().unwrap_or_else(|error| error.into_inner()) = run.usage();
     }
@@ -474,8 +463,8 @@ where
 /// medium-specific model call, tool execution, span shaping and finalization to
 /// a [`TurnSource`]. The streaming surface forwards the yielded [`DriveItem`]s;
 /// the blocking surface folds them to `Done`.
-pub(crate) fn drive_agent<M, S>(
-    runner: AgentRunner<M>,
+pub(crate) fn drive_agent<S>(
+    runner: AgentRunner,
     mut source: S,
     mut run: AgentRun,
     agent_span: tracing::Span,
@@ -484,8 +473,7 @@ pub(crate) fn drive_agent<M, S>(
     is_streaming: bool,
 ) -> impl Stream<Item = Result<DriveItem, StreamingError>>
 where
-    M: CompletionModel,
-    S: TurnSource<M>,
+    S: TurnSource,
 {
     async_stream::stream! {
         // Run-scoped hook context: minted once, shared by every hook event on
@@ -496,6 +484,8 @@ where
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
         let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        // Live routing state stays in the driver, not the serde `AgentRun`.
+        let mut previous_model: Option<ModelHandle> = None;
 
         'outer: loop {
             let step = match run.next_step() {
@@ -514,6 +504,29 @@ where
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
                     }
                     hook_ctx.set_turn(turn);
+
+                    // Resolve routing once at the model-call boundary. The
+                    // resulting handle is cloned into the prepared attempt and
+                    // used for both capability inspection and execution.
+                    let selected_model = match runner.hooks.on_model_select(
+                        &hook_ctx,
+                        ModelSelection {
+                            prompt: &prompt,
+                            history: &history,
+                            previous_model: previous_model.as_ref(),
+                            default_model: &runner.model,
+                            selected_model: &runner.model,
+                        },
+                    ) {
+                        ModelSelectionAction::Continue => runner.model.clone(),
+                        ModelSelectionAction::Select(model) => model,
+                        ModelSelectionAction::Stop(reason) => {
+                            store_error_usage(&runner, &run);
+                            yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
+                            break 'outer;
+                        }
+                    };
+                    previous_model = Some(selected_model.clone());
 
                     let request_patch =
                         match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
@@ -540,7 +553,7 @@ where
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
-                        &runner.model,
+                        &selected_model,
                         prompt.clone(),
                         &history,
                         runner.preamble.as_deref(),
@@ -686,8 +699,8 @@ where
 /// but the collect/commit and fail-fast behavior is identical, so `run()` and
 /// `stream()` return the same terminal reason. `chain_tool_span` lets the
 /// blocking surface chain spans into its linear `follows_from` sequence.
-pub(crate) fn drive_tool_calls<'a, M, F>(
-    runner: &'a AgentRunner<M>,
+pub(crate) fn drive_tool_calls<'a, F>(
+    runner: &'a AgentRunner,
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
@@ -696,7 +709,6 @@ pub(crate) fn drive_tool_calls<'a, M, F>(
     forward_items: bool,
 ) -> DriveStream<'a>
 where
-    M: CompletionModel,
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
     // Per-call working state: a stable internal_call_id and the execute span,
@@ -1013,13 +1025,10 @@ impl StreamingTurnSource {
     }
 }
 
-impl<M> TurnSource<M> for StreamingTurnSource
-where
-    M: CompletionModel,
-{
+impl TurnSource for StreamingTurnSource {
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
         build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
@@ -1027,10 +1036,10 @@ where
 
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
         current_prompt: Message,
@@ -1417,7 +1426,7 @@ where
 
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
@@ -1474,10 +1483,7 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel + 'static,
-{
+impl AgentRunner {
     /// Drive the agent loop, streaming assistant content, tool activity, and a
     /// final response. Hooks fire at every observable point, including streamed
     /// text and tool-call deltas. Returns the stream after loading any
@@ -1553,10 +1559,7 @@ where
     }
 }
 
-impl<M> IntoFuture for StreamingPromptRequest<M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for StreamingPromptRequest {
     type Output = StreamingResult; // what `.await` returns
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -2239,7 +2242,7 @@ mod migrated_tests {
 
         let hook_context = HookContext::new(true, None);
         hook_context.set_turn(1);
-        let mut stream = drive_tool_calls::<MockCompletionModel, _>(
+        let mut stream = drive_tool_calls(
             &runner,
             &hook_context,
             &mut run,
@@ -2423,7 +2426,7 @@ mod migrated_tests {
     }
 
     async fn assert_stream_usage_recorded_on_chat_spans(
-        agent: crate::agent::Agent<MockCompletionModel>,
+        agent: crate::agent::Agent,
         prompt: &str,
         max_turns: usize,
         expected_usages: &[Usage],

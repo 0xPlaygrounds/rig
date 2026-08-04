@@ -23,7 +23,7 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
 use crate::tool::rmcp::McpTool as RmcpTool;
 
-use super::{Agent, OutputMode};
+use super::{Agent, ModelHandle, OutputMode};
 
 struct DynamicContext<I> {
     samples: usize,
@@ -145,16 +145,13 @@ pub struct WithBuilderTools {
 /// # Ok(())
 /// # }
 /// ```
-pub struct AgentBuilder<M, ToolState = NoToolConfig>
-where
-    M: CompletionModel,
-{
+pub struct AgentBuilder<ToolState = NoToolConfig> {
     /// Name of the agent used for logging and debugging
     name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     description: Option<String>,
     /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    model: M,
+    model: ModelHandle,
     /// System prompt
     preamble: Option<String>,
     /// Context documents always available to the agent
@@ -185,10 +182,7 @@ where
     default_conversation_id: Option<String>,
 }
 
-impl<M, ToolState> AgentBuilder<M, ToolState>
-where
-    M: CompletionModel,
-{
+impl<ToolState> AgentBuilder<ToolState> {
     /// Set the name of the agent
     pub fn name(mut self, name: &str) -> Self {
         self.name = Some(name.into());
@@ -342,10 +336,11 @@ where
     /// Attach a default hook to the agent. Each call appends to the agent's hook
     /// stack; hooks run for every prompt request (unless more are added per
     /// request) in registration order. How their results compose is
-    /// event-dependent: `CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use first-non-`Continue`-wins. See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent: model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use
+    /// first-non-`Continue`-wins. See the [`hook`](crate::agent::hook) module
+    /// docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -355,12 +350,20 @@ where
     }
 }
 
-impl<M> AgentBuilder<M, NoToolConfig>
-where
-    M: CompletionModel,
-{
-    /// Create a new agent builder with the given model
-    pub fn new(model: M) -> Self {
+impl AgentBuilder<NoToolConfig> {
+    /// Create a new agent builder with the given model.
+    ///
+    /// The typed model is erased once, here, into a [`ModelHandle`]; the built
+    /// [`Agent`] carries no model type parameter.
+    pub fn new<M>(model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        Self::from_model_handle(ModelHandle::new(model))
+    }
+
+    /// Create an agent builder from an already-erased runtime model handle.
+    pub fn from_model_handle(model: ModelHandle) -> Self {
         Self {
             name: None,
             description: None,
@@ -383,10 +386,7 @@ where
     }
 }
 
-impl<M> AgentBuilder<M, NoToolConfig>
-where
-    M: CompletionModel,
-{
+impl AgentBuilder<NoToolConfig> {
     /// Set a pre-existing ToolServerHandle for the agent.
     ///
     /// After calling this method, tool-adding methods (`.tool()`, `.dynamic_tool()`, etc.)
@@ -395,7 +395,7 @@ where
     pub fn tool_server_handle(
         self,
         handle: ToolServerHandle,
-    ) -> AgentBuilder<M, WithToolServerHandle> {
+    ) -> AgentBuilder<WithToolServerHandle> {
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -421,7 +421,7 @@ where
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
     /// additional tools can be added but `tool_server_handle()` is no longer available.
-    pub fn tool<T>(self, tool: T) -> AgentBuilder<M, WithBuilderTools>
+    pub fn tool<T>(self, tool: T) -> AgentBuilder<WithBuilderTools>
     where
         T: Tool + 'static,
     {
@@ -452,7 +452,7 @@ where
     }
 
     /// Add one runtime-defined tool to the agent.
-    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
         self.dynamic_tools(vec![tool])
     }
 
@@ -460,7 +460,7 @@ where
     pub fn portable_dynamic_tool(
         self,
         tool: PortableDynamicTool,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         self.dynamic_tool(DynamicTool::from_portable(tool))
     }
 
@@ -468,7 +468,7 @@ where
     ///
     /// This is useful when tool definitions and callbacks are constructed at runtime.
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<M, WithBuilderTools> {
+    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
         let tools = ToolSet::from_dynamic_tools(tools);
 
         AgentBuilder {
@@ -507,7 +507,7 @@ where
         self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         self.rmcp_tool_with_timeout(tool, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
@@ -524,7 +524,7 @@ where
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
     }
 
@@ -540,7 +540,7 @@ where
         self,
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     }
 
@@ -558,17 +558,14 @@ where
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
     }
 
     /// Transition into the `WithBuilderTools` state carrying the given built
     /// MCP tools.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn with_rmcp_toolset(
-        self,
-        built: Vec<(String, RmcpTool)>,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    fn with_rmcp_toolset(self, built: Vec<(String, RmcpTool)>) -> AgentBuilder<WithBuilderTools> {
         AgentBuilder {
             name: self.name,
             description: self.description,
@@ -607,7 +604,7 @@ where
         sample: usize,
         index: impl VectorStoreIndexDyn + Send + Sync + 'static,
         toolset: ToolSet,
-    ) -> AgentBuilder<M, WithBuilderTools> {
+    ) -> AgentBuilder<WithBuilderTools> {
         let mut tools = ToolSet::default();
         tools.add_retrievable_tools(toolset);
         AgentBuilder {
@@ -637,13 +634,13 @@ where
     /// Build the agent with no tools configured.
     ///
     /// An empty `ToolServer` will be created for the agent.
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent {
         let tool_server_handle = ToolServer::new().run();
 
         Agent {
             name: self.name,
             description: self.description,
-            model: Arc::new(self.model),
+            model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,
@@ -662,16 +659,13 @@ where
     }
 }
 
-impl<M> AgentBuilder<M, WithToolServerHandle>
-where
-    M: CompletionModel,
-{
+impl AgentBuilder<WithToolServerHandle> {
     /// Build the agent using the pre-configured ToolServerHandle.
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent {
         Agent {
             name: self.name,
             description: self.description,
-            model: Arc::new(self.model),
+            model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,
@@ -690,10 +684,7 @@ where
     }
 }
 
-impl<M> AgentBuilder<M, WithBuilderTools>
-where
-    M: CompletionModel,
-{
+impl AgentBuilder<WithBuilderTools> {
     /// Add another static tool to the agent.
     pub fn tool<T>(mut self, tool: T) -> Self
     where
@@ -781,7 +772,7 @@ where
     /// A new `ToolServer` will be created containing all tools added via
     /// `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, and
     /// `.retrieved_tools()`.
-    pub fn build(self) -> Agent<M> {
+    pub fn build(self) -> Agent {
         let tool_server_handle = ToolServer::new()
             .add_tools(self.tool_state.tools)
             .add_retrieval_indexes(self.tool_state.retrieval_indexes)
@@ -790,7 +781,7 @@ where
         Agent {
             name: self.name,
             description: self.description,
-            model: Arc::new(self.model),
+            model: self.model,
             preamble: self.preamble,
             static_context: self.static_context,
             temperature: self.temperature,

@@ -8,12 +8,13 @@
 //! message IDs. Use the direct completion or streaming APIs when a hook-like
 //! integration needs the provider's typed raw response.
 //!
-//! Hooks run in registration order through [`HookStack`]. Completion-call
-//! [`RequestPatch`] values accumulate and merge; tool-call argument rewrites and
-//! tool-result presentation rewrites chain into later hooks. A
-//! [`ModelTurnAction::Retry`] or stop action short-circuits the remaining hooks
-//! for that event. Nested stacks obey the same rules as flat stacks, including
-//! preserving an argument rewrite when an inner stack later skips or stops.
+//! Hooks run in registration order through [`HookStack`]. Model selections,
+//! tool-call argument rewrites, and tool-result presentation rewrites chain into
+//! later hooks; completion-call [`RequestPatch`] values accumulate and merge.
+//! A [`ModelTurnAction::Retry`] or stop action short-circuits the remaining
+//! hooks for that event. Nested stacks obey the same rules as flat stacks,
+//! including preserving an argument rewrite when an inner stack later skips or
+//! stops.
 //!
 //! Register observe-only hooks before steering hooks when every observation is
 //! required: a steering stop intentionally prevents later observers from
@@ -126,6 +127,7 @@ use rig_core::{
 };
 
 use crate::{
+    agent::model::ModelHandle,
     completion::{Document, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
@@ -393,6 +395,26 @@ pub struct CompletionCall<'a> {
     pub history: &'a [Message],
     /// One-based model-call index.
     pub turn: usize,
+}
+
+/// Model-selection event resolved before request preparation.
+///
+/// The runner default is the first candidate. A [`HookStack`] threads every
+/// [`ModelSelectionAction::Select`] into later hooks in registration order, so
+/// `selected_model` always reflects all earlier decisions for this event.
+#[derive(Clone, Copy)]
+#[non_exhaustive]
+pub struct ModelSelection<'a> {
+    /// Prompt for the pending model call.
+    pub prompt: &'a Message,
+    /// Canonical history visible to the pending model call.
+    pub history: &'a [Message],
+    /// Model selected for the preceding model attempt in this run, if any.
+    pub previous_model: Option<&'a ModelHandle>,
+    /// Runner default used as the initial candidate for this call.
+    pub default_model: &'a ModelHandle,
+    /// Candidate after all earlier model-selection hooks.
+    pub selected_model: &'a ModelHandle,
 }
 
 /// Canonical non-streaming completion response event.
@@ -722,6 +744,35 @@ impl RequestPatch {
     }
 }
 
+/// Action for model-selection hooks.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum ModelSelectionAction {
+    /// Keep the candidate supplied to this hook.
+    Continue,
+    /// Replace the candidate and pass it to later hooks.
+    Select(ModelHandle),
+    /// Stop the run before request preparation or model execution.
+    Stop(String),
+}
+
+impl ModelSelectionAction {
+    /// Keeps the current model candidate.
+    pub fn continue_run() -> Self {
+        Self::Continue
+    }
+
+    /// Selects `model` and passes it to later hooks.
+    pub fn select(model: ModelHandle) -> Self {
+        Self::Select(model)
+    }
+
+    /// Stops the run before the pending model attempt.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Stop(reason.into())
+    }
+}
+
 /// Action for completion-call hooks.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompletionCallAction {
@@ -915,6 +966,20 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+    /// Selects the model for the pending model-call boundary.
+    ///
+    /// Selection is synchronous and operates only on already-constructed
+    /// [`ModelHandle`] values. In a [`HookStack`], selections are passed to
+    /// later hooks in registration order; the last selection wins and a stop
+    /// is terminal. The default action keeps the current candidate.
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        ModelSelectionAction::Continue
+    }
+
     /// Runs before a completion request is sent.
     ///
     /// Return a per-turn patch, continue without one, or stop the run. Patches
@@ -1038,6 +1103,7 @@ impl AgentHook for () {
 }
 
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
+    fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
     fn completion_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1090,6 +1156,10 @@ impl<H> DynAgentHook for H
 where
     H: AgentHook,
 {
+    fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction {
+        self.on_model_select(ctx, event)
+    }
+
     fn completion_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1165,6 +1235,10 @@ where
 }
 
 /// Ordered composable hook stack.
+///
+/// Model selections chain in registration order: each hook sees the candidate
+/// selected by earlier hooks, the last selection wins, and a stop is terminal.
+/// Nested stacks preserve the same composition semantics.
 #[derive(Clone, Default)]
 pub struct HookStack {
     hooks: Vec<Arc<dyn DynAgentHook>>,
@@ -1250,6 +1324,32 @@ where
 }
 
 impl AgentHook for HookStack {
+    fn on_model_select(
+        &self,
+        ctx: &HookContext,
+        event: ModelSelection<'_>,
+    ) -> ModelSelectionAction {
+        let mut selected = None;
+        for hook in &self.hooks {
+            let action = {
+                let selected_model = selected.as_ref().unwrap_or(event.selected_model);
+                hook.model_select(
+                    ctx,
+                    ModelSelection {
+                        selected_model,
+                        ..event
+                    },
+                )
+            };
+            match action {
+                ModelSelectionAction::Continue => {}
+                ModelSelectionAction::Select(model) => selected = Some(model),
+                stop @ ModelSelectionAction::Stop(_) => return stop,
+            }
+        }
+        selected.map_or(ModelSelectionAction::Continue, ModelSelectionAction::Select)
+    }
+
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
@@ -1608,6 +1708,231 @@ mod migrated_tests {
 
     fn ctx() -> HookContext {
         HookContext::new(false, Some("test-agent".to_string()))
+    }
+
+    fn model(label: &str) -> ModelHandle {
+        ModelHandle::named(label, crate::test_utils::MockCompletionModel::default())
+    }
+
+    enum RouteDecision {
+        Continue,
+        Select(ModelHandle),
+        Stop,
+    }
+
+    type RouteLog = Arc<Mutex<Vec<(&'static str, Option<String>)>>>;
+
+    struct RouteRecorder {
+        label: &'static str,
+        log: RouteLog,
+        decision: RouteDecision,
+    }
+
+    impl AgentHook for RouteRecorder {
+        fn on_model_select(
+            &self,
+            _ctx: &HookContext,
+            event: ModelSelection<'_>,
+        ) -> ModelSelectionAction {
+            self.log
+                .lock()
+                .expect("route log")
+                .push((self.label, event.selected_model.label().map(str::to_owned)));
+            match &self.decision {
+                RouteDecision::Continue => ModelSelectionAction::continue_run(),
+                RouteDecision::Select(model) => ModelSelectionAction::select(model.clone()),
+                RouteDecision::Stop => ModelSelectionAction::stop("routing stopped"),
+            }
+        }
+    }
+
+    fn model_selection<'a>(
+        prompt: &'a Message,
+        default_model: &'a ModelHandle,
+    ) -> ModelSelection<'a> {
+        ModelSelection {
+            prompt,
+            history: &[],
+            previous_model: None,
+            default_model,
+            selected_model: default_model,
+        }
+    }
+
+    #[test]
+    fn model_selections_chain_in_registration_order_and_last_wins() {
+        let default = model("default");
+        let first = model("first");
+        let last = model("last");
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::with(RouteRecorder {
+            label: "continue",
+            log: log.clone(),
+            decision: RouteDecision::Continue,
+        });
+        stack.push(RouteRecorder {
+            label: "first",
+            log: log.clone(),
+            decision: RouteDecision::Select(first),
+        });
+        stack.push(RouteRecorder {
+            label: "last",
+            log: log.clone(),
+            decision: RouteDecision::Select(last),
+        });
+        let prompt = Message::user("route");
+
+        let action = stack.on_model_select(&ctx(), model_selection(&prompt, &default));
+
+        let ModelSelectionAction::Select(selected) = action else {
+            panic!("stack should select the last candidate");
+        };
+        assert_eq!(selected.label(), Some("last"));
+        assert_eq!(
+            log.lock().expect("route log").as_slice(),
+            &[
+                ("continue", Some("default".to_owned())),
+                ("first", Some("default".to_owned())),
+                ("last", Some("first".to_owned())),
+            ]
+        );
+    }
+
+    #[test]
+    fn model_selection_stop_short_circuits_later_hooks() {
+        let default = model("default");
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut stack = HookStack::with(RouteRecorder {
+            label: "stop",
+            log: log.clone(),
+            decision: RouteDecision::Stop,
+        });
+        stack.push(RouteRecorder {
+            label: "later",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("later")),
+        });
+        let prompt = Message::user("route");
+
+        assert!(matches!(
+            stack.on_model_select(&ctx(), model_selection(&prompt, &default)),
+            ModelSelectionAction::Stop(reason) if reason == "routing stopped"
+        ));
+        assert_eq!(
+            log.lock().expect("route log").as_slice(),
+            &[("stop", Some("default".to_owned()))]
+        );
+    }
+
+    #[test]
+    fn nested_model_selection_stacks_preserve_candidate_chaining() {
+        let default = model("default");
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let inner = HookStack::with(RouteRecorder {
+            label: "inner",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("inner")),
+        });
+        let mut outer = HookStack::with(RouteRecorder {
+            label: "outer-before",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("outer")),
+        });
+        outer.push(inner);
+        outer.push(RouteRecorder {
+            label: "outer-after",
+            log: log.clone(),
+            decision: RouteDecision::Continue,
+        });
+        let prompt = Message::user("route");
+
+        let action = outer.on_model_select(&ctx(), model_selection(&prompt, &default));
+
+        let ModelSelectionAction::Select(selected) = action else {
+            panic!("nested stack should preserve the inner selection");
+        };
+        assert_eq!(selected.label(), Some("inner"));
+        assert_eq!(
+            log.lock().expect("route log").as_slice(),
+            &[
+                ("outer-before", Some("default".to_owned())),
+                ("inner", Some("outer".to_owned())),
+                ("outer-after", Some("inner".to_owned())),
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_model_selection_stack_without_a_selection_preserves_outer_candidate() {
+        let default = model("default");
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let inner = HookStack::with(RouteRecorder {
+            label: "inner-continue",
+            log: log.clone(),
+            decision: RouteDecision::Continue,
+        });
+        let mut outer = HookStack::with(RouteRecorder {
+            label: "outer-select",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("outer")),
+        });
+        outer.push(inner);
+        outer.push(RouteRecorder {
+            label: "outer-after",
+            log: log.clone(),
+            decision: RouteDecision::Continue,
+        });
+        let prompt = Message::user("route");
+
+        let action = outer.on_model_select(&ctx(), model_selection(&prompt, &default));
+
+        let ModelSelectionAction::Select(selected) = action else {
+            panic!("outer selection should survive a continuing nested stack");
+        };
+        assert_eq!(selected.label(), Some("outer"));
+        assert_eq!(
+            log.lock().expect("route log").as_slice(),
+            &[
+                ("outer-select", Some("default".to_owned())),
+                ("inner-continue", Some("outer".to_owned())),
+                ("outer-after", Some("outer".to_owned())),
+            ]
+        );
+    }
+
+    #[test]
+    fn nested_model_selection_stop_short_circuits_the_outer_stack() {
+        let default = model("default");
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let inner = HookStack::with(RouteRecorder {
+            label: "inner-stop",
+            log: log.clone(),
+            decision: RouteDecision::Stop,
+        });
+        let mut outer = HookStack::with(RouteRecorder {
+            label: "outer-before",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("outer")),
+        });
+        outer.push(inner);
+        outer.push(RouteRecorder {
+            label: "outer-after",
+            log: log.clone(),
+            decision: RouteDecision::Select(model("unreachable")),
+        });
+        let prompt = Message::user("route");
+
+        assert!(matches!(
+            outer.on_model_select(&ctx(), model_selection(&prompt, &default)),
+            ModelSelectionAction::Stop(reason) if reason == "routing stopped"
+        ));
+        assert_eq!(
+            log.lock().expect("route log").as_slice(),
+            &[
+                ("outer-before", Some("default".to_owned())),
+                ("inner-stop", Some("outer".to_owned())),
+            ]
+        );
     }
 
     struct ToolRecorder {
@@ -2256,6 +2581,7 @@ mod migrated_tests {
 
     #[test]
     fn action_types_are_event_specific() {
+        fn model_selection(_: ModelSelectionAction) {}
         fn completion(_: CompletionCallAction) {}
         fn model_turn(_: ModelTurnAction) {}
         fn retry_request(_: RetryRequest) {}
@@ -2263,6 +2589,7 @@ mod migrated_tests {
         fn result(_: ToolResultAction) {}
         fn invalid(_: InvalidToolCallAction) {}
         fn observation(_: ObservationAction) {}
+        model_selection(ModelSelectionAction::continue_run());
         completion(CompletionCallAction::continue_run());
         model_turn(ModelTurnAction::retry_with_feedback("try again"));
         retry_request(RetryRequest::Repeat);

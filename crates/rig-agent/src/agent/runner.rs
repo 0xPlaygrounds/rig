@@ -13,8 +13,7 @@
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
-//! # use rig_core::completion::CompletionModel;
-//! # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
 //!     .runner("What is 2 + 2?")
 //!     .max_turns(3)
@@ -41,6 +40,7 @@ use super::{
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
+    model::ModelHandle,
     prompt_request::{
         PromptResponse,
         streaming::{
@@ -195,15 +195,12 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
 #[non_exhaustive]
-pub struct AgentRunner<M>
-where
-    M: CompletionModel,
-{
+pub struct AgentRunner {
     pub(crate) prompt: Message,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) model: Arc<M>,
+    pub(crate) model: ModelHandle,
     pub(crate) agent_name: Option<String>,
     pub(crate) preamble: Option<String>,
     pub(crate) static_context: Vec<Document>,
@@ -228,13 +225,10 @@ where
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
@@ -267,10 +261,11 @@ where
 
     /// Append a hook to the stack (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use their event-specific terminal action). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use their
+    /// event-specific terminal action). See the [`hook`](crate::agent::hook)
+    /// module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -280,16 +275,32 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self
+    }
+
+    /// Set the default model candidate for this run.
+    ///
+    /// This does not suppress registered model-selection hooks, which may
+    /// replace the candidate before each model call (including retries).
+    /// Append an unconditional selecting hook last when the run must always
+    /// use one model.
+    pub fn using_model(mut self, model: ModelHandle) -> Self {
+        self.model = model;
+        self
+    }
+
+    /// Erase and set a typed default model for this run.
+    pub fn using_model_value<M>(self, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        self.using_model(ModelHandle::new(model))
     }
 
     /// Set the typed context cloned for every tool dispatch in this run.
@@ -660,17 +671,14 @@ pub(crate) struct ToolCallOutcome {
 /// Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
-pub(crate) async fn run_single_tool<M>(
-    runner: &AgentRunner<M>,
+pub(crate) async fn run_single_tool(
+    runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError>
-where
-    M: CompletionModel,
-{
+) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.hooks;
     let tool_context = &runner.tool_context;
     let record_content = runner.record_telemetry_content;
@@ -896,13 +904,10 @@ impl UnaryTurnSource {
     }
 }
 
-impl<M> TurnSource<M> for UnaryTurnSource
-where
-    M: CompletionModel,
-{
+impl TurnSource for UnaryTurnSource {
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
         let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
@@ -911,10 +916,10 @@ where
 
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
         current_prompt: Message,
@@ -1048,7 +1053,7 @@ where
 
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
@@ -1093,10 +1098,7 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     pub(crate) async fn run_with_error_usage(
         mut self,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
@@ -1930,8 +1932,9 @@ mod migrated_tests {
     #[tokio::test]
     async fn response_scoped_id_is_not_promoted_into_history() {
         let prompt = Message::user("prompt");
-        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
-            .with_response_id("chatcmpl-123")]))
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("reply").with_response_id("chatcmpl-123")
+        ]))
         .build()
         .runner(prompt)
         .run()
@@ -1952,8 +1955,9 @@ mod migrated_tests {
     #[tokio::test]
     async fn message_id_is_promoted_into_history() {
         let prompt = Message::user("prompt");
-        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
-            .with_message_id("msg_abc")]))
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("reply").with_message_id("msg_abc")
+        ]))
         .build()
         .runner(prompt)
         .run()
