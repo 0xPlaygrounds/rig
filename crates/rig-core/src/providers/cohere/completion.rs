@@ -1,6 +1,6 @@
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, GetTokenUsage},
+    completion::{self, CompletionError},
     http_client::{self, HttpClientExt},
     json_utils,
     message::{self, Reasoning, ToolChoice},
@@ -10,9 +10,12 @@ use std::collections::HashMap;
 
 use super::client::Client;
 use crate::completion::CompletionRequest;
-use crate::providers::cohere::streaming::StreamingCompletionResponse;
 use serde::{Deserialize, Serialize};
 use tracing::{Instrument, Level, enabled};
+
+/// Stable descriptor name recorded on normalized responses, streams, and
+/// telemetry spans for this provider.
+pub(crate) const PROVIDER_NAME: &str = "cohere";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -93,6 +96,25 @@ pub enum FinishReason {
     Complete,
     Error,
     ToolCall,
+    /// A reason outside the set Cohere documents today, kept verbatim in
+    /// Cohere's own spelling rather than failing deserialization.
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// Map Cohere's `finish_reason` onto rig's normalized vocabulary.
+///
+/// `ERROR` — and anything Cohere adds later — is carried through as
+/// [`completion::FinishReason::Other`] in Cohere's own wire spelling instead of
+/// being flattened into a natural stop.
+pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReason {
+    match reason {
+        FinishReason::Complete | FinishReason::StopSequence => completion::FinishReason::Stop,
+        FinishReason::MaxTokens => completion::FinishReason::Length,
+        FinishReason::ToolCall => completion::FinishReason::ToolCalls,
+        FinishReason::Error => completion::FinishReason::Other("ERROR".to_owned()),
+        FinishReason::Other(other) => completion::FinishReason::Other(other.clone()),
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -103,17 +125,36 @@ pub struct Usage {
     pub tokens: Option<Tokens>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
+impl From<&Usage> for crate::completion::Usage {
+    fn from(usage: &Usage) -> crate::completion::Usage {
+        // `tokens` is Cohere's actual token accounting; `billed_units` is the
+        // billing view of the same turn and only stands in when Cohere omits
+        // the token counts.
+        let counts = usage
+            .tokens
+            .as_ref()
+            .map(|tokens| (tokens.input_tokens, tokens.output_tokens))
+            .or_else(|| {
+                usage
+                    .billed_units
+                    .as_ref()
+                    .map(|billed| (billed.input_tokens, billed.output_tokens))
+            });
 
-        if let Some(ref billed_units) = self.billed_units {
-            usage.input_tokens = billed_units.input_tokens.unwrap_or_default() as u64;
-            usage.output_tokens = billed_units.output_tokens.unwrap_or_default() as u64;
-            usage.total_tokens = usage.input_tokens + usage.output_tokens;
+        let mut normalized = crate::completion::Usage::new();
+        if let Some((input_tokens, output_tokens)) = counts {
+            normalized.input_tokens = input_tokens.unwrap_or_default() as u64;
+            normalized.output_tokens = output_tokens.unwrap_or_default() as u64;
+            normalized.total_tokens = normalized.input_tokens + normalized.output_tokens;
         }
 
-        usage
+        normalized
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(usage: Usage) -> crate::completion::Usage {
+        crate::completion::Usage::from(&usage)
     }
 }
 
@@ -137,7 +178,7 @@ pub struct Tokens {
     pub output_tokens: Option<f64>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -178,29 +219,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .and_then(|usage| usage.tokens.as_ref())
-            .map(|tokens| {
-                let input_tokens = tokens.input_tokens.unwrap_or(0.0);
-                let output_tokens = tokens.output_tokens.unwrap_or(0.0);
-
-                completion::Usage {
-                    input_tokens: input_tokens as u64,
-                    output_tokens: output_tokens as u64,
-                    total_tokens: (input_tokens + output_tokens) as u64,
-                    cached_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                    tool_use_prompt_tokens: 0,
-                    reasoning_tokens: 0,
-                }
-            })
+            .map(completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice: model_response,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(
+            // Cohere's `/v2/chat` payload reports no model identifier, so the
+            // normalized `model` stays unset.
+            completion::CompletionResponse::new(model_response, usage, PROVIDER_NAME)
+                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_finish_reason(map_finish_reason(&response.finish_reason)),
+        )
     }
 }
 
@@ -622,28 +650,38 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
+where
+    T: HttpClientExt,
+    Client<T>: Clone,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
+
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    async fn completion(
+    /// Execute a completion and return Cohere's own wire response.
+    ///
+    /// This is the escape hatch for Cohere-specific fields rig does not
+    /// normalize (citations, tool plans). It shares the request builder,
+    /// transport, telemetry, and error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let llm_span =
-            CompletionSpanBuilder::new("cohere", &request.model, CompletionOperation::Chat)
+            CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
                 .system_instructions(system_instructions.as_deref(), record_telemetry_content)
                 .build();
 
@@ -675,7 +713,12 @@ where
             if status.is_success() {
                 let json_response: CompletionResponse = serde_json::from_slice(&body)?;
                 let span = tracing::Span::current();
-                span.record_token_usage(&json_response.usage);
+                let usage = json_response
+                    .usage
+                    .as_ref()
+                    .map(completion::Usage::from)
+                    .unwrap_or_default();
+                span.record_token_usage(&usage);
                 span.record_response_metadata(&json_response);
 
                 if enabled!(Level::TRACE) {
@@ -686,9 +729,7 @@ where
                     );
                 }
 
-                let completion: completion::CompletionResponse<CompletionResponse> =
-                    json_response.try_into()?;
-                Ok(completion)
+                Ok(json_response)
             } else {
                 Err(CompletionError::from_http_response(
                     status,
@@ -699,14 +740,23 @@ where
         .instrument(llm_span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }
@@ -789,6 +839,75 @@ mod tests {
 
         assert_eq!(name, "subtract");
         assert_eq!(arguments, serde_json::json!({"x": 5, "y": 2}));
+    }
+
+    #[test]
+    fn finish_reason_maps_every_documented_wire_value() {
+        assert_eq!(
+            map_finish_reason(&FinishReason::Complete),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::StopSequence),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::MaxTokens),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::ToolCall),
+            completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::Error),
+            completion::FinishReason::Other("ERROR".to_owned())
+        );
+    }
+
+    #[test]
+    fn unknown_finish_reason_survives_verbatim() {
+        let reason: FinishReason = serde_json::from_str("\"ERROR_TOXIC\"")
+            .expect("unknown reasons must still deserialize");
+        assert_eq!(reason, FinishReason::Other("ERROR_TOXIC".to_owned()));
+        assert_eq!(
+            map_finish_reason(&reason),
+            completion::FinishReason::Other("ERROR_TOXIC".to_owned())
+        );
+    }
+
+    #[test]
+    fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
+        let response: CompletionResponse = serde_json::from_str(
+            r#"{
+                "id": "abc123",
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [{
+                        "id": "subtract_1",
+                        "type": "function",
+                        "function": {"name": "subtract", "arguments": "{\"x\":5,\"y\":2}"}
+                    }]
+                },
+                "finish_reason": "TOOL_CALL",
+                "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}}
+            }"#,
+        )
+        .expect("fixture should deserialize");
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("normalization should succeed");
+
+        assert_eq!(normalized.provider, PROVIDER_NAME);
+        assert_eq!(normalized.message_id.as_deref(), Some("abc123"));
+        assert_eq!(normalized.model, None);
+        assert_eq!(
+            normalized.finish_reason,
+            Some(completion::FinishReason::ToolCalls)
+        );
+        assert_eq!(normalized.usage.input_tokens, 10);
+        assert_eq!(normalized.usage.output_tokens, 4);
+        assert_eq!(normalized.usage.total_tokens, 14);
     }
 
     #[test]

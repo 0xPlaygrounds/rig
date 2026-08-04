@@ -12,7 +12,34 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct VertexGenerateContentOutput(pub vertexai::model::GenerateContentResponse);
 
-impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateContentOutput> {
+/// Stable descriptor name reported on normalized Vertex AI responses.
+pub const PROVIDER_NAME: &str = "vertexai";
+
+/// Map Vertex AI's `finishReason` onto rig's normalized vocabulary.
+///
+/// Unmapped values are carried verbatim in their wire SCREAMING_SNAKE spelling
+/// so a reason Vertex adds later surfaces instead of reading as a natural stop.
+pub fn map_finish_reason(
+    reason: vertexai::model::candidate::FinishReason,
+) -> Option<rig_core::completion::FinishReason> {
+    use rig_core::completion::FinishReason as Normalized;
+    use vertexai::model::candidate::FinishReason as Wire;
+
+    let normalized = match reason {
+        Wire::Stop => Normalized::Stop,
+        Wire::MaxTokens => Normalized::Length,
+        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
+            Normalized::ContentFilter
+        }
+        // `Unspecified` is Vertex's "no reason reported" value, not a reason.
+        Wire::Unspecified => return None,
+        other => Normalized::Other(format!("{other:?}").to_uppercase()),
+    };
+
+    Some(normalized)
+}
+
+impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(value: VertexGenerateContentOutput) -> Result<Self, Self::Error> {
@@ -137,12 +164,12 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse<VertexGenerateC
             })
             .unwrap_or_default();
 
-        Ok(CompletionResponse {
-            choice,
-            usage,
-            raw_response: value,
-            message_id: None,
-        })
+        let finish_reason = map_finish_reason(candidate.finish_reason.clone());
+        let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
+
+        Ok(CompletionResponse::new(choice, usage, PROVIDER_NAME)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_model(model))
     }
 }
 
@@ -229,10 +256,9 @@ mod tests {
     #[test]
     fn test_tool_call_response_captures_thought_signature() {
         let raw = b"\x00\x01\x02thinking-sig\xff";
-        let response: CompletionResponse<VertexGenerateContentOutput> =
-            create_signed_tool_call_response("add", raw)
-                .try_into()
-                .unwrap();
+        let response: CompletionResponse = create_signed_tool_call_response("add", raw)
+            .try_into()
+            .unwrap();
         match response.choice.first() {
             AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
             _ => panic!("Expected ToolCall"),
@@ -241,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_response_without_signature_is_none() {
-        let response: CompletionResponse<VertexGenerateContentOutput> =
+        let response: CompletionResponse =
             create_tool_call_response("add", serde_json::json!({"x": 1}))
                 .try_into()
                 .unwrap();
@@ -264,7 +290,7 @@ mod tests {
         let candidate = vertexai::model::Candidate::new().set_content(content);
         let response = vertexai::model::GenerateContentResponse::new().set_candidates([candidate]);
 
-        let response: CompletionResponse<VertexGenerateContentOutput> =
+        let response: CompletionResponse =
             VertexGenerateContentOutput(response).try_into().unwrap();
 
         match response.choice.first() {
@@ -282,8 +308,7 @@ mod tests {
     #[test]
     fn test_text_response_conversion() {
         let vertex_output = create_text_response("Hello, world!");
-        let completion_response: Result<CompletionResponse<VertexGenerateContentOutput>, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -302,8 +327,7 @@ mod tests {
             "y": 3
         });
         let vertex_output = create_tool_call_response("add", args.clone());
-        let completion_response: Result<CompletionResponse<VertexGenerateContentOutput>, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -321,7 +345,7 @@ mod tests {
     #[test]
     fn inline_image_response_converts_raw_bytes_to_base64_with_mime_type() {
         let raw = vec![0, 1, 2, 255];
-        let response: CompletionResponse<VertexGenerateContentOutput> =
+        let response: CompletionResponse =
             create_parts_response([inline_data_part("image/png", raw.clone())])
                 .try_into()
                 .expect("image response should convert");
@@ -339,7 +363,7 @@ mod tests {
     #[test]
     fn mixed_text_and_image_response_preserves_part_order() {
         let raw = vec![1, 2, 3];
-        let response: CompletionResponse<VertexGenerateContentOutput> = create_parts_response([
+        let response: CompletionResponse = create_parts_response([
             vertexai::model::Part::new().set_text("before"),
             inline_data_part("image/jpeg", raw.clone()),
             vertexai::model::Part::new().set_text("after"),
@@ -361,7 +385,7 @@ mod tests {
 
     #[test]
     fn mixed_text_and_thought_image_response_keeps_only_visible_text_in_order() {
-        let response: CompletionResponse<VertexGenerateContentOutput> = create_parts_response([
+        let response: CompletionResponse = create_parts_response([
             vertexai::model::Part::new().set_text("before"),
             inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
             vertexai::model::Part::new().set_text("after"),
@@ -377,10 +401,11 @@ mod tests {
 
     #[test]
     fn thought_image_only_response_fails_without_visible_assistant_content() {
-        let result =
-            CompletionResponse::<VertexGenerateContentOutput>::try_from(create_parts_response([
-                inline_data_part("image/png", vec![1, 2, 3]).set_thought(true),
-            ]));
+        let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+            "image/png",
+            vec![1, 2, 3],
+        )
+        .set_thought(true)]));
 
         let error = match result {
             Err(error) => error,
@@ -397,9 +422,10 @@ mod tests {
     #[test]
     fn inline_audio_and_non_image_media_are_rejected() {
         for mime_type in ["audio/wav", "application/pdf", "application/octet-stream"] {
-            let result = CompletionResponse::<VertexGenerateContentOutput>::try_from(
-                create_parts_response([inline_data_part(mime_type, vec![0])]),
-            );
+            let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+                mime_type,
+                vec![0],
+            )]));
             let error = match result {
                 Err(error) => error,
                 Ok(_) => panic!("unsupported inline media must fail"),
@@ -412,9 +438,10 @@ mod tests {
     #[test]
     fn inline_gif_and_svg_images_are_rejected() {
         for mime_type in ["image/gif", "image/svg+xml"] {
-            let result = CompletionResponse::<VertexGenerateContentOutput>::try_from(
-                create_parts_response([inline_data_part(mime_type, vec![0])]),
-            );
+            let result = CompletionResponse::try_from(create_parts_response([inline_data_part(
+                mime_type,
+                vec![0],
+            )]));
             let error = match result {
                 Err(error) => error,
                 Ok(_) => panic!("non-replayable inline image must fail"),
@@ -431,10 +458,7 @@ mod tests {
     #[test]
     fn signed_inline_image_is_rejected() {
         let part = inline_data_part("image/png", vec![0]).set_thought_signature(vec![1, 2, 3]);
-        let result =
-            CompletionResponse::<VertexGenerateContentOutput>::try_from(create_parts_response([
-                part,
-            ]));
+        let result = CompletionResponse::try_from(create_parts_response([part]));
         let error = match result {
             Err(error) => error,
             Ok(_) => panic!("signed inline image must fail"),
@@ -453,8 +477,7 @@ mod tests {
         response = response.set_usage_metadata(usage_metadata);
 
         let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response: Result<CompletionResponse<VertexGenerateContentOutput>, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
@@ -468,8 +491,7 @@ mod tests {
         // Create a response with no candidates
         let response = vertexai::model::GenerateContentResponse::new();
         let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response: Result<CompletionResponse<VertexGenerateContentOutput>, _> =
-            vertex_output.try_into();
+        let completion_response: Result<CompletionResponse, _> = vertex_output.try_into();
 
         assert!(completion_response.is_err());
     }

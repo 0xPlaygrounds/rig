@@ -431,14 +431,31 @@ where
         Ok(response.id)
     }
 
-    /// Sends a completion turn and collects the final OpenAI response.
+    /// Sends a completion turn and collects the final OpenAI response,
+    /// normalized.
+    ///
+    /// Use [`ResponsesWebSocketSession::raw_completion`] when the provider's own
+    /// wire response is needed.
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let provider = self.model.provider_name();
+        let response = self.raw_completion(completion_request).await?;
+        (provider, response).try_into()
+    }
+
+    /// Sends a completion turn and returns the provider's own wire response.
+    ///
+    /// Shares the send/receive path with
+    /// [`ResponsesWebSocketSession::completion`], which calls it and then
+    /// applies the provider-local mapping — one websocket turn either way.
+    pub async fn raw_completion(
+        &mut self,
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
         self.send(completion_request).await?;
-        let response = self.wait_for_completed_response().await?;
-        response.try_into()
+        self.wait_for_completed_response().await
     }
 
     /// Closes the websocket connection.

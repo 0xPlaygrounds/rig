@@ -3,7 +3,6 @@ use crate::{
         self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
         ProviderClient,
     },
-    completion::GetTokenUsage,
     http_client,
 };
 use http::HeaderValue;
@@ -120,22 +119,35 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let (cached_input, cache_creation) = self
+impl From<&Usage> for crate::completion::Usage {
+    fn from(value: &Usage) -> crate::completion::Usage {
+        let (cached_input, cache_creation) = value
             .prompt_tokens_details
             .as_ref()
             .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
             .unwrap_or((0, 0));
         crate::completion::Usage {
-            input_tokens: self.prompt_tokens as u64,
-            output_tokens: self.completion_tokens as u64,
-            total_tokens: self.total_tokens as u64,
+            input_tokens: value.prompt_tokens as u64,
+            // Reported completion tokens, falling back to saturating
+            // total - prompt for gateways that omit the field (it
+            // deserializes to 0).
+            output_tokens: if value.completion_tokens > 0 {
+                value.completion_tokens as u64
+            } else {
+                value.total_tokens.saturating_sub(value.prompt_tokens) as u64
+            },
+            total_tokens: value.total_tokens as u64,
             cached_input_tokens: cached_input,
             cache_creation_input_tokens: cache_creation,
             tool_use_prompt_tokens: 0,
             reasoning_tokens: 0,
         }
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        crate::completion::Usage::from(&value)
     }
 }
 impl<ApiKey, H> client::ClientBuilder<OpenRouterExtBuilder, ApiKey, H> {

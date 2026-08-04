@@ -41,19 +41,47 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = super::streaming::StreamingCompletionResponse;
-    type Client = super::Client;
+/// Stable descriptor name reported on normalized responses from this provider.
+pub const PROVIDER_NAME: &str = "gemini-grpc";
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
+/// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
+///
+/// The wire value is a prost enum discriminant; unmapped values are carried
+/// verbatim in their SCREAMING_SNAKE proto spelling so a reason Google adds
+/// later surfaces rather than reading as a natural stop.
+pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
+    use proto::candidate::FinishReason as Wire;
 
-    async fn completion(
+    let Ok(reason) = Wire::try_from(reason) else {
+        return Some(completion::FinishReason::Other(format!(
+            "FINISH_REASON_{reason}"
+        )));
+    };
+
+    let normalized = match reason {
+        // The proto default; Gemini reports it when no reason applies.
+        Wire::Unspecified => return None,
+        Wire::Stop => completion::FinishReason::Stop,
+        Wire::MaxTokens => completion::FinishReason::Length,
+        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
+            completion::FinishReason::ContentFilter
+        }
+        other => completion::FinishReason::Other(other.as_str_name().to_owned()),
+    };
+
+    Some(normalized)
+}
+
+impl CompletionModel {
+    /// Execute a completion and return Gemini's own protobuf response.
+    ///
+    /// This is the escape hatch for fields rig does not normalize;
+    /// [`completion::CompletionModel::completion`] calls it and maps the
+    /// result, so there is exactly one RPC either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request = create_grpc_request(self.model.clone(), completion_request)?;
 
         let mut grpc_client = self
@@ -67,16 +95,34 @@ impl completion::CompletionModel for CompletionModel {
             .map_err(rpc_error)?
             .into_inner();
 
-        response.try_into()
+        Ok(response)
+    }
+
+    /// Open a stream whose terminal record stays Gemini's own protobuf
+    /// response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        rig_core::streaming::RawStreamingResult<super::streaming::StreamingCompletionResponse>,
+        CompletionError,
+    > {
+        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -392,7 +438,7 @@ fn rig_assistant_content_to_grpc_part(
 }
 
 // Convert gRPC GenerateContentResponse to Rig CompletionResponse
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -495,12 +541,20 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = response
+            .candidates
+            .first()
+            .and_then(|candidate| map_finish_reason(candidate.finish_reason));
+        let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
+        let message_id =
+            Some(response.response_id.clone()).filter(|response_id| !response_id.is_empty());
+
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_finish_reason(finish_reason)
+                .with_optional_message_id(message_id)
+                .with_optional_model(model),
+        )
     }
 }
 

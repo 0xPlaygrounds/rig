@@ -5,14 +5,13 @@ use std::pin::Pin;
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
-use super::InteractionsCompletionModel;
-use super::create_request_body;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
     InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSummaryContent,
-    ThoughtSummaryDelta,
+    ThoughtSummaryDelta, map_interaction_status,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use super::{InteractionsCompletionModel, PROVIDER_NAME, create_request_body};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -40,26 +39,60 @@ pub type InteractionEventStream =
 pub type InteractionEventStream =
     Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage
+impl From<&StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
+        value
+            .usage
             .as_ref()
-            .map(|usage| usage.token_usage())
+            .map(crate::completion::Usage::from)
             .unwrap_or_default()
     }
+}
+
+impl From<StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
+        (&value).into()
+    }
+}
+
+/// Normalize the Interactions API's terminal streaming record.
+///
+/// The finish reason comes from the completed interaction's lifecycle status —
+/// the API has no `finishReason` field — and is absent when the stream ended
+/// without one.
+fn map_stream_final(
+    response: StreamingCompletionResponse,
+) -> Result<streaming::StreamFinal, CompletionError> {
+    let usage = (&response).into();
+    let interaction = response.interaction.as_ref();
+    let finish_reason = interaction
+        .and_then(|interaction| interaction.status.as_ref())
+        .map(map_interaction_status);
+    let message_id = interaction
+        .map(|interaction| interaction.id.as_str())
+        .filter(|id| !id.is_empty());
+
+    Ok(streaming::StreamFinal::new(PROVIDER_NAME, usage)
+        .with_optional_finish_reason(finish_reason)
+        .with_optional_message_id(message_id)
+        .with_optional_model(response.model_version.as_deref()))
 }
 
 impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open an Interactions stream whose terminal record stays provider-native.
+    ///
+    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
+    /// delegates here and maps only the terminal record, so both paths open
+    /// exactly one stream over the same request, telemetry, and error handling.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &self.model,
             CompletionOperation::InteractionsStreaming,
         )
@@ -92,6 +125,7 @@ where
         let stream = stream! {
             let mut final_interaction: Option<Interaction> = None;
             let mut final_usage: Option<InteractionUsage> = None;
+            let mut stream_failed = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -134,7 +168,7 @@ where
                                 }
 
                                 if let Some(usage) = interaction.usage.clone() {
-                                    span.record_token_usage(&usage);
+                                    span.record_token_usage(&crate::completion::Usage::from(&usage));
                                     final_usage = Some(usage);
                                 }
                                 final_interaction = Some(interaction);
@@ -145,6 +179,7 @@ where
                                 // the SSE path's `completion_error_from_body`. The error
                                 // arrives over an established stream, so there is no HTTP
                                 // status to attach (status: None).
+                                stream_failed = true;
                                 yield Err(crate::provider_response::completion_error_from_body(
                                     message.data,
                                 ));
@@ -158,6 +193,7 @@ where
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
+                        stream_failed = true;
                         yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
@@ -166,18 +202,33 @@ where
 
             event_source.close();
 
-            let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
-                interaction: final_interaction,
-                model_version,
-            }));
+            // A stream that errored out never gets a synthesized terminal
+            // record: yielding one would report a successful completion for a
+            // turn the provider aborted.
+            if !stream_failed {
+                let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                    usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
+                    interaction: final_interaction,
+                    model_version,
+                }));
+            }
         }
         .instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let inner = self.raw_stream(completion_request).await?;
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            streaming::normalize_stream(inner, map_stream_final),
+        ))
     }
 }
 

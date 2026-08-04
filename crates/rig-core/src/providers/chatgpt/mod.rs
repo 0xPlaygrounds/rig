@@ -439,11 +439,60 @@ where
         }
     }
 
-    async fn completion_from_sse(
+    /// Execute a ChatGPT completion and return the Responses API's own wire
+    /// response.
+    ///
+    /// This is the escape hatch for fields rig does not normalize;
+    /// [`completion::CompletionModel::completion`] calls it and maps the
+    /// result, so there is exactly one request either way.
+    pub async fn raw_completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<responses_api::CompletionResponse, CompletionError> {
+        let request = self.create_request(completion_request)?;
+        self.raw_completion_from_sse(request).await
+    }
+
+    async fn raw_completion_from_sse(
         &self,
         request: ResponsesRequest,
-    ) -> Result<completion::CompletionResponse<responses_api::CompletionResponse>, CompletionError>
-    {
+    ) -> Result<responses_api::CompletionResponse, CompletionError> {
+        let body = serde_json::to_vec(&request)?;
+        let auth = self
+            .client
+            .ext()
+            .auth
+            .auth_context()
+            .await
+            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
+
+        let req = self
+            .add_auth_headers(self.client.post("/responses")?, &auth)
+            .body(body)
+            .map_err(|err| CompletionError::HttpError(err.into()))?;
+
+        let response = self.client.send(req).await?;
+        let status = response.status();
+        let text = http_client::text(response).await?;
+        if !status.is_success() {
+            return Err(CompletionError::from_http_response(status, text));
+        }
+
+        // The `/responses` endpoint answers with an SSE body even for a
+        // non-streaming request, so the wire response is reassembled from the
+        // event stream rather than parsed as one JSON document.
+        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
+
+        Ok(raw_response)
+    }
+
+    /// Normalize a ChatGPT completion, falling back to the SSE event stream
+    /// when the reassembled response carries no output items.
+    async fn normalized_completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let request = self.create_request(completion_request)?;
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
@@ -466,12 +515,21 @@ where
         }
 
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
+        let span = tracing::Span::current();
+        span.record("gen_ai.response.id", &raw_response.id);
+        span.record("gen_ai.response.model", &raw_response.model);
 
-        match raw_response.clone().try_into() {
+        match (PROVIDER_NAME, raw_response.clone()).try_into() {
             Ok(response) => Ok(response),
+            // An empty `output` means the terminal event never carried the
+            // assembled items; rebuild the response from the raw event stream.
             Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
-                responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
-                    .await
+                responses_api::streaming::completion_response_from_sse_body(
+                    PROVIDER_NAME,
+                    &text,
+                    raw_response,
+                )
+                .await
             }
             Err(error) => Err(error),
         }
@@ -487,36 +545,40 @@ where
     }
 }
 
+impl<H> crate::client::ConstructCompletionModel<Client<H>> for ResponsesCompletionModel<H>
+where
+    Client<H>: HttpClientExt + Clone + Debug + 'static,
+    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn construct(client: &Client<H>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
+
 impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
 where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = responses_api::CompletionResponse;
-    type StreamingResponse = responses_api::streaming::StreamingCompletionResponse;
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
     async fn completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.create_request(completion_request)?;
+        let model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
+        let preamble = completion_request.preamble.clone();
 
-        let span = CompletionSpanBuilder::new("chatgpt", &request.model, CompletionOperation::Chat)
-            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
+        let span = CompletionSpanBuilder::new(PROVIDER_NAME, &model, CompletionOperation::Chat)
+            .system_instructions(preamble.as_deref(), record_telemetry_content)
             .build();
 
         tracing_futures::Instrument::instrument(
             async move {
-                let response = self.completion_from_sse(request).await?;
+                let response = self.normalized_completion(completion_request).await?;
                 let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.raw_response.id);
-                span.record("gen_ai.response.model", &response.raw_response.model);
                 span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
                 span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
                 span.record(
@@ -533,7 +595,7 @@ where
     async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }
 }
@@ -543,11 +605,28 @@ where
     Client<H>: HttpClientExt + Clone + Debug + 'static,
     H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
+    /// Open a stream normalized to rig's terminal record.
+    ///
+    /// Delegates to [`ResponsesCompletionModel::raw_stream`] — one request
+    /// either way.
     pub async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+
+        Ok(responses_api::streaming::normalize_responses_stream(
+            PROVIDER_NAME,
+            raw,
+        ))
+    }
+
+    /// Open a stream whose terminal record stays the Responses API's own type.
+    pub async fn raw_stream(
+        &self,
+        completion_request: completion::CompletionRequest,
     ) -> Result<
-        StreamingCompletionResponse<responses_api::streaming::StreamingCompletionResponse>,
+        crate::streaming::RawStreamingResult<responses_api::streaming::StreamingCompletionResponse>,
         CompletionError,
     > {
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -576,7 +655,7 @@ where
             .map_err(|err| CompletionError::HttpError(err.into()))?;
 
         let span = CompletionSpanBuilder::new(
-            "chatgpt",
+            PROVIDER_NAME,
             &request.model,
             CompletionOperation::ChatStreaming,
         )
@@ -587,12 +666,15 @@ where
         let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
             .allow_missing_content_type();
 
-        Ok(responses_api::streaming::stream_from_event_source(
+        Ok(responses_api::streaming::raw_stream_from_event_source(
             event_source,
             span,
         ))
     }
 }
+
+/// Stable descriptor name reported on normalized ChatGPT responses.
+pub const PROVIDER_NAME: &str = "chatgpt";
 
 fn default_user_agent() -> String {
     format!(
@@ -810,10 +892,13 @@ data: [DONE]"#;
 
         let raw_response = responses_api::streaming::parse_sse_completion_body(body, "ChatGPT")
             .expect("expected response");
-        let response =
-            responses_api::streaming::completion_response_from_sse_body(body, raw_response)
-                .await
-                .expect("fallback response");
+        let response = responses_api::streaming::completion_response_from_sse_body(
+            PROVIDER_NAME,
+            body,
+            raw_response,
+        )
+        .await
+        .expect("fallback response");
 
         let text: String = response
             .choice

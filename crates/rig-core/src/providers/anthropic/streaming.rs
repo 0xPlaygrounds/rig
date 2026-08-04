@@ -7,14 +7,15 @@ use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
-    Content, GenericCompletionModel, Usage,
+    Content, GenericCompletionModel, Usage, map_finish_reason,
 };
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
 use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
+    self, RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal,
+    ToolCallDeltaContent,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -156,19 +157,25 @@ pub struct PartialUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&PartialUsage> for crate::completion::Usage {
+    fn from(value: &PartialUsage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.input_tokens.unwrap_or_default() as u64;
-        usage.output_tokens = self.output_tokens as u64;
-        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or(0);
-        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or(0);
+        usage.input_tokens = value.input_tokens.unwrap_or_default() as u64;
+        usage.output_tokens = value.output_tokens as u64;
+        usage.cached_input_tokens = value.cache_read_input_tokens.unwrap_or(0);
+        usage.cache_creation_input_tokens = value.cache_creation_input_tokens.unwrap_or(0);
         usage.total_tokens = usage.input_tokens
             + usage.cached_input_tokens
             + usage.cache_creation_input_tokens
             + usage.output_tokens;
         usage
+    }
+}
+
+impl From<PartialUsage> for crate::completion::Usage {
+    fn from(value: PartialUsage) -> crate::completion::Usage {
+        (&value).into()
     }
 }
 
@@ -193,24 +200,38 @@ struct ThinkingState {
     signature: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+/// Anthropic's own terminal stream record, as returned by
+/// [`GenericCompletionModel::raw_stream`].
+///
+/// [`crate::completion::CompletionModel::stream`] maps this once into the
+/// normalized [`StreamFinal`]; callers who want the provider-native shape read
+/// it here instead.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
+    /// Token usage carried by the terminal `message_delta` event.
     pub usage: PartialUsage,
+    /// Anthropic's `stop_reason`, verbatim, when the stream reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+    /// The `message_start` message ID, when the stream reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// The model named by `message_start`, when the stream reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.usage.input_tokens.unwrap_or(0) as u64;
-        usage.output_tokens = self.usage.output_tokens as u64;
-        usage.cached_input_tokens = self.usage.cache_read_input_tokens.unwrap_or(0);
-        usage.cache_creation_input_tokens = self.usage.cache_creation_input_tokens.unwrap_or(0);
-        usage.total_tokens = usage.input_tokens
-            + usage.cached_input_tokens
-            + usage.cache_creation_input_tokens
-            + usage.output_tokens;
-
-        usage
+/// Normalize an Anthropic terminal stream record.
+///
+/// The provider descriptor name is an *input* rather than a constant: the
+/// Anthropic Messages stream format is shared by every Anthropic-compatible
+/// provider, so baking in `"anthropic"` here would mislabel all of them.
+impl From<(&str, StreamingCompletionResponse)> for StreamFinal {
+    fn from((provider, response): (&str, StreamingCompletionResponse)) -> Self {
+        StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
+            .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
+            .with_optional_message_id(response.message_id)
+            .with_optional_model(response.model)
     }
 }
 
@@ -219,11 +240,18 @@ where
     T: HttpClientExt + Clone + Default + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays Anthropic-native.
+    ///
+    /// This is the escape hatch for provider-specific terminal fields rig does
+    /// not normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::stream`](crate::completion::CompletionModel::stream),
+    /// which calls it and then maps the terminal record once through
+    /// [`crate::streaming::normalize_stream`] — one network request either way.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -276,13 +304,17 @@ where
         let stream = GenericEventSource::new(self.client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: StreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
+        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
             let mut sse_stream = Box::pin(stream);
             let mut input_tokens = 0;
             let mut final_usage = None;
+            let mut stop_reason = None;
+            let mut message_id = None;
+            let mut response_model = None;
+            let mut terminated_with_error = false;
 
             let mut text_content = String::new();
 
@@ -296,13 +328,15 @@ where
                                 match &event {
                                     StreamingEvent::MessageStart { message } => {
                                         input_tokens = message.usage.input_tokens;
+                                        message_id = Some(message.id.clone());
+                                        response_model = Some(message.model.clone());
 
                                         let span = tracing::Span::current();
                                         span.record("gen_ai.response.id", &message.id);
                                         span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
-                                        if delta.stop_reason.is_some() {
+                                        if let Some(reason) = delta.stop_reason.as_ref() {
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -314,8 +348,9 @@ where
                                             };
 
                                             let span = tracing::Span::current();
-                                            span.record_token_usage(&usage);
+                                            span.record_token_usage(&crate::completion::Usage::from(&usage));
                                             final_usage = Some(usage);
+                                            stop_reason = Some(reason.clone());
                                             break;
                                         }
                                     }
@@ -344,6 +379,7 @@ where
                         }
                     },
                     Err(e) => {
+                        terminated_with_error = true;
                         yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
@@ -353,12 +389,37 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
+            // A transport failure cut the stream short: whatever was accumulated
+            // is partial, so do not follow the error with a terminal record that
+            // would read as a successfully completed turn.
+            if terminated_with_error {
+                return;
+            }
+
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                stop_reason,
+                message_id,
+                model: response_model,
             }))
         }.instrument(span));
 
-        Ok(streaming::StreamingCompletionResponse::stream(stream))
+        Ok(stream)
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let normalized = streaming::normalize_stream(stream, |response| {
+            Ok(StreamFinal::from((Ext::PROVIDER_NAME, response)))
+        });
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            Ext::PROVIDER_NAME,
+            normalized,
+        ))
     }
 }
 
@@ -560,14 +621,19 @@ mod tests {
     use async_stream::stream;
     use futures::StreamExt;
 
+    /// Normalize a hand-built Anthropic raw stream exactly as
+    /// [`GenericCompletionModel::stream`] does, so aggregation assertions run
+    /// against the same terminal-record mapping as the real path.
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
         > + Send
         + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
-        Box::pin(stream)
+    ) -> crate::streaming::StreamingResult {
+        crate::streaming::normalize_stream(Box::pin(stream), |response| {
+            Ok(StreamFinal::from(("anthropic", response)))
+        })
     }
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -575,8 +641,10 @@ mod tests {
         stream: impl futures::Stream<
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
         > + 'static,
-    ) -> crate::streaming::StreamingResult<StreamingCompletionResponse> {
-        Box::pin(stream)
+    ) -> crate::streaming::StreamingResult {
+        crate::streaming::normalize_stream(Box::pin(stream), |response| {
+            Ok(StreamFinal::from(("anthropic", response)))
+        })
     }
 
     #[test]
@@ -1617,13 +1685,13 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse::default()));
         };
 
-        let mut stream =
-            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(
+            "anthropic",
+            to_stream_result(raw_stream),
+        );
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =
@@ -1762,13 +1830,13 @@ mod tests {
             )
             .expect("citation delta should produce a raw choice");
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: PartialUsage::default(),
-            }));
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse::default()));
         };
 
-        let mut stream =
-            crate::streaming::StreamingCompletionResponse::stream(to_stream_result(raw_stream));
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(
+            "anthropic",
+            to_stream_result(raw_stream),
+        );
         while stream.next().await.is_some() {}
 
         let choice_items: Vec<crate::message::AssistantContent> =
@@ -1787,5 +1855,96 @@ mod tests {
         let json = r#"{"type": "something_new_from_anthropic", "field": "x"}"#;
         let delta: ContentDelta = serde_json::from_str(json).unwrap();
         assert!(matches!(delta, ContentDelta::Unknown));
+    }
+
+    #[tokio::test]
+    async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
+        let raw_stream = stream! {
+            yield Ok(RawStreamingChoice::Message("hi".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: PartialUsage {
+                    output_tokens: 5,
+                    input_tokens: Some(3),
+                    cache_creation_input_tokens: None,
+                    cache_read_input_tokens: Some(2),
+                },
+                stop_reason: Some("max_tokens".to_string()),
+                message_id: Some("msg_1".to_string()),
+                model: Some(CLAUDE_OPUS_4_8.to_string()),
+            }));
+        };
+
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(
+            "anthropic",
+            to_stream_result(raw_stream),
+        );
+        while stream.next().await.is_some() {}
+
+        let terminal = stream.response.expect("expected a terminal record");
+        assert_eq!(terminal.provider, "anthropic");
+        assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(terminal.model.as_deref(), Some(CLAUDE_OPUS_4_8));
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(terminal.usage.input_tokens, 3);
+        assert_eq!(terminal.usage.output_tokens, 5);
+        assert_eq!(terminal.usage.cached_input_tokens, 2);
+        assert_eq!(terminal.usage.total_tokens, 10);
+    }
+
+    #[tokio::test]
+    async fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() {
+        // Anthropic normally reports `tool_use`, but the reconciliation
+        // `normalize_stream` applies must hold whenever the turn actually
+        // emitted a tool call.
+        let raw_stream = stream! {
+            yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                "toolu_1".to_string(),
+                "add".to_string(),
+                json!({"x": 1}),
+            )));
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                stop_reason: Some("end_turn".to_string()),
+                ..Default::default()
+            }));
+        };
+
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(
+            "anthropic",
+            to_stream_result(raw_stream),
+        );
+        while stream.next().await.is_some() {}
+
+        let terminal = stream.response.expect("expected a terminal record");
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_stop_reason_survives_onto_the_terminal_record() {
+        let raw_stream = stream! {
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                stop_reason: Some("pause_turn".to_string()),
+                ..Default::default()
+            }));
+        };
+
+        let mut stream = crate::streaming::StreamingCompletionResponse::stream(
+            "anthropic",
+            to_stream_result(raw_stream),
+        );
+        while stream.next().await.is_some() {}
+
+        let terminal = stream.response.expect("expected a terminal record");
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::Other(
+                "pause_turn".to_owned()
+            ))
+        );
     }
 }

@@ -10,6 +10,7 @@ use crate::{
 
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::telemetry::ProviderResponseExt;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use tracing::Instrument;
 
@@ -209,20 +210,16 @@ pub(crate) fn resolve_request_model(
         .unwrap_or_else(|| default_model.to_string())
 }
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = AwsConverseOutput;
-    type StreamingResponse = crate::streaming::BedrockStreamingResponse;
-
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+impl CompletionModel {
+    /// Execute a completion and return Bedrock's own Converse output.
+    ///
+    /// This is the escape hatch for fields rig does not normalize;
+    /// [`completion::CompletionModel::completion`] calls it and maps the
+    /// result, so there is exactly one request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
+    ) -> Result<AwsConverseOutput, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
         let span =
@@ -269,18 +266,27 @@ impl completion::CompletionModel for CompletionModel {
 
             let span = tracing::Span::current();
             span.record_response_metadata(&aws_output);
-            span.record_token_usage(&aws_output);
+            span.record_token_usage(&aws_output.get_usage().map(Into::into).unwrap_or_default());
 
-            aws_output.try_into()
+            Ok(aws_output)
         }
         .instrument(span)
         .await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }
 }

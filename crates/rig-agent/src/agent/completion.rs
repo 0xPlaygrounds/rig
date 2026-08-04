@@ -5,8 +5,8 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, GetTokenUsage,
-        Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
+        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
+        Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     json_utils,
     streaming::{StreamingChat, StreamingPrompt},
@@ -343,7 +343,7 @@ pub(crate) async fn build_prepared_completion_request<M: CompletionModel>(
             output_schema.is_some(),
             !executable_tool_names.is_empty(),
             tool_choice_permits_output_tool(tool_choice),
-            model.composes_native_output_with_tools(),
+            model.capabilities().composes_native_output_with_tools,
             output_mode,
         )
     };
@@ -691,10 +691,9 @@ where
     }
 }
 
-impl<M> StreamingPrompt<M, M::StreamingResponse> for Agent<M>
+impl<M> StreamingPrompt<M> for Agent<M>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: GetTokenUsage,
 {
     fn stream_prompt(
         &self,
@@ -704,10 +703,9 @@ where
     }
 }
 
-impl<M> StreamingChat<M, M::StreamingResponse> for Agent<M>
+impl<M> StreamingChat<M> for Agent<M>
 where
     M: CompletionModel + 'static,
-    M::StreamingResponse: GetTokenUsage,
 {
     fn stream_chat<I, T>(
         &self,

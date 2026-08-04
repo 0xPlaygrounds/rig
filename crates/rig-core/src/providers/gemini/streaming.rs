@@ -6,13 +6,14 @@ use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
+    map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
-    streaming_endpoint,
+    CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
+    resolve_request_model, streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
@@ -45,18 +46,24 @@ pub struct PartialUsage {
     pub traffic_type: Option<TrafficType>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&PartialUsage> for crate::completion::Usage {
+    fn from(value: &PartialUsage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.prompt_token_count as u64;
-        usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
-        usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
-        usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
-        usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
-        usage.total_tokens = self.total_token_count as u64;
+        usage.input_tokens = value.prompt_token_count as u64;
+        usage.output_tokens = value.candidates_token_count.unwrap_or_default() as u64;
+        usage.cached_input_tokens = value.cached_content_token_count.unwrap_or_default() as u64;
+        usage.reasoning_tokens = value.thoughts_token_count.unwrap_or_default() as u64;
+        usage.tool_use_prompt_tokens = value.tool_use_prompt_token_count.unwrap_or_default() as u64;
+        usage.total_tokens = value.total_token_count as u64;
 
         usage
+    }
+}
+
+impl From<PartialUsage> for crate::completion::Usage {
+    fn from(value: PartialUsage) -> crate::completion::Usage {
+        (&value).into()
     }
 }
 
@@ -82,10 +89,33 @@ pub struct StreamingCompletionResponse {
     pub model_version: Option<String>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage_metadata.token_usage()
+impl From<&StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
+        (&value.usage_metadata).into()
     }
+}
+
+impl From<StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
+        (&value).into()
+    }
+}
+
+/// Normalize Gemini's terminal streaming record.
+///
+/// Infallible in practice, but stated as a `Result` because
+/// [`crate::streaming::normalize_stream`] maps terminal records through a
+/// fallible closure.
+fn map_stream_final(
+    response: StreamingCompletionResponse,
+) -> Result<streaming::StreamFinal, CompletionError> {
+    let finish_reason = response.finish_reason.as_ref().map(map_finish_reason);
+
+    Ok(
+        streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_model(response.model_version),
+    )
 }
 
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
@@ -97,14 +127,19 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a `streamGenerateContent` stream whose terminal record stays
+    /// provider-native.
+    ///
+    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
+    /// delegates here and maps only the terminal record, so both paths open
+    /// exactly one stream over the same request, telemetry, and error handling.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &request_model,
             CompletionOperation::ChatStreaming,
         )
@@ -171,7 +206,7 @@ where
                             final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
-                            span.record_token_usage(usage);
+                            span.record_token_usage(&crate::completion::Usage::from(usage));
                             final_usage = Some(usage.clone());
                         }
 
@@ -292,6 +327,9 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
+            // A stream that errored out never gets a synthesized terminal
+            // record: yielding one would report a successful completion for a
+            // turn the provider aborted.
             if !stream_failed {
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                     usage_metadata: final_usage.unwrap_or_default(),
@@ -302,9 +340,19 @@ where
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let inner = self.raw_stream(completion_request).await?;
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            streaming::normalize_stream(inner, map_stream_final),
+        ))
     }
 }
 
@@ -434,7 +482,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -684,7 +732,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 40);
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
@@ -709,7 +757,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 20);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.output_tokens, 30);
@@ -777,7 +825,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let token_usage = response.token_usage();
+        let token_usage = crate::completion::Usage::from(&response);
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
@@ -832,7 +880,7 @@ mod tests {
             Some(TrafficType::ProvisionedThroughput)
         ));
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);

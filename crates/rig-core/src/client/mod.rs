@@ -12,6 +12,7 @@ pub mod verify;
 
 use bytes::Bytes;
 pub use completion::CompletionClient;
+pub(crate) use completion::ConstructCompletionModel;
 pub use embeddings::EmbeddingsClient;
 use http::{HeaderMap, HeaderName, HeaderValue};
 pub use model_listing::{ModelLister, ModelListingClient};
@@ -757,12 +758,12 @@ where
 impl<M, Ext, H> CompletionClient for Client<Ext, H>
 where
     Ext: Capabilities<H, Completion = Capable<M>>,
-    M: CompletionModel<Client = Self>,
+    M: CompletionModel + ConstructCompletionModel<Self>,
 {
     type CompletionModel = M;
 
     fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        M::make(self, model)
+        M::construct(self, model.into())
     }
 }
 

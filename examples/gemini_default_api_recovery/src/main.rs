@@ -225,7 +225,7 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
 }
 
 async fn consume_workspace_like_stream(
-    mut stream: StreamingResult<gemini::streaming::StreamingCompletionResponse>,
+    mut stream: StreamingResult,
 ) -> Result<WorkspaceStreamObservation, String> {
     let mut observation = WorkspaceStreamObservation::default();
 

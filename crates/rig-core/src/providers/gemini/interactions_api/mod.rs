@@ -4,7 +4,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -22,6 +22,13 @@ pub use interactions_api_types::*;
 // =================================================================
 // Rig Implementation Types
 // =================================================================
+
+/// Stable descriptor name for the Gemini Interactions API.
+///
+/// The Interactions API is a second surface over the same provider, so it
+/// reports the same descriptor as GenerateContent — matching the telemetry
+/// spans, which have always shared it.
+pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
@@ -106,24 +113,24 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    type Response = Interaction;
-    type StreamingResponse = streaming::StreamingCompletionResponse;
-    type Client = InteractionsClient<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a completion and return the Interactions API's own payload.
+    ///
+    /// This is the escape hatch for interaction fields rig does not normalize —
+    /// step history, lifecycle status, hosted-tool exchanges. It shares the
+    /// request builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+    ) -> Result<Interaction, CompletionError> {
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &self.model,
             CompletionOperation::Interactions,
         )
@@ -173,7 +180,8 @@ where
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
-                span.record_token_usage(&response);
+                let usage = crate::completion::Usage::from(&response);
+                span.record_token_usage(&usage);
 
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -183,7 +191,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -200,15 +208,34 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         InteractionsCompletionModel::stream(self, request).await
+    }
+}
+
+impl<T> crate::client::ConstructCompletionModel<InteractionsClient<T>>
+    for InteractionsCompletionModel<T>
+where
+    InteractionsClient<T>: Clone,
+{
+    fn construct(client: &InteractionsClient<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -461,7 +488,8 @@ fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&st
     )
 }
 
-impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
+/// Normalize a Gemini Interactions API payload.
+impl TryFrom<Interaction> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
@@ -495,15 +523,17 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| usage.token_usage())
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = response.status.as_ref().map(map_interaction_status);
+
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_model(response.model.as_deref())
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -632,7 +662,7 @@ fn split_data_uri(
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
-    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -740,12 +770,15 @@ pub mod interactions_api_types {
         pub input: Option<InteractionInput>,
     }
 
-    impl GetTokenUsage for Interaction {
-        fn token_usage(&self) -> Usage {
-            self.usage
-                .as_ref()
-                .map(|usage| usage.token_usage())
-                .unwrap_or_default()
+    impl From<&Interaction> for Usage {
+        fn from(value: &Interaction) -> Usage {
+            value.usage.as_ref().map(Usage::from).unwrap_or_default()
+        }
+    }
+
+    impl From<Interaction> for Usage {
+        fn from(value: Interaction) -> Usage {
+            (&value).into()
         }
     }
 
@@ -1278,6 +1311,42 @@ pub mod interactions_api_types {
                     | InteractionStatus::Cancelled
             )
         }
+
+        /// The exact spelling the Interactions API uses for this status on the
+        /// wire.
+        ///
+        /// Spelled out rather than derived from `Debug` (which would yield
+        /// `BudgetExceeded`, not `budget_exceeded`) so the string that reaches
+        /// [`crate::completion::FinishReason::Other`] is the provider's own.
+        pub fn as_wire_str(&self) -> &'static str {
+            match self {
+                Self::InProgress => "in_progress",
+                Self::RequiresAction => "requires_action",
+                Self::Incomplete => "incomplete",
+                Self::BudgetExceeded => "budget_exceeded",
+                Self::Completed => "completed",
+                Self::Failed => "failed",
+                Self::Cancelled => "cancelled",
+            }
+        }
+    }
+
+    /// Map an interaction's lifecycle status onto rig's normalized finish
+    /// reasons.
+    ///
+    /// The Interactions API has no `finishReason` field — the interaction's
+    /// terminal state is the closest equivalent. Only the three statuses with a
+    /// normalized counterpart are folded in; the rest (including the
+    /// non-terminal `in_progress`) are carried verbatim rather than guessed at.
+    pub(crate) fn map_interaction_status(
+        status: &InteractionStatus,
+    ) -> crate::completion::FinishReason {
+        match status {
+            InteractionStatus::Completed => crate::completion::FinishReason::Stop,
+            InteractionStatus::RequiresAction => crate::completion::FinishReason::ToolCalls,
+            InteractionStatus::BudgetExceeded => crate::completion::FinishReason::Length,
+            other => crate::completion::FinishReason::Other(other.as_wire_str().to_owned()),
+        }
     }
 
     /// Token usage metadata for an interaction.
@@ -1292,15 +1361,21 @@ pub mod interactions_api_types {
         pub total_tokens: Option<u64>,
     }
 
-    impl GetTokenUsage for InteractionUsage {
-        fn token_usage(&self) -> Usage {
+    impl From<&InteractionUsage> for Usage {
+        fn from(value: &InteractionUsage) -> Usage {
             let mut usage = Usage::new();
-            usage.input_tokens = self.total_input_tokens.unwrap_or_default();
-            usage.output_tokens = self.total_output_tokens.unwrap_or_default();
-            usage.total_tokens = self
+            usage.input_tokens = value.total_input_tokens.unwrap_or_default();
+            usage.output_tokens = value.total_output_tokens.unwrap_or_default();
+            usage.total_tokens = value
                 .total_tokens
                 .unwrap_or(usage.input_tokens + usage.output_tokens);
             usage
+        }
+    }
+
+    impl From<InteractionUsage> for Usage {
+        fn from(value: InteractionUsage) -> Usage {
+            (&value).into()
         }
     }
 
@@ -2839,7 +2914,7 @@ mod tests {
             ..Default::default()
         };
 
-        let response: completion::CompletionResponse<Interaction> =
+        let response: completion::CompletionResponse =
             interaction.try_into().expect("conversion should succeed");
 
         let choice = response.choice.first();
@@ -3234,6 +3309,111 @@ mod tests {
         interaction.status = Some(InteractionStatus::BudgetExceeded);
         assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_interaction_status_maps_every_wire_variant() {
+        use crate::completion::FinishReason as Normalized;
+
+        for (status, expected) in [
+            (InteractionStatus::Completed, Normalized::Stop),
+            (InteractionStatus::RequiresAction, Normalized::ToolCalls),
+            (InteractionStatus::BudgetExceeded, Normalized::Length),
+            // Statuses rig does not model survive in the provider's own
+            // spelling rather than being guessed at.
+            (
+                InteractionStatus::InProgress,
+                Normalized::Other("in_progress".to_string()),
+            ),
+            (
+                InteractionStatus::Incomplete,
+                Normalized::Other("incomplete".to_string()),
+            ),
+            (
+                InteractionStatus::Failed,
+                Normalized::Other("failed".to_string()),
+            ),
+            (
+                InteractionStatus::Cancelled,
+                Normalized::Other("cancelled".to_string()),
+            ),
+        ] {
+            assert_eq!(
+                map_interaction_status(&status),
+                expected,
+                "status {status:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_interaction_status_wire_spelling_matches_serde() {
+        // `as_wire_str` is hand-written; keep it honest against the serde
+        // representation the same enum deserializes from.
+        for status in [
+            InteractionStatus::InProgress,
+            InteractionStatus::RequiresAction,
+            InteractionStatus::Incomplete,
+            InteractionStatus::BudgetExceeded,
+            InteractionStatus::Completed,
+            InteractionStatus::Failed,
+            InteractionStatus::Cancelled,
+        ] {
+            let serialized = serde_json::to_value(&status).expect("status should serialize");
+            assert_eq!(serialized, json!(status.as_wire_str()));
+        }
+    }
+
+    #[test]
+    fn test_completion_response_carries_normalized_metadata() {
+        let interaction = Interaction {
+            id: "interaction-meta".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            status: Some(InteractionStatus::BudgetExceeded),
+            steps: vec![Step::ModelOutput {
+                content: vec![Content::Text(TextContent {
+                    text: "partial answer".to_string(),
+                    annotations: None,
+                })],
+            }],
+            ..Default::default()
+        };
+
+        let response: completion::CompletionResponse =
+            interaction.try_into().expect("conversion should succeed");
+
+        assert_eq!(response.provider, PROVIDER_NAME);
+        assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
+        assert_eq!(response.message_id.as_deref(), Some("interaction-meta"));
+        assert_eq!(
+            response.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[test]
+    fn test_completion_response_upgrades_completed_to_tool_calls() {
+        // A `completed` interaction whose outputs are function calls is a tool
+        // turn; the normalized response must say so.
+        let interaction = Interaction {
+            id: "interaction-tool".to_string(),
+            status: Some(InteractionStatus::Completed),
+            steps: vec![Step::FunctionCall(FunctionCallContent {
+                name: Some("get_weather".to_string()),
+                arguments: Some(json!({"location": "Paris"})),
+                id: Some("call-123".to_string()),
+            })],
+            ..Default::default()
+        };
+
+        let response: completion::CompletionResponse =
+            interaction.try_into().expect("conversion should succeed");
+
+        assert_eq!(
+            response.finish_reason,
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+        assert_eq!(response.model, None);
     }
 
     #[test]

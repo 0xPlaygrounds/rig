@@ -1,9 +1,13 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
-use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
+use crate::providers::cohere::completion::{
+    CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
+};
+use crate::streaming::{
+    RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal, ToolCallDeltaContent,
+};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
 use async_stream::stream;
@@ -15,15 +19,26 @@ use tracing_futures::Instrument;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 enum StreamingEvent {
-    MessageStart,
+    MessageStart {
+        #[serde(default)]
+        id: Option<String>,
+    },
     ContentStart,
-    ContentDelta { delta: Option<Delta> },
+    ContentDelta {
+        delta: Option<Delta>,
+    },
     ContentEnd,
     ToolPlan,
-    ToolCallStart { delta: Option<Delta> },
-    ToolCallDelta { delta: Option<Delta> },
+    ToolCallStart {
+        delta: Option<Delta>,
+    },
+    ToolCallDelta {
+        delta: Option<Delta>,
+    },
     ToolCallEnd,
-    MessageEnd { delta: Option<MessageEndDelta> },
+    MessageEnd {
+        delta: Option<MessageEndDelta>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,34 +72,40 @@ struct Delta {
 #[derive(Debug, Deserialize)]
 struct MessageEndDelta {
     usage: Option<Usage>,
+    #[serde(default)]
+    finish_reason: Option<FinishReason>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+/// Cohere's terminal stream record, kept provider-native for
+/// [`CompletionModel::raw_stream`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
+    /// Cohere's own `finish_reason` from the `message-end` event, when reported.
+    #[serde(default)]
+    pub finish_reason: Option<FinishReason>,
+    /// The `message-start` event's message identifier, when reported.
+    #[serde(default)]
+    pub message_id: Option<String>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let tokens = self
+impl From<&StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(response: &StreamingCompletionResponse) -> crate::completion::Usage {
+        response
             .usage
-            .clone()
-            .and_then(|response| response.tokens)
-            .map(|tokens| {
-                (
-                    tokens.input_tokens.map(|x| x as u64),
-                    tokens.output_tokens.map(|y| y as u64),
-                )
-            });
-        let Some((Some(input), Some(output))) = tokens else {
-            return crate::completion::Usage::new();
-        };
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = input;
-        usage.output_tokens = output;
-        usage.total_tokens = input + output;
+            .as_ref()
+            .map(crate::completion::Usage::from)
+            .unwrap_or_default()
+    }
+}
 
-        usage
+impl From<StreamingCompletionResponse> for StreamFinal {
+    fn from(response: StreamingCompletionResponse) -> StreamFinal {
+        // Cohere's streaming events carry no model identifier, so the
+        // normalized `model` stays unset.
+        StreamFinal::new(PROVIDER_NAME, crate::completion::Usage::from(&response))
+            .with_optional_finish_reason(response.finish_reason.as_ref().map(map_finish_reason))
+            .with_optional_message_id(response.message_id)
     }
 }
 
@@ -92,16 +113,22 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays Cohere-native.
+    ///
+    /// This is the escape hatch for Cohere's own terminal payload; it shares the
+    /// request builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::stream`](crate::completion::CompletionModel::stream),
+    /// which calls it and normalizes the terminal record once through
+    /// [`streaming::normalize_stream`] — one network request either way.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
-            "cohere",
+            PROVIDER_NAME,
             &request.model,
             CompletionOperation::ChatStreaming,
         )
@@ -136,6 +163,9 @@ where
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
+            let mut final_finish_reason = None;
+            let mut message_id = None;
+            let mut terminated_with_error = false;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -159,6 +189,10 @@ where
                         };
 
                         match event {
+                            StreamingEvent::MessageStart { id: Some(id) } => {
+                                message_id = Some(id);
+                            },
+
                             StreamingEvent::ContentDelta { delta: Some(delta) } => {
                                 let Some(message) = &delta.message else { continue; };
                                 let Some(content) = &message.content else { continue; };
@@ -169,8 +203,14 @@ where
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
                                 let span = tracing::Span::current();
-                                span.record_token_usage(&delta.usage);
-                                final_usage = Some(delta.usage.clone());
+                                let usage = delta
+                                    .usage
+                                    .as_ref()
+                                    .map(crate::completion::Usage::from)
+                                    .unwrap_or_default();
+                                span.record_token_usage(&usage);
+                                final_usage = Some(delta.usage);
+                                final_finish_reason = delta.finish_reason;
                                 break;
                             },
 
@@ -228,6 +268,7 @@ where
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
+                        terminated_with_error = true;
                         yield Err(CompletionError::from_stream_transport(err));
                         break;
                     }
@@ -237,14 +278,35 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
+            // A stream that ended in an error never reached Cohere's
+            // `message-end` event, so there is no terminal record to report;
+            // synthesizing one would present a failed turn as a successful,
+            // zero-usage completion.
+            if terminated_with_error {
+                return;
+            }
+
             yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
+                usage: final_usage.unwrap_or_default(),
+                finish_reason: final_finish_reason,
+                message_id,
             }))
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            normalized,
+        ))
     }
 }
 
@@ -252,6 +314,104 @@ where
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn cohere_client<H>(http_client: H) -> crate::providers::cohere::Client<H>
+    where
+        H: HttpClientExt,
+    {
+        crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build")
+    }
+
+    #[tokio::test]
+    async fn stream_terminal_record_is_normalized() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+                r#"{"type":"message-end","delta":{"finish_reason":"MAX_TOKENS","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(final_response) =
+                item.expect("stream item should be Ok")
+            {
+                terminal = Some(final_response);
+            }
+        }
+
+        let terminal = terminal.expect("stream should yield a terminal record");
+        assert_eq!(terminal.provider, PROVIDER_NAME);
+        assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(
+            terminal.finish_reason,
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
+        assert_eq!(terminal.usage.total_tokens, 14);
+        // Cohere's stream never names the model.
+        assert_eq!(terminal.model, None);
+    }
+
+    #[tokio::test]
+    async fn errored_stream_does_not_synthesize_a_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::HttpErrorStreamingClient;
+        use futures::StreamExt;
+
+        let client = cohere_client(HttpErrorStreamingClient::new(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"message":"slow down"}"#,
+        ));
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut saw_error = false;
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                Ok(_) => {}
+                Err(_) => saw_error = true,
+            }
+        }
+
+        assert!(saw_error, "the transport failure must reach the consumer");
+        assert!(
+            !saw_terminal,
+            "a failed stream must not be reported as a successful, zero-usage completion"
+        );
+        assert!(stream.response.is_none());
+    }
 
     #[test]
     fn test_message_content_delta_deserialization() {

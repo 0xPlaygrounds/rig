@@ -4,7 +4,7 @@ use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
 use rig_core::OneOrMany;
-use rig_core::completion::{CompletionModel, Document, GetTokenUsage, ToolDefinition};
+use rig_core::completion::{CompletionModel, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::StreamedAssistantContent;
@@ -252,13 +252,13 @@ async fn collect_stream(
     model: &LlamaModel,
     request: CompletionRequest,
 ) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
-    let mut response = model.stream(request).await?;
+    let mut response = model.raw_stream(request).await?;
     let mut text = String::new();
     let mut final_response = None;
     while let Some(item) = response.next().await {
         match item? {
-            StreamedAssistantContent::Text(fragment) => text.push_str(&fragment.text),
-            StreamedAssistantContent::Final(raw) => final_response = Some(raw),
+            RawStreamingChoice::Message(fragment) => text.push_str(&fragment),
+            RawStreamingChoice::FinalResponse(raw) => final_response = Some(raw),
             _ => {}
         }
     }
@@ -283,7 +283,7 @@ fn controlled_model(
     loaded.test_control = Some(Arc::clone(&control));
     Ok((
         LlamaModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            state: Arc::new(loaded),
         },
         control,
         concurrency,
@@ -419,7 +419,7 @@ fn validates_tensor_shapes_dtypes_and_tied_embeddings()
         tokenizer: tiny_tokenizer()?,
         weights: checkpoint_custom(true, tensor(&[8, 4]), false)?,
     })?;
-    assert!(matches!(model.state, ModelState::Ready(_)));
+    assert!(matches!(model.state, _));
     Ok(())
 }
 
@@ -642,7 +642,7 @@ fn context_limit_boundaries_clamp_and_detect_conversion_overflow() {
 #[test]
 fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::from_safetensors(model_data()?)?;
-    let ModelState::Ready(loaded) = &model.state else {
+    let loaded = &model.state else {
         return Err("loaded model did not enter ready state".into());
     };
     assert!(loaded.runtime.is_consistent_cpu());
@@ -709,7 +709,7 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
         .max_concurrent_requests(3)
         .build_async()
         .await?;
-    let ModelState::Ready(loaded) = &configured.state else {
+    let loaded = &configured.state else {
         return Err("async model did not enter ready state".into());
     };
     assert_eq!(loaded.generation.max_tokens, 17);
@@ -737,9 +737,7 @@ async fn async_loading_preserves_typed_errors_and_converts_panics() {
     let panicked = join_model_load(tokio::task::spawn_blocking(|| {
         std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
         #[allow(unreachable_code)]
-        Ok(CandleModel {
-            state: ModelState::UnsupportedMake,
-        })
+        Ok::<CandleModel, CandleError>(unreachable!())
     }))
     .await;
     assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
@@ -841,26 +839,20 @@ async fn buffered_and_streaming_generation_are_equivalent()
         .max_tokens(3)
         .build()?;
     let completion_request = request(vec![Message::user("hello")]);
-    let buffered = model.completion(completion_request.clone()).await?;
+    let buffered = model.raw_completion(completion_request.clone()).await?;
     let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
 
-    assert_eq!(streamed_text, buffered.raw_response.text);
-    assert_eq!(streamed.text, buffered.raw_response.text);
-    assert_eq!(streamed.prompt_tokens, buffered.raw_response.prompt_tokens);
+    assert_eq!(streamed_text, buffered.text);
+    assert_eq!(streamed.text, buffered.text);
+    assert_eq!(streamed.prompt_tokens, buffered.prompt_tokens);
+    assert_eq!(streamed.generated_tokens, buffered.generated_tokens);
+    assert_eq!(streamed.finish_reason, buffered.finish_reason);
+    assert_eq!(streamed.requested_max_tokens, buffered.requested_max_tokens);
+    assert_eq!(streamed.effective_max_tokens, buffered.effective_max_tokens);
     assert_eq!(
-        streamed.generated_tokens,
-        buffered.raw_response.generated_tokens
+        rig_core::completion::Usage::from(&streamed),
+        rig_core::completion::Usage::from(&buffered)
     );
-    assert_eq!(streamed.finish_reason, buffered.raw_response.finish_reason);
-    assert_eq!(
-        streamed.requested_max_tokens,
-        buffered.raw_response.requested_max_tokens
-    );
-    assert_eq!(
-        streamed.effective_max_tokens,
-        buffered.raw_response.effective_max_tokens
-    );
-    assert_eq!(streamed.token_usage(), buffered.usage);
     assert!(streamed.time_to_first_token_ms.is_some());
     assert!(streamed.prefill_duration_ms <= streamed.generation_duration_ms);
     Ok(())
@@ -874,14 +866,14 @@ async fn streaming_reports_eos_and_excludes_the_stop_token()
     loaded.generation.temperature = 0.0;
     loaded.profile.stop_tokens.insert(0);
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        state: Arc::new(loaded),
     };
     let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
     assert!(text.is_empty());
     assert!(raw.text.is_empty());
     assert_eq!(raw.finish_reason, FinishReason::Eos);
     assert_eq!(raw.generated_tokens, 1);
-    assert_eq!(raw.token_usage().output_tokens, 1);
+    assert_eq!(rig_core::completion::Usage::from(&raw).output_tokens, 1);
     Ok(())
 }
 
@@ -897,7 +889,7 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        state: Arc::new(loaded),
     };
     let (_, raw) = collect_stream(&model, completion_request).await?;
     assert_eq!(raw.requested_max_tokens, 10);
@@ -910,7 +902,7 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     ] {
         let mut bad_request = request(vec![Message::user("hello")]);
         bad_request.additional_params = Some(additional_params);
-        let mut stream = model.stream(bad_request).await?;
+        let mut stream = model.raw_stream(bad_request).await?;
         let item = stream
             .next()
             .await
@@ -1001,13 +993,14 @@ fn inference_clamps_context_and_uses_fresh_generation_state()
         &CancellationSignal::default(),
     )?;
     let second = infer(&loaded, completion_request, &CancellationSignal::default())?;
-    assert_eq!(first.raw_response.text, second.raw_response.text);
-    assert_eq!(first.raw_response.generated_tokens, 2);
-    assert_eq!(first.raw_response.requested_max_tokens, 10);
-    assert_eq!(first.raw_response.effective_max_tokens, 2);
-    assert_eq!(first.raw_response.finish_reason, FinishReason::MaxTokens);
-    assert_eq!(first.usage.output_tokens, 2);
-    assert!(!first.raw_response.text.contains("hello"));
+    let (first, second) = (first.response, second.response);
+    assert_eq!(first.text, second.text);
+    assert_eq!(first.generated_tokens, 2);
+    assert_eq!(first.requested_max_tokens, 10);
+    assert_eq!(first.effective_max_tokens, 2);
+    assert_eq!(first.finish_reason, FinishReason::MaxTokens);
+    assert_eq!(rig_core::completion::Usage::from(&first).output_tokens, 2);
+    assert!(!first.text.contains("hello"));
     Ok(())
 }
 
@@ -1018,11 +1011,14 @@ fn eos_is_counted_but_excluded_from_decoded_text()
     loaded.profile.stop_tokens.insert(0);
     let mut completion_request = request(vec![Message::user("hello")]);
     completion_request.temperature = Some(0.0);
-    let response = infer(&loaded, completion_request, &CancellationSignal::default())?;
-    assert_eq!(response.raw_response.finish_reason, FinishReason::Eos);
-    assert_eq!(response.raw_response.generated_tokens, 1);
-    assert_eq!(response.usage.output_tokens, 1);
-    assert!(response.raw_response.text.is_empty());
+    let response = infer(&loaded, completion_request, &CancellationSignal::default())?.response;
+    assert_eq!(response.finish_reason, FinishReason::Eos);
+    assert_eq!(response.generated_tokens, 1);
+    assert_eq!(
+        rig_core::completion::Usage::from(&response).output_tokens,
+        1
+    );
+    assert!(response.text.is_empty());
     Ok(())
 }
 
@@ -1138,14 +1134,14 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
         .max_tokens(2)
         .max_concurrent_requests(2)
         .build()?;
-    let first = model.completion(request(vec![Message::user("hello")]));
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let first = model.raw_completion(request(vec![Message::user("hello")]));
+    let second = model.raw_completion(request(vec![Message::user("hello")]));
     let (first, second) = tokio::join!(first, second);
     let first = first?;
     let second = second?;
-    assert_eq!(first.raw_response.text, second.raw_response.text);
-    assert_eq!(first.raw_response.generated_tokens, 2);
-    assert_eq!(second.raw_response.generated_tokens, 2);
+    assert_eq!(first.text, second.text);
+    assert_eq!(first.generated_tokens, 2);
+    assert_eq!(second.generated_tokens, 2);
 
     let first_stream = collect_stream(&model, request(vec![Message::user("hello")]));
     let second_stream = collect_stream(&model, request(vec![Message::user("hello")]));
@@ -1171,7 +1167,7 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::builder(model_data()?).build()?;
-    let ModelState::Ready(loaded) = &model.state else {
+    let loaded = &model.state else {
         return Err("loaded model was not ready".into());
     };
     loaded.concurrency.close();
@@ -1211,7 +1207,7 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     });
     control.wait_until_entered().await;
 
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let second = model.raw_completion(request(vec![Message::user("hello")]));
     futures::pin_mut!(second);
     assert!(futures::poll!(&mut second).is_pending());
 
@@ -1221,7 +1217,7 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     control.release()?;
 
     let second = second.await?;
-    assert_eq!(second.raw_response.generated_tokens, 2);
+    assert_eq!(second.generated_tokens, 2);
     Ok(())
 }
 
@@ -1230,10 +1226,12 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
 async fn dropping_stream_cancels_worker_before_queued_request_runs()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let stream = model
+        .raw_stream(request(vec![Message::user("hello")]))
+        .await?;
     control.wait_until_entered().await;
 
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.raw_completion(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
 
@@ -1242,7 +1240,7 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
     control.release()?;
 
     let queued = queued.await?;
-    assert_eq!(queued.raw_response.generated_tokens, 2);
+    assert_eq!(queued.generated_tokens, 2);
     Ok(())
 }
 
@@ -1256,14 +1254,14 @@ async fn public_stream_cancel_stops_worker_without_dropping_response()
 
     stream.cancel();
     assert!(stream.next().await.is_none());
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.raw_completion(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
     assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
 
     control.release()?;
     let queued = queued.await?;
-    assert_eq!(queued.raw_response.generated_tokens, 2);
+    assert_eq!(queued.generated_tokens, 2);
     assert!(stream.next().await.is_none());
     Ok(())
 }
@@ -1274,7 +1272,9 @@ async fn streaming_channel_applies_bounded_backpressure()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, control, concurrency) =
         controlled_model(false, false, (STREAM_CHANNEL_CAPACITY + 4) as u64)?;
-    let stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let stream = model
+        .raw_stream(request(vec![Message::user("hello")]))
+        .await?;
     control
         .wait_for_delivery_attempts(STREAM_CHANNEL_CAPACITY + 1)
         .await;
@@ -1302,7 +1302,9 @@ async fn blocking_task_panic_maps_to_typed_completion_error()
     assert!(error.to_string().contains("Candle blocking task failed"));
 
     let (model, _, _) = controlled_model(false, true, 1)?;
-    let mut stream = model.stream(request(vec![Message::user("hello")])).await?;
+    let mut stream = model
+        .raw_stream(request(vec![Message::user("hello")]))
+        .await?;
     let error = stream
         .next()
         .await
@@ -1511,7 +1513,7 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
         generation_duration_ms: 20,
         tokens_per_second: Some(100.0),
     };
-    let usage = response.token_usage();
+    let usage = rig_core::completion::Usage::from(&response);
     assert_eq!(usage.input_tokens, 5);
     assert_eq!(usage.output_tokens, 2);
     assert_eq!(usage.total_tokens, 7);
@@ -1523,32 +1525,5 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.time_to_first_token_ms, Some(10));
     assert_eq!(response.generation_duration_ms, 20);
     assert_eq!(response.tokens_per_second, Some(100.0));
-    Ok(())
-}
-
-#[test]
-fn unsupported_make_fails_for_buffered_and_streaming()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    runtime.block_on(async {
-        let model = <LlamaModel as CompletionModel>::make(&(), "llama");
-        let completion_error = model
-            .completion(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(
-            completion_error
-                .to_string()
-                .contains("CompletionModel::make")
-        );
-        let stream_error = model
-            .stream(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(stream_error.to_string().contains("CompletionModel::make"));
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })?;
     Ok(())
 }
