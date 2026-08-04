@@ -8,6 +8,7 @@
 
 use futures::StreamExt;
 use mongodb::bson::{self, Bson, Document, doc, to_bson};
+use mongodb::options::{ClientOptions, DriverInfo};
 
 use rig_core::{
     Embed, OneOrMany,
@@ -19,6 +20,31 @@ use rig_core::{
     wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize};
+
+const DRIVER_NAME: &str = "rig-mongodb";
+
+/// Returns [`ClientOptions`] pre-configured with `rig-mongodb` driver metadata.
+///
+/// Use this to construct your [`mongodb::Client`] so that MongoDB server-side
+/// telemetry can identify traffic from Rig applications:
+///
+/// ```no_run
+/// # async fn example() -> Result<(), mongodb::error::Error> {
+/// let options = rig_mongodb::client_options("mongodb://localhost:27017").await?;
+/// let client = mongodb::Client::with_options(options)?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn client_options(uri: &str) -> Result<ClientOptions, mongodb::error::Error> {
+    let mut options = ClientOptions::parse(uri).await?;
+    options.driver_info = Some(
+        DriverInfo::builder()
+            .name(DRIVER_NAME)
+            .version(env!("CARGO_PKG_VERSION").to_string())
+            .build(),
+    );
+    Ok(options)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -539,5 +565,28 @@ where
             .map_err(mongodb_to_rig_error)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn client_options_sets_driver_info() {
+        let options = client_options("mongodb://localhost:27017")
+            .await
+            .expect("client_options should parse URI");
+        let info = options.driver_info.expect("driver_info should be set");
+        assert_eq!(info.name, DRIVER_NAME);
+        assert!(
+            info.version.is_some(),
+            "driver version should be set from CARGO_PKG_VERSION"
+        );
+    }
+
+    #[test]
+    fn driver_name_is_not_empty() {
+        assert!(!DRIVER_NAME.is_empty());
     }
 }
