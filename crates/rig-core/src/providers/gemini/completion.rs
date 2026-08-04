@@ -84,14 +84,15 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    async fn completion(
+    /// Execute a Gemini completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
@@ -163,7 +164,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -179,6 +180,18 @@ where
         }
         .instrument(span)
         .await
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
@@ -425,7 +438,7 @@ pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReas
         }
         FinishReason::Recitation => completion::FinishReason::Other("RECITATION".to_string()),
         FinishReason::Language => completion::FinishReason::Other("LANGUAGE".to_string()),
-        FinishReason::Other => completion::FinishReason::Other("OTHER".to_string()),
+        FinishReason::Other(value) => completion::FinishReason::Other(value.clone()),
         FinishReason::MalformedFunctionCall => {
             completion::FinishReason::Other("MALFORMED_FUNCTION_CALL".to_string())
         }
@@ -1527,8 +1540,6 @@ pub mod gemini_api_types {
         Recitation,
         /// The response candidate content was flagged for using an unsupported language.
         Language,
-        /// Unknown reason.
-        Other,
         /// Token generation stopped because the content contains forbidden terms.
         Blocklist,
         /// Token generation stopped for potentially containing prohibited content.
@@ -1545,6 +1556,9 @@ pub mod gemini_api_types {
         TooManyToolCalls,
         /// The provider could not parse the generated response into a valid protocol shape.
         MalformedResponse,
+        /// An unrecognized provider value, preserved verbatim.
+        #[serde(untagged)]
+        Other(String),
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2252,6 +2266,24 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_wire_value() {
+        let reason: FinishReason =
+            serde_json::from_str(r#""FUTURE_REASON""#).expect("deserialize finish reason");
+        assert!(matches!(
+            &reason,
+            FinishReason::Other(value) if value == "FUTURE_REASON"
+        ));
+        assert_eq!(
+            map_finish_reason(&reason),
+            completion::FinishReason::Other("FUTURE_REASON".to_owned())
+        );
+        assert_eq!(
+            map_finish_reason(&FinishReason::Safety),
+            completion::FinishReason::ContentFilter
+        );
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {

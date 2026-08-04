@@ -13,9 +13,7 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
-use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingToolCall, StreamingResult, ToolCallDeltaContent,
-};
+use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
@@ -174,6 +172,19 @@ impl PartialUsage {
     }
 }
 
+/// Provider-native terminal record produced by an Anthropic raw stream.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StreamingCompletionResponse {
+    /// Anthropic's streamed usage payload.
+    pub usage: PartialUsage,
+    /// Provider-assigned message identifier, when reported.
+    pub message_id: Option<String>,
+    /// Provider-reported model identifier, when reported.
+    pub model: Option<String>,
+    /// Anthropic's raw `stop_reason`, preserved verbatim.
+    pub stop_reason: Option<String>,
+}
+
 #[derive(Default)]
 struct ToolCallState {
     name: String,
@@ -200,10 +211,11 @@ where
     T: HttpClientExt + Clone + Default + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal item retains Anthropic's native metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -256,7 +268,7 @@ where
         let stream = GenericEventSource::new(self.client.clone(), req);
 
         // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: StreamingResult = Box::pin(stream! {
+        let stream: streaming::RawStreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
             let mut current_tool_call: Option<ToolCallState> = None;
             let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
             let mut current_thinking: Option<ThinkingState> = None;
@@ -265,7 +277,7 @@ where
             let mut final_usage = None;
             let mut message_id: Option<String> = None;
             let mut response_model: Option<String> = None;
-            let mut finish_reason: Option<crate::completion::FinishReason> = None;
+            let mut stop_reason: Option<String> = None;
 
             let mut text_content = String::new();
 
@@ -287,8 +299,8 @@ where
                                         span.record("gen_ai.response.model", &message.model);
                                     },
                                     StreamingEvent::MessageDelta { delta, usage } => {
-                                        if let Some(stop_reason) = delta.stop_reason.as_deref() {
-                                            finish_reason = Some(super::completion::map_finish_reason(stop_reason));
+                                        if let Some(raw_reason) = delta.stop_reason.as_deref() {
+                                            stop_reason = Some(raw_reason.to_owned());
                                             // cache_creation_input_tokens and cache_read_input_tokens
                                             // are cumulative totals on message_delta.usage per the
                                             // Anthropic streaming API spec — use them directly.
@@ -317,7 +329,13 @@ where
                                     if let Ok(RawStreamingChoice::Message(ref text)) = result {
                                         text_content += text;
                                     }
-                                    yield result;
+                                    yield result.and_then(|choice| {
+                                        choice.try_map_final(|_| {
+                                            Err(CompletionError::ResponseError(
+                                                "Anthropic emitted an unexpected intermediate terminal response".to_owned(),
+                                            ))
+                                        })
+                                    });
                                 }
                             },
                             Err(e) => {
@@ -339,22 +357,37 @@ where
             // Ensure event source is closed when stream ends
             sse_stream.close();
 
-            let mut final_response = streaming::StreamFinal::new(
-                Ext::PROVIDER_NAME,
-                final_usage.unwrap_or_default().token_usage(),
-            );
-            if let Some(finish_reason) = finish_reason {
-                final_response = final_response.with_finish_reason(finish_reason);
-            }
-            if let Some(message_id) = message_id {
-                final_response = final_response.with_message_id(message_id);
-            }
-            if let Some(response_model) = response_model {
-                final_response = final_response.with_model(response_model);
-            }
-            yield Ok(RawStreamingChoice::FinalResponse(final_response))
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage.unwrap_or_default(),
+                message_id,
+                model: response_model,
+                stop_reason,
+            }))
         }.instrument(span));
 
+        Ok(stream)
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let mut final_response =
+                streaming::StreamFinal::new(Ext::PROVIDER_NAME, response.usage.token_usage());
+            if let Some(stop_reason) = response.stop_reason {
+                final_response = final_response
+                    .with_finish_reason(super::completion::map_finish_reason(&stop_reason));
+            }
+            if let Some(message_id) = response.message_id {
+                final_response = final_response.with_message_id(message_id);
+            }
+            if let Some(model) = response.model {
+                final_response = final_response.with_model(model);
+            }
+            Ok(final_response)
+        });
         Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }

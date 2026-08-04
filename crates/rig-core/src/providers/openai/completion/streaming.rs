@@ -8,8 +8,8 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::{self, merge};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
+    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamFinal,
+    CompatibleStreamProfile, CompatibleToolCallChunk,
 };
 use crate::providers::openai::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
@@ -86,7 +86,7 @@ struct StreamingDelta {
     reasoning_details: Vec<serde_json::Value>,
 }
 
-#[derive(Deserialize, Debug, PartialEq)]
+#[derive(Clone, Deserialize, serde::Serialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
     ToolCalls,
@@ -111,6 +111,24 @@ struct StreamingCompletionChunk<U = Usage> {
     usage: Option<U>,
 }
 
+/// Provider-native terminal record for an OpenAI-compatible raw stream.
+///
+/// `U` is the exact usage payload supplied by the provider extension. The
+/// normalized completion path converts it into [`crate::streaming::StreamFinal`].
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct StreamingCompletionResponse<U = Usage> {
+    /// Provider-native usage payload from the terminal stream event.
+    pub usage: U,
+    /// Provider-assigned response identifier, when emitted.
+    pub response_id: Option<String>,
+    /// Provider-reported model identifier, when emitted.
+    pub model: Option<String>,
+    /// Provider-native finish reason, when emitted.
+    pub finish_reason: Option<FinishReason>,
+    /// Whether the stream emitted at least one tool call.
+    pub has_tool_calls: bool,
+}
+
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>: HttpClientExt + Clone + 'static,
@@ -120,10 +138,15 @@ where
         + crate::wasm_compat::WasmCompatSend
         + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal item retains the provider-native usage
+    /// response type.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<
+        streaming::RawStreamingResult<StreamingCompletionResponse<Ext::StreamingUsage>>,
+        CompletionError,
+    > {
         let preamble = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -195,7 +218,7 @@ where
         let client = self.client.clone();
 
         tracing::Instrument::instrument(
-            openai_chat_completions_compatible::send_compatible_streaming_request(
+            openai_chat_completions_compatible::send_compatible_raw_streaming_request(
                 client,
                 req,
                 OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
@@ -204,10 +227,48 @@ where
                         Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
                     usage: std::marker::PhantomData,
                 },
+                |response| StreamingCompletionResponse {
+                    usage: response.usage,
+                    response_id: response.response_id,
+                    model: response.response_model,
+                    finish_reason: response.finish_reason.map(|reason| match reason {
+                        CompatibleFinishReason::Stop => FinishReason::Stop,
+                        CompatibleFinishReason::Length => FinishReason::Length,
+                        CompatibleFinishReason::ToolCalls => FinishReason::ToolCalls,
+                        CompatibleFinishReason::ContentFilter => FinishReason::ContentFilter,
+                        CompatibleFinishReason::Other(value) => FinishReason::Other(value),
+                    }),
+                    has_tool_calls: response.emitted_tool_calls,
+                },
             ),
             span,
         )
         .await
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let raw_stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(raw_stream, |response| {
+            let mut final_response =
+                streaming::StreamFinal::new(Ext::PROVIDER_NAME, response.usage.into());
+            final_response.message_id = response.response_id;
+            final_response.model = response.model;
+            final_response.finish_reason = response.finish_reason.map(|reason| match reason {
+                FinishReason::Stop if response.has_tool_calls => {
+                    crate::completion::FinishReason::ToolCalls
+                }
+                FinishReason::Stop => crate::completion::FinishReason::Stop,
+                FinishReason::Length => crate::completion::FinishReason::Length,
+                FinishReason::ToolCalls => crate::completion::FinishReason::ToolCalls,
+                FinishReason::ContentFilter => crate::completion::FinishReason::ContentFilter,
+                FinishReason::Other(value) => crate::completion::FinishReason::Other(value),
+            });
+            Ok(final_response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
@@ -254,11 +315,19 @@ where
                     // `function_call` is the deprecated pre-tools finish reason
                     // some compatible providers still emit for tool calls.
                     finish_reason: match &choice.finish_reason {
-                        Some(FinishReason::ToolCalls) => CompatibleFinishReason::ToolCalls,
+                        Some(FinishReason::ToolCalls) => Some(CompatibleFinishReason::ToolCalls),
                         Some(FinishReason::Other(other)) if other == "function_call" => {
-                            CompatibleFinishReason::ToolCalls
+                            Some(CompatibleFinishReason::ToolCalls)
                         }
-                        _ => CompatibleFinishReason::Other,
+                        Some(FinishReason::Stop) => Some(CompatibleFinishReason::Stop),
+                        Some(FinishReason::Length) => Some(CompatibleFinishReason::Length),
+                        Some(FinishReason::ContentFilter) => {
+                            Some(CompatibleFinishReason::ContentFilter)
+                        }
+                        Some(FinishReason::Other(other)) => {
+                            Some(CompatibleFinishReason::Other(other.clone()))
+                        }
+                        None => None,
                     },
                     text: choice.delta.content.clone(),
                     reasoning: choice
@@ -275,8 +344,25 @@ where
         ))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> crate::streaming::StreamFinal {
-        crate::streaming::StreamFinal::new(Ext::PROVIDER_NAME, usage.into())
+    fn build_final_response(
+        &self,
+        response: CompatibleStreamFinal<Self::Usage>,
+    ) -> crate::streaming::StreamFinal {
+        let mut final_response =
+            crate::streaming::StreamFinal::new(Ext::PROVIDER_NAME, response.usage.into());
+        final_response.message_id = response.response_id;
+        final_response.model = response.response_model;
+        final_response.finish_reason = response.finish_reason.map(|reason| match reason {
+            CompatibleFinishReason::Stop if response.emitted_tool_calls => {
+                crate::completion::FinishReason::ToolCalls
+            }
+            CompatibleFinishReason::Stop => crate::completion::FinishReason::Stop,
+            CompatibleFinishReason::Length => crate::completion::FinishReason::Length,
+            CompatibleFinishReason::ToolCalls => crate::completion::FinishReason::ToolCalls,
+            CompatibleFinishReason::ContentFilter => crate::completion::FinishReason::ContentFilter,
+            CompatibleFinishReason::Other(value) => crate::completion::FinishReason::Other(value),
+        });
+        final_response
     }
 
     fn decorate_tool_call(
@@ -318,6 +404,13 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
     };
+
+    #[test]
+    fn streaming_finish_reason_preserves_unknown_wire_value() {
+        let reason: FinishReason =
+            serde_json::from_str(r#""future_reason""#).expect("deserialize finish reason");
+        assert_eq!(reason, FinishReason::Other("future_reason".to_owned()));
+    }
 
     #[test]
     fn test_streaming_function_deserialization() {

@@ -181,7 +181,30 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         if let Some(message_id) = message_id {
             converted = converted.with_message_id(message_id);
         }
+        converted.finish_reason = response.status.as_deref().map(|status| {
+            let has_tool_calls = response
+                .output
+                .iter()
+                .any(|item| matches!(item, Output::FunctionCall(_)));
+            if status == "completed" && has_tool_calls {
+                completion::FinishReason::ToolCalls
+            } else {
+                map_finish_reason(status)
+            }
+        });
         Ok(converted)
+    }
+}
+
+pub(super) fn map_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "completed" | "stop" => completion::FinishReason::Stop,
+        "max_output_tokens" | "max_tokens" | "length" | "incomplete" => {
+            completion::FinishReason::Length
+        }
+        "tool_calls" | "function_call" => completion::FinishReason::ToolCalls,
+        "content_filter" | "safety" => completion::FinishReason::ContentFilter,
+        other => completion::FinishReason::Other(other.to_owned()),
     }
 }
 
@@ -213,14 +236,15 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    async fn completion(
+    /// Execute an xAI completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request =
@@ -265,7 +289,7 @@ where
                             );
                         }
 
-                        response.try_into()
+                        Ok(response)
                     }
                     ApiResponse::Error(error) => {
                         tracing::warn!(message = %error.message(), "provider returned an error response");
@@ -285,6 +309,18 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
@@ -296,12 +332,32 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::XAICompletionRequest;
+    use super::{XAICompletionRequest, map_finish_reason};
     use crate::OneOrMany;
     use crate::completion::request::Document;
     use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
     use crate::message::ToolChoice;
     use crate::test_utils::MockCompletionModel;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_values() {
+        assert_eq!(
+            map_finish_reason("completed"),
+            crate::completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason("max_output_tokens"),
+            crate::completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("content_filter"),
+            crate::completion::FinishReason::ContentFilter
+        );
+        assert_eq!(
+            map_finish_reason("future_reason"),
+            crate::completion::FinishReason::Other("future_reason".to_owned())
+        );
+    }
 
     #[test]
     fn xai_request_includes_normalized_documents() {

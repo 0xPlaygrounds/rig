@@ -177,6 +177,28 @@ mod tests {
         AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
     };
 
+    #[test]
+    fn finish_reason_mapping_covers_vertex_vocabulary() {
+        use vertexai::model::candidate::FinishReason as VertexFinishReason;
+
+        assert_eq!(
+            map_finish_reason(&VertexFinishReason::Stop),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(&VertexFinishReason::MaxTokens),
+            Some(FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(&VertexFinishReason::Safety),
+            Some(FinishReason::ContentFilter)
+        );
+        assert_eq!(
+            map_finish_reason(&VertexFinishReason::Recitation),
+            Some(FinishReason::Other("RECITATION".to_owned()))
+        );
+    }
+
     fn create_text_response(text: &str) -> VertexGenerateContentOutput {
         let part = vertexai::model::Part::new().set_text(text.to_string());
         let content = vertexai::model::Content::new()

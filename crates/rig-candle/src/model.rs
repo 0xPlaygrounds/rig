@@ -70,9 +70,7 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{
-    RawStreamingChoice, StreamFinal, StreamingCompletionResponse, StreamingResult,
-};
+use rig_core::streaming::{RawStreamingChoice, RawStreamingResult, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -368,7 +366,7 @@ fn render_prompt_for(
 }
 
 #[cfg(not(target_family = "wasm"))]
-type CandleStreamItem = Result<RawStreamingChoice, CompletionError>;
+type CandleStreamItem = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>;
 
 #[cfg(not(target_family = "wasm"))]
 struct CandleReceiverStream {
@@ -408,21 +406,23 @@ fn stream_infer(
             control.record_delivery_attempt();
         }
         sender
-            .blocking_send(Ok(choice))
+            .blocking_send(choice.try_map_final(|_| {
+                Err(CompletionError::ResponseError(
+                    "Candle emitted an unexpected intermediate terminal response".to_owned(),
+                ))
+            }))
             .map_err(|_| CandleError::StreamingChannelClosed)
     })?;
-    let final_response = StreamFinal::new("candle", response.token_usage())
-        .with_finish_reason(response.finish_reason.normalized());
     sender
-        .blocking_send(Ok(RawStreamingChoice::FinalResponse(final_response)))
+        .blocking_send(Ok(RawStreamingChoice::FinalResponse(response)))
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    async fn completion(
+impl CandleModel {
+    async fn completion_pair(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<(CompletionResponse, CandleCompletionResponse), CompletionError> {
         let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
@@ -442,23 +442,28 @@ impl CompletionModel for CandleModel {
             .await
             .map_err(|error| CandleError::BlockingTaskJoin(error.to_string()));
             cancel_on_drop.disarm();
-            result?
-                .map(|(response, _)| response)
-                .map_err(CompletionError::from)
+            result?.map_err(CompletionError::from)
         }
 
         #[cfg(target_family = "wasm")]
         {
-            infer(loaded, request, &CancellationSignal)
-                .map(|(response, _)| response)
-                .map_err(CompletionError::from)
+            infer(loaded, request, &CancellationSignal).map_err(CompletionError::from)
         }
     }
 
-    async fn stream(
+    /// Execute local inference and return Candle's native generation response.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
+    ) -> Result<CandleCompletionResponse, CompletionError> {
+        self.completion_pair(request).await.map(|(_, raw)| raw)
+    }
+
+    /// Execute local streaming inference and preserve Candle's native terminal response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<RawStreamingResult<CandleCompletionResponse>, CompletionError> {
         let ModelState::Ready(loaded) = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
@@ -485,27 +490,56 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult = Box::pin(CandleReceiverStream {
-                receiver,
-                cancellation,
-            });
+            let stream: RawStreamingResult<CandleCompletionResponse> =
+                Box::pin(CandleReceiverStream {
+                    receiver,
+                    cancellation,
+                });
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
 
         #[cfg(target_family = "wasm")]
         {
             let mut events = Vec::new();
             let response = stream_generate(loaded, request, &CancellationSignal, |choice| {
-                events.push(Ok(choice));
+                events.push(choice.try_map_final(|_| {
+                    Err(CompletionError::ResponseError(
+                        "Candle emitted an unexpected intermediate terminal response".to_owned(),
+                    ))
+                }));
                 Ok(())
             })?;
-            let final_response = StreamFinal::new("candle", response.token_usage())
-                .with_finish_reason(response.finish_reason.normalized());
-            events.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
-            let stream: StreamingResult = Box::pin(futures::stream::iter(events));
-            Ok(StreamingCompletionResponse::stream(stream))
+            events.push(Ok(RawStreamingChoice::FinalResponse(response)));
+            let stream: RawStreamingResult<CandleCompletionResponse> =
+                Box::pin(futures::stream::iter(events));
+            Ok(stream)
         }
+    }
+}
+
+impl CompletionModel for CandleModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        self.completion_pair(request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = rig_core::streaming::normalize_stream(stream, |response| {
+            Ok(
+                rig_core::streaming::StreamFinal::new("candle", response.token_usage())
+                    .with_finish_reason(response.finish_reason.normalized()),
+            )
+        });
+        Ok(StreamingCompletionResponse::stream(stream))
     }
 }
 

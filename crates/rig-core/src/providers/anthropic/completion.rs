@@ -2476,22 +2476,19 @@ where
     }
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+impl<Ext, T> GenericCompletionModel<Ext, T>
 where
     T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn capabilities(&self) -> completion::ProviderCapabilities {
-        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
-    }
-
-    async fn completion(
+    /// Execute a completion and return Anthropic's native response.
+    ///
+    /// Use [`completion::CompletionModel::completion`] for Rig's normalized
+    /// response type.
+    pub async fn raw_completion(
         &self,
         mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let request_model = completion_request
             .model
             .clone()
@@ -2507,7 +2504,6 @@ where
         )
         .build();
 
-        // Check if max_tokens is set, required for Anthropic
         if completion_request.max_tokens.is_none() {
             if let Some(tokens) = self.default_max_tokens {
                 completion_request.max_tokens = Some(tokens);
@@ -2536,19 +2532,16 @@ where
 
         async move {
             let request: Vec<u8> = serde_json::to_vec(&request)?;
-
             let req = self
                 .client
                 .post("/v1/messages")?
                 .body(request)
                 .map_err(|e| CompletionError::HttpError(e.into()))?;
-
             let response = self
                 .client
                 .send::<_, Bytes>(req)
                 .await
                 .map_err(CompletionError::HttpError)?;
-
             let status = response.status();
             let body = response
                 .into_body()
@@ -2574,9 +2567,7 @@ where
                             serde_json::to_string_pretty(&completion)?
                         );
                     }
-                    let mut converted: completion::CompletionResponse = completion.try_into()?;
-                    converted.provider = Ext::PROVIDER_NAME.to_string();
-                    Ok(converted)
+                    Ok(completion)
                 }
                 ApiResponse::Error(ApiErrorResponse { message }) => {
                     tracing::warn!(message = %message, "provider returned an error response");
@@ -2589,6 +2580,29 @@ where
         }
         .instrument(span)
         .await
+    }
+}
+
+impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
+where
+    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // Anthropic's native structured outputs (constrained decoding) are designed
+    // to compose with strict tool use, so the schema constraint does not suppress
+    // tool calls. See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        let mut converted: completion::CompletionResponse = response.try_into()?;
+        converted.provider = Ext::PROVIDER_NAME.to_string();
+        Ok(converted)
     }
 
     async fn stream(
@@ -2616,6 +2630,26 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_values() {
+        assert_eq!(
+            map_finish_reason("end_turn"),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason("max_tokens"),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("tool_use"),
+            completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason("future_stop"),
+            completion::FinishReason::Other("future_stop".to_owned())
+        );
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {

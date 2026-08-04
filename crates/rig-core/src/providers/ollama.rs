@@ -321,6 +321,19 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub eval_duration: Option<u64>,
 }
+
+/// Ollama's provider-native terminal streaming metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingCompletionResponse {
+    pub model: String,
+    pub done_reason: Option<String>,
+    pub total_duration: Option<u64>,
+    pub load_duration: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration: Option<u64>,
+}
 /// Maps Ollama's `done_reason` onto the normalized
 /// [`completion::FinishReason`] vocabulary, carrying unmapped values
 /// verbatim in `Other`.
@@ -635,14 +648,15 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    async fn completion(
+    /// Execute an Ollama completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -696,18 +710,17 @@ where
                 );
             }
 
-            let response: completion::CompletionResponse = response.try_into()?;
-
             Ok(response)
         };
 
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    async fn stream(
+    /// Execute a streaming Ollama completion and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -776,7 +789,7 @@ where
                         span.record("gen_ai.response.model", &response.model);
                     }
 
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message.clone() {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
                             yield RawStreamingChoice::ReasoningDelta {
                                 id: None,
@@ -798,29 +811,59 @@ where
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        let input_tokens = response.prompt_eval_count.unwrap_or_default();
-                        let output_tokens = response.eval_count.unwrap_or_default();
-                        let usage = Usage {
-                            input_tokens,
-                            output_tokens,
-                            total_tokens: input_tokens + output_tokens,
-                            ..Usage::new()
-                        };
-                        let mut final_response = crate::streaming::StreamFinal::new("ollama", usage)
-                            .with_model(response.model.clone());
-                        if let Some(done_reason) = response.done_reason.as_deref() {
-                            final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
-                        }
-                        yield RawStreamingChoice::FinalResponse(final_response);
+                        yield RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                            model: response.model,
+                            done_reason: response.done_reason,
+                            total_duration: response.total_duration,
+                            load_duration: response.load_duration,
+                            prompt_eval_count: response.prompt_eval_count,
+                            prompt_eval_duration: response.prompt_eval_duration,
+                            eval_count: response.eval_count,
+                            eval_duration: response.eval_duration,
+                        });
                         break;
                     }
                 }
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let input_tokens = response.prompt_eval_count.unwrap_or_default();
+            let output_tokens = response.eval_count.unwrap_or_default();
+            let usage = Usage {
+                input_tokens,
+                output_tokens,
+                total_tokens: input_tokens + output_tokens,
+                ..Usage::new()
+            };
+            let mut final_response =
+                streaming::StreamFinal::new("ollama", usage).with_model(response.model);
+            if let Some(done_reason) = response.done_reason.as_deref() {
+                final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
+            }
+            Ok(final_response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 
@@ -1283,6 +1326,19 @@ pub struct ImageUrl {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_values() {
+        assert_eq!(map_finish_reason("stop"), completion::FinishReason::Stop);
+        assert_eq!(
+            map_finish_reason("length"),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason("future_reason"),
+            completion::FinishReason::Other("future_reason".to_owned())
+        );
+    }
 
     #[test]
     fn splits_legacy_reasoning_with_or_without_opening_marker() {

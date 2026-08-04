@@ -1089,6 +1089,9 @@ pub enum ResponseStatus {
     Cancelled,
     Queued,
     Incomplete,
+    /// An unrecognized provider status, preserved verbatim.
+    #[serde(untagged)]
+    Other(String),
 }
 
 /// Map a terminal Responses API status (plus any incomplete-details reason)
@@ -1107,6 +1110,7 @@ pub(crate) fn finish_reason_from_status(
             Some(other) => FinishReason::Other(other.to_string()),
             None => FinishReason::Other("incomplete".to_string()),
         }),
+        ResponseStatus::Other(value) => Some(FinishReason::Other(value.clone())),
         _ => None,
     }
 }
@@ -2233,7 +2237,7 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
+impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -2246,17 +2250,14 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    // The OpenAI Responses API constrains only the final assistant message via
-    // `text.format`; tools are still called across turns, so native structured
-    // output composes with tool calls. See issue #1928.
-    fn capabilities(&self) -> completion::ProviderCapabilities {
-        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
-    }
-
-    async fn completion(
+    /// Execute a Responses API completion and return its native response.
+    ///
+    /// Use [`completion::CompletionModel::completion`] for Rig's normalized
+    /// response type.
+    pub async fn raw_completion(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_completion_request(completion_request)?;
@@ -2281,39 +2282,65 @@ where
 
         async move {
             let response = self.client.send(req).await?;
-
-            if response.status().is_success() {
-                let t = http_client::text(response).await?;
-                let response = serde_json::from_str::<CompletionResponse>(&t)?;
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.id);
-                span.record("gen_ai.response.model", &response.model);
-                if let Some(ref usage) = response.usage {
-                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    let cached_tokens = usage
-                        .input_tokens_details
-                        .as_ref()
-                        .map(|d| d.cached_tokens)
-                        .unwrap_or(0);
-                    span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
-                }
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "OpenAI Responses completion response: {response}",
-                        response = serde_json::to_string_pretty(&response)?
-                    );
-                }
-                response.try_into()
-            } else {
-                let status = response.status();
-                let text = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, text))
+            let status = response.status();
+            let text = http_client::text(response).await?;
+            if !status.is_success() {
+                return Err(CompletionError::from_http_response(status, text));
             }
+
+            let response = serde_json::from_str::<CompletionResponse>(&text)?;
+            let span = tracing::Span::current();
+            span.record("gen_ai.response.id", &response.id);
+            span.record("gen_ai.response.model", &response.model);
+            if let Some(ref usage) = response.usage {
+                span.record("gen_ai.usage.output_tokens", usage.output_tokens);
+                span.record("gen_ai.usage.input_tokens", usage.input_tokens);
+                let cached_tokens = usage
+                    .input_tokens_details
+                    .as_ref()
+                    .map(|d| d.cached_tokens)
+                    .unwrap_or(0);
+                span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
+            }
+            if enabled!(Level::TRACE) {
+                tracing::trace!(
+                    target: "rig::completions",
+                    "OpenAI Responses completion response: {response}",
+                    response = serde_json::to_string_pretty(&response)?
+                );
+            }
+            Ok(response)
         }
         .instrument(span)
         .await
+    }
+}
+
+impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + ResponsesProviderExt
+        + crate::client::DebugExt
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // The OpenAI Responses API constrains only the final assistant message via
+    // `text.format`; tools are still called across turns, so native structured
+    // output composes with tool calls. See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
@@ -2792,6 +2819,21 @@ mod tests {
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
+
+    #[test]
+    fn response_status_mapping_preserves_unknown_wire_value() {
+        let status: ResponseStatus =
+            serde_json::from_str(r#""future_status""#).expect("deserialize response status");
+        assert_eq!(status, ResponseStatus::Other("future_status".to_owned()));
+        assert_eq!(
+            finish_reason_from_status(&status, None),
+            Some(completion::FinishReason::Other("future_status".to_owned()))
+        );
+        assert_eq!(
+            finish_reason_from_status(&ResponseStatus::Completed, None),
+            Some(completion::FinishReason::Stop)
+        );
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {

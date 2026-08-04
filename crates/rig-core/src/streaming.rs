@@ -132,9 +132,14 @@ impl StreamFinal {
     }
 }
 
-/// Enum representing a streaming chunk from the model
+/// A provider stream item whose terminal response remains provider-native.
+///
+/// Ordinary [`StreamingCompletionResponse`] values use the default
+/// [`StreamFinal`] terminal type. Provider model `raw_stream` methods expose a
+/// concrete provider terminal type through this same event vocabulary without
+/// making the generic [`crate::completion::CompletionModel`] boundary generic.
 #[derive(Debug, Clone)]
-pub enum RawStreamingChoice {
+pub enum RawStreamingChoice<R = StreamFinal> {
     /// A text chunk from a message response
     Message(String),
 
@@ -181,7 +186,7 @@ pub enum RawStreamingChoice {
 
     /// The provider's normalized terminal record; must be yielded if you want
     /// the `response` field to be populated on the `StreamingCompletionResponse`
-    FinalResponse(StreamFinal),
+    FinalResponse(R),
 
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Captured silently into `StreamingCompletionResponse::message_id`.
@@ -194,6 +199,40 @@ pub enum RawStreamingChoice {
     /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
     /// assistant message (there is no `AssistantContent::Unknown` history slot).
     Unknown(serde_json::Value),
+}
+
+impl<R> RawStreamingChoice<R> {
+    /// Convert only the provider-native terminal response, preserving every
+    /// incremental content event unchanged.
+    pub fn try_map_final<S>(
+        self,
+        map: impl FnOnce(R) -> Result<S, CompletionError>,
+    ) -> Result<RawStreamingChoice<S>, CompletionError> {
+        Ok(match self {
+            Self::Message(text) => RawStreamingChoice::Message(text),
+            Self::TextStart { additional_params } => {
+                RawStreamingChoice::TextStart { additional_params }
+            }
+            Self::TextAdditionalParams(params) => RawStreamingChoice::TextAdditionalParams(params),
+            Self::ToolCall(call) => RawStreamingChoice::ToolCall(call),
+            Self::ToolCallDelta {
+                id,
+                internal_call_id,
+                content,
+            } => RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id,
+                content,
+            },
+            Self::Reasoning { id, content } => RawStreamingChoice::Reasoning { id, content },
+            Self::ReasoningDelta { id, reasoning } => {
+                RawStreamingChoice::ReasoningDelta { id, reasoning }
+            }
+            Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
+            Self::MessageId(id) => RawStreamingChoice::MessageId(id),
+            Self::Unknown(value) => RawStreamingChoice::Unknown(value),
+        })
+    }
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -283,13 +322,37 @@ impl From<RawStreamingToolCall> for ToolCall {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Provider stream of raw completion chunks on native targets.
-pub type StreamingResult =
-    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>> + Send>>;
+/// Provider stream with a provider-native terminal response on native targets.
+pub type RawStreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Provider stream of raw completion chunks on wasm targets.
-pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<RawStreamingChoice, CompletionError>>>>;
+/// Provider stream with a provider-native terminal response on wasm targets.
+pub type RawStreamingResult<R> =
+    Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
+
+/// Normalized provider stream used by [`StreamingCompletionResponse`].
+pub type StreamingResult = RawStreamingResult<StreamFinal>;
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// Normalize the terminal response of a provider-native stream.
+pub fn normalize_stream<R, F>(stream: RawStreamingResult<R>, mut map: F) -> StreamingResult
+where
+    R: 'static,
+    F: FnMut(R) -> Result<StreamFinal, CompletionError> + Send + 'static,
+{
+    Box::pin(stream.map(move |item| item.and_then(|choice| choice.try_map_final(&mut map))))
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// Normalize the terminal response of a provider-native stream.
+pub fn normalize_stream<R, F>(stream: RawStreamingResult<R>, mut map: F) -> StreamingResult
+where
+    R: 'static,
+    F: FnMut(R) -> Result<StreamFinal, CompletionError> + 'static,
+{
+    Box::pin(stream.map(move |item| item.and_then(|choice| choice.try_map_final(&mut map))))
+}
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
@@ -641,6 +704,43 @@ mod tests {
         let mut usage = Usage::new();
         usage.total_tokens = total_tokens;
         StreamFinal::new("mock", usage)
+    }
+
+    #[test]
+    fn stream_final_round_trips_and_discriminates_from_unknown_content() {
+        let final_response = StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: 4,
+                output_tokens: 6,
+                total_tokens: 10,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 2,
+                tool_use_prompt_tokens: 3,
+                reasoning_tokens: 4,
+            },
+        )
+        .with_finish_reason(crate::completion::FinishReason::Other(
+            "future_reason".to_owned(),
+        ))
+        .with_message_id("msg_123")
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(StreamedAssistantContent::Final(final_response.clone()))
+            .expect("serialize final stream item");
+        assert_eq!(encoded["kind"], serde_json::json!("final"));
+
+        let decoded = serde_json::from_value::<StreamedAssistantContent>(encoded)
+            .expect("deserialize final stream item");
+        assert_eq!(decoded, StreamedAssistantContent::Final(final_response));
+
+        let provider_item = serde_json::json!({
+            "provider_native_event": "future_terminal",
+            "usage": {"total_tokens": 10}
+        });
+        let decoded = serde_json::from_value::<StreamedAssistantContent>(provider_item.clone())
+            .expect("deserialize unknown provider item");
+        assert_eq!(decoded, StreamedAssistantContent::Unknown(provider_item));
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

@@ -15,6 +15,11 @@
 //! alongside the canonical `CompletionClient`, the same surface as before the
 //! split.
 //!
+//! Completion-model trait methods return Rig's concrete normalized unary and
+//! streaming responses. Built-in provider models expose inherent
+//! `raw_completion` and `raw_stream` methods for callers that need their typed
+//! provider-native response envelopes.
+//!
 //! # Companion integrations
 //!
 //! Companion provider and vector-store crates are exposed as feature-gated

@@ -209,11 +209,12 @@ pub(crate) fn resolve_request_model(
         .unwrap_or_else(|| default_model.to_string())
 }
 
-impl completion::CompletionModel for CompletionModel {
-    async fn completion(
+impl CompletionModel {
+    /// Execute a Bedrock completion and return its native Converse output.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<AwsConverseOutput, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
 
         let span =
@@ -260,13 +261,21 @@ impl completion::CompletionModel for CompletionModel {
 
             let span = tracing::Span::current();
             span.record_response_metadata(&aws_output);
-            let response: completion::CompletionResponse = aws_output.try_into()?;
-            span.record_token_usage(&response.usage);
+            span.record_token_usage(&aws_output.token_usage());
 
-            Ok(response)
+            Ok(aws_output)
         }
         .instrument(span)
         .await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(

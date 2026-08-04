@@ -73,6 +73,20 @@ pub struct StreamGenerateContentResponse {
     pub usage_metadata: Option<PartialUsage>,
 }
 
+/// Gemini's provider-native terminal streaming metadata.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamingCompletionResponse {
+    /// Provider response identifier, when emitted.
+    pub response_id: Option<String>,
+    /// Provider-reported model version, when emitted.
+    pub model_version: Option<String>,
+    /// Provider-native finish reason, when emitted.
+    pub finish_reason: Option<FinishReason>,
+    /// Provider-native usage metadata, when emitted.
+    pub usage_metadata: Option<PartialUsage>,
+}
+
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
     let reason = choice.finish_reason.as_ref()?;
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
@@ -82,10 +96,11 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming Gemini completion and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
@@ -274,24 +289,36 @@ where
             event_source.close();
 
             if !stream_failed {
-                let usage = final_usage.unwrap_or_default().token_usage();
-                let mut final_response = streaming::StreamFinal::new("gemini", usage);
-                if let Some(finish_reason) = final_finish_reason.as_ref() {
-                    final_response = final_response.with_finish_reason(map_finish_reason(finish_reason));
-                }
-                if let Some(message_id) = final_response_id {
-                    final_response = final_response.with_message_id(message_id);
-                }
-                if let Some(model_version) = final_model_version {
-                    final_response = final_response.with_model(model_version);
-                }
-                yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+                yield Ok(streaming::RawStreamingChoice::FinalResponse(
+                    StreamingCompletionResponse {
+                        response_id: final_response_id,
+                        model_version: final_model_version,
+                        finish_reason: final_finish_reason,
+                        usage_metadata: final_usage,
+                    },
+                ));
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let usage = response.usage_metadata.unwrap_or_default().token_usage();
+            let mut final_response = streaming::StreamFinal::new("gemini", usage);
+            if let Some(reason) = response.finish_reason.as_ref() {
+                final_response = final_response.with_finish_reason(map_finish_reason(reason));
+            }
+            final_response.message_id = response.response_id;
+            final_response.model = response.model_version;
+            Ok(final_response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

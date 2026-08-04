@@ -233,8 +233,8 @@ pub enum FinishReason {
 /// content items.
 ///
 /// This type is concrete — it carries no provider-typed payload. Callers who
-/// need a provider's raw typed response call that provider's own parse/
-/// completion functions directly, on the provider's side of the boundary.
+/// need a provider's raw typed response call that model's inherent
+/// `raw_completion` or `raw_stream` method.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionResponse {
@@ -919,6 +919,53 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
 #[cfg(test)]
 mod tests {
+    use crate::message::AssistantContent;
+
+    #[test]
+    fn normalized_response_types_round_trip_through_serde() {
+        use super::{CompletionResponse, FinishReason, Usage};
+
+        let reason = FinishReason::Other("provider_specific_stop".to_owned());
+        let encoded_reason = serde_json::to_string(&reason).expect("serialize finish reason");
+        let decoded_reason = serde_json::from_str::<FinishReason>(&encoded_reason)
+            .expect("deserialize finish reason");
+        assert_eq!(decoded_reason, reason);
+
+        let response = CompletionResponse::new(
+            OneOrMany::one(AssistantContent::text("hello")),
+            Usage {
+                input_tokens: 3,
+                output_tokens: 2,
+                total_tokens: 5,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 1,
+            },
+            "example",
+        )
+        .with_message_id("msg_123")
+        .with_finish_reason(reason)
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(&response).expect("serialize completion response");
+        let decoded = serde_json::from_value::<CompletionResponse>(encoded.clone())
+            .expect("deserialize completion response");
+        assert_eq!(
+            serde_json::to_value(decoded).expect("serialize round-tripped response"),
+            encoded
+        );
+    }
+
+    #[test]
+    fn provider_capabilities_are_externally_configurable_from_default() {
+        let capabilities =
+            ProviderCapabilities::default().with_native_output_tool_composition(true);
+
+        assert!(capabilities.composes_native_output_with_tools);
+        assert!(!ProviderCapabilities::new().composes_native_output_with_tools);
+    }
+
     #[test]
     fn usage_has_values_reflects_the_zero_sentinel() {
         use super::Usage;

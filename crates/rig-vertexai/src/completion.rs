@@ -55,13 +55,12 @@ impl CompletionModel {
             self.model
         ))
     }
-}
 
-impl CompletionModelTrait for CompletionModel {
-    async fn completion(
+    /// Execute a Vertex AI completion and return its native SDK response wrapper.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
+    ) -> Result<VertexGenerateContentOutput, CompletionError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
@@ -108,19 +107,45 @@ impl CompletionModelTrait for CompletionModel {
             "Vertex AI completion response: {response:?}"
         );
 
-        let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response = vertex_output.try_into()?;
+        Ok(VertexGenerateContentOutput(response))
+    }
 
-        Ok(completion_response)
+    /// Vertex AI streaming is not supported by this integration.
+    pub async fn raw_stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> Result<rig_core::streaming::RawStreamingResult<VertexGenerateContentOutput>, CompletionError>
+    {
+        Err(CompletionError::ProviderError(
+            "Streaming is not supported for Vertex AI in this integration".to_string(),
+        ))
+    }
+}
+
+impl CompletionModelTrait for CompletionModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion(request).await?.try_into()
     }
 
     async fn stream(
         &self,
         _request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        Err(CompletionError::ProviderError(
-            "Streaming is not supported for Vertex AI in this integration".to_string(),
-        ))
+        self.raw_stream(_request).await.map(|stream| {
+            let stream = rig_core::streaming::normalize_stream(stream, |response| {
+                let normalized: CompletionResponse = response.try_into()?;
+                let mut final_response =
+                    rig_core::streaming::StreamFinal::new("vertexai", normalized.usage);
+                final_response.finish_reason = normalized.finish_reason;
+                final_response.message_id = normalized.message_id;
+                final_response.model = normalized.model;
+                Ok(final_response)
+            });
+            StreamingCompletionResponse::stream(stream)
+        })
     }
 }
 

@@ -2,13 +2,13 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
+use crate::providers::cohere::completion::{CohereCompletionRequest, FinishReason, Usage};
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
@@ -57,6 +57,16 @@ struct Delta {
 #[derive(Debug, Deserialize)]
 struct MessageEndDelta {
     usage: Option<Usage>,
+    finish_reason: Option<FinishReason>,
+}
+
+/// Cohere's provider-native terminal streaming payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamingCompletionResponse {
+    /// Usage carried by the `message-end` event, when present.
+    pub usage: Option<Usage>,
+    /// Provider-native finish reason from the `message-end` event.
+    pub finish_reason: Option<FinishReason>,
 }
 
 /// Normalize the streamed `message-end` usage payload; missing token counts
@@ -83,10 +93,11 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming Cohere completion and preserve the native terminal payload.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -126,6 +137,7 @@ where
         let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
+            let mut final_finish_reason = None;
 
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -161,7 +173,8 @@ where
                                 let span = tracing::Span::current();
                                 let token_usage = streamed_token_usage(delta.usage.as_ref());
                                 span.record_token_usage(&token_usage);
-                                final_usage = Some(token_usage);
+                                final_usage = delta.usage;
+                                final_finish_reason = delta.finish_reason;
                                 break;
                             },
 
@@ -228,15 +241,32 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
-                "cohere",
-                final_usage.unwrap_or_else(crate::completion::Usage::new),
-            )))
+            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
+                usage: final_usage,
+                finish_reason: final_finish_reason,
+            }))
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let stream = streaming::normalize_stream(stream, |response| {
+            let mut final_response = streaming::StreamFinal::new(
+                "cohere",
+                streamed_token_usage(response.usage.as_ref()),
+            );
+            final_response.finish_reason = response
+                .finish_reason
+                .as_ref()
+                .map(crate::completion::FinishReason::from);
+            Ok(final_response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

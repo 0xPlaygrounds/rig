@@ -543,7 +543,8 @@ where
                     }
                     Some(ResponseStatus::Failed)
                     | Some(ResponseStatus::Incomplete)
-                    | Some(ResponseStatus::Cancelled) => {
+                    | Some(ResponseStatus::Cancelled)
+                    | Some(ResponseStatus::Other(_)) => {
                         self.previous_response_id = None;
                     }
                     Some(ResponseStatus::InProgress | ResponseStatus::Queued) | None => {}

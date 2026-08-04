@@ -3,8 +3,8 @@
 use crate::{
     completion::{CompletionError, Usage},
     providers::internal::openai_chat_completions_compatible::{
-        CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-        CompatibleToolCallChunk,
+        CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamFinal,
+        CompatibleStreamProfile, CompatibleToolCallChunk,
     },
     streaming::StreamFinal,
 };
@@ -25,7 +25,7 @@ fn tool_call_choice(
     tool_calls: Vec<CompatibleToolCallChunk>,
 ) -> CompatibleChoice<()> {
     CompatibleChoice {
-        finish_reason,
+        finish_reason: Some(finish_reason),
         text: None,
         reasoning: None,
         tool_calls,
@@ -61,7 +61,7 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         match data {
             "start" => Ok(Some(test_chunk(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
             )))),
             "bad" => Err(CompletionError::ProviderError(
@@ -71,8 +71,8 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
+    fn build_final_response(&self, response: CompatibleStreamFinal<Self::Usage>) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, response.usage)
     }
 }
 
@@ -90,7 +90,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         let choice = match data {
             "first_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(
                     0,
                     Some("call_aaa"),
@@ -99,7 +99,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "first_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
             )),
             // A partial (still-streaming) argument fragment: the accumulator
@@ -107,11 +107,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
             // `{...}` object. If the first call is evicted at this point, its
             // arguments are a non-object string — the exact #1958 leak condition.
             "first_args_partial" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":"))],
             )),
             "second_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(
                     0,
                     Some("call_bbb"),
@@ -120,7 +120,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "second_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
             )),
             "finish" => Some(tool_call_choice(
@@ -133,8 +133,8 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
+    fn build_final_response(&self, response: CompatibleStreamFinal<Self::Usage>) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, response.usage)
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -156,7 +156,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
         let choice = match data {
             "start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Other("streaming".to_owned()),
                 vec![tool_call_chunk(
                     0,
                     Some("call_123"),
@@ -174,7 +174,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         Ok(choice.map(test_chunk))
     }
 
-    fn build_final_response(&self, usage: Self::Usage) -> StreamFinal {
-        StreamFinal::new(MOCK_PROVIDER, usage)
+    fn build_final_response(&self, response: CompatibleStreamFinal<Self::Usage>) -> StreamFinal {
+        StreamFinal::new(MOCK_PROVIDER, response.usage)
     }
 }

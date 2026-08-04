@@ -39,13 +39,12 @@ impl CompletionModel {
             model: model.into(),
         }
     }
-}
 
-impl completion::CompletionModel for CompletionModel {
-    async fn completion(
+    /// Execute a Gemini gRPC completion and return the generated protobuf response.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request = create_grpc_request(self.model.clone(), completion_request)?;
 
         let mut grpc_client = self
@@ -53,20 +52,57 @@ impl completion::CompletionModel for CompletionModel {
             .grpc_client()
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        let response = grpc_client
+        grpc_client
             .generate_content(request)
             .await
-            .map_err(rpc_error)?
-            .into_inner();
+            .map_err(rpc_error)
+            .map(tonic::Response::into_inner)
+    }
 
-        response.try_into()
+    /// Execute a streaming Gemini gRPC completion and preserve its native terminal response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<rig_core::streaming::RawStreamingResult<GenerateContentResponse>, CompletionError>
+    {
+        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
-        super::streaming::stream(self.client.clone(), self.model.clone(), request).await
+        let stream = self.raw_stream(request).await?;
+        let stream = rig_core::streaming::normalize_stream(stream, |response| {
+            let mut final_response =
+                rig_core::streaming::StreamFinal::new("gemini-grpc", response.token_usage());
+            if let Some(finish_reason) = response
+                .candidates
+                .first()
+                .and_then(|candidate| map_finish_reason(candidate.finish_reason))
+            {
+                final_response = final_response.with_finish_reason(finish_reason);
+            }
+            if !response.response_id.is_empty() {
+                final_response = final_response.with_message_id(response.response_id);
+            }
+            if !response.model_version.is_empty() {
+                final_response = final_response.with_model(response.model_version);
+            }
+            Ok(final_response)
+        });
+        Ok(rig_core::streaming::StreamingCompletionResponse::stream(
+            stream,
+        ))
     }
 }
 
@@ -383,8 +419,9 @@ fn rig_assistant_content_to_grpc_part(
 /// Map a Gemini proto finish reason code onto rig's normalized finish reason.
 /// `FINISH_REASON_UNSPECIFIED` (0) means the provider reported nothing.
 pub(crate) fn map_finish_reason(code: i32) -> Option<completion::FinishReason> {
-    let reason = proto::candidate::FinishReason::try_from(code)
-        .unwrap_or(proto::candidate::FinishReason::Unspecified);
+    let Ok(reason) = proto::candidate::FinishReason::try_from(code) else {
+        return Some(completion::FinishReason::Other(code.to_string()));
+    };
     match reason {
         proto::candidate::FinishReason::Unspecified => None,
         proto::candidate::FinishReason::Stop => Some(completion::FinishReason::Stop),
@@ -745,6 +782,22 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_numeric_value() {
+        assert_eq!(
+            map_finish_reason(proto::candidate::FinishReason::Stop as i32),
+            Some(completion::FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(proto::candidate::FinishReason::MaxTokens as i32),
+            Some(completion::FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(98_765),
+            Some(completion::FinishReason::Other("98765".to_owned()))
+        );
+    }
 
     // ============================================================
     // rpc_error — pins the from_provider_body usage on the RPC error path

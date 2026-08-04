@@ -92,6 +92,8 @@ pub enum FinishReason {
     Complete,
     Error,
     ToolCall,
+    #[serde(untagged)]
+    Other(String),
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
@@ -109,6 +111,7 @@ impl From<&FinishReason> for completion::FinishReason {
             FinishReason::MaxTokens => Self::Length,
             FinishReason::ToolCall => Self::ToolCalls,
             FinishReason::Error => Self::Other("ERROR".to_owned()),
+            FinishReason::Other(value) => Self::Other(value.clone()),
         }
     }
 }
@@ -640,14 +643,15 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    async fn completion(
+    /// Execute a Cohere completion and return its native response.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -701,8 +705,7 @@ where
                     );
                 }
 
-                let completion: completion::CompletionResponse = json_response.try_into()?;
-                Ok(completion)
+                Ok(json_response)
             } else {
                 Err(CompletionError::from_http_response(
                     status,
@@ -712,6 +715,18 @@ where
         }
         .instrument(llm_span)
         .await
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
@@ -725,6 +740,21 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    #[test]
+    fn finish_reason_mapping_preserves_unknown_wire_value() {
+        let reason: FinishReason =
+            serde_json::from_str(r#""FUTURE_REASON""#).expect("deserialize finish reason");
+        assert_eq!(reason, FinishReason::Other("FUTURE_REASON".to_owned()));
+        assert_eq!(
+            completion::FinishReason::from(&reason),
+            completion::FinishReason::Other("FUTURE_REASON".to_owned())
+        );
+        assert_eq!(
+            completion::FinishReason::from(&FinishReason::ToolCall),
+            completion::FinishReason::ToolCalls
+        );
+    }
 
     #[test]
     fn test_deserialize_completion_response() {

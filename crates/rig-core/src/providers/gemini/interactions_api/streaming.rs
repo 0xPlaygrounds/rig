@@ -31,10 +31,11 @@ impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming interaction and preserve the terminal native interaction.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<Interaction>, CompletionError> {
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
             &self.model,
@@ -95,12 +96,20 @@ where
                         match data {
                             InteractionSseEvent::StepDelta { delta, .. } => {
                                 if let Some(choice) = content_delta_to_choice(delta) {
-                                    yield Ok(choice);
+                                    yield choice.try_map_final(|_| {
+                                        Err(CompletionError::ResponseError(
+                                            "Gemini emitted an unexpected terminal interaction delta".to_owned(),
+                                        ))
+                                    });
                                 }
                             }
                             InteractionSseEvent::StepStart { step, .. } => {
                                 if let Some(choice) = step_start_to_choice(step) {
-                                    yield Ok(choice);
+                                    yield choice.try_map_final(|_| {
+                                        Err(CompletionError::ResponseError(
+                                            "Gemini emitted an unexpected terminal interaction start".to_owned(),
+                                        ))
+                                    });
                                 }
                             }
                             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
@@ -143,29 +152,35 @@ where
 
             event_source.close();
 
-            // The Interactions API has no `FinishReason` field; use
-            // `interaction.status` for lifecycle state.
-            let usage = final_usage
-                .or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone()))
-                .as_ref()
-                .map(InteractionUsage::token_usage)
-                .unwrap_or_default();
-            let mut final_response = streaming::StreamFinal::new("gemini", usage);
-            if let Some(interaction) = final_interaction.as_ref() {
-                if !interaction.id.is_empty() {
-                    final_response = final_response.with_message_id(interaction.id.clone());
-                }
-                if let Some(model) = interaction.model.as_deref() {
-                    final_response = final_response.with_model(model);
-                }
+            let mut interaction = final_interaction.unwrap_or_default();
+            if interaction.usage.is_none() {
+                interaction.usage = final_usage;
             }
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(interaction));
         }
         .instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+        let stream = streaming::normalize_stream(stream, |interaction| {
+            let mut response = streaming::StreamFinal::new("gemini", interaction.token_usage());
+            if !interaction.id.is_empty() {
+                response = response.with_message_id(interaction.id);
+            }
+            response.model = interaction.model;
+            response.finish_reason = interaction
+                .status
+                .as_ref()
+                .map(super::map_interaction_finish_reason);
+            Ok(response)
+        });
+        Ok(streaming::StreamingCompletionResponse::stream(stream))
     }
 }
 

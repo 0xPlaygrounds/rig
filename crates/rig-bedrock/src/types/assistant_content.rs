@@ -260,10 +260,10 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
 mod tests {
     use crate::types::{
         assistant_content::RigAssistantContent, converse_output::InternalConverseOutput,
-        errors::TypeConversionError, json::AwsDocument,
+        converse_output::StopReason, errors::TypeConversionError, json::AwsDocument,
     };
 
-    use super::AwsConverseOutput;
+    use super::{AwsConverseOutput, map_finish_reason};
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         OneOrMany, completion,
@@ -271,6 +271,30 @@ mod tests {
         telemetry::ProviderResponseExt,
     };
     use serde_json::json;
+
+    #[test]
+    fn finish_reason_mapping_covers_bedrock_vocabulary() {
+        assert_eq!(
+            map_finish_reason(&StopReason::EndTurn),
+            completion::FinishReason::Stop
+        );
+        assert_eq!(
+            map_finish_reason(&StopReason::MaxTokens),
+            completion::FinishReason::Length
+        );
+        assert_eq!(
+            map_finish_reason(&StopReason::ToolUse),
+            completion::FinishReason::ToolCalls
+        );
+        assert_eq!(
+            map_finish_reason(&StopReason::ContentFiltered),
+            completion::FinishReason::ContentFilter
+        );
+        assert_eq!(
+            map_finish_reason(&StopReason::StopSequence),
+            completion::FinishReason::Other("stop_sequence".to_owned())
+        );
+    }
 
     /// Helper: build an AwsConverseOutput with text content and optional usage.
     fn make_output(text: &str, usage: Option<aws_bedrock::TokenUsage>) -> AwsConverseOutput {

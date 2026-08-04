@@ -12,19 +12,24 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesStreamOptions, stream_from_event_source_with_options,
+    ResponsesStreamOptions, raw_stream_from_event_source_with_options,
 };
 use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
+
+/// xAI's provider-native terminal streaming response.
+pub type StreamingCompletionResponse =
+    crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
 
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Execute a streaming xAI completion and preserve native terminal metadata.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request =
@@ -56,13 +61,46 @@ where
                 .system_instructions(preamble.as_deref(), record_telemetry_content)
                 .build();
 
-        send_xai_streaming_request(self.client.clone(), req)
+        send_xai_raw_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(completion_request).await?;
+        Ok(normalize_xai_stream(raw))
+    }
+}
+
+fn normalize_xai_stream(
+    raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
+) -> streaming::StreamingCompletionResponse {
+    let stream = streaming::normalize_stream(raw, |response| {
+        let mut final_response = streaming::StreamFinal::new("xai", response.usage.into());
+        final_response.finish_reason = response.status.as_ref().and_then(|status| {
+            let status = serde_json::to_value(status)
+                .ok()
+                .and_then(|value| value.as_str().map(ToOwned::to_owned));
+            status.map(|status| {
+                if status == "completed" && response.has_tool_calls {
+                    crate::completion::FinishReason::ToolCalls
+                } else {
+                    super::completion::map_finish_reason(&status)
+                }
+            })
+        });
+        final_response.message_id = response.message_id;
+        final_response.model = response.model;
+        Ok(final_response)
+    });
+    streaming::StreamingCompletionResponse::stream(stream)
 }
 
 /// Send a streaming request
+#[cfg(test)]
 pub(crate) async fn send_xai_streaming_request<T>(
     http_client: T,
     req: http::Request<Vec<u8>>,
@@ -70,10 +108,21 @@ pub(crate) async fn send_xai_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
+    let raw = send_xai_raw_streaming_request(http_client, req).await?;
+    Ok(normalize_xai_stream(raw))
+}
+
+pub(crate) async fn send_xai_raw_streaming_request<T>(
+    http_client: T,
+    req: http::Request<Vec<u8>>,
+) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError>
+where
+    T: HttpClientExt + Clone + 'static,
+{
     let span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
 
-    Ok(stream_from_event_source_with_options(
+    Ok(raw_stream_from_event_source_with_options(
         event_source,
         span,
         ResponsesStreamOptions::strict_with_immediate_tool_calls(),

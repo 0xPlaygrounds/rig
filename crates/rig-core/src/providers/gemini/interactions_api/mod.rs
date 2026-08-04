@@ -115,14 +115,15 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    async fn completion(
+    /// Execute a Gemini Interactions completion and return the native interaction.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
+    ) -> Result<Interaction, CompletionError> {
         let span = CompletionSpanBuilder::new(
             "gcp.gemini",
             &self.model,
@@ -184,7 +185,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -200,6 +201,18 @@ where
         }
         .instrument(span)
         .await
+    }
+}
+
+impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
@@ -503,8 +516,22 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
         if let Some(model) = response.model.as_deref() {
             converted = converted.with_model(model);
         }
+        converted.finish_reason = response.status.as_ref().map(map_interaction_finish_reason);
 
         Ok(converted)
+    }
+}
+
+fn map_interaction_finish_reason(status: &InteractionStatus) -> completion::FinishReason {
+    match status {
+        InteractionStatus::Completed => completion::FinishReason::Stop,
+        InteractionStatus::RequiresAction => completion::FinishReason::ToolCalls,
+        InteractionStatus::BudgetExceeded => completion::FinishReason::Length,
+        InteractionStatus::Incomplete => completion::FinishReason::Other("incomplete".to_owned()),
+        InteractionStatus::InProgress => completion::FinishReason::Other("in_progress".to_owned()),
+        InteractionStatus::Failed => completion::FinishReason::Other("failed".to_owned()),
+        InteractionStatus::Cancelled => completion::FinishReason::Other("cancelled".to_owned()),
+        InteractionStatus::Other(value) => completion::FinishReason::Other(value.clone()),
     }
 }
 
@@ -1266,6 +1293,8 @@ pub mod interactions_api_types {
         Completed,
         Failed,
         Cancelled,
+        #[serde(untagged)]
+        Other(String),
     }
 
     impl InteractionStatus {
@@ -2581,6 +2610,24 @@ mod tests {
     use crate::completion::{CompletionRequest, Message};
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
+
+    #[test]
+    fn interaction_finish_reason_preserves_unknown_status() {
+        let status: InteractionStatus =
+            serde_json::from_str(r#""future_status""#).expect("deserialize interaction status");
+        assert!(matches!(
+            &status,
+            InteractionStatus::Other(value) if value == "future_status"
+        ));
+        assert_eq!(
+            map_interaction_finish_reason(&status),
+            completion::FinishReason::Other("future_status".to_owned())
+        );
+        assert_eq!(
+            map_interaction_finish_reason(&InteractionStatus::RequiresAction),
+            completion::FinishReason::ToolCalls
+        );
+    }
 
     #[test]
     fn test_create_request_body_simple() {

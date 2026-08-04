@@ -14,11 +14,11 @@ use super::Client;
 use super::GenerateContentResponse;
 use super::proto;
 
-pub(crate) async fn stream(
+pub(crate) async fn raw_stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+) -> Result<streaming::RawStreamingResult<GenerateContentResponse>, CompletionError> {
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
@@ -51,12 +51,12 @@ pub(crate) async fn stream(
                                 match &part.data {
                                     Some(proto::part::Data::Text(text)) => {
                                         if part.thought {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::ReasoningDelta {
                                                 id: None,
                                                 reasoning: text.clone(),
                                             });
                                         } else {
-                                            yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
+                                            yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::Message(text.clone()));
                                         }
                                     }
                                     Some(proto::part::Data::FunctionCall(function_call)) => {
@@ -83,7 +83,7 @@ pub(crate) async fn stream(
                                             tool_call = tool_call.with_call_id(function_call.id.clone());
                                         }
 
-                                        yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
+                                        yield Ok(streaming::RawStreamingChoice::<GenerateContentResponse>::ToolCall(tool_call));
                                     }
                                     _ => {}
                                 }
@@ -106,26 +106,10 @@ pub(crate) async fn stream(
         }
 
         let resp = final_resp.or(last_resp).unwrap_or_default();
-        let mut final_response = streaming::StreamFinal::new("gemini-grpc", resp.token_usage());
-        if let Some(finish_reason) = resp
-            .candidates
-            .first()
-            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason))
-        {
-            final_response = final_response.with_finish_reason(finish_reason);
-        }
-        if !resp.response_id.is_empty() {
-            final_response = final_response.with_message_id(resp.response_id.clone());
-        }
-        if !resp.model_version.is_empty() {
-            final_response = final_response.with_model(resp.model_version.clone());
-        }
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+        yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

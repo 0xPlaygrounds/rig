@@ -91,6 +91,11 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! Provider models also expose inherent `raw_completion` and `raw_stream`
+//! methods when callers need the provider-native response envelope. The
+//! [`CompletionModel`](crate::completion::CompletionModel) methods remain the
+//! provider-independent path and always return Rig's concrete normalized types.
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
@@ -117,3 +122,37 @@ pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;
 pub mod zai;
+
+#[cfg(test)]
+mod raw_access_compile_tests {
+    use super::{gemini, groq, openai};
+    use crate::completion::{CompletionError, CompletionRequest};
+    use crate::streaming::RawStreamingResult;
+
+    // These functions are intentionally not executed. Type-checking them proves
+    // direct and OpenAI-compatible models preserve concrete native access
+    // without response associated types on `CompletionModel`.
+    #[allow(dead_code)]
+    async fn direct_provider_native_access(
+        model: gemini::CompletionModel,
+        request: CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        let _: gemini::completion::gemini_api_types::GenerateContentResponse =
+            model.raw_completion(request.clone()).await?;
+        let _: RawStreamingResult<gemini::streaming::StreamingCompletionResponse> =
+            model.raw_stream(request).await?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    async fn openai_compatible_provider_native_access(
+        model: groq::CompletionModel,
+        request: CompletionRequest,
+    ) -> Result<(), CompletionError> {
+        let _: openai::completion::CompletionResponse =
+            model.raw_completion(request.clone()).await?;
+        let _: RawStreamingResult<openai::completion::streaming::StreamingCompletionResponse> =
+            model.raw_stream(request).await?;
+        Ok(())
+    }
+}
