@@ -26,6 +26,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
+use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
@@ -709,7 +710,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                // Response-scoped `chatcmpl-…` id; see the OpenAI chat path.
                 .with_model(response.model.as_str())
                 .with_optional_finish_reason(finish_reason),
         )
@@ -1332,11 +1333,10 @@ where
                 .raw_completion_chat(completion_request)
                 .await?
                 .try_into(),
-            CompletionRoute::Responses => (
-                PROVIDER_NAME,
-                self.raw_completion_responses(completion_request).await?,
-            )
-                .try_into(),
+            CompletionRoute::Responses => self
+                .raw_completion_responses(completion_request)
+                .await?
+                .normalize(PROVIDER_NAME),
         }
     }
 

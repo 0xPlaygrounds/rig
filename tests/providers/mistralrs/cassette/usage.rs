@@ -1,6 +1,7 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
 use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
 use rig::prelude::*;
 use serde_json::Value;
 
@@ -26,8 +27,8 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
                 .expect("usage check completion should succeed");
             let raw = serde_json::to_value(&wire_response)
                 .expect("raw chat completion response should serialize");
-            let _normalized: rig::completion::CompletionResponse = ("openai", wire_response)
-                .try_into()
+            let _normalized: rig::completion::CompletionResponse = wire_response
+                .normalize("openai")
                 .expect("usage check completion should normalize");
             let usage = raw
                 .get("usage")

@@ -2,6 +2,7 @@
 
 use rig::OneOrMany;
 use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
@@ -66,8 +67,8 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .get_text_response()
                 .expect("raw completions api response should contain assistant text");
 
-            let response: rig::completion::CompletionResponse = ("openai", raw)
-                .try_into()
+            let response: rig::completion::CompletionResponse = raw
+                .normalize("openai")
                 .expect("raw completions api response should normalize");
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");

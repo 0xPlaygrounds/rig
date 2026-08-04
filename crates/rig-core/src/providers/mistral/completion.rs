@@ -39,7 +39,8 @@ pub type CompletionModel<H = reqwest::Client> =
 /// the final item of the stream returned by `CompletionModel::raw_stream`.
 /// Shared with the OpenAI Chat Completions path but carrying Mistral's own
 /// usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse;
+pub type MistralStreamingCompletionResponse =
+    openai::StreamingCompletionResponse<super::client::Usage>;
 
 // =================================================================
 // Rig Implementation Types
@@ -182,10 +183,9 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 /// The provider descriptor name is an *input* rather than a constant so the
 /// shared OpenAI-compatible completion path labels the response with the
 /// descriptor that actually produced it.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;

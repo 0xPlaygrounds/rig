@@ -359,6 +359,26 @@ impl CompletionResponse {
     }
 }
 
+/// Convert a provider's own completion payload into the normalized
+/// [`CompletionResponse`].
+///
+/// The provider descriptor name is an *input* rather than something the
+/// conversion knows, because several providers share one wire shape — the
+/// OpenAI chat-completions payload is used by more than a dozen of them. A
+/// conversion that hardcoded a name would mislabel every provider but one, and
+/// a placeholder overwritten by the caller would be correct only by convention.
+///
+/// This is a trait rather than `TryFrom<(&str, T)>` for a concrete reason:
+/// a tuple is not a local type, so `impl TryFrom<(&str, TheirResponse)> for
+/// CompletionResponse` is rejected by the orphan rule in any crate other than
+/// `rig-core`. Implementing this trait on a provider's own response type is
+/// allowed anywhere, which keeps provider extensions implementable outside this
+/// crate.
+pub trait NormalizeCompletionResponse {
+    /// Normalize this payload, attributing it to `provider`.
+    fn normalize(self, provider: &str) -> Result<CompletionResponse, CompletionError>;
+}
+
 /// Struct representing the token usage for a completion request.
 /// If tokens used are `0`, then the provider failed to supply token usage metrics.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]

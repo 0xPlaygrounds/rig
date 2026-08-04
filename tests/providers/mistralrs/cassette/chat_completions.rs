@@ -1,5 +1,6 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Prompt};
 use rig::prelude::*;
 use serde_json::Value;
@@ -27,8 +28,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                 .expect("raw chat completion should succeed");
             let raw = serde_json::to_value(&wire_response)
                 .expect("raw chat completion response should serialize");
-            let _normalized: rig::completion::CompletionResponse = ("openai", wire_response)
-                .try_into()
+            let _normalized: rig::completion::CompletionResponse = wire_response.normalize("openai")
                 .expect("raw chat completion should normalize");
             let message = &raw["choices"][0]["message"];
             let text = message

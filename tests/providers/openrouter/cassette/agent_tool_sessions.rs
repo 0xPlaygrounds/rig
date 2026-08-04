@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -653,7 +654,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
             // either way.
             let raw = model.raw_completion(request).await?;
             let response: rig::completion::CompletionResponse =
-                ("openrouter", raw.clone()).try_into()?;
+                raw.clone().normalize("openrouter")?;
             let text = response
                 .choice
                 .iter()

@@ -3,6 +3,7 @@
 // ================================================================
 
 use super::client::ApiResponse;
+use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
@@ -1144,10 +1145,9 @@ pub struct CompletionResponse {
 /// wire shape is shared by every OpenAI-compatible provider, so baking in
 /// `"openai"` here would mislabel Groq, Together, DeepSeek and the rest. Taking
 /// it as part of the conversion makes the correct name impossible to forget.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
@@ -1217,7 +1217,10 @@ impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
             .unwrap_or_default();
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+            // Deliberately no `message_id`: chat completions report a
+            // response-scoped `chatcmpl-…` id, not an assistant message id, and
+            // the agent replays `message_id` into assistant history. The
+            // response id is still recorded on telemetry.
             .with_model(response.model.as_str())
             .with_optional_finish_reason(finish_reason))
     }
@@ -1474,6 +1477,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     type Response: serde::de::DeserializeOwned
         + Serialize
         + crate::telemetry::ProviderResponseExt<Usage: Into<crate::completion::Usage>>
+        + crate::completion::NormalizeCompletionResponse
         + WasmCompatSend
         + WasmCompatSync;
 
@@ -2045,10 +2049,6 @@ where
         + WasmCompatSync
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
-    // Threading the descriptor name through the conversion is what keeps a
-    // shared wire type from mislabeling every provider that reuses it.
-    for<'a> (&'a str, Ext::Response):
-        TryInto<completion::CompletionResponse, Error = CompletionError>,
 {
     // OpenAI Chat Completions *defers* `response_format` while tools are present
     // and no tool result exists yet (see `should_apply_response_format`), then
@@ -2071,7 +2071,7 @@ where
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let response = self.raw_completion(completion_request).await?;
-        (Ext::PROVIDER_NAME, response).try_into()
+        response.normalize(Ext::PROVIDER_NAME)
     }
 
     async fn stream(
@@ -3059,8 +3059,8 @@ mod tests {
         };
 
         let response: completion::CompletionResponse =
-            (<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME, response)
-                .try_into()
+            response
+                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
                 .unwrap();
 
         assert_eq!(response.choice.len(), 1);

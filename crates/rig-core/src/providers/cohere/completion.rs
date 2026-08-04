@@ -127,24 +127,15 @@ pub struct Usage {
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> crate::completion::Usage {
-        // `tokens` is Cohere's actual token accounting; `billed_units` is the
-        // billing view of the same turn and only stands in when Cohere omits
-        // the token counts.
-        let counts = usage
-            .tokens
-            .as_ref()
-            .map(|tokens| (tokens.input_tokens, tokens.output_tokens))
-            .or_else(|| {
-                usage
-                    .billed_units
-                    .as_ref()
-                    .map(|billed| (billed.input_tokens, billed.output_tokens))
-            });
-
+        // Cohere reports both `billed_units` and `tokens`, and they differ.
+        // This reads `billed_units`, which is what rig reported before the
+        // response types were normalized — switching the source would silently
+        // change every caller's token numbers, which is not this change's job.
         let mut normalized = crate::completion::Usage::new();
-        if let Some((input_tokens, output_tokens)) = counts {
-            normalized.input_tokens = input_tokens.unwrap_or_default() as u64;
-            normalized.output_tokens = output_tokens.unwrap_or_default() as u64;
+
+        if let Some(billed_units) = usage.billed_units.as_ref() {
+            normalized.input_tokens = billed_units.input_tokens.unwrap_or_default() as u64;
+            normalized.output_tokens = billed_units.output_tokens.unwrap_or_default() as u64;
             normalized.total_tokens = normalized.input_tokens + normalized.output_tokens;
         }
 
@@ -226,7 +217,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             // Cohere's `/v2/chat` payload reports no model identifier, so the
             // normalized `model` stays unset.
             completion::CompletionResponse::new(model_response, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                // Cohere's `id` names the generation, not an assistant
+                // message, so it is not replayed as one.
                 .with_finish_reason(map_finish_reason(&response.finish_reason)),
         )
     }

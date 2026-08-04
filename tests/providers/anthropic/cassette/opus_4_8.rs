@@ -1,5 +1,6 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, Document,
     Message, ProviderToolDefinition,
@@ -47,8 +48,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
             let raw_text = raw.get_text_response();
-            let response: RigCompletionResponse = (ANTHROPIC_PROVIDER, raw)
-                .try_into()
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER)
                 .expect("Opus 4.8 dynamic web-search response should normalize");
 
             assert!(
@@ -90,8 +90,8 @@ async fn messages_preserve_mid_conversation_system_role() {
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
             let raw_text = raw.get_text_response();
-            let response: RigCompletionResponse = (ANTHROPIC_PROVIDER, raw)
-                .try_into()
+            let response: RigCompletionResponse = raw
+                .normalize(ANTHROPIC_PROVIDER)
                 .expect("Opus 4.8 system-role response should normalize");
 
             let text = assistant_text_response(&response.choice)
@@ -144,7 +144,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
             let raw_text = raw.get_text_response();
-            let response: RigCompletionResponse = (ANTHROPIC_PROVIDER, raw).try_into().expect(
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
                 "Opus 4.8 response with system role after server tool result should normalize",
             );
 
@@ -187,7 +187,7 @@ async fn documents_keep_leading_system_message_top_level() {
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );
             let raw_text = raw.get_text_response();
-            let response: RigCompletionResponse = (ANTHROPIC_PROVIDER, raw).try_into().expect(
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
                 "Opus 4.8 response with documents and a leading system message should normalize",
             );
 

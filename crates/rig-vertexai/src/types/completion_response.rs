@@ -33,7 +33,16 @@ pub fn map_finish_reason(
         }
         // `Unspecified` is Vertex's "no reason reported" value, not a reason.
         Wire::Unspecified => return None,
-        other => Normalized::Other(format!("{other:?}").to_uppercase()),
+        // Everything else keeps Vertex's own spelling. `name()` yields the wire
+        // form (`MALFORMED_FUNCTION_CALL`); a value the SDK does not model
+        // falls back to `Display`, which prints the raw enum value. Formatting
+        // the variant with `Debug` would silently drop the underscores.
+        ref other => Normalized::Other(
+            other
+                .name()
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| other.to_string()),
+        ),
     };
 
     Some(normalized)

@@ -9,6 +9,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, CompletionResponse};
 use rig::message::{AssistantContent, Message, Reasoning};
 use rig::prelude::*;
@@ -80,8 +81,9 @@ async fn prompt_with_reasoning(
         .raw_completion(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
-    let response = ("openai", raw_response.clone())
-        .try_into()
+    let response = raw_response
+        .clone()
+        .normalize("openai")
         .expect("GPT-5.6 reasoning response should normalize");
 
     (response, raw_response)
@@ -242,8 +244,9 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 let raw_response = model.raw_completion(request).await.unwrap_or_else(|error| {
                     panic!("turn {} should succeed: {error}", turn_index + 1)
                 });
-                let response: CompletionResponse = ("openai", raw_response.clone())
-                    .try_into()
+                let response: CompletionResponse = raw_response
+                    .clone()
+                    .normalize("openai")
                     .unwrap_or_else(|error| {
                         panic!("turn {} should normalize: {error}", turn_index + 1)
                     });

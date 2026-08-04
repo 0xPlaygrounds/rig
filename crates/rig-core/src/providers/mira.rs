@@ -338,10 +338,9 @@ impl From<Usage> for completion::Usage {
 /// The provider descriptor name is an *input* rather than a constant so the
 /// shared OpenAI-compatible completion path labels the response with the
 /// descriptor that actually produced it.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let (content, usage, message_id, model, finish_reason) = match &response {
             CompletionResponse::Structured {
                 id,
@@ -457,12 +456,14 @@ impl std::fmt::Display for Usage {
 mod tests {
     use super::*;
     use crate::completion::FinishReason;
+    use crate::completion::NormalizeCompletionResponse;
     use crate::providers::openai::completion::OpenAICompatibleProvider;
 
     /// Normalize a Mira wire response the way the shared completion path does,
     /// threading Mira's own descriptor name through the conversion.
     fn normalized(response: CompletionResponse) -> completion::CompletionResponse {
-        completion::CompletionResponse::try_from((MiraExt::PROVIDER_NAME, response))
+        response
+            .normalize(MiraExt::PROVIDER_NAME)
             .expect("Mira response should convert")
     }
 

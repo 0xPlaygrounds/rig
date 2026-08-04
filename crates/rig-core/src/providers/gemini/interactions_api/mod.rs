@@ -530,7 +530,8 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                // The interaction id is response-scoped, not an assistant
+                // message id.
                 .with_optional_model(response.model.as_deref())
                 .with_optional_finish_reason(finish_reason),
         )

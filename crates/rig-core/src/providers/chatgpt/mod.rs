@@ -22,7 +22,7 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient, Transport,
 };
-use crate::completion::{self, CompletionError};
+use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
@@ -457,14 +457,44 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<responses_api::CompletionResponse, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
-        self.raw_completion_from_sse(request).await
+        let span = self.completion_span(&request, record_telemetry_content);
+
+        tracing_futures::Instrument::instrument(
+            async move { Ok(self.send_completion(request).await?.0) },
+            span,
+        )
+        .await
     }
 
-    async fn raw_completion_from_sse(
+    /// Build the `chat` span for a non-streaming ChatGPT completion.
+    ///
+    /// The instructions recorded here are the ones actually sent: the request's
+    /// merged `instructions`, not the caller's preamble, which
+    /// `SystemInstructionsPlacement::AllInstructions` folds together with the
+    /// client's `default_instructions`.
+    fn completion_span(
+        &self,
+        request: &ResponsesRequest,
+        record_telemetry_content: bool,
+    ) -> tracing::Span {
+        CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
+            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
+            .build()
+    }
+
+    /// Issue the request and return the reassembled wire response together with
+    /// the SSE body it came from.
+    ///
+    /// Both the raw and the normalized path go through here, so there is one
+    /// transport, one status check, and one parse — and the normalized path can
+    /// still reach the event stream for its empty-`output` fallback without
+    /// issuing a second request.
+    async fn send_completion(
         &self,
         request: ResponsesRequest,
-    ) -> Result<responses_api::CompletionResponse, CompletionError> {
+    ) -> Result<(responses_api::CompletionResponse, String), CompletionError> {
         let body = serde_json::to_vec(&request)?;
         let auth = self
             .client
@@ -491,43 +521,22 @@ where
         // event stream rather than parsed as one JSON document.
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
 
-        Ok(raw_response)
+        let span = tracing::Span::current();
+        span.record("gen_ai.response.id", &raw_response.id);
+        span.record("gen_ai.response.model", &raw_response.model);
+
+        Ok((raw_response, text))
     }
 
     /// Normalize a ChatGPT completion, falling back to the SSE event stream
     /// when the reassembled response carries no output items.
     async fn normalized_completion(
         &self,
-        completion_request: completion::CompletionRequest,
+        request: ResponsesRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let request = self.create_request(completion_request)?;
-        let body = serde_json::to_vec(&request)?;
-        let auth = self
-            .client
-            .ext()
-            .auth
-            .auth_context()
-            .await
-            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
+        let (raw_response, text) = self.send_completion(request).await?;
 
-        let req = self
-            .add_auth_headers(self.client.post("/responses")?, &auth)
-            .body(body)
-            .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let text = http_client::text(response).await?;
-        if !status.is_success() {
-            return Err(CompletionError::from_http_response(status, text));
-        }
-
-        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
-        let span = tracing::Span::current();
-        span.record("gen_ai.response.id", &raw_response.id);
-        span.record("gen_ai.response.model", &raw_response.model);
-
-        match (PROVIDER_NAME, raw_response.clone()).try_into() {
+        match raw_response.clone().normalize(PROVIDER_NAME) {
             Ok(response) => Ok(response),
             // An empty `output` means the terminal event never carried the
             // assembled items; rebuild the response from the raw event stream.
@@ -573,19 +582,12 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let preamble = completion_request.preamble.clone();
-
-        let span = CompletionSpanBuilder::new(PROVIDER_NAME, &model, CompletionOperation::Chat)
-            .system_instructions(preamble.as_deref(), record_telemetry_content)
-            .build();
+        let request = self.create_request(completion_request)?;
+        let span = self.completion_span(&request, record_telemetry_content);
 
         tracing_futures::Instrument::instrument(
             async move {
-                let response = self.normalized_completion(completion_request).await?;
+                let response = self.normalized_completion(request).await?;
                 let span = tracing::Span::current();
                 span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
                 span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);

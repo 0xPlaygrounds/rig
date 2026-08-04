@@ -1,6 +1,7 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
@@ -189,10 +190,9 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 .await
                 .expect("first document citation turn should succeed");
             let first_turn_raw_text = first_turn_raw.get_text_response();
-            let first_turn: rig::completion::CompletionResponse =
-                (ANTHROPIC_PROVIDER, first_turn_raw)
-                    .try_into()
-                    .expect("first document citation turn should normalize");
+            let first_turn: rig::completion::CompletionResponse = first_turn_raw
+                .normalize(ANTHROPIC_PROVIDER)
+                .expect("first document citation turn should normalize");
 
             let first_turn_text = assistant_text(&first_turn.choice);
             assert_nonempty_response(&first_turn_text);

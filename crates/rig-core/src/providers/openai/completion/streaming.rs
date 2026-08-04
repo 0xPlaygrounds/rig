@@ -20,8 +20,6 @@ use crate::streaming::{self, RawStreamingResult, StreamFinal};
 ///
 /// Only the free-function transport helpers below use it; the model path
 /// threads `Ext::PROVIDER_NAME` so a compatible provider is never mislabeled.
-const OPENAI_PROVIDER_NAME: &str =
-    <crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME;
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -212,9 +210,12 @@ where
     U: Into<crate::completion::Usage>,
 {
     fn from((provider, response): (&str, StreamingCompletionResponse<U>)) -> Self {
+        // No `message_id`: the chat-completions `id` is response-scoped
+        // (`chatcmpl-…`), not the assistant message id that `message_id` names
+        // and that the agent replays into history. It stays on the raw terminal
+        // record for callers who want it.
         StreamFinal::new(provider, response.usage.into())
             .with_optional_finish_reason(response.finish_reason)
-            .with_optional_message_id(response.response_id)
             .with_optional_model(response.model)
     }
 }
@@ -450,9 +451,15 @@ where
 
 /// Send an OpenAI chat-completions streaming request and normalize its terminal
 /// record.
+///
+/// `provider` is the descriptor name to attribute the stream to. It is a
+/// parameter rather than a constant because this helper is public and the
+/// chat-completions wire shape is shared: hardcoding `"openai"` would label
+/// every out-of-tree compatible provider's stream as OpenAI's.
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
+    provider: &'static str,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
@@ -460,10 +467,8 @@ where
     let stream = send_compatible_raw_streaming_request(http_client, req).await?;
 
     Ok(streaming::StreamingCompletionResponse::stream(
-        OPENAI_PROVIDER_NAME,
-        streaming::normalize_stream(stream, |response| {
-            Ok((OPENAI_PROVIDER_NAME, response).into())
-        }),
+        provider,
+        streaming::normalize_stream(stream, move |response| Ok((provider, response).into())),
     ))
 }
 
@@ -787,7 +792,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -817,7 +822,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -849,7 +854,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -887,7 +892,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -922,7 +927,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -1030,7 +1035,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -1081,7 +1086,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -1131,7 +1136,7 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request())
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -1176,7 +1181,7 @@ mod tests {
             ]),
         };
 
-        let stream = send_compatible_streaming_request(client, streaming_request())
+        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 
@@ -1193,7 +1198,7 @@ mod tests {
             ]),
         };
 
-        let stream = send_compatible_streaming_request(client, streaming_request())
+        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
             .await
             .unwrap();
 

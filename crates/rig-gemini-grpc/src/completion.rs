@@ -546,13 +546,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             .first()
             .and_then(|candidate| map_finish_reason(candidate.finish_reason));
         let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
-        let message_id =
-            Some(response.response_id.clone()).filter(|response_id| !response_id.is_empty());
-
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
                 .with_optional_finish_reason(finish_reason)
-                .with_optional_message_id(message_id)
                 .with_optional_model(model),
         )
     }

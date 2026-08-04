@@ -15,6 +15,7 @@
 //! ```
 use super::InputAudio;
 use crate::completion::CompletionError;
+use crate::completion::NormalizeCompletionResponse;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -2400,7 +2401,7 @@ where
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let response = self.raw_completion(completion_request).await?;
-        (Ext::PROVIDER_NAME, response).try_into()
+        response.normalize(Ext::PROVIDER_NAME)
     }
 
     async fn stream(
@@ -2429,10 +2430,9 @@ where
 /// and Copilot return this exact wire shape, so hardcoding `"openai"` here would
 /// mislabel them. Taking it as part of the conversion makes the correct name
 /// impossible to forget.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         // The assistant message ID (`msg_...`) from the first message output
         // item. This is NOT `response.id` (`resp_...`), which identifies the
         // whole response; only the message ID pairs reasoning items with their
@@ -3939,8 +3939,8 @@ mod tests {
             json!("thinking through the answer")
         );
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert!(matches!(
@@ -3996,8 +3996,8 @@ mod tests {
         }))
         .expect("reasoning-only response should deserialize");
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("reasoning-only response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
 
@@ -4021,7 +4021,8 @@ mod tests {
         }))
         .expect("empty response shape should deserialize");
 
-        let err = completion::CompletionResponse::try_from(("openai", response))
+        let err = response
+            .normalize("openai")
             .expect_err("empty response without reasoning should be rejected");
 
         assert!(
@@ -4125,8 +4126,8 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
 
         // The two IDs are distinct in this API: `resp_...` names the response,
@@ -4159,8 +4160,8 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse = ("chatgpt", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("chatgpt")
             .expect("response should convert");
 
         assert_eq!(completion.provider, "chatgpt");
@@ -4186,8 +4187,8 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
 
         // `completed` is reconciled up to `ToolCalls` because the turn carried
@@ -4218,8 +4219,8 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
 
         assert_eq!(
@@ -4279,8 +4280,8 @@ mod tests {
             })
         );
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
@@ -4486,8 +4487,8 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse = ("openai", response)
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("response should convert");
         let reasoning_count = completion
             .choice

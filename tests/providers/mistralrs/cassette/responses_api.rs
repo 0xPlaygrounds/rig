@@ -1,5 +1,6 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
 
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::message::AssistantContent;
 use rig::prelude::*;
@@ -54,8 +55,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .raw_completion(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
-            let response: rig::completion::CompletionResponse = ("openai", raw.clone())
-                .try_into()
+            let response: rig::completion::CompletionResponse = raw.clone().normalize("openai")
                 .expect("Responses API response should normalize");
             let text = response
                 .choice

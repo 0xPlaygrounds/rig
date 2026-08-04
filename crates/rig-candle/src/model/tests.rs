@@ -418,7 +418,9 @@ fn validates_tensor_shapes_dtypes_and_tied_embeddings()
         tokenizer: tiny_tokenizer()?,
         weights: checkpoint_custom(true, tensor(&[8, 4]), false)?,
     })?;
-    assert!(matches!(model.state, _));
+    // The model is only constructible loaded, so assert the loaded profile
+    // rather than a state discriminant that no longer exists.
+    assert!(model.state.runtime.is_consistent_cpu());
     Ok(())
 }
 

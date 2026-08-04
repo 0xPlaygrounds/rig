@@ -4,6 +4,7 @@
 //! sequential session. Each connection supports a single in-flight response at a
 //! time, which matches OpenAI's current protocol constraints.
 
+use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::streaming::{
@@ -442,7 +443,7 @@ where
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let provider = self.model.provider_name();
         let response = self.raw_completion(completion_request).await?;
-        (provider, response).try_into()
+        response.normalize(provider)
     }
 
     /// Sends a completion turn and returns the provider's own wire response.

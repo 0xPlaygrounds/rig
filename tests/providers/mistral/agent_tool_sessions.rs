@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
@@ -461,7 +462,7 @@ async fn raw_and_normalized_completion(
     rig::completion::CompletionResponse,
 )> {
     let raw = model.raw_completion(request).await?;
-    let normalized: rig::completion::CompletionResponse = ("mistral", raw.clone()).try_into()?;
+    let normalized: rig::completion::CompletionResponse = raw.clone().normalize("mistral")?;
     Ok((raw, normalized))
 }
 

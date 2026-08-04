@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt;
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
@@ -490,7 +491,7 @@ async fn raw_and_normalized_completion(
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
     let raw = model.raw_completion(request).await?;
     let metadata = RawResponseMetadata::capture(&raw);
-    let normalized: rig::completion::CompletionResponse = ("groq", raw).try_into()?;
+    let normalized: rig::completion::CompletionResponse = raw.normalize("groq")?;
     Ok((metadata, normalized))
 }
 

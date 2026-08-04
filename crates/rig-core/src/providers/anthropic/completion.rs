@@ -1,6 +1,7 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
+use crate::completion::NormalizeCompletionResponse;
 use crate::{
     OneOrMany,
     client::Provider,
@@ -246,10 +247,9 @@ pub enum SystemContent {
 /// Moonshot, Xiaomi MiMo), so baking in `"anthropic"` here would mislabel all of
 /// them. Taking it as part of the conversion makes the correct name impossible
 /// to forget.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let content = response
             .content
             .iter()
@@ -2609,7 +2609,7 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let response = self.raw_completion(completion_request).await?;
-        (Ext::PROVIDER_NAME, response).try_into()
+        response.normalize(Ext::PROVIDER_NAME)
     }
 
     async fn stream(
@@ -5039,8 +5039,8 @@ mod tests {
             },
         };
 
-        let parsed: completion::CompletionResponse = ("anthropic", response)
-            .try_into()
+        let parsed: completion::CompletionResponse = response
+            .normalize("anthropic")
             .expect("empty end_turn should not error");
 
         assert_eq!(parsed.choice.len(), 1);
@@ -5071,7 +5071,8 @@ mod tests {
             },
         };
 
-        let err = completion::CompletionResponse::try_from(("anthropic", response))
+        let err = response
+            .normalize("anthropic")
             .expect_err("empty non-end_turn should remain an error");
 
         assert!(matches!(
@@ -5142,7 +5143,8 @@ mod tests {
             },
         };
 
-        let parsed = completion::CompletionResponse::try_from(("anthropic", response))
+        let parsed = response
+            .normalize("anthropic")
             .expect("tool-use response should normalize");
 
         assert_eq!(
@@ -5407,7 +5409,7 @@ mod tests {
         // The wire response is consumed by the conversion, so read the
         // provider-native text off it first.
         let raw_text_response = response.get_text_response();
-        let converted = completion::CompletionResponse::try_from(("anthropic", response)).unwrap();
+        let converted = response.normalize("anthropic").unwrap();
         assert_eq!(converted.choice.len(), 3);
         assert_eq!(
             raw_text_response.as_deref(),
@@ -5493,7 +5495,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted = completion::CompletionResponse::try_from(("anthropic", response)).unwrap();
+        let converted = response.normalize("anthropic").unwrap();
         let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
             panic!("expected raw web_search_tool_result metadata");
         };
@@ -5598,7 +5600,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted = completion::CompletionResponse::try_from(("anthropic", response)).unwrap();
+        let converted = response.normalize("anthropic").unwrap();
         let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
         else {
             panic!("expected raw code_execution_tool_result metadata");

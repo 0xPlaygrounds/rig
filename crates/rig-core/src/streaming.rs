@@ -384,10 +384,13 @@ where
     let mut emitted_tool_call = false;
     Box::pin(stream.map(move |item| {
         item.and_then(|choice| {
-            if matches!(
-                &choice,
-                RawStreamingChoice::ToolCall(_) | RawStreamingChoice::ToolCallDelta { .. }
-            ) {
+            // Only a completed `ToolCall` counts, because only that becomes an
+            // `AssistantContent::ToolCall` in the aggregated choice — which is
+            // exactly what the unary path reconciles against. Counting deltas
+            // here would make a stream whose tool call never assembled report
+            // `ToolCalls` while the same data converted to a unary response
+            // reported `Stop`.
+            if matches!(&choice, RawStreamingChoice::ToolCall(_)) {
                 emitted_tool_call = true;
             }
             choice.try_map_final(|response| {

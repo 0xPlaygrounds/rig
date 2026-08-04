@@ -6,6 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
@@ -108,8 +109,8 @@ async fn incomplete_response_surfaces_partial_output() {
                 "incomplete_details should carry the truncation reason"
             );
 
-            let response: rig::completion::CompletionResponse = ("openai", raw)
-                .try_into()
+            let response: rig::completion::CompletionResponse = raw
+                .normalize("openai")
                 .expect("an incomplete response should still convert, not error");
             assert_eq!(
                 response.finish_reason,

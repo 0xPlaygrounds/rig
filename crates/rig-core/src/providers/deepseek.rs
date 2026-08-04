@@ -163,7 +163,7 @@ pub type CompletionModel<H = reqwest::Client> =
 /// the final item of the stream returned by `CompletionModel::raw_stream`.
 /// Shared with the OpenAI Chat Completions path but carrying DeepSeek's own
 /// usage payload (cache hit/miss counters).
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
+pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
 
 impl ProviderClient for Client {
     type Input = DeepSeekApiKey;
@@ -360,10 +360,9 @@ pub enum ToolType {
 /// shared OpenAI-compatible completion path labels the response with the
 /// descriptor that actually produced it, exactly as it does for the OpenAI
 /// wire type.
-impl TryFrom<(&str, CompletionResponse)> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from((provider, response): (&str, CompletionResponse)) -> Result<Self, Self::Error> {
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
@@ -523,6 +522,7 @@ pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 mod tests {
     use super::*;
     use crate::client::ModelListingClient;
+    use crate::completion::NormalizeCompletionResponse;
     use crate::completion::{
         CompletionRequestBuilder, FinishReason, ToolDefinition as RigToolDefinition,
     };
@@ -535,7 +535,8 @@ mod tests {
     /// Normalize a DeepSeek wire response the way the shared completion path
     /// does, threading DeepSeek's own descriptor name through the conversion.
     fn normalized(response: CompletionResponse) -> crate::completion::CompletionResponse {
-        crate::completion::CompletionResponse::try_from((DeepSeekExt::PROVIDER_NAME, response))
+        response
+            .normalize(DeepSeekExt::PROVIDER_NAME)
             .expect("DeepSeek response should convert")
     }
 

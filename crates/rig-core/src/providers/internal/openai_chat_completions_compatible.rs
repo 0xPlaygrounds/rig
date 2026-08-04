@@ -1158,7 +1158,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1208,7 +1208,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1277,7 +1277,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 

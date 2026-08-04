@@ -1,6 +1,7 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
 use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
 use rig::prelude::*;
 use rig::providers::openai;
 use std::future::Future;
@@ -52,8 +53,7 @@ async fn responses_api_accepts_null_metadata() {
                 "vLLM returns metadata: null; Rig should preserve the public map API as an empty map"
             );
 
-            let response: rig::completion::CompletionResponse = ("openai", raw)
-                .try_into()
+            let response: rig::completion::CompletionResponse = raw.normalize("openai")
                 .expect("vLLM Responses API completion should normalize");
             assert!(
                 response.choice.iter().next().is_some(),
