@@ -456,16 +456,20 @@ where
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
-    provider: &'static str,
+    provider: impl Into<String>,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
+    let provider = provider.into();
     let stream = send_compatible_raw_streaming_request(http_client, req).await?;
 
+    let mapper_provider = provider.clone();
     Ok(streaming::StreamingCompletionResponse::stream(
         provider,
-        streaming::normalize_stream(stream, move |response| Ok((provider, response).into())),
+        streaming::normalize_stream(stream, move |response| {
+            Ok((mapper_provider.as_str(), response).into())
+        }),
     ))
 }
 

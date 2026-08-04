@@ -450,7 +450,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             return Err(err);
         }
 
-        let finish_reason = candidate.finish_reason.as_ref().map(map_finish_reason);
+        let finish_reason = candidate.finish_reason.as_ref().and_then(map_finish_reason);
 
         let content = candidate
             .content
@@ -1572,8 +1572,12 @@ pub mod gemini_api_types {
     /// everything else — including Gemini's own `OTHER` and the tool-protocol
     /// failures — is carried verbatim so a reason rig does not model never reads
     /// as a natural stop. Shared by the unary and streaming paths so both agree.
-    pub(crate) fn map_finish_reason(reason: &FinishReason) -> crate::completion::FinishReason {
-        match reason {
+    /// `None` for `FINISH_REASON_UNSPECIFIED`: it is the proto default and
+    /// means Gemini reported no reason, matching the gRPC mapper's handling of
+    /// the same wire value.
+    pub(crate) fn map_finish_reason(reason: &FinishReason) -> Option<crate::completion::FinishReason> {
+        Some(match reason {
+            FinishReason::FinishReasonUnspecified => return None,
             FinishReason::Stop => crate::completion::FinishReason::Stop,
             FinishReason::MaxTokens => crate::completion::FinishReason::Length,
             FinishReason::Safety
@@ -1581,7 +1585,7 @@ pub mod gemini_api_types {
             | FinishReason::ProhibitedContent
             | FinishReason::Spii => crate::completion::FinishReason::ContentFilter,
             other => crate::completion::FinishReason::Other(other.as_wire_str().to_owned()),
-        }
+        })
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2793,10 +2797,7 @@ mod tests {
             (FinishReason::Spii, Normalized::ContentFilter),
             // Everything Gemini reports that rig does not model survives in the
             // provider's own SCREAMING_SNAKE_CASE spelling.
-            (
-                FinishReason::FinishReasonUnspecified,
-                Normalized::Other("FINISH_REASON_UNSPECIFIED".to_string()),
-            ),
+
             (
                 FinishReason::Recitation,
                 Normalized::Other("RECITATION".to_string()),
@@ -2827,8 +2828,16 @@ mod tests {
                 Normalized::Other("MALFORMED_RESPONSE".to_string()),
             ),
         ] {
-            assert_eq!(map_finish_reason(&wire), expected, "wire reason {wire:?}");
+            assert_eq!(
+                map_finish_reason(&wire),
+                Some(expected),
+                "wire reason {wire:?}"
+            );
         }
+
+        // The proto default means Gemini reported no reason; both the REST and
+        // gRPC mappers treat it as absent rather than an `Other` value.
+        assert_eq!(map_finish_reason(&FinishReason::FinishReasonUnspecified), None);
     }
 
     #[test]

@@ -213,6 +213,13 @@ impl ProviderToolDefinition {
 /// conversion maps its wire value onto these variants and preserves anything
 /// unmapped verbatim in [`FinishReason::Other`], so a provider adding a new
 /// terminal reason never silently reads as a natural stop. Closes #2090/#1886.
+///
+/// Provider *failure* statuses that arrive with parseable output (a Gemini
+/// Interactions `failed`/`cancelled` interaction, a Cohere `ERROR`) follow one
+/// policy: the response converts normally and the status is preserved verbatim
+/// as [`FinishReason::Other`], leaving the caller to decide whether a
+/// failure-flagged-but-parseable turn is usable. Statuses that arrive with no
+/// usable output surface as errors instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {

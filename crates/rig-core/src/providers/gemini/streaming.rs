@@ -111,7 +111,7 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
 fn map_stream_final(
     response: StreamingCompletionResponse,
 ) -> Result<streaming::StreamFinal, CompletionError> {
-    let finish_reason = response.finish_reason.as_ref().map(map_finish_reason);
+    let finish_reason = response.finish_reason.as_ref().and_then(map_finish_reason);
 
     Ok(
         streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
