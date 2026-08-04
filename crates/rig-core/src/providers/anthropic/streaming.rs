@@ -1963,7 +1963,8 @@ mod tests {
         use futures::StreamExt;
 
         const MESSAGE_START: &str = r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}}"#;
-        const TEXT_START: &str = r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
+        const TEXT_START: &str =
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
         const TEXT_DELTA: &str =
             r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#;
         const MESSAGE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#;
@@ -1979,7 +1980,12 @@ mod tests {
 
         async fn collect(
             sse_bytes: bytes::Bytes,
-        ) -> (Vec<String>, bool, bool, crate::streaming::StreamingCompletionResponse) {
+        ) -> (
+            Vec<String>,
+            bool,
+            bool,
+            crate::streaming::StreamingCompletionResponse,
+        ) {
             let client = Client::builder()
                 .api_key("test-key")
                 .http_client(MockStreamingClient { sse_bytes })

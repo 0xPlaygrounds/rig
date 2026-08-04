@@ -1575,7 +1575,9 @@ pub mod gemini_api_types {
     /// `None` for `FINISH_REASON_UNSPECIFIED`: it is the proto default and
     /// means Gemini reported no reason, matching the gRPC mapper's handling of
     /// the same wire value.
-    pub(crate) fn map_finish_reason(reason: &FinishReason) -> Option<crate::completion::FinishReason> {
+    pub(crate) fn map_finish_reason(
+        reason: &FinishReason,
+    ) -> Option<crate::completion::FinishReason> {
         Some(match reason {
             FinishReason::FinishReasonUnspecified => return None,
             FinishReason::Stop => crate::completion::FinishReason::Stop,
@@ -2797,7 +2799,6 @@ mod tests {
             (FinishReason::Spii, Normalized::ContentFilter),
             // Everything Gemini reports that rig does not model survives in the
             // provider's own SCREAMING_SNAKE_CASE spelling.
-
             (
                 FinishReason::Recitation,
                 Normalized::Other("RECITATION".to_string()),
@@ -2837,7 +2838,10 @@ mod tests {
 
         // The proto default means Gemini reported no reason; both the REST and
         // gRPC mappers treat it as absent rather than an `Other` value.
-        assert_eq!(map_finish_reason(&FinishReason::FinishReasonUnspecified), None);
+        assert_eq!(
+            map_finish_reason(&FinishReason::FinishReasonUnspecified),
+            None
+        );
     }
 
     #[test]

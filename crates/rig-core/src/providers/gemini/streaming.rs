@@ -926,13 +926,20 @@ mod tests {
 
         async fn collect(
             sse_bytes: bytes::Bytes,
-        ) -> (Vec<String>, bool, bool, crate::streaming::StreamingCompletionResponse) {
+        ) -> (
+            Vec<String>,
+            bool,
+            bool,
+            crate::streaming::StreamingCompletionResponse,
+        ) {
             let client = Client::builder()
                 .api_key("test-key")
                 .http_client(MockStreamingClient { sse_bytes })
                 .build()
                 .expect("build client");
-            let model = client.completion_model(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
+            let model = client.completion_model(
+                crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+            );
             let request = model.completion_request("hello").build();
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
