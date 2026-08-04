@@ -19,6 +19,50 @@ let agent = client.agent(openai::GPT_5_2).build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
+## Runtime model routing
+
+High-level agents are concrete values: the provider model is erased once into
+an opaque, cloneable `ModelHandle`. Provider authors still implement the typed
+`CompletionModel` trait, and direct `completion` or `stream` calls retain their
+provider-specific raw response types.
+
+Replace the default on one agent value with `set_model` or
+`set_model_handle`, pin one prompt with `using_model`, or select before every
+model call with `select_model`. Selection occurs only at a model-call boundary;
+the selected handle prepares and executes that attempt and cannot change while
+its future or stream is in flight. Retries and calls after tool execution are
+new boundaries and may select another handle.
+
+Extractors support the same run-local choice through
+`extractor.using_model(handle).extract(...)` or `using_model_value(model)`.
+That handle remains fixed across the extraction's retries, and the extractor's
+default is unchanged for later calls.
+
+```rust,ignore
+let fast = ModelHandle::named("fast", fast_model);
+let strong = ModelHandle::named("strong", strong_model);
+let agent = AgentBuilder::from_model_handle(fast.clone())
+    .tool(search_tool)
+    .build();
+
+let answer = agent
+    .prompt("Research, then synthesize")
+    .max_turns(3)
+    .select_model(move |context| {
+        if context.turn == 1 { fast.clone() } else { strong.clone() }
+    })
+    .await?;
+```
+
+Handles contain live clients and callbacks, so they are deliberately not
+serializable; persist an application model identifier and resolve it to a
+handle at runtime. Clones share the retained model safely, while replacing an
+agent clone has ordinary value semantics. Concurrent runs keep independent
+default and selector snapshots. High-level agent streams normalize typed
+provider finals to `AgentStreamFinal { usage, raw_response }`; direct model
+streams remain typed. See the credential-free
+`runtime_model_routing` example for a complete two-model tool round trip.
+
 Portable tools implement `rig_core::tool::PortableTool` and work in both runtimes.
 Classic tools that need mutable per-call state implement
 `rig_agent::tool::Tool` and receive `&mut ToolContext`.
