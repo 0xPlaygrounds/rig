@@ -10,181 +10,161 @@
 )]
 //! Conversation memory policies for the Rig agent framework.
 //!
-//! `rig-core` provides the [`ConversationMemory`] trait and an in-process
-//! [`InMemoryConversationMemory`] backend. This crate adds reusable, named
-//! transformations for shaping loaded history before it is sent to the model:
+//! `rig-core` provides the concrete in-process
+//! [`InMemoryConversationMemory`] store. This crate adds reusable,
+//! *data-shaped* history policies plus one concrete adapter,
+//! [`PolicyMemory`], that reports what a policy did as **owned data** the
+//! host acts on. There are no behavior traits here: policies, token
+//! counters, and compactors are exhaustive enums.
 //!
-//! - [`NoopMemoryPolicy`] — identity, returns input unchanged.
-//! - [`SlidingWindowMemory`] — retains the most recent `N` messages.
-//! - [`TokenWindowMemory`] — retains messages that fit within a token budget.
-//! - [`HeuristicTokenCounter`] — provider-agnostic, zero-dependency
-//!   [`TokenCounter`] that approximates token cost from character lengths.
-//! - [`DemotionHook`] + [`DemotingPolicyMemory`] — bridge truncated turns
-//!   from a [`MemoryPolicy`] into a long-tail store.
-//! - [`Compactor`] + [`CompactingMemory`] — replace truncated turns with a
-//!   derived summary artifact (rolling-summary semantics).
-//! - [`TemplateCompactor`] — zero-dependency reference [`Compactor`] that
-//!   produces a textual rollup without calling an LLM.
+//! - [`MemoryPolicy`] — `Noop`, `SlidingWindow`, `TokenWindow`. Its
+//!   [`apply`](MemoryPolicy::apply) returns a [`PolicyOutcome`]
+//!   (`kept` + `demoted`).
+//! - [`TokenCounter`] — `Heuristic` ([`HeuristicTokenCounter`], a
+//!   provider-agnostic byte-length approximation) or `Fixed` (a constant
+//!   per-message cost, handy for tests and coarse budgets).
+//! - [`Compactor`] — `Template` ([`TemplateCompactor`], a zero-dependency
+//!   textual rollup producing a [`TextSummary`]).
+//! - [`PolicyMemory`] — an [`InMemoryConversationMemory`] plus a
+//!   [`MemoryPolicy`] and an optional [`Compactor`].
 //!
-//! All sliding policies drop a leading orphan tool-result message when the
-//! preceding assistant tool call has been truncated, since most providers
-//! reject unpaired tool results.
+//! All windowing policies drop a leading orphan tool-result message when the
+//! preceding assistant tool call has been truncated (most providers reject
+//! unpaired tool results); the orphan is reported as *demoted* so a host that
+//! archives demotions never loses it.
 //!
-//! # Example
+//! # Host recipe
+//!
+//! Memory is host-owned: nothing in `rig-agent` loads or saves history for
+//! you. Wrap a run like this (the classic driver's semantics: a load failure
+//! is fatal, an append failure warns and proceeds, explicit caller history
+//! bypasses memory entirely):
 //!
 //! ```
-//! use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory};
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use rig_memory::{MemoryPolicy, PolicyMemory, InMemoryConversationMemory};
+//! use rig_core::completion::Message;
 //!
-//! let memory = InMemoryConversationMemory::new()
-//!     .with_filter(SlidingWindowMemory::last_messages(20).into_filter());
+//! let memory = PolicyMemory::new(
+//!     InMemoryConversationMemory::new(),
+//!     MemoryPolicy::sliding_window(20),
+//! );
+//!
+//! // Before the run: load the policy-shaped history and pass it as history.
+//! let history = memory.load("user-42")?;
+//! # let _ = history;
+//!
+//! // After a successful run: append the run's new messages. The outcome tells
+//! // you what the policy pushed out of the active window.
+//! let outcome = memory.append(
+//!     "user-42",
+//!     vec![Message::user("hi"), Message::assistant("hello")],
+//! )?;
+//! for demoted in &outcome.demoted {
+//!     // Archive into a long-tail store (vector RAG, episodic recall, ...).
+//!     # let _ = demoted;
+//! }
+//! if let Some(request) = &outcome.compaction {
+//!     // A compactor is configured: roll the evicted prefix into a summary
+//!     // that `load` will splice in front of the active window.
+//!     memory.compact(request);
+//! }
+//! # Ok(()) }
+//! # run().unwrap();
 //! ```
+//!
+//! Because demotion and compaction are values rather than callbacks, there is
+//! no in-process delivery watermark and no idempotency contract to honour:
+//! the host observes each demotion exactly once, when it appends.
 
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex as StdMutex},
 };
 
-/// Re-exports of the core memory abstractions so callers only need a single
-/// dependency on `rig-memory` for both the trait/backend and the policies.
-pub use rig_core::memory::{
-    Compactor, ConversationMemory, DemotionHook, InMemoryConversationMemory, MemoryError,
-    NoopDemotionHook,
-};
+/// Re-exports of the core memory store and error type so callers only need a
+/// single dependency on `rig-memory` for both the store and the policies.
+///
+/// The store is *defined* in `rig_core::memory` (this crate depends on
+/// `rig-core`, so defining it here would create a dependency cycle);
+/// `rig-memory` is the canonical companion path for everything
+/// memory-related.
+pub use rig_core::memory::{InMemoryConversationMemory, MemoryBackendError, MemoryError};
+
+#[cfg(any(test, feature = "test-utils"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+pub mod test_utils;
 
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
-use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
-/// A transformation applied to messages loaded from a [`ConversationMemory`].
+// ---------------------------------------------------------------------------
+// Policies
+// ---------------------------------------------------------------------------
+
+/// What a [`MemoryPolicy`] did to a history.
 ///
-/// Policies typically truncate, summarize, or re-order history. They are
-/// pure, fallible message transformers: implementors that cannot fail should
-/// always return `Ok`.
-pub trait MemoryPolicy: WasmCompatSend + WasmCompatSync {
-    /// Transform `messages` into the history that should be returned to the
-    /// agent. This is the required method — every policy must implement it.
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError>;
-
-    /// Transform `messages` and report which messages were demoted (excluded
-    /// from the returned history).
-    ///
-    /// Returns `(kept, demoted)`. The default implementation returns
-    /// `(self.apply(messages)?, Vec::new())`, which is correct for
-    /// non-truncating policies. Truncating policies (sliding window, token
-    /// window, …) override this method to populate `demoted` with the
-    /// messages they evicted.
-    ///
-    /// Implementors must guarantee that `demoted` is the prefix of the
-    /// original input not retained in `kept`, in original order. Composing
-    /// adapters such as [`DemotingPolicyMemory`] rely on this contract to
-    /// track delivery watermarks correctly.
-    fn apply_with_demoted(
-        &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        Ok((self.apply(messages)?, Vec::new()))
-    }
+/// `demoted` is the prefix of the input that `kept` does not retain, in
+/// original conversation order. A host that archives demotions can persist
+/// `demoted` verbatim.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PolicyOutcome {
+    /// The history that should be sent to the model, in original order.
+    pub kept: Vec<Message>,
+    /// Messages the policy pushed out of the active window, in original order.
+    pub demoted: Vec<Message>,
 }
 
-impl<P> MemoryPolicy for Arc<P>
-where
-    P: MemoryPolicy + ?Sized,
-{
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        (**self).apply(messages)
-    }
-
-    fn apply_with_demoted(
-        &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        (**self).apply_with_demoted(messages)
-    }
-}
-
-impl<P> MemoryPolicy for Box<P>
-where
-    P: MemoryPolicy + ?Sized,
-{
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        (**self).apply(messages)
-    }
-
-    fn apply_with_demoted(
-        &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        (**self).apply_with_demoted(messages)
-    }
-}
-
-/// Adapt a [`MemoryPolicy`] into a closure suitable for
-/// [`InMemoryConversationMemory::with_filter`].
+/// A history-shaping policy, as data.
 ///
-/// Errors raised by the policy are swallowed because `with_filter` does not
-/// propagate failures. Use [`MemoryPolicy::apply`] directly when you need to
-/// observe policy errors.
-pub trait IntoFilter: MemoryPolicy + Sized + 'static {
-    /// Convert this policy into a filter closure.
-    ///
-    /// On policy error the original input is returned unchanged and a
-    /// `tracing::warn!` is emitted, so a transient policy bug degrades
-    /// gracefully (the model still sees the unfiltered history) instead of
-    /// silently erasing context.
-    #[cfg(not(target_family = "wasm"))]
-    fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync> {
-        let policy = Arc::new(self);
-        Box::new(move |msgs| {
-            let fallback = msgs.clone();
-            match policy.apply(msgs) {
-                Ok(out) => out,
-                Err(err) => {
-                    tracing::warn!(error = %err, "memory policy failed; returning unfiltered history");
-                    fallback
-                }
-            }
-        })
+/// Policies are pure and infallible: [`MemoryPolicy::apply`] is a total
+/// function from a history to a [`PolicyOutcome`].
+#[derive(Debug, Clone, Copy, Default)]
+pub enum MemoryPolicy {
+    /// Identity: keep everything, demote nothing.
+    #[default]
+    Noop,
+    /// Keep the most recent `N` messages.
+    SlidingWindow(SlidingWindowMemory),
+    /// Keep the most recent messages that fit within a token budget.
+    TokenWindow(TokenWindowMemory),
+}
+
+impl MemoryPolicy {
+    /// Keep at most `max_messages` of the most recent messages.
+    pub fn sliding_window(max_messages: usize) -> Self {
+        Self::SlidingWindow(SlidingWindowMemory::last_messages(max_messages))
     }
 
-    /// Convert this policy into a filter closure.
-    ///
-    /// On policy error the original input is returned unchanged and a
-    /// `tracing::warn!` is emitted, so a transient policy bug degrades
-    /// gracefully (the model still sees the unfiltered history) instead of
-    /// silently erasing context.
-    #[cfg(target_family = "wasm")]
-    fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message>> {
-        let policy = Arc::new(self);
-        Box::new(move |msgs| {
-            let fallback = msgs.clone();
-            match policy.apply(msgs) {
-                Ok(out) => out,
-                Err(err) => {
-                    tracing::warn!(error = %err, "memory policy failed; returning unfiltered history");
-                    fallback
-                }
-            }
-        })
+    /// Keep the most recent messages that fit within `max_tokens`, as counted
+    /// by `counter`.
+    pub fn token_window(max_tokens: usize, counter: TokenCounter) -> Self {
+        Self::TokenWindow(TokenWindowMemory::new(max_tokens, counter))
+    }
+
+    /// Shape `messages`, reporting both the kept window and what fell out.
+    pub fn apply(&self, messages: Vec<Message>) -> PolicyOutcome {
+        match self {
+            Self::Noop => PolicyOutcome {
+                kept: messages,
+                demoted: Vec::new(),
+            },
+            Self::SlidingWindow(policy) => policy.apply(messages),
+            Self::TokenWindow(policy) => policy.apply(messages),
+        }
+    }
+
+    /// Shape `messages` and return only the kept window.
+    pub fn shape(&self, messages: Vec<Message>) -> Vec<Message> {
+        self.apply(messages).kept
     }
 }
 
-impl<P> IntoFilter for P where P: MemoryPolicy + 'static {}
-
-/// A [`MemoryPolicy`] that returns its input unchanged.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct NoopMemoryPolicy;
-
-impl MemoryPolicy for NoopMemoryPolicy {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(messages)
-    }
-}
-
-/// A [`MemoryPolicy`] that retains only the most recent `max_messages` entries.
+/// Retains only the most recent `max_messages` entries.
 ///
 /// When the window starts mid-conversation, a leading orphan tool-result
 /// message (a [`Message::User`] whose first content is a tool result without
-/// its preceding [`Message::Assistant`] tool call) is dropped to preserve the
+/// its preceding [`Message::Assistant`] tool call) is demoted to preserve the
 /// tool-call/result pairing required by most providers.
 #[derive(Debug, Clone, Copy)]
 pub struct SlidingWindowMemory {
@@ -196,74 +176,153 @@ impl SlidingWindowMemory {
     pub fn last_messages(n: usize) -> Self {
         Self { max_messages: n }
     }
-}
 
-impl MemoryPolicy for SlidingWindowMemory {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(self.apply_with_demoted(messages)?.0)
+    /// The configured message budget.
+    pub fn max_messages(&self) -> usize {
+        self.max_messages
     }
 
-    fn apply_with_demoted(
-        &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
+    /// Shape `messages`, reporting the kept window and the demoted prefix.
+    pub fn apply(&self, messages: Vec<Message>) -> PolicyOutcome {
         if messages.len() <= self.max_messages {
-            return Ok((messages, Vec::new()));
+            return PolicyOutcome {
+                kept: messages,
+                demoted: Vec::new(),
+            };
         }
 
         let start = messages.len() - self.max_messages;
         let mut iter = messages.into_iter();
-        let mut demoted: Vec<Message> = (&mut iter).take(start).collect();
-        let mut window: Vec<Message> = iter.collect();
+        let demoted: Vec<Message> = (&mut iter).take(start).collect();
+        let window: Vec<Message> = iter.collect();
 
-        // The orphan tool-result, if any, becomes part of the demoted set so
-        // it is preserved end-to-end through the demotion hook even though
-        // the model never sees it again.
-        if let Some(Message::User { content }) = window.first()
-            && matches!(content.first_ref(), UserContent::ToolResult(_))
-        {
-            demoted.push(window.remove(0));
+        split_orphan_tool_result(window, demoted)
+    }
+}
+
+/// Retains the most recent messages up to a token budget.
+///
+/// Messages are walked from newest to oldest, accumulating token counts
+/// produced by a [`TokenCounter`]. Once including a message would exceed
+/// `max_tokens`, the walk stops and the included messages are returned in
+/// original (oldest-first) order. As with [`SlidingWindowMemory`], a leading
+/// orphan tool-result is demoted when its paired assistant tool call has been
+/// truncated.
+#[derive(Debug, Clone, Copy)]
+pub struct TokenWindowMemory {
+    max_tokens: usize,
+    counter: TokenCounter,
+}
+
+impl TokenWindowMemory {
+    /// Create a new policy with a token budget and a counter.
+    pub fn new(max_tokens: usize, counter: TokenCounter) -> Self {
+        Self {
+            max_tokens,
+            counter,
+        }
+    }
+
+    /// The configured token budget.
+    pub fn max_tokens(&self) -> usize {
+        self.max_tokens
+    }
+
+    /// The configured counter.
+    pub fn counter(&self) -> &TokenCounter {
+        &self.counter
+    }
+
+    /// Shape `messages`, reporting the kept window and the demoted prefix.
+    pub fn apply(&self, messages: Vec<Message>) -> PolicyOutcome {
+        let mut budget = self.max_tokens;
+        let mut keep_from = messages.len();
+
+        for (idx, msg) in messages.iter().enumerate().rev() {
+            let cost = self.counter.count(msg);
+            if cost > budget {
+                break;
+            }
+            budget -= cost;
+            keep_from = idx;
         }
 
-        Ok((window, demoted))
+        let mut iter = messages.into_iter();
+        let demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
+        let window: Vec<Message> = iter.collect();
+
+        split_orphan_tool_result(window, demoted)
     }
 }
 
-/// Counts the tokens contributed by a single [`Message`].
-///
-/// Implementors should pick a counting strategy appropriate for their target
-/// provider (for example, `tiktoken-rs` for OpenAI). Counting must be cheap;
-/// it runs once per message on every memory load.
-pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
+/// Move a leading orphan tool-result out of `window` and onto `demoted`, so
+/// the model never sees an unpaired tool result but a host archiving
+/// demotions still receives it.
+fn split_orphan_tool_result(mut window: Vec<Message>, mut demoted: Vec<Message>) -> PolicyOutcome {
+    if demoted.is_empty() {
+        return PolicyOutcome {
+            kept: window,
+            demoted,
+        };
+    }
+    if let Some(Message::User { content }) = window.first()
+        && matches!(content.first_ref(), UserContent::ToolResult(_))
+    {
+        demoted.push(window.remove(0));
+    }
+    PolicyOutcome {
+        kept: window,
+        demoted,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Token counting
+// ---------------------------------------------------------------------------
+
+/// Counts the tokens contributed by a single [`Message`], as data.
+#[derive(Debug, Clone, Copy)]
+pub enum TokenCounter {
+    /// Approximate token counts from UTF-8 byte lengths.
+    Heuristic(HeuristicTokenCounter),
+    /// Charge every message the same constant cost. Useful for coarse
+    /// message-count budgets and for deterministic tests.
+    Fixed(usize),
+}
+
+impl Default for TokenCounter {
+    fn default() -> Self {
+        Self::Heuristic(HeuristicTokenCounter::default())
+    }
+}
+
+impl TokenCounter {
+    /// The default [`HeuristicTokenCounter`] (OpenAI preset).
+    pub fn heuristic() -> Self {
+        Self::Heuristic(HeuristicTokenCounter::default())
+    }
+
+    /// Charge every message `cost` tokens.
+    pub fn fixed(cost: usize) -> Self {
+        Self::Fixed(cost)
+    }
+
     /// Approximate the number of tokens contributed by `message`.
-    fn count(&self, message: &Message) -> usize;
-}
-
-impl<F> TokenCounter for F
-where
-    F: Fn(&Message) -> usize + WasmCompatSend + WasmCompatSync,
-{
-    fn count(&self, message: &Message) -> usize {
-        (self)(message)
+    pub fn count(&self, message: &Message) -> usize {
+        match self {
+            Self::Heuristic(counter) => counter.count(message),
+            Self::Fixed(cost) => *cost,
+        }
     }
 }
 
-impl<C> TokenCounter for Arc<C>
-where
-    C: TokenCounter + ?Sized,
-{
-    fn count(&self, message: &Message) -> usize {
-        (**self).count(message)
+impl From<HeuristicTokenCounter> for TokenCounter {
+    fn from(value: HeuristicTokenCounter) -> Self {
+        Self::Heuristic(value)
     }
 }
 
-impl TokenCounter for Box<dyn TokenCounter> {
-    fn count(&self, message: &Message) -> usize {
-        (**self).count(message)
-    }
-}
-
-/// A provider-agnostic [`TokenCounter`] that approximates token counts from
+/// A provider-agnostic token counter that approximates token counts from
 /// UTF-8 byte lengths.
 ///
 /// This is intended as a zero-dependency default. It is **not** a substitute
@@ -299,9 +358,12 @@ impl TokenCounter for Box<dyn TokenCounter> {
 /// # Example
 ///
 /// ```
-/// use rig_memory::{HeuristicTokenCounter, TokenWindowMemory};
+/// use rig_memory::{HeuristicTokenCounter, MemoryPolicy, TokenCounter};
 ///
-/// let policy = TokenWindowMemory::new(2_000, HeuristicTokenCounter::default());
+/// let policy = MemoryPolicy::token_window(
+///     2_000,
+///     TokenCounter::Heuristic(HeuristicTokenCounter::default()),
+/// );
 /// # let _ = policy;
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -348,6 +410,18 @@ impl HeuristicTokenCounter {
     /// Preset tuned for Google Gemini.
     pub fn gemini() -> Self {
         Self::new(4.0, 4, 256)
+    }
+
+    /// Approximate the number of tokens contributed by `message`.
+    pub fn count(&self, message: &Message) -> usize {
+        let content_tokens: usize = match message {
+            Message::User { content } => content.iter().map(|c| self.count_user(c)).sum(),
+            Message::Assistant { content, .. } => {
+                content.iter().map(|c| self.count_assistant(c)).sum()
+            }
+            Message::System { content } => self.bytes_to_tokens(content.len()),
+        };
+        content_tokens.saturating_add(self.per_message_overhead)
     }
 
     fn bytes_to_tokens(&self, bytes: usize) -> usize {
@@ -409,909 +483,92 @@ impl Default for HeuristicTokenCounter {
     }
 }
 
-impl TokenCounter for HeuristicTokenCounter {
-    fn count(&self, message: &Message) -> usize {
-        let content_tokens: usize = match message {
-            Message::User { content } => content.iter().map(|c| self.count_user(c)).sum(),
-            Message::Assistant { content, .. } => {
-                content.iter().map(|c| self.count_assistant(c)).sum()
-            }
-            Message::System { content } => self.bytes_to_tokens(content.len()),
-        };
-        content_tokens.saturating_add(self.per_message_overhead)
-    }
-}
+// ---------------------------------------------------------------------------
+// Compaction
+// ---------------------------------------------------------------------------
 
-/// A [`MemoryPolicy`] that retains the most recent messages up to a token budget.
+/// A request to fold an evicted prefix into a rolling summary.
 ///
-/// Messages are walked from newest to oldest, accumulating token counts
-/// produced by a [`TokenCounter`]. Once including a message would exceed
-/// `max_tokens`, the walk stops and the included messages are returned in
-/// original (oldest-first) order. As with [`SlidingWindowMemory`], a leading
-/// orphan tool-result is dropped when its paired assistant tool call has
-/// been truncated.
-pub struct TokenWindowMemory {
-    max_tokens: usize,
-    counter: Arc<dyn TokenCounter>,
+/// Produced by [`PolicyMemory::append`] when a [`Compactor`] is configured
+/// and the policy demoted messages. The host decides when to act on it —
+/// [`PolicyMemory::compact`] is the built-in way to do so.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompactionRequest {
+    /// The conversation whose prefix was evicted.
+    pub conversation_id: String,
+    /// The evicted messages, in original conversation order.
+    pub evicted: Vec<Message>,
 }
 
-impl TokenWindowMemory {
-    /// Create a new policy with a token budget and a counter.
-    pub fn new<C>(max_tokens: usize, counter: C) -> Self
-    where
-        C: TokenCounter + 'static,
-    {
-        Self {
-            max_tokens,
-            counter: Arc::new(counter),
-        }
+/// Derives a [`Message`]-shaped artifact from messages a policy evicted, as
+/// data.
+///
+/// Where demotion is a one-way drain — observe what fell out — compaction is
+/// the inverse: it takes the evicted prefix (and the previous summary) and
+/// produces a derived artifact that [`PolicyMemory::load`] splices back in
+/// front of the active window, so the loaded prompt is
+/// `[summary, ...recent_window]`.
+#[derive(Debug, Clone)]
+pub enum Compactor {
+    /// A zero-dependency textual rollup.
+    Template(TemplateCompactor),
+}
+
+impl Default for Compactor {
+    fn default() -> Self {
+        Self::Template(TemplateCompactor::new())
     }
 }
 
-impl std::fmt::Debug for TokenWindowMemory {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TokenWindowMemory")
-            .field("max_tokens", &self.max_tokens)
-            .field("counter", &"<counter>")
-            .finish()
-    }
-}
-
-impl MemoryPolicy for TokenWindowMemory {
-    fn apply(&self, messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        Ok(self.apply_with_demoted(messages)?.0)
+impl Compactor {
+    /// A [`TemplateCompactor`] with the default header and no size cap.
+    pub fn template() -> Self {
+        Self::Template(TemplateCompactor::new())
     }
 
-    fn apply_with_demoted(
+    /// Fold `request.evicted` into a summary, rolling `carry_over` (the
+    /// previous summary for this conversation, if any) forward so context
+    /// lost in earlier compactions is preserved transitively.
+    pub fn compact(
         &self,
-        messages: Vec<Message>,
-    ) -> Result<(Vec<Message>, Vec<Message>), MemoryError> {
-        let mut budget = self.max_tokens;
-        let mut keep_from = messages.len();
-
-        for (idx, msg) in messages.iter().enumerate().rev() {
-            let cost = self.counter.count(msg);
-            if cost > budget {
-                break;
-            }
-            budget -= cost;
-            keep_from = idx;
-        }
-
-        let mut iter = messages.into_iter();
-        let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
-        let mut window: Vec<Message> = iter.collect();
-
-        if let Some(Message::User { content }) = window.first()
-            && matches!(content.first_ref(), UserContent::ToolResult(_))
-        {
-            demoted.push(window.remove(0));
-        }
-
-        Ok((window, demoted))
-    }
-}
-
-/// Wrap a [`ConversationMemory`] backend with a [`MemoryPolicy`], propagating
-/// policy errors to the caller as [`MemoryError::Policy`].
-///
-/// This is the hard-fail counterpart to
-/// [`InMemoryConversationMemory::with_filter`] + [`IntoFilter::into_filter`].
-/// `with_filter` swallows policy errors and returns the unfiltered history;
-/// `PolicyMemory` surfaces them so callers can decide how to react.
-///
-/// # Example
-///
-/// ```no_run
-/// use rig_memory::{InMemoryConversationMemory, PolicyMemory, SlidingWindowMemory};
-///
-/// let memory = PolicyMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
-/// );
-/// ```
-#[derive(Debug, Clone, Copy)]
-pub struct PolicyMemory<M, P> {
-    inner: M,
-    policy: P,
-}
-
-impl<M, P> PolicyMemory<M, P> {
-    /// Wrap `inner` so every loaded history is run through `policy`.
-    pub fn new(inner: M, policy: P) -> Self {
-        Self { inner, policy }
-    }
-
-    /// Return a reference to the wrapped backend.
-    pub fn inner(&self) -> &M {
-        &self.inner
-    }
-
-    /// Return a reference to the wrapped policy.
-    pub fn policy(&self) -> &P {
-        &self.policy
-    }
-
-    /// Consume the wrapper and return the underlying backend and policy.
-    pub fn into_inner(self) -> (M, P) {
-        (self.inner, self.policy)
-    }
-}
-
-impl<M, P> ConversationMemory for PolicyMemory<M, P>
-where
-    M: ConversationMemory,
-    P: MemoryPolicy,
-{
-    fn load<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-        Box::pin(async move {
-            let messages = self.inner.load(conversation_id).await?;
-            self.policy.apply(messages)
-        })
-    }
-
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a str,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.append(conversation_id, messages)
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.clear(conversation_id)
-    }
-}
-
-/// A [`ConversationMemory`] adapter that wraps a backend with a
-/// [`MemoryPolicy`] **and** a [`DemotionHook`], so messages truncated by the
-/// policy flow into the hook before the active window is returned.
-///
-/// `DemotingPolicyMemory` is the bridge between the recent-turn store
-/// ([`InMemoryConversationMemory`] or any other [`ConversationMemory`]) and a
-/// long-tail store (`MemvidPersistHook`, vector RAG, archival storage, …).
-/// Compose it with any [`MemoryPolicy`] that overrides
-/// [`MemoryPolicy::apply_with_demoted`]; policies that rely on the default
-/// implementation will still load correctly but will never demote anything.
-///
-/// # Concurrency
-///
-/// Concurrent [`ConversationMemory::load`] calls on the same
-/// `conversation_id` are serialised at the demotion seam: only one call at
-/// a time delivers messages to the hook for a given conversation. Other
-/// concurrent loads for that conversation observe the in-flight delivery
-/// and return the truncated `kept` history immediately without firing the
-/// hook again. Pending demotions that were skipped this way are picked up
-/// by the next `load` after the in-flight delivery completes.
-///
-/// **Failure visibility.** A hook error is returned only to the caller
-/// whose `load` actually drove the delivery. Concurrent callers that
-/// short-circuited on `in_flight` see `Ok(kept)` even if the in-flight
-/// delivery ultimately failed; the watermark stays unchanged so the next
-/// `load` retries. Callers that rely on the hook for durability should
-/// treat a successful `load` as best-effort with respect to demotion and
-/// surface hook failures through the hook's own observability (logs,
-/// metrics, dead-letter buffer) rather than the `load` return value.
-///
-/// # Persistence
-///
-/// Delivery watermarks are kept in process memory only. Across process
-/// restarts, the hook will receive previously-delivered demotions again;
-/// see the [`DemotionHook`] idempotency contract.
-///
-/// # Example
-///
-/// ```no_run
-/// use rig_memory::{
-///     DemotingPolicyMemory, DemotionHook, InMemoryConversationMemory,
-///     MemoryError, NoopDemotionHook, SlidingWindowMemory,
-/// };
-///
-/// let memory = DemotingPolicyMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
-///     NoopDemotionHook,
-/// );
-/// # let _ = memory;
-/// ```
-pub struct DemotingPolicyMemory<M, P, H> {
-    inner: M,
-    policy: P,
-    hook: H,
-    state: StdMutex<HashMap<String, ConversationDemotionState>>,
-}
-
-type InFlightReservation = Arc<()>;
-
-#[derive(Debug, Default, Clone)]
-struct ConversationDemotionState {
-    /// Number of demoted messages already delivered to the hook within
-    /// this process lifetime. Advanced only on hook success.
-    delivered: usize,
-    /// Reservation held while a `load` is currently awaiting
-    /// `hook.on_demote(...)` for this conversation. Other concurrent loads
-    /// observe this and short-circuit without re-delivering the same messages.
-    in_flight: Option<InFlightReservation>,
-}
-
-impl<M, P, H> DemotingPolicyMemory<M, P, H> {
-    /// Wrap `inner` so every load runs through `policy` and demoted messages
-    /// flow into `hook`.
-    pub fn new(inner: M, policy: P, hook: H) -> Self {
-        Self {
-            inner,
-            policy,
-            hook,
-            state: StdMutex::new(HashMap::new()),
-        }
-    }
-
-    /// Return a reference to the wrapped backend.
-    pub fn inner(&self) -> &M {
-        &self.inner
-    }
-
-    /// Return a reference to the wrapped policy.
-    pub fn policy(&self) -> &P {
-        &self.policy
-    }
-
-    /// Return a reference to the demotion hook.
-    pub fn hook(&self) -> &H {
-        &self.hook
-    }
-
-    /// Consume the wrapper and return its three components.
-    pub fn into_inner(self) -> (M, P, H) {
-        (self.inner, self.policy, self.hook)
-    }
-
-    /// Drop the in-process delivery watermark for `conversation_id`.
-    ///
-    /// Call this when a conversation has ended to bound memory usage.
-    /// The watermark map is otherwise unbounded — entries persist for
-    /// the lifetime of the wrapper.
-    ///
-    /// If the internal state lock has been poisoned by a panic in another
-    /// thread, this is a no-op (the watermark will be dropped naturally
-    /// when the wrapper itself is dropped).
-    pub fn forget(&self, conversation_id: &str) {
-        if let Ok(mut guard) = self.state.lock() {
-            guard.remove(conversation_id);
-        }
-    }
-
-    /// Number of conversations currently tracked in the watermark map.
-    /// Useful for telemetry and leak detection. Returns `0` if the internal
-    /// state lock is poisoned.
-    pub fn tracked_conversations(&self) -> usize {
-        self.state.lock().map(|g| g.len()).unwrap_or(0)
-    }
-}
-
-impl<M, P, H> std::fmt::Debug for DemotingPolicyMemory<M, P, H>
-where
-    M: std::fmt::Debug,
-    P: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DemotingPolicyMemory")
-            .field("inner", &self.inner)
-            .field("policy", &self.policy)
-            .field("hook", &"<hook>")
-            .finish()
-    }
-}
-
-impl<M, P, H> ConversationMemory for DemotingPolicyMemory<M, P, H>
-where
-    M: ConversationMemory,
-    P: MemoryPolicy,
-    H: DemotionHook,
-{
-    fn load<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-        Box::pin(async move {
-            let messages = self.inner.load(conversation_id).await?;
-            let (kept, mut demoted) = self.policy.apply_with_demoted(messages)?;
-            let demoted_count = demoted.len();
-
-            // Reserve a delivery slot atomically. Decide-and-mark must
-            // happen under one short-lived lock so concurrent loads on
-            // the same conversation_id can't both observe the same
-            // delivered watermark and double-fire the hook.
-            //
-            // Fast path: if the conversation is already tracked, mutate in
-            // place. Only allocate a new `String` key when we are about to
-            // record state for a conversation we have not seen before *and*
-            // there is actually demotion work to track.
-            let (pending, reservation) = {
-                let mut guard = self.state.lock().map_err(poisoned)?;
-                if let Some(entry) = guard.get_mut(conversation_id) {
-                    if entry.in_flight.is_some() {
-                        // Another load is mid-delivery for this conversation;
-                        // skip and let the next load see whatever it leaves
-                        // behind.
-                        return Ok(kept);
-                    }
-                    if entry.delivered >= demoted_count {
-                        (Vec::new(), None)
-                    } else {
-                        let split = entry.delivered;
-                        let reservation = Arc::new(());
-                        entry.in_flight = Some(reservation.clone());
-                        (demoted.split_off(split), Some(reservation))
-                    }
-                } else if demoted_count == 0 {
-                    // First load for this conversation and nothing was
-                    // demoted: no need to allocate a tracking entry yet.
-                    (Vec::new(), None)
-                } else {
-                    let reservation = Arc::new(());
-                    guard.insert(
-                        conversation_id.to_string(),
-                        ConversationDemotionState {
-                            delivered: 0,
-                            in_flight: Some(reservation.clone()),
-                        },
-                    );
-                    (std::mem::take(&mut demoted), Some(reservation))
-                }
-            };
-
-            let Some(reservation) = reservation else {
-                return Ok(kept);
-            };
-
-            // Arm an RAII guard so the in-flight gate is released even if
-            // this future is dropped mid-await (caller cancellation) or the
-            // hook panics. The reservation token prevents stale guards from
-            // clearing newer in-flight loads after clear()/forget() reuse the
-            // same conversation id.
-            let in_flight_guard =
-                DemotionInFlightGuard::new(&self.state, conversation_id, reservation.clone());
-
-            let result = self.hook.on_demote(conversation_id, pending).await;
-
-            // Reacquire briefly to advance the watermark on success and
-            // always clear the in-flight flag so a future load can retry.
-            //
-            // Only update if the entry still exists: a concurrent `clear`
-            // (and matching `forget`) for this `conversation_id` may have
-            // dropped the watermark entry while the hook was awaiting. In
-            // that case we must not resurrect it with a stale `delivered`
-            // count — the next load on a freshly-populated backend would
-            // then skip a real demotion.
-            {
-                let mut guard = self.state.lock().map_err(poisoned)?;
-                if let Some(entry) = guard.get_mut(conversation_id)
-                    && entry
-                        .in_flight
-                        .as_ref()
-                        .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                {
-                    entry.in_flight = None;
-                    if result.is_ok() {
-                        entry.delivered = demoted_count;
-                    }
-                }
-            }
-            in_flight_guard.disarm();
-            result?;
-            Ok(kept)
-        })
-    }
-
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a str,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.append(conversation_id, messages)
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        Box::pin(async move {
-            self.inner.clear(conversation_id).await?;
-            self.forget(conversation_id);
-            Ok(())
-        })
-    }
-}
-
-fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
-    MemoryError::Internal(err.to_string())
-}
-
-/// RAII guard that clears the `in_flight` flag for a conversation in the
-/// shared demotion state map when dropped, unless the consumer explicitly
-/// disarms it after a successful post-await update.
-///
-/// This prevents the in-flight gate from leaking when the awaiting
-/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
-/// or when the hook panics. A missing entry is a no-op, covering the case
-/// where a concurrent `clear` removed the conversation while delivery was
-/// awaiting.
-struct DemotionInFlightGuard<'a> {
-    state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
-    key: &'a str,
-    reservation: InFlightReservation,
-    armed: bool,
-}
-
-impl<'a> DemotionInFlightGuard<'a> {
-    fn new(
-        state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
-        key: &'a str,
-        reservation: InFlightReservation,
-    ) -> Self {
-        Self {
-            state,
-            key,
-            reservation,
-            armed: true,
-        }
-    }
-
-    /// Disable the `Drop` clean-up. Call after the post-await state
-    /// update has already cleared `in_flight` while holding the lock.
-    fn disarm(mut self) {
-        self.armed = false;
-    }
-}
-
-impl Drop for DemotionInFlightGuard<'_> {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        if let Ok(mut guard) = self.state.lock()
-            && let Some(entry) = guard.get_mut(self.key)
-            && entry
-                .in_flight
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
-        {
-            entry.in_flight = None;
+        request: &CompactionRequest,
+        carry_over: Option<&TextSummary>,
+    ) -> TextSummary {
+        match self {
+            Self::Template(compactor) => compactor.compact(&request.evicted, carry_over),
         }
     }
 }
 
-/// RAII guard that clears the `in_flight` flag for a conversation in the
-/// shared compaction state map when dropped, unless the consumer
-/// explicitly disarms it after a successful post-await update.
-///
-/// This prevents the in-flight gate from leaking when the awaiting
-/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
-/// or when the compactor panics: in either case `Drop` runs and releases
-/// the gate so subsequent loads can retry. A missing entry is a no-op,
-/// covering the case where a concurrent `clear` removed the conversation
-/// while compaction was awaiting.
-struct InFlightGuard<'a, A> {
-    state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
-    key: &'a str,
-    reservation: InFlightReservation,
-    armed: bool,
-}
-
-impl<'a, A> InFlightGuard<'a, A> {
-    fn new(
-        state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
-        key: &'a str,
-        reservation: InFlightReservation,
-    ) -> Self {
-        Self {
-            state,
-            key,
-            reservation,
-            armed: true,
-        }
-    }
-
-    /// Disable the `Drop` clean-up. Call after the post-await state
-    /// update has already cleared `in_flight` while holding the lock.
-    fn disarm(mut self) {
-        self.armed = false;
+impl From<TemplateCompactor> for Compactor {
+    fn from(value: TemplateCompactor) -> Self {
+        Self::Template(value)
     }
 }
 
-impl<A> Drop for InFlightGuard<'_, A> {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        if let Ok(mut guard) = self.state.lock()
-            && let Some(entry) = guard.get_mut(self.key)
-            && entry
-                .in_flight
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
-        {
-            entry.in_flight = None;
-        }
-    }
-}
-
-/// A [`ConversationMemory`] adapter that wraps a backend with a
-/// [`MemoryPolicy`] **and** a [`Compactor`], replacing truncated turns with
-/// a summary artifact spliced at the front of the loaded history.
+/// A zero-dependency compactor that produces a textual rollup of evicted
+/// messages without calling an LLM.
 ///
-/// `CompactingMemory` is the next layer above [`DemotingPolicyMemory`]: a
-/// demotion hook only *observes* what the policy evicted, while a compactor
-/// *substitutes* the evicted prefix with a derived [`Message`]. The loaded
-/// history shape is therefore `[summary_message, ...kept_window]` whenever
-/// any compaction has occurred for the conversation, and just `kept_window`
-/// otherwise. The summary itself is recomputed (rolled forward) on every
-/// load that produces newly-evicted messages, so older summaries are folded
-/// into newer ones via the compactor's `carry_over` parameter.
-///
-/// # Concurrency
-///
-/// Concurrent [`ConversationMemory::load`] calls on the same
-/// `conversation_id` are serialised at the compaction seam: only one call
-/// at a time invokes the compactor for a given conversation. Other
-/// concurrent loads observe the in-flight compaction and immediately
-/// return the previously-stored summary spliced in front of `kept`,
-/// without re-running the compactor. Newly-evicted messages skipped this
-/// way are folded into the next compaction.
-///
-/// **Failure visibility.** A compactor error is returned only to the
-/// caller whose `load` actually drove the compaction. Concurrent callers
-/// that short-circuited on `in_flight` see `Ok([old_summary?, ...kept])`
-/// even if the in-flight compaction ultimately failed; the watermark
-/// stays unchanged so the next `load` retries.
-///
-/// # Persistence
-///
-/// The carry-over summary and delivery watermarks are kept in process
-/// memory only. Across process restarts, the first load on each
-/// conversation re-evicts and re-compacts the same prefix; compactors
-/// that have side effects (LLM calls, persistent writes) should
-/// deduplicate.
-///
-/// # Prompt shape and budgets
-///
-/// `CompactingMemory` is **policy-agnostic**: the wrapped
-/// [`MemoryPolicy`] decides which messages are kept versus demoted, and
-/// only the kept window is bounded by that policy. The summary artifact
-/// produced by the [`Compactor`] is spliced **outside** that budget — so
-/// the loaded prompt has shape `[summary, ...kept_window]` where
-/// `kept_window` respects the policy's bounds and `summary` adds an
-/// extra message on top of it.
-///
-/// Callers that combine `CompactingMemory` with a token-budgeted policy
-/// (e.g. [`TokenWindowMemory`]) **must use a [`Compactor`] that bounds
-/// its own artifact**, or accept that the loaded prompt may exceed the
-/// policy's budget by the size of the summary. The reference
-/// [`TemplateCompactor`] grows monotonically by default; configure it
-/// with [`TemplateCompactor::with_max_bytes`] to cap the rolled-up text.
-///
-/// # Example
-///
-/// ```no_run
-/// use rig_memory::{
-///     CompactingMemory, InMemoryConversationMemory, SlidingWindowMemory,
-///     TemplateCompactor,
-/// };
-///
-/// let memory = CompactingMemory::new(
-///     InMemoryConversationMemory::new(),
-///     SlidingWindowMemory::last_messages(20),
-///     TemplateCompactor::new(),
-/// );
-/// # let _ = memory;
-/// ```
-pub struct CompactingMemory<M, P, C: Compactor> {
-    inner: M,
-    policy: P,
-    compactor: C,
-    state: StdMutex<HashMap<String, ConversationCompactionState<C::Artifact>>>,
-}
-
-struct ConversationCompactionState<A> {
-    /// Latest summary artifact for this conversation, if compaction has
-    /// already happened. Cloned into the loaded history on every `load`.
-    summary: Option<A>,
-    /// Number of demoted messages already absorbed into `summary` within
-    /// this process lifetime. Advanced only on compactor success.
-    absorbed: usize,
-    /// Reservation held while a `load` is currently awaiting the compactor for
-    /// this conversation. Other concurrent loads observe this and short-circuit
-    /// without re-running the compactor.
-    in_flight: Option<InFlightReservation>,
-}
-
-impl<M, P, C: Compactor> CompactingMemory<M, P, C> {
-    /// Wrap `inner` so every load runs through `policy` and demoted messages
-    /// are summarised by `compactor`.
-    pub fn new(inner: M, policy: P, compactor: C) -> Self {
-        Self {
-            inner,
-            policy,
-            compactor,
-            state: StdMutex::new(HashMap::new()),
-        }
-    }
-
-    /// Return a reference to the wrapped backend.
-    pub fn inner(&self) -> &M {
-        &self.inner
-    }
-
-    /// Return a reference to the wrapped policy.
-    pub fn policy(&self) -> &P {
-        &self.policy
-    }
-
-    /// Return a reference to the compactor.
-    pub fn compactor(&self) -> &C {
-        &self.compactor
-    }
-
-    /// Consume the wrapper and return its three components.
-    pub fn into_inner(self) -> (M, P, C) {
-        (self.inner, self.policy, self.compactor)
-    }
-
-    /// Drop the in-process compaction state for `conversation_id`.
-    ///
-    /// Call this when a conversation has ended to bound memory usage; the
-    /// state map is otherwise unbounded. If the internal lock has been
-    /// poisoned by a panic in another thread, this is a no-op.
-    pub fn forget(&self, conversation_id: &str) {
-        if let Ok(mut guard) = self.state.lock() {
-            guard.remove(conversation_id);
-        }
-    }
-
-    /// Number of conversations currently tracked in the compaction state
-    /// map. Useful for telemetry and leak detection. Returns `0` if the
-    /// internal lock is poisoned.
-    pub fn tracked_conversations(&self) -> usize {
-        self.state.lock().map(|g| g.len()).unwrap_or(0)
-    }
-}
-
-impl<M, P, C> std::fmt::Debug for CompactingMemory<M, P, C>
-where
-    M: std::fmt::Debug,
-    P: std::fmt::Debug,
-    C: Compactor,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompactingMemory")
-            .field("inner", &self.inner)
-            .field("policy", &self.policy)
-            .field("compactor", &"<compactor>")
-            .finish()
-    }
-}
-
-impl<M, P, C> ConversationMemory for CompactingMemory<M, P, C>
-where
-    M: ConversationMemory,
-    P: MemoryPolicy,
-    C: Compactor,
-{
-    fn load<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<Vec<Message>, MemoryError>> {
-        Box::pin(async move {
-            let messages = self.inner.load(conversation_id).await?;
-            let (kept, demoted) = self.policy.apply_with_demoted(messages)?;
-            let demoted_count = demoted.len();
-
-            // Decide-and-mark must happen under one short-lived lock so two
-            // concurrent loads on the same conversation_id can't both
-            // observe the same `absorbed` watermark and run the compactor
-            // twice with the same input slice.
-            //
-            // Fast path: if the conversation is already tracked, mutate in
-            // place. Only allocate a new `String` key when there is real
-            // compaction work for a conversation we have not seen before.
-            let plan = {
-                let mut guard = self.state.lock().map_err(poisoned)?;
-                if let Some(entry) = guard.get_mut(conversation_id) {
-                    if entry.in_flight.is_some() {
-                        // Another load is mid-compaction; return what we
-                        // have so far. Newly-evicted messages will be
-                        // folded in by the next load.
-                        return Ok(splice(entry.summary.clone(), kept));
-                    }
-                    if demoted_count <= entry.absorbed {
-                        // No new evictions to compact. Splice the existing
-                        // summary (if any) and we're done.
-                        return Ok(splice(entry.summary.clone(), kept));
-                    }
-                    let reservation = Arc::new(());
-                    entry.in_flight = Some(reservation.clone());
-                    CompactionPlan {
-                        carry_over: entry.summary.clone(),
-                        skip: entry.absorbed,
-                        reservation,
-                    }
-                } else if demoted_count == 0 {
-                    // First load for this conversation and nothing was
-                    // demoted: no tracking entry needed yet.
-                    return Ok(kept);
-                } else {
-                    let reservation = Arc::new(());
-                    guard.insert(
-                        conversation_id.to_string(),
-                        ConversationCompactionState {
-                            summary: None,
-                            absorbed: 0,
-                            in_flight: Some(reservation.clone()),
-                        },
-                    );
-                    CompactionPlan {
-                        carry_over: None,
-                        skip: 0,
-                        reservation,
-                    }
-                }
-            };
-
-            // SAFETY: split_at(plan.skip) is sound because `plan.skip` was
-            // sourced from the entry's `absorbed` watermark while we held
-            // the lock, and we only set `absorbed = demoted_count` on
-            // success — so `plan.skip <= demoted_count == demoted.len()`.
-            let CompactionPlan {
-                carry_over,
-                skip,
-                reservation,
-            } = plan;
-
-            // Arm an RAII guard so the in-flight gate is released even if
-            // this future is dropped mid-await (caller cancellation) or
-            // the compactor panics. The guard is disarmed below once the
-            // post-await state update has already cleared the flag under
-            // the same lock acquisition that records the new watermark.
-            let in_flight_guard =
-                InFlightGuard::new(&self.state, conversation_id, reservation.clone());
-
-            let new_slice = match demoted.get(skip..) {
-                Some(s) => s,
-                None => {
-                    // Drop the guard explicitly so the gate is released
-                    // before we surface the invariant break.
-                    drop(in_flight_guard);
-                    return Err(MemoryError::Internal(
-                        "compaction watermark exceeds demoted slice length".into(),
-                    ));
-                }
-            };
-
-            let result = self
-                .compactor
-                .compact(conversation_id, new_slice, carry_over.as_ref())
-                .await;
-
-            // Reacquire briefly to advance the watermark on success and
-            // always clear the in-flight flag so a future load can retry.
-            //
-            // Only update if the entry still exists: a concurrent `clear`
-            // (and matching `forget`) for this `conversation_id` may have
-            // dropped the state entry while the compactor was awaiting. In
-            // that case we must not resurrect it with stale state — the
-            // next load on a freshly-populated backend would then start
-            // from a non-zero watermark and skip a real compaction.
-            let summary_for_splice = match result {
-                Ok(artifact) => {
-                    let mut guard = self.state.lock().map_err(poisoned)?;
-                    if let Some(entry) = guard.get_mut(conversation_id) {
-                        if entry
-                            .in_flight
-                            .as_ref()
-                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                        {
-                            entry.in_flight = None;
-                            entry.absorbed = demoted_count;
-                            entry.summary = Some(artifact.clone());
-                            Some(artifact)
-                        } else {
-                            None
-                        }
-                    } else {
-                        // Conversation was cleared mid-compaction. Drop
-                        // the artifact rather than reviving stale state.
-                        None
-                    }
-                }
-                Err(err) => {
-                    let mut guard = self.state.lock().map_err(poisoned)?;
-                    if let Some(entry) = guard.get_mut(conversation_id)
-                        && entry
-                            .in_flight
-                            .as_ref()
-                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                    {
-                        entry.in_flight = None;
-                    }
-                    return Err(err);
-                }
-            };
-
-            // Post-await state update completed under the lock above and
-            // already cleared `in_flight`; disarm the RAII guard so its
-            // `Drop` does not re-acquire the lock for a redundant clear.
-            in_flight_guard.disarm();
-
-            Ok(splice(summary_for_splice, kept))
-        })
-    }
-
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a str,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.append(conversation_id, messages)
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        Box::pin(async move {
-            self.inner.clear(conversation_id).await?;
-            self.forget(conversation_id);
-            Ok(())
-        })
-    }
-}
-
-struct CompactionPlan<A> {
-    carry_over: Option<A>,
-    skip: usize,
-    reservation: InFlightReservation,
-}
-
-fn splice<A>(summary: Option<A>, kept: Vec<Message>) -> Vec<Message>
-where
-    A: Into<Message>,
-{
-    match summary {
-        Some(artifact) => {
-            let mut out = Vec::with_capacity(kept.len() + 1);
-            out.push(artifact.into());
-            out.extend(kept);
-            out
-        }
-        None => kept,
-    }
-}
-
-/// A zero-dependency reference [`Compactor`] that produces a textual
-/// rollup of evicted messages without calling an LLM.
-///
-/// The artifact is a single [`Message::System`] whose body concatenates a
-/// header, the previous summary (if any), and the textual content of each
-/// newly-evicted message. It is intentionally simple: useful as a default
-/// for tests and examples, and as a placeholder before wiring a real
-/// summarising LLM through a custom [`Compactor`] implementation.
+/// The artifact is a single [`TextSummary`] (convertible into a
+/// [`Message::System`]) whose body concatenates a header, the previous
+/// summary (if any), and the textual content of each newly-evicted message.
+/// It is intentionally simple: useful as a default for tests and examples,
+/// and as a placeholder before wiring a real summarising model.
 ///
 /// # Bounding the summary
 ///
-/// By default the summary grows monotonically: every compaction pass
-/// embeds the previous summary verbatim and appends newly-evicted lines.
-/// Long-running conversations should call [`Self::with_max_bytes`] to
-/// cap the rolled-up text. When the cap is exceeded, the oldest portion
-/// of the body (after the header) is dropped at a UTF-8 boundary and
-/// replaced with a `"[…truncated…]"` marker, preserving the most recent
-/// context.
+/// By default the summary grows monotonically: every compaction pass embeds
+/// the previous summary verbatim and appends newly-evicted lines.
+/// Long-running conversations should call [`Self::with_max_bytes`] to cap the
+/// rolled-up text. When the cap is exceeded, the oldest portion of the body
+/// (after the header) is dropped at a UTF-8 boundary and replaced with a
+/// `"[…truncated…]"` marker, preserving the most recent context.
+///
+/// Compaction is spliced **outside** the policy's budget: the loaded prompt
+/// is `[summary, ...kept_window]`. Callers combining compaction with a
+/// token-budgeted policy should cap the summary with
+/// [`Self::with_max_bytes`], or accept a prompt that exceeds the policy
+/// budget by the size of the summary.
 ///
 /// # Example
 ///
@@ -1363,6 +620,30 @@ impl TemplateCompactor {
         };
         self
     }
+
+    /// Produce a summary for `evicted`, embedding `carry_over` when present.
+    pub fn compact(&self, evicted: &[Message], carry_over: Option<&TextSummary>) -> TextSummary {
+        let mut buf = String::new();
+        buf.push_str(&self.header);
+        buf.push('\n');
+        if let Some(prev) = carry_over {
+            buf.push_str(prev.as_str());
+            buf.push('\n');
+        }
+        for msg in evicted {
+            let line = render_message_line(msg);
+            if !line.is_empty() {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+        }
+        if let Some(cap) = self.max_bytes
+            && buf.len() > cap
+        {
+            buf = truncate_summary(&buf, cap);
+        }
+        TextSummary(buf)
+    }
 }
 
 impl Default for TemplateCompactor {
@@ -1377,10 +658,15 @@ impl Default for TemplateCompactor {
 /// text. The system role is used because the rollup represents
 /// out-of-band context about the prior conversation, not a turn from
 /// any participant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextSummary(String);
 
 impl TextSummary {
+    /// Wrap `text` as a summary artifact.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
     /// Borrow the underlying summary text.
     pub fn as_str(&self) -> &str {
         &self.0
@@ -1395,40 +681,6 @@ impl TextSummary {
 impl From<TextSummary> for Message {
     fn from(value: TextSummary) -> Self {
         Message::System { content: value.0 }
-    }
-}
-
-impl Compactor for TemplateCompactor {
-    type Artifact = TextSummary;
-
-    fn compact<'a>(
-        &'a self,
-        _conversation_id: &'a str,
-        evicted: &'a [Message],
-        carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-        Box::pin(async move {
-            let mut buf = String::new();
-            buf.push_str(&self.header);
-            buf.push('\n');
-            if let Some(prev) = carry_over {
-                buf.push_str(prev.as_str());
-                buf.push('\n');
-            }
-            for msg in evicted {
-                let line = render_message_line(msg);
-                if !line.is_empty() {
-                    buf.push_str(&line);
-                    buf.push('\n');
-                }
-            }
-            if let Some(cap) = self.max_bytes
-                && buf.len() > cap
-            {
-                buf = truncate_summary(&buf, cap);
-            }
-            Ok(TextSummary(buf))
-        })
     }
 }
 
@@ -1555,6 +807,246 @@ fn render_message_line(msg: &Message) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// PolicyMemory
+// ---------------------------------------------------------------------------
+
+/// What an [`PolicyMemory::append`] did, as owned data.
+///
+/// The host acts on `demoted` (archive it) and `compaction` (fold it into a
+/// rolling summary) instead of a callback firing behind its back.
+#[derive(Debug, Clone, Default)]
+pub struct AppendOutcome {
+    /// The messages that were appended to the store, in the order given.
+    pub stored: Vec<Message>,
+    /// Messages the policy pushed out of the active window as a result, in
+    /// original conversation order. Empty when the policy retained
+    /// everything.
+    pub demoted: Vec<Message>,
+    /// Present when a [`Compactor`] is configured and the policy demoted
+    /// messages. Pass it to [`PolicyMemory::compact`] (or fold it yourself)
+    /// to update the conversation's rolling summary.
+    pub compaction: Option<CompactionRequest>,
+}
+
+/// A concrete [`InMemoryConversationMemory`] plus a [`MemoryPolicy`] and an
+/// optional [`Compactor`].
+///
+/// - [`load`](Self::load) returns `[summary?, ...kept_window]`: the stored
+///   history shaped by the policy, with the conversation's rolling summary
+///   spliced in front when one exists.
+/// - [`append`](Self::append) stores the messages and hands back an
+///   [`AppendOutcome`] describing what the policy demoted and whether
+///   compaction is due.
+///
+/// Cloning shares both the store and the summaries.
+///
+/// # Example
+///
+/// ```
+/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+/// use rig_core::completion::Message;
+/// use rig_memory::{Compactor, InMemoryConversationMemory, MemoryPolicy, PolicyMemory};
+///
+/// let memory = PolicyMemory::new(
+///     InMemoryConversationMemory::new(),
+///     MemoryPolicy::sliding_window(2),
+/// )
+/// .with_compactor(Compactor::template());
+///
+/// let outcome = memory.append(
+///     "c",
+///     vec![
+///         Message::user("first"),
+///         Message::assistant("second"),
+///         Message::user("third"),
+///         Message::assistant("fourth"),
+///     ],
+/// )?;
+/// assert_eq!(outcome.demoted.len(), 2);
+/// let request = outcome.compaction.expect("compactor configured");
+/// memory.compact(&request);
+///
+/// // [summary, third, fourth]
+/// assert_eq!(memory.load("c")?.len(), 3);
+/// # Ok(()) }
+/// # run().unwrap();
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct PolicyMemory {
+    inner: InMemoryConversationMemory,
+    policy: MemoryPolicy,
+    compactor: Option<Compactor>,
+    summaries: Arc<StdMutex<HashMap<String, TextSummary>>>,
+}
+
+impl PolicyMemory {
+    /// Wrap `inner` so every loaded history is shaped by `policy`.
+    pub fn new(inner: InMemoryConversationMemory, policy: MemoryPolicy) -> Self {
+        Self {
+            inner,
+            policy,
+            compactor: None,
+            summaries: Arc::new(StdMutex::new(HashMap::new())),
+        }
+    }
+
+    /// Configure a compactor, so appends that demote messages also produce a
+    /// [`CompactionRequest`].
+    pub fn with_compactor(mut self, compactor: Compactor) -> Self {
+        self.compactor = Some(compactor);
+        self
+    }
+
+    /// Return a reference to the wrapped store.
+    pub fn inner(&self) -> &InMemoryConversationMemory {
+        &self.inner
+    }
+
+    /// Return the configured policy.
+    pub fn policy(&self) -> &MemoryPolicy {
+        &self.policy
+    }
+
+    /// Return the configured compactor, if any.
+    pub fn compactor(&self) -> Option<&Compactor> {
+        self.compactor.as_ref()
+    }
+
+    /// Consume the wrapper and return its components.
+    pub fn into_inner(self) -> (InMemoryConversationMemory, MemoryPolicy, Option<Compactor>) {
+        (self.inner, self.policy, self.compactor)
+    }
+
+    /// Load the policy-shaped history for `conversation_id`, with the
+    /// conversation's rolling summary spliced in front when one exists.
+    pub fn load(&self, conversation_id: &str) -> Result<Vec<Message>, MemoryError> {
+        Ok(self.load_with_outcome(conversation_id)?.kept)
+    }
+
+    /// Like [`load`](Self::load), but also reports what the policy demoted
+    /// from the stored history. The summary (when present) is the first
+    /// element of `kept`.
+    pub fn load_with_outcome(&self, conversation_id: &str) -> Result<PolicyOutcome, MemoryError> {
+        let stored = self.inner.load(conversation_id)?;
+        let mut outcome = self.policy.apply(stored);
+        if let Some(summary) = self.summary(conversation_id)? {
+            let mut kept = Vec::with_capacity(outcome.kept.len() + 1);
+            kept.push(summary.into());
+            kept.append(&mut outcome.kept);
+            outcome.kept = kept;
+        }
+        Ok(outcome)
+    }
+
+    /// Append `messages` and report what the policy demoted as a result.
+    ///
+    /// `demoted` carries only the messages this append pushed out of the
+    /// active window — messages an earlier append already reported are not
+    /// replayed — so a host archiving demotions sees each message once
+    /// without keeping a delivery watermark.
+    pub fn append(
+        &self,
+        conversation_id: &str,
+        messages: Vec<Message>,
+    ) -> Result<AppendOutcome, MemoryError> {
+        // Demotion is a growing prefix of the stored history, so the messages
+        // *newly* pushed out by this append are the difference between the
+        // demoted prefix before and after it.
+        let already_demoted = self
+            .policy
+            .apply(self.inner.load(conversation_id)?)
+            .demoted
+            .len();
+
+        self.inner.append(conversation_id, messages.clone())?;
+
+        let stored_history = self.inner.load(conversation_id)?;
+        let mut demoted = self.policy.apply(stored_history).demoted;
+        let split = already_demoted.min(demoted.len());
+        let demoted = demoted.split_off(split);
+        let compaction = match (&self.compactor, demoted.is_empty()) {
+            (Some(_), false) => Some(CompactionRequest {
+                conversation_id: conversation_id.to_string(),
+                evicted: demoted.clone(),
+            }),
+            _ => None,
+        };
+
+        Ok(AppendOutcome {
+            stored: messages,
+            demoted,
+            compaction,
+        })
+    }
+
+    /// Fold `request` into the conversation's rolling summary using the
+    /// configured compactor, store the result, and return it.
+    ///
+    /// Returns `None` when no compactor is configured. The previous summary
+    /// is passed to the compactor as carry-over, so summaries roll forward.
+    pub fn compact(&self, request: &CompactionRequest) -> Option<TextSummary> {
+        let compactor = self.compactor.as_ref()?;
+        let mut guard = self.summaries.lock().ok()?;
+        let carry_over = guard.get(&request.conversation_id);
+        let summary = compactor.compact(request, carry_over);
+        guard.insert(request.conversation_id.clone(), summary.clone());
+        Some(summary)
+    }
+
+    /// The conversation's current rolling summary, if any.
+    pub fn summary(&self, conversation_id: &str) -> Result<Option<TextSummary>, MemoryError> {
+        Ok(self.lock_summaries()?.get(conversation_id).cloned())
+    }
+
+    /// Replace the conversation's rolling summary. Use this when the host
+    /// summarises with its own model instead of the configured compactor.
+    pub fn set_summary(
+        &self,
+        conversation_id: &str,
+        summary: TextSummary,
+    ) -> Result<(), MemoryError> {
+        self.lock_summaries()?
+            .insert(conversation_id.to_string(), summary);
+        Ok(())
+    }
+
+    /// Drop the stored history **and** the rolling summary for
+    /// `conversation_id`.
+    pub fn clear(&self, conversation_id: &str) -> Result<(), MemoryError> {
+        self.inner.clear(conversation_id)?;
+        self.forget(conversation_id);
+        Ok(())
+    }
+
+    /// Drop only the rolling summary for `conversation_id`, leaving the
+    /// stored history intact. Call this when a conversation has ended to
+    /// bound memory usage; the summary map is otherwise unbounded.
+    ///
+    /// A poisoned internal lock makes this a no-op (the summary is dropped
+    /// naturally when the last handle is dropped).
+    pub fn forget(&self, conversation_id: &str) {
+        if let Ok(mut guard) = self.summaries.lock() {
+            guard.remove(conversation_id);
+        }
+    }
+
+    /// Number of conversations with a stored rolling summary. Useful for
+    /// telemetry and leak detection. Returns `0` if the internal lock is
+    /// poisoned.
+    pub fn tracked_summaries(&self) -> usize {
+        self.summaries.lock().map(|g| g.len()).unwrap_or(0)
+    }
+
+    fn lock_summaries(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, HashMap<String, TextSummary>>, MemoryError> {
+        self.summaries
+            .lock()
+            .map_err(|err| MemoryError::Internal(err.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1562,7 +1054,6 @@ mod tests {
     use rig_core::message::{
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
     };
-    use std::sync::Mutex;
 
     fn user(text: &str) -> Message {
         Message::user(text)
@@ -1592,105 +1083,134 @@ mod tests {
         }
     }
 
+    // ----- policies -----
+
     #[test]
     fn noop_policy_is_identity() {
-        let msgs = vec![user("a"), assistant("b")];
-        let out = NoopMemoryPolicy.apply(msgs).unwrap();
-        assert_eq!(out.len(), 2);
+        let out = MemoryPolicy::Noop.apply(vec![user("a"), assistant("b")]);
+        assert_eq!(out.kept.len(), 2);
+        assert!(out.demoted.is_empty());
     }
 
     #[test]
     fn sliding_window_passthrough_when_under_limit() {
-        let policy = SlidingWindowMemory::last_messages(5);
-        let out = policy.apply(vec![user("1"), assistant("2")]).unwrap();
-        assert_eq!(out.len(), 2);
+        let policy = MemoryPolicy::sliding_window(5);
+        let out = policy.apply(vec![user("1"), assistant("2")]);
+        assert_eq!(out.kept.len(), 2);
+        assert!(out.demoted.is_empty());
     }
 
-    #[tokio::test]
-    async fn sliding_window_truncates_via_filter() {
-        let mem = InMemoryConversationMemory::new()
-            .with_filter(SlidingWindowMemory::last_messages(2).into_filter());
-
-        mem.append(
-            "c",
-            vec![user("1"), assistant("2"), user("3"), assistant("4")],
-        )
-        .await
-        .unwrap();
-
-        let loaded = mem.load("c").await.unwrap();
-        assert_eq!(loaded.len(), 2);
+    #[test]
+    fn sliding_window_truncates_history() {
+        let policy = MemoryPolicy::sliding_window(2);
+        let kept = policy.shape(vec![user("1"), assistant("2"), user("3"), assistant("4")]);
+        assert_eq!(kept.len(), 2);
     }
 
     #[test]
     fn sliding_window_drops_leading_orphan_tool_result() {
-        let policy = SlidingWindowMemory::last_messages(3);
-        let out = policy
-            .apply(vec![
-                tool_call_msg(),
-                tool_result_msg(),
-                user("after"),
-                assistant("done"),
-            ])
-            .unwrap();
+        let policy = MemoryPolicy::sliding_window(3);
+        let kept = policy.shape(vec![
+            tool_call_msg(),
+            tool_result_msg(),
+            user("after"),
+            assistant("done"),
+        ]);
 
-        assert_eq!(out.len(), 2);
-        assert!(matches!(out.first(), Some(Message::User { content })
+        assert_eq!(kept.len(), 2);
+        assert!(matches!(kept.first(), Some(Message::User { content })
             if matches!(content.first(), UserContent::Text(_))));
     }
 
     #[test]
+    fn sliding_window_reports_demoted_prefix() {
+        let out = MemoryPolicy::sliding_window(2).apply(vec![
+            user("oldest"),
+            assistant("old"),
+            user("recent"),
+            assistant("latest"),
+        ]);
+        assert_eq!(out.kept.len(), 2);
+        assert_eq!(out.demoted.len(), 2);
+    }
+
+    #[test]
+    fn sliding_window_demotes_orphan_tool_result_with_prefix() {
+        // Window keeps the last 2 messages, but the leading message of that
+        // window is an orphan tool result; it must be moved into `demoted`
+        // so the host can preserve it.
+        let out = MemoryPolicy::sliding_window(2).apply(vec![
+            tool_call_msg(),
+            tool_result_msg(),
+            user("after"),
+            assistant("done"),
+        ]);
+        assert_eq!(out.kept.len(), 2);
+        assert!(matches!(out.kept.first(), Some(Message::User { content })
+            if matches!(content.first(), UserContent::Text(_))));
+        assert_eq!(out.demoted.len(), 2);
+    }
+
+    #[test]
     fn token_window_keeps_within_budget() {
-        let msgs = vec![
+        let policy = MemoryPolicy::token_window(2, TokenCounter::fixed(1));
+        let kept = policy.shape(vec![
             user("aaaa"),
             assistant("bbbb"),
             user("cccc"),
             assistant("dddd"),
-        ];
-        let policy = TokenWindowMemory::new(2, |_: &Message| 1);
-        let out = policy.apply(msgs).unwrap();
-        assert_eq!(out.len(), 2);
+        ]);
+        assert_eq!(kept.len(), 2);
     }
 
     #[test]
     fn token_window_passes_through_when_under_budget() {
-        let msgs = vec![user("a"), assistant("b")];
-        let policy = TokenWindowMemory::new(usize::MAX, |_: &Message| 1);
-        let out = policy.apply(msgs).unwrap();
-        assert_eq!(out.len(), 2);
+        let policy = MemoryPolicy::token_window(usize::MAX, TokenCounter::fixed(1));
+        let kept = policy.shape(vec![user("a"), assistant("b")]);
+        assert_eq!(kept.len(), 2);
     }
 
     #[test]
     fn token_window_drops_leading_orphan_tool_result() {
-        let policy = TokenWindowMemory::new(25, |_: &Message| 10);
-        let out = policy
-            .apply(vec![tool_call_msg(), tool_result_msg(), user("after")])
-            .unwrap();
-        assert_eq!(out.len(), 1);
-        assert!(matches!(out.first(), Some(Message::User { content })
+        let policy = MemoryPolicy::token_window(25, TokenCounter::fixed(10));
+        let kept = policy.shape(vec![tool_call_msg(), tool_result_msg(), user("after")]);
+        assert_eq!(kept.len(), 1);
+        assert!(matches!(kept.first(), Some(Message::User { content })
             if matches!(content.first(), UserContent::Text(_))));
     }
 
     #[test]
     fn token_window_skips_message_larger_than_budget() {
-        let policy = TokenWindowMemory::new(5, |_: &Message| 10);
-        let out = policy.apply(vec![user("anything")]).unwrap();
-        assert!(out.is_empty());
+        let policy = MemoryPolicy::token_window(5, TokenCounter::fixed(10));
+        assert!(policy.shape(vec![user("anything")]).is_empty());
     }
 
     #[test]
+    fn token_window_reports_demoted_prefix() {
+        let out = MemoryPolicy::token_window(2, TokenCounter::fixed(1)).apply(vec![
+            user("a"),
+            assistant("b"),
+            user("c"),
+            assistant("d"),
+        ]);
+        assert_eq!(out.kept.len(), 2);
+        assert_eq!(out.demoted.len(), 2);
+    }
+
+    // ----- token counters -----
+
+    #[test]
     fn heuristic_counter_charges_overhead_per_message() {
-        let counter = HeuristicTokenCounter::default();
-        let empty = counter.count(&user(""));
+        let counter = TokenCounter::heuristic();
         assert!(
-            empty >= 4,
+            counter.count(&user("")) >= 4,
             "default per-message overhead is at least 4 tokens"
         );
     }
 
     #[test]
     fn heuristic_counter_is_monotonic_in_text_length() {
-        let counter = HeuristicTokenCounter::default();
+        let counter = TokenCounter::heuristic();
         let small = counter.count(&user("hi"));
         let big = counter.count(&user(&"x".repeat(400)));
         assert!(big > small);
@@ -1698,15 +1218,12 @@ mod tests {
 
     #[test]
     fn heuristic_counter_handles_tool_calls() {
-        let counter = HeuristicTokenCounter::default();
-        let cost = counter.count(&tool_call_msg());
-        assert!(cost > 0);
+        assert!(TokenCounter::heuristic().count(&tool_call_msg()) > 0);
     }
 
     #[test]
     fn heuristic_counter_handles_system_messages() {
-        let counter = HeuristicTokenCounter::default();
-        let cost = counter.count(&Message::System {
+        let cost = TokenCounter::heuristic().count(&Message::System {
             content: "you are helpful".into(),
         });
         assert!(cost > 0);
@@ -1723,731 +1240,180 @@ mod tests {
 
     #[test]
     fn heuristic_counter_drives_token_window() {
-        let policy = TokenWindowMemory::new(100, HeuristicTokenCounter::default());
-        let msgs = vec![user(&"a".repeat(2_000)), user("short")];
-        let out = policy.apply(msgs).unwrap();
+        let policy = MemoryPolicy::token_window(100, TokenCounter::heuristic());
+        let kept = policy.shape(vec![user(&"a".repeat(2_000)), user("short")]);
         // The huge message must be evicted; the short one retained.
-        assert_eq!(out.len(), 1);
+        assert_eq!(kept.len(), 1);
     }
 
     #[test]
-    fn arc_token_counter_can_drive_token_window() {
-        let counter: Arc<dyn TokenCounter> = Arc::new(|_: &Message| 1);
-        let policy = TokenWindowMemory::new(2, counter);
-        let out = policy
-            .apply(vec![user("a"), assistant("b"), user("c")])
-            .unwrap();
-
-        assert_eq!(out.len(), 2);
+    fn fixed_counter_drives_token_window() {
+        let policy = MemoryPolicy::token_window(2, TokenCounter::Fixed(1));
+        let kept = policy.shape(vec![user("a"), assistant("b"), user("c")]);
+        assert_eq!(kept.len(), 2);
     }
 
     #[test]
-    fn boxed_token_counter_forwards_count() {
-        let counter: Box<dyn TokenCounter> = Box::new(|_: &Message| 7);
-        assert_eq!(counter.count(&user("a")), 7);
+    fn heuristic_counter_converts_into_token_counter() {
+        let counter: TokenCounter = HeuristicTokenCounter::anthropic().into();
+        assert!(counter.count(&user("hello")) > 0);
     }
+
+    // ----- PolicyMemory -----
 
     #[test]
-    fn into_filter_returns_input_on_policy_error() {
-        struct FailingPolicy;
-        impl MemoryPolicy for FailingPolicy {
-            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-                Err(MemoryError::Policy("intentional failure".into()))
-            }
-        }
-
-        let filter = FailingPolicy.into_filter();
-        let input = vec![user("a"), assistant("b"), user("c")];
-        let out = filter(input.clone());
-        assert_eq!(
-            out.len(),
-            input.len(),
-            "history must be preserved on policy error"
-        );
-    }
-
-    #[tokio::test]
-    async fn policy_memory_truncates_loaded_history() {
+    fn policy_memory_truncates_loaded_history() {
         let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
+            MemoryPolicy::sliding_window(2),
         );
 
         mem.append(
             "c",
             vec![user("1"), assistant("2"), user("3"), assistant("4")],
         )
-        .await
         .unwrap();
 
-        let loaded = mem.load("c").await.unwrap();
+        assert_eq!(mem.load("c").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn policy_memory_append_and_clear_delegate_to_store() {
+        let mem = PolicyMemory::new(InMemoryConversationMemory::new(), MemoryPolicy::Noop);
+        let outcome = mem.append("c", vec![user("hi"), assistant("ok")]).unwrap();
+        assert_eq!(outcome.stored.len(), 2);
+        assert_eq!(mem.load("c").unwrap().len(), 2);
+
+        mem.clear("c").unwrap();
+        assert!(mem.load("c").unwrap().is_empty());
+    }
+
+    #[test]
+    fn policy_memory_append_reports_demotions_once_each() {
+        // The classic demotion hook fired once per newly-evicted batch; the
+        // owned outcome reports exactly the messages newly pushed out.
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(2),
+        );
+
+        let first = mem
+            .append(
+                "c",
+                vec![user("1"), assistant("2"), user("3"), assistant("4")],
+            )
+            .unwrap();
+        assert_eq!(first.demoted.len(), 2);
+        assert!(
+            first.compaction.is_none(),
+            "no compactor configured, no compaction request"
+        );
+
+        // Loading does not re-report or replay the demotion.
+        assert_eq!(mem.load("c").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn policy_memory_append_reports_nothing_when_nothing_evicted() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(10),
+        );
+        let outcome = mem.append("c", vec![user("1"), assistant("2")]).unwrap();
+        assert!(outcome.demoted.is_empty());
+        assert!(outcome.compaction.is_none());
+    }
+
+    #[test]
+    fn policy_memory_load_with_outcome_reports_demoted() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
+        );
+        mem.inner()
+            .append("c", vec![user("old"), assistant("new")])
+            .unwrap();
+
+        let outcome = mem.load_with_outcome("c").unwrap();
+        assert_eq!(outcome.kept.len(), 1);
+        assert_eq!(outcome.demoted.len(), 1);
+    }
+
+    #[test]
+    fn policy_memory_isolates_conversations() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
+        )
+        .with_compactor(Compactor::template());
+
+        for id in ["a", "b"] {
+            let outcome = mem
+                .append(id, vec![user("1"), assistant("2"), user("3")])
+                .unwrap();
+            let request = outcome.compaction.expect("compaction due");
+            assert_eq!(request.conversation_id, id);
+            mem.compact(&request);
+        }
+
+        assert_eq!(mem.load("a").unwrap().len(), 2);
+        assert_eq!(mem.load("b").unwrap().len(), 2);
+        assert_eq!(mem.tracked_summaries(), 2);
+    }
+
+    #[test]
+    fn policy_memory_into_inner_returns_components() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
+        )
+        .with_compactor(Compactor::template());
+        let (_store, _policy, compactor) = mem.into_inner();
+        assert!(compactor.is_some());
+    }
+
+    // ----- compaction -----
+
+    #[test]
+    fn compaction_not_requested_without_demotion() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(10),
+        )
+        .with_compactor(Compactor::template());
+
+        let outcome = mem
+            .append("c", vec![user("hi"), assistant("hello")])
+            .unwrap();
+        assert!(outcome.compaction.is_none());
+        let loaded = mem.load("c").unwrap();
         assert_eq!(loaded.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn policy_memory_propagates_policy_errors() {
-        struct FailingPolicy;
-        impl MemoryPolicy for FailingPolicy {
-            fn apply(&self, _: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-                Err(MemoryError::Policy("intentional failure".into()))
-            }
-        }
-
-        let mem = PolicyMemory::new(InMemoryConversationMemory::new(), FailingPolicy);
-        mem.append("c", vec![user("1"), assistant("2")])
-            .await
-            .unwrap();
-
-        let result = mem.load("c").await;
-        assert!(matches!(result, Err(MemoryError::Policy(_))));
-    }
-
-    #[tokio::test]
-    async fn policy_memory_append_and_clear_delegate_to_inner() {
-        let mem = PolicyMemory::new(InMemoryConversationMemory::new(), NoopMemoryPolicy);
-        mem.append("c", vec![user("hi"), assistant("ok")])
-            .await
-            .unwrap();
-        assert_eq!(mem.load("c").await.unwrap().len(), 2);
-
-        mem.clear("c").await.unwrap();
-        assert!(mem.load("c").await.unwrap().is_empty());
-    }
-
-    #[test]
-    fn sliding_window_reports_demoted_prefix() {
-        let policy = SlidingWindowMemory::last_messages(2);
-        let (kept, demoted) = policy
-            .apply_with_demoted(vec![
-                user("oldest"),
-                assistant("old"),
-                user("recent"),
-                assistant("latest"),
-            ])
-            .unwrap();
-        assert_eq!(kept.len(), 2);
-        assert_eq!(demoted.len(), 2);
-    }
-
-    #[test]
-    fn token_window_reports_demoted_prefix() {
-        let policy = TokenWindowMemory::new(2, |_: &Message| 1);
-        let (kept, demoted) = policy
-            .apply_with_demoted(vec![user("a"), assistant("b"), user("c"), assistant("d")])
-            .unwrap();
-        assert_eq!(kept.len(), 2);
-        assert_eq!(demoted.len(), 2);
-    }
-
-    #[test]
-    fn noop_policy_demotes_nothing() {
-        let (kept, demoted) = NoopMemoryPolicy
-            .apply_with_demoted(vec![user("a"), assistant("b")])
-            .unwrap();
-        assert_eq!(kept.len(), 2);
-        assert!(demoted.is_empty());
-    }
-
-    #[test]
-    fn arc_memory_policy_preserves_demoted_metadata() {
-        let policy: Arc<dyn MemoryPolicy> = Arc::new(SlidingWindowMemory::last_messages(1));
-        let (kept, demoted) = policy
-            .apply_with_demoted(vec![user("old"), assistant("new")])
-            .unwrap();
-
-        assert_eq!(kept.len(), 1);
-        assert_eq!(demoted.len(), 1);
-    }
-
-    #[test]
-    fn boxed_memory_policy_preserves_demoted_metadata() {
-        let policy: Box<dyn MemoryPolicy> = Box::new(SlidingWindowMemory::last_messages(1));
-        let (kept, demoted) = policy
-            .apply_with_demoted(vec![user("old"), assistant("new")])
-            .unwrap();
-
-        assert_eq!(kept.len(), 1);
-        assert_eq!(demoted.len(), 1);
-    }
-
-    #[test]
-    fn sliding_window_demotes_orphan_tool_result_with_prefix() {
-        // Window keeps the last 2 messages, but the leading message of that
-        // window is an orphan tool result; it must be moved into `demoted`
-        // so the hook can preserve it.
-        let policy = SlidingWindowMemory::last_messages(2);
-        let (kept, demoted) = policy
-            .apply_with_demoted(vec![
-                tool_call_msg(),
-                tool_result_msg(),
-                user("after"),
-                assistant("done"),
-            ])
-            .unwrap();
-        assert_eq!(kept.len(), 2);
-        assert!(matches!(kept.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
-        assert_eq!(demoted.len(), 2);
-    }
-
-    #[derive(Default)]
-    struct CountingHook {
-        seen: Mutex<Vec<(String, Vec<Message>)>>,
-    }
-
-    impl CountingHook {
-        fn calls(&self) -> usize {
-            self.seen.lock().unwrap().len()
-        }
-        fn last_demoted_count(&self) -> usize {
-            self.seen
-                .lock()
-                .unwrap()
-                .last()
-                .map(|(_, m)| m.len())
-                .unwrap_or(0)
-        }
-    }
-
-    impl DemotionHook for CountingHook {
-        fn on_demote<'a>(
-            &'a self,
-            conversation_id: &'a str,
-            messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            Box::pin(async move {
-                self.seen
-                    .lock()
-                    .unwrap()
-                    .push((conversation_id.to_string(), messages));
-                Ok(())
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_invokes_hook_on_truncation() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            hook.clone(),
-        );
-
-        mem.append(
-            "c",
-            vec![user("1"), assistant("2"), user("3"), assistant("4")],
-        )
-        .await
-        .unwrap();
-
-        let kept = mem.load("c").await.unwrap();
-        assert_eq!(kept.len(), 2);
-        assert_eq!(hook.calls(), 1);
-        assert_eq!(hook.last_demoted_count(), 2);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_does_not_replay_demotions() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            hook.clone(),
-        );
-
-        mem.append(
-            "c",
-            vec![user("1"), assistant("2"), user("3"), assistant("4")],
-        )
-        .await
-        .unwrap();
-
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(hook.calls(), 1);
-        assert_eq!(hook.last_demoted_count(), 2);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_only_reports_newly_demoted_messages() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            hook.clone(),
-        );
-
-        mem.append(
-            "c",
-            vec![user("1"), assistant("2"), user("3"), assistant("4")],
-        )
-        .await
-        .unwrap();
-        mem.load("c").await.unwrap();
-
-        mem.append("c", vec![user("5")]).await.unwrap();
-        mem.load("c").await.unwrap();
-
-        assert_eq!(hook.calls(), 2);
-        assert_eq!(hook.last_demoted_count(), 1);
-    }
-
-    #[derive(Default)]
-    struct FailingHook {
-        calls: Mutex<usize>,
-    }
-
-    impl DemotionHook for FailingHook {
-        fn on_demote<'a>(
-            &'a self,
-            _conversation_id: &'a str,
-            _messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            Box::pin(async move {
-                *self.calls.lock().unwrap() += 1;
-                Err(MemoryError::backend(std::io::Error::other("hook failed")))
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_does_not_advance_watermark_on_hook_failure() {
-        let hook = Arc::new(FailingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook.clone(),
-        );
-        mem.append("c", vec![user("1"), assistant("2")])
-            .await
-            .unwrap();
-
-        assert!(mem.load("c").await.is_err());
-        assert!(mem.load("c").await.is_err());
-        assert_eq!(*hook.calls.lock().unwrap(), 2);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_clear_resets_watermark() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook.clone(),
-        );
-
-        mem.append("c", vec![user("1"), assistant("2")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        mem.clear("c").await.unwrap();
-        mem.append("c", vec![user("3"), assistant("4")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-
-        assert_eq!(hook.calls(), 2);
-        assert_eq!(hook.last_demoted_count(), 1);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_skips_hook_when_nothing_evicted() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(10),
-            hook.clone(),
-        );
-
-        mem.append("c", vec![user("1"), assistant("2")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(hook.calls(), 0);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_with_noop_hook_behaves_like_policy_memory() {
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            NoopDemotionHook,
-        );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-        assert_eq!(mem.load("c").await.unwrap().len(), 1);
-    }
-
-    /// Hook that blocks until the test releases it. Used to provoke the
-    /// concurrent-load race against the in-flight gate.
-    struct GatedHook {
-        calls: Arc<std::sync::atomic::AtomicUsize>,
-        rendezvous: Arc<tokio::sync::Notify>,
-        release: Arc<tokio::sync::Notify>,
-    }
-
-    impl DemotionHook for GatedHook {
-        fn on_demote<'a>(
-            &'a self,
-            _conversation_id: &'a str,
-            _messages: Vec<Message>,
-        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-            let calls = self.calls.clone();
-            let rendezvous = self.rendezvous.clone();
-            let release = self.release.clone();
-            Box::pin(async move {
-                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                rendezvous.notify_one();
-                release.notified().await;
-                Ok(())
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_serialises_concurrent_loads() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let calls = Arc::new(AtomicUsize::new(0));
-        let rendezvous = Arc::new(tokio::sync::Notify::new());
-        let release = Arc::new(tokio::sync::Notify::new());
-        let hook = GatedHook {
-            calls: calls.clone(),
-            rendezvous: rendezvous.clone(),
-            release: release.clone(),
-        };
-
-        let mem = Arc::new(DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook,
-        ));
-
-        mem.append("c", vec![user("1"), assistant("2"), user("3")])
-            .await
-            .unwrap();
-
-        let m1 = mem.clone();
-        let first = tokio::spawn(async move { m1.load("c").await });
-
-        // Wait until the first load has entered the hook.
-        rendezvous.notified().await;
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-
-        // Second concurrent load on the same conversation must skip the
-        // hook entirely (in-flight gate) and return the truncated view.
-        let kept = mem.load("c").await.unwrap();
-        assert_eq!(kept.len(), 1);
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "hook must not double-fire");
-
-        // Release the first load and confirm it completes successfully.
-        release.notify_one();
-        let kept_first = first.await.unwrap().unwrap();
-        assert_eq!(kept_first.len(), 1);
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-
-        // Subsequent loads observe the watermark and don't re-fire.
-        mem.load("c").await.unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn demoting_policy_memory_dropped_load_releases_in_flight_gate() {
-        // If a `load(...)` future is dropped while awaiting the hook, the
-        // in-flight gate must not leak: subsequent loads on the same
-        // conversation must be able to retry demotion.
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let calls = Arc::new(AtomicUsize::new(0));
-        let rendezvous = Arc::new(tokio::sync::Notify::new());
-        let release = Arc::new(tokio::sync::Notify::new());
-        let hook = GatedHook {
-            calls: calls.clone(),
-            rendezvous,
-            release: release.clone(),
-        };
-
-        let mem = Arc::new(DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook,
-        ));
-
-        mem.append("c", vec![user("1"), assistant("2"), user("3")])
-            .await
-            .unwrap();
-
-        // Kick off a load that will block inside the hook, then abort it
-        // while awaiting — simulating a caller-side timeout or
-        // `tokio::select!` cancellation.
-        let mem_load = mem.clone();
-        let handle = tokio::spawn(async move { mem_load.load("c").await });
-        while calls.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
-        }
-        handle.abort();
-        let _ = handle.await;
-
-        // The aborted future was dropped without clearing in_flight via
-        // the success/error branches; the RAII guard's `Drop` should have
-        // released it. A new load must therefore be able to drive a fresh
-        // demotion rather than short-circuiting forever.
-        let mem_load = mem.clone();
-        let retry = tokio::spawn(async move { mem_load.load("c").await });
-        for _ in 0..1_000 {
-            if calls.load(Ordering::SeqCst) >= 2 {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-        assert_eq!(
-            calls.load(Ordering::SeqCst),
-            2,
-            "retry must re-enter the hook after cancellation"
-        );
-
-        release.notify_one();
-        let kept = retry.await.unwrap().unwrap();
-        assert_eq!(kept.len(), 1);
-
-        // The successful retry advances the watermark, so future loads
-        // should not fire the hook again.
-        mem.load("c").await.unwrap();
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn demoting_stale_cancelled_load_does_not_clear_new_reservation() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let calls = Arc::new(AtomicUsize::new(0));
-        let rendezvous = Arc::new(tokio::sync::Notify::new());
-        let release = Arc::new(tokio::sync::Notify::new());
-        let hook = GatedHook {
-            calls: calls.clone(),
-            rendezvous: rendezvous.clone(),
-            release: release.clone(),
-        };
-
-        let mem = Arc::new(DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook,
-        ));
-
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
-
-        let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
-        rendezvous.notified().await;
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-
-        mem.clear("c").await.unwrap();
-        mem.append(
-            "c",
-            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
-        )
-        .await
-        .unwrap();
-
-        let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
-        rendezvous.notified().await;
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-
-        stale.abort();
-        let _ = stale.await;
-
-        let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
-        let concurrent_kept = tokio::select! {
-            result = &mut concurrent => result.unwrap().unwrap(),
-            _ = rendezvous.notified() => {
-                panic!("stale guard must not clear the fresh in-flight reservation")
-            }
-        };
-        assert_eq!(
-            calls.load(Ordering::SeqCst),
-            2,
-            "stale guard must not clear the fresh in-flight reservation"
-        );
-
-        release.notify_one();
-        assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
-        assert_eq!(concurrent_kept.len(), 1);
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn demoting_stale_successful_load_does_not_clear_new_reservation() {
-        #[derive(Default)]
-        struct IndividuallyGatedHook {
-            releases: Mutex<Vec<Arc<tokio::sync::Notify>>>,
-        }
-
-        impl IndividuallyGatedHook {
-            fn call_count(&self) -> usize {
-                self.releases.lock().unwrap().len()
-            }
-
-            async fn wait_for_call_count(&self, expected: usize) {
-                while self.call_count() < expected {
-                    tokio::task::yield_now().await;
-                }
-            }
-
-            fn release_call(&self, index: usize) {
-                let release = self.releases.lock().unwrap()[index].clone();
-                release.notify_one();
-            }
-        }
-
-        impl DemotionHook for IndividuallyGatedHook {
-            fn on_demote<'a>(
-                &'a self,
-                _conversation_id: &'a str,
-                _messages: Vec<Message>,
-            ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-                let release = Arc::new(tokio::sync::Notify::new());
-                self.releases.lock().unwrap().push(release.clone());
-                Box::pin(async move {
-                    release.notified().await;
-                    Ok(())
-                })
-            }
-        }
-
-        let hook = Arc::new(IndividuallyGatedHook::default());
-        let mem = Arc::new(DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook.clone(),
-        ));
-
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
-
-        let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
-        hook.wait_for_call_count(1).await;
-
-        mem.clear("c").await.unwrap();
-        mem.append(
-            "c",
-            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
-        )
-        .await
-        .unwrap();
-
-        let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
-        hook.wait_for_call_count(2).await;
-
-        // Let the stale load finish successfully after the conversation id has
-        // been reused. Its post-await update must not clear the fresh in-flight
-        // reservation.
-        hook.release_call(0);
-        assert_eq!(stale.await.unwrap().unwrap().len(), 1);
-        assert_eq!(hook.call_count(), 2);
-
-        let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
-        let hook_wait = hook.clone();
-        let concurrent_kept = tokio::select! {
-            result = &mut concurrent => result.unwrap().unwrap(),
-            _ = hook_wait.wait_for_call_count(3) => {
-                panic!("stale successful load must not clear the fresh in-flight reservation")
-            }
-        };
-        assert_eq!(
-            hook.call_count(),
-            2,
-            "stale successful load must not clear the fresh in-flight reservation"
-        );
-
-        hook.release_call(1);
-        assert_eq!(fresh.await.unwrap().unwrap().len(), 1);
-        assert_eq!(concurrent_kept.len(), 1);
-
-        mem.load("c").await.unwrap();
-        assert_eq!(hook.call_count(), 2);
-    }
-
-    #[tokio::test]
-    async fn forget_drops_in_process_watermark() {
-        let hook = Arc::new(CountingHook::default());
-        let mem = DemotingPolicyMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            hook.clone(),
-        );
-
-        mem.append("c", vec![user("1"), assistant("2")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations(), 1);
-        assert_eq!(hook.calls(), 1);
-
-        // After forgetting, the next load on the same (still-populated)
-        // backend re-delivers the demotion. This is the documented
-        // contract: forget()/restart re-fire the hook, hooks must be
-        // idempotent.
-        mem.forget("c");
-        assert_eq!(mem.tracked_conversations(), 0);
-        mem.load("c").await.unwrap();
-        assert_eq!(hook.calls(), 2);
-    }
-
-    // ----------------------------------------------------------------
-    // CompactingMemory tests
-    // ----------------------------------------------------------------
-
-    #[tokio::test]
-    async fn compacting_no_demotion_returns_kept_only() {
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(10),
-            TemplateCompactor::new(),
-        );
-
-        mem.append("c", vec![user("hi"), assistant("hello")])
-            .await
-            .unwrap();
-        let loaded = mem.load("c").await.unwrap();
-        assert_eq!(loaded.len(), 2);
-        // No tracking entry needed when nothing was demoted on the first load.
-        // (We may have inserted a default entry; what matters is that no
-        // summary message was spliced in.)
         assert!(matches!(&loaded[0], Message::User { .. }));
+        assert_eq!(mem.tracked_summaries(), 0);
     }
 
-    #[tokio::test]
-    async fn compacting_splices_summary_when_demoted() {
-        let mem = CompactingMemory::new(
+    #[test]
+    fn compaction_splices_summary_in_front_of_window() {
+        let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            TemplateCompactor::new(),
-        );
-
-        mem.append(
-            "c",
-            vec![
-                user("first"),
-                assistant("second"),
-                user("third"),
-                assistant("fourth"),
-            ],
+            MemoryPolicy::sliding_window(2),
         )
-        .await
-        .unwrap();
+        .with_compactor(Compactor::template());
 
-        let loaded = mem.load("c").await.unwrap();
+        let outcome = mem
+            .append(
+                "c",
+                vec![
+                    user("first"),
+                    assistant("second"),
+                    user("third"),
+                    assistant("fourth"),
+                ],
+            )
+            .unwrap();
+        mem.compact(&outcome.compaction.expect("compaction due"));
+
+        let loaded = mem.load("c").unwrap();
         // Expected shape: [summary, third, fourth]
         assert_eq!(loaded.len(), 3);
         let Message::System { content } = &loaded[0] else {
@@ -2456,7 +1422,6 @@ mod tests {
         assert!(content.contains("[Conversation summary so far]"));
         assert!(content.contains("user: first"));
         assert!(content.contains("assistant: second"));
-        // The kept window is intact.
         let Message::User { content } = &loaded[1] else {
             panic!("expected kept user message");
         };
@@ -2466,467 +1431,267 @@ mod tests {
         assert_eq!(t.text, "third");
     }
 
-    #[tokio::test]
-    async fn compacting_rolls_summary_forward() {
-        let mem = CompactingMemory::new(
+    #[test]
+    fn compaction_rolls_summary_forward() {
+        let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            TemplateCompactor::new(),
-        );
-
-        mem.append(
-            "c",
-            vec![user("a"), assistant("b"), user("c"), assistant("d")],
+            MemoryPolicy::sliding_window(2),
         )
-        .await
-        .unwrap();
+        .with_compactor(Compactor::template());
 
-        let first = mem.load("c").await.unwrap();
-        let Message::System { content } = &first[0] else {
-            panic!("summary missing");
-        };
-        let first_summary = content.clone();
-        assert!(first_summary.contains("user: a"));
-        assert!(first_summary.contains("assistant: b"));
-
-        // Append more turns; the next load should fold the previous summary
-        // into a new one that also covers the newly-evicted prefix.
-        mem.append("c", vec![user("e"), assistant("f")])
-            .await
+        let outcome = mem
+            .append(
+                "c",
+                vec![user("a"), assistant("b"), user("c"), assistant("d")],
+            )
             .unwrap();
-        let second = mem.load("c").await.unwrap();
-        let Message::System { content } = &second[0] else {
-            panic!("summary missing");
-        };
-        // The new summary contains the old summary text (carry_over) plus
-        // the freshly-evicted lines.
-        assert!(content.contains(&first_summary));
-        assert!(content.contains("user: c"));
-        assert!(content.contains("assistant: d"));
+        mem.compact(&outcome.compaction.expect("compaction due"));
+        let first_summary = mem.summary("c").unwrap().expect("summary stored");
+        assert!(first_summary.as_str().contains("user: a"));
+        assert!(first_summary.as_str().contains("assistant: b"));
+
+        // Append more turns; the next compaction folds the previous summary
+        // into a new one that also covers the newly-evicted prefix.
+        let outcome = mem.append("c", vec![user("e"), assistant("f")]).unwrap();
+        let request = outcome.compaction.expect("compaction due");
+        // Only the newly-evicted prefix is handed to the compactor.
+        assert_eq!(request.evicted.len(), 2);
+        let second = mem.compact(&request).expect("compactor configured");
+        assert!(second.as_str().contains(first_summary.as_str()));
+        assert!(second.as_str().contains("user: c"));
+        assert!(second.as_str().contains("assistant: d"));
     }
 
-    #[tokio::test]
-    async fn compacting_idempotent_within_process() {
-        // Loading twice with no new evictions reuses the stored summary
-        // and does not re-run the compactor (we observe this via the
-        // produced text: a re-run with a non-None carry_over would double
-        // the header line).
-        let mem = CompactingMemory::new(
+    #[test]
+    fn compaction_is_not_requested_without_a_compactor() {
+        let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            TemplateCompactor::new(),
+            MemoryPolicy::sliding_window(1),
         );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
+        let outcome = mem
+            .append("c", vec![user("a"), assistant("b"), user("c")])
             .unwrap();
+        assert_eq!(outcome.demoted.len(), 2);
+        assert!(outcome.compaction.is_none());
+        assert!(
+            mem.compact(&CompactionRequest {
+                conversation_id: "c".into(),
+                evicted: outcome.demoted,
+            })
+            .is_none(),
+            "compact is a no-op without a compactor"
+        );
+    }
 
-        let first = mem.load("c").await.unwrap();
-        let second = mem.load("c").await.unwrap();
+    #[test]
+    fn loading_twice_returns_the_same_summary() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
+        )
+        .with_compactor(Compactor::template());
+        let outcome = mem
+            .append("c", vec![user("a"), assistant("b"), user("c")])
+            .unwrap();
+        mem.compact(&outcome.compaction.expect("compaction due"));
+
+        let first = mem.load("c").unwrap();
+        let second = mem.load("c").unwrap();
         assert_eq!(first.len(), second.len());
-        let Message::System { content: c1 } = &first[0] else {
-            panic!()
-        };
-        let Message::System { content: c2 } = &second[0] else {
-            panic!()
+        let (Message::System { content: c1 }, Message::System { content: c2 }) =
+            (&first[0], &second[0])
+        else {
+            panic!("expected summaries");
         };
         assert_eq!(c1, c2);
     }
 
-    #[tokio::test]
-    async fn compacting_clear_drops_summary() {
-        let mem = CompactingMemory::new(
+    #[test]
+    fn clear_drops_history_and_summary() {
+        let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            TemplateCompactor::new(),
+            MemoryPolicy::sliding_window(1),
+        )
+        .with_compactor(Compactor::template());
+        let outcome = mem
+            .append("c", vec![user("a"), assistant("b"), user("c")])
+            .unwrap();
+        mem.compact(&outcome.compaction.expect("compaction due"));
+        assert_eq!(mem.tracked_summaries(), 1);
+
+        mem.clear("c").unwrap();
+        assert_eq!(mem.tracked_summaries(), 0);
+        assert!(mem.load("c").unwrap().is_empty());
+
+        // A fresh conversation under the same id starts from no carry-over.
+        let outcome = mem
+            .append("c", vec![user("x"), assistant("y"), user("z")])
+            .unwrap();
+        let summary = mem
+            .compact(&outcome.compaction.expect("compaction due"))
+            .expect("compactor configured");
+        assert!(!summary.as_str().contains("user: a"), "no stale carry-over");
+    }
+
+    #[test]
+    fn forget_drops_summary_but_keeps_history() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
+        )
+        .with_compactor(Compactor::template());
+        let outcome = mem
+            .append("c", vec![user("a"), assistant("b"), user("c")])
+            .unwrap();
+        mem.compact(&outcome.compaction.expect("compaction due"));
+        assert_eq!(mem.tracked_summaries(), 1);
+
+        mem.forget("c");
+        assert_eq!(mem.tracked_summaries(), 0);
+        assert_eq!(mem.load("c").unwrap().len(), 1, "history is untouched");
+    }
+
+    #[test]
+    fn set_summary_overrides_the_stored_summary() {
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(1),
         );
         mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
             .unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations(), 1);
-
-        mem.clear("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations(), 0);
-        assert!(mem.load("c").await.unwrap().is_empty());
-    }
-
-    // A compactor that fails the first call and succeeds afterwards, so we
-    // can verify failure is propagated and the watermark is not advanced.
-    #[derive(Default)]
-    struct FlakyCompactor {
-        calls: std::sync::atomic::AtomicUsize,
-    }
-
-    impl Compactor for FlakyCompactor {
-        type Artifact = TextSummary;
-
-        fn compact<'a>(
-            &'a self,
-            _conversation_id: &'a str,
-            evicted: &'a [Message],
-            _carry_over: Option<&'a Self::Artifact>,
-        ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-            Box::pin(async move {
-                let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if n == 0 {
-                    Err(MemoryError::Policy("flaky".into()))
-                } else {
-                    Ok(TextSummary(format!("compacted {} messages", evicted.len())))
-                }
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn compacting_failure_does_not_advance_watermark() {
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            FlakyCompactor::default(),
-        );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
+        mem.set_summary("c", TextSummary::new("host-authored summary"))
             .unwrap();
 
-        let err = mem.load("c").await.unwrap_err();
-        assert!(matches!(err, MemoryError::Policy(_)));
-
-        // Retry should succeed and produce a summary.
-        let loaded = mem.load("c").await.unwrap();
+        let loaded = mem.load("c").unwrap();
         assert_eq!(loaded.len(), 2);
         let Message::System { content } = &loaded[0] else {
             panic!("expected summary")
         };
-        assert!(content.contains("compacted"));
+        assert_eq!(content, "host-authored summary");
     }
 
-    // A compactor that records every invocation, including the lengths of
-    // its `evicted` slice and whether `carry_over` was supplied.
-    #[derive(Default)]
-    struct CountingCompactor {
-        log: Mutex<Vec<(usize, bool)>>,
-    }
-
-    impl CountingCompactor {
-        fn calls(&self) -> Vec<(usize, bool)> {
-            self.log.lock().unwrap().clone()
-        }
-    }
-
-    impl Compactor for CountingCompactor {
-        type Artifact = TextSummary;
-
-        fn compact<'a>(
-            &'a self,
-            _conversation_id: &'a str,
-            evicted: &'a [Message],
-            carry_over: Option<&'a Self::Artifact>,
-        ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-            Box::pin(async move {
-                self.log
-                    .lock()
-                    .unwrap()
-                    .push((evicted.len(), carry_over.is_some()));
-                let prev = carry_over.map(|s| s.as_str()).unwrap_or("");
-                Ok(TextSummary(format!("{prev}|{}", evicted.len())))
-            })
-        }
-    }
-
-    #[tokio::test]
-    async fn compacting_no_demotion_does_not_invoke_compactor() {
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = CompactingMemory::new(
+    #[test]
+    fn compaction_composes_with_token_window() {
+        let mem = PolicyMemory::new(
             InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(10),
-            compactor.clone(),
-        );
-
-        mem.append("c", vec![user("a"), assistant("b")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        assert!(compactor.calls().is_empty());
-        // Fast path means we never installed a tracking entry either.
-        assert_eq!(mem.tracked_conversations(), 0);
-    }
-
-    #[tokio::test]
-    async fn compacting_invokes_compactor_only_on_new_demotions() {
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            compactor.clone(),
-        );
-
-        // First eviction: 2 messages demoted.
-        mem.append(
-            "c",
-            vec![user("a"), assistant("b"), user("c"), assistant("d")],
+            MemoryPolicy::token_window(
+                30,
+                TokenCounter::Heuristic(HeuristicTokenCounter::openai()),
+            ),
         )
-        .await
-        .unwrap();
-        mem.load("c").await.unwrap();
-        // Re-load: nothing new evicted; compactor must NOT run again.
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        let calls = compactor.calls();
-        assert_eq!(
-            calls.len(),
-            1,
-            "compactor invoked more than once: {calls:?}"
-        );
-        assert_eq!(calls[0], (2, false));
-
-        // Append two more turns → another 2 demoted; compactor runs once
-        // more, and this time `carry_over` must be present.
-        mem.append("c", vec![user("e"), assistant("f")])
-            .await
+        .with_compactor(Compactor::template());
+        let outcome = mem
+            .append(
+                "c",
+                vec![
+                    user("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                    assistant("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+                    user("cccccccccccccccccccc"),
+                    assistant("d"),
+                ],
+            )
             .unwrap();
-        mem.load("c").await.unwrap();
-        mem.load("c").await.unwrap();
-        let calls = compactor.calls();
-        assert_eq!(calls.len(), 2, "expected exactly one new call: {calls:?}");
-        // Second call only compacts the *newly* evicted prefix (2 msgs)
-        // with the previous summary as carry-over.
-        assert_eq!(calls[1], (2, true));
-    }
+        mem.compact(&outcome.compaction.expect("prefix should be evicted"));
 
-    #[tokio::test]
-    async fn compacting_serialises_concurrent_loads() {
-        // Many concurrent loads on the same conversation must produce at
-        // most ONE compactor invocation per "epoch" of new evictions.
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = Arc::new(CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            compactor.clone(),
-        ));
-        mem.append(
-            "c",
-            vec![user("a"), assistant("b"), user("c"), assistant("d")],
-        )
-        .await
-        .unwrap();
-
-        let mut handles = Vec::new();
-        for _ in 0..32 {
-            let mem = mem.clone();
-            handles.push(tokio::spawn(async move {
-                mem.load("c").await.unwrap();
-            }));
-        }
-        for h in handles {
-            h.await.unwrap();
-        }
-
-        // Exactly one invocation: the first to acquire the lock runs the
-        // compactor; the others see in_flight or the advanced watermark.
-        let calls = compactor.calls();
-        assert_eq!(calls.len(), 1, "expected exactly 1 call: {calls:?}");
-    }
-
-    #[tokio::test]
-    async fn compacting_clear_drops_summary_carry_over() {
-        // After clear, the next load on a freshly-populated backend must
-        // start compaction from scratch (carry_over=None), not roll the
-        // old summary forward.
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(compactor.calls()[0], (2, false));
-
-        mem.clear("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations(), 0);
-
-        mem.append("c", vec![user("x"), assistant("y"), user("z")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        let calls = compactor.calls();
-        assert_eq!(calls.len(), 2);
-        // Crucial: no carry_over after clear.
-        assert_eq!(calls[1], (2, false));
-    }
-
-    #[tokio::test]
-    async fn compacting_forget_drops_summary() {
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-        mem.load("c").await.unwrap();
-        assert_eq!(mem.tracked_conversations(), 1);
-        mem.forget("c");
-        assert_eq!(mem.tracked_conversations(), 0);
-
-        // Next load on the still-populated backend re-compacts from
-        // scratch — same documented contract as DemotionHook.
-        mem.load("c").await.unwrap();
-        let calls = compactor.calls();
-        assert_eq!(calls.len(), 2);
-        assert_eq!(calls[1], (2, false));
-    }
-
-    #[tokio::test]
-    async fn compacting_arc_compactor_works() {
-        // Arc<C> forwarding impl exists on Compactor, so CompactingMemory
-        // must accept it.
-        let compactor: Arc<dyn Compactor<Artifact = TextSummary>> =
-            Arc::new(TemplateCompactor::new());
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor,
-        );
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-        let loaded = mem.load("c").await.unwrap();
-        assert_eq!(loaded.len(), 2);
-        assert!(matches!(&loaded[0], Message::System { .. }));
-    }
-
-    #[tokio::test]
-    async fn compacting_into_inner_returns_components() {
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            TemplateCompactor::new(),
-        );
-        let (_inner, _policy, _compactor) = mem.into_inner();
-    }
-
-    #[tokio::test]
-    async fn compacting_isolates_conversations() {
-        let compactor = Arc::new(CountingCompactor::default());
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        );
-        mem.append("a", vec![user("a1"), assistant("a2"), user("a3")])
-            .await
-            .unwrap();
-        mem.append("b", vec![user("b1"), assistant("b2"), user("b3")])
-            .await
-            .unwrap();
-
-        let a = mem.load("a").await.unwrap();
-        let b = mem.load("b").await.unwrap();
-        // Each conversation gets its own summary.
-        assert_eq!(a.len(), 2);
-        assert_eq!(b.len(), 2);
-        assert_eq!(compactor.calls().len(), 2);
-        assert_eq!(mem.tracked_conversations(), 2);
-    }
-
-    #[tokio::test]
-    async fn compacting_composes_with_token_window() {
-        // Verify CompactingMemory is policy-agnostic: works over a
-        // TokenWindowMemory just as well as a SlidingWindowMemory.
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            TokenWindowMemory::new(30, HeuristicTokenCounter::openai()),
-            TemplateCompactor::new(),
-        );
-        mem.append(
-            "c",
-            vec![
-                user("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-                assistant("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-                user("cccccccccccccccccccc"),
-                assistant("d"),
-            ],
-        )
-        .await
-        .unwrap();
-        let loaded = mem.load("c").await.unwrap();
-        // Some prefix should have been evicted; expect a summary in front.
+        let loaded = mem.load("c").unwrap();
         assert!(loaded.len() >= 2);
         assert!(matches!(&loaded[0], Message::System { .. }));
     }
 
-    #[tokio::test]
-    async fn template_compactor_renders_system_messages() {
-        let compactor = TemplateCompactor::new();
-        let evicted = vec![
-            Message::System {
-                content: "you are helpful".into(),
-            },
-            user("hi"),
-            assistant("hello"),
-        ];
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+    #[test]
+    fn summary_stays_bounded_across_rolls() {
+        let cap = 512;
+        let mem = PolicyMemory::new(
+            InMemoryConversationMemory::new(),
+            MemoryPolicy::sliding_window(2),
+        )
+        .with_compactor(Compactor::Template(
+            TemplateCompactor::new().with_max_bytes(cap),
+        ));
+        mem.append("c", vec![user("seed-a"), assistant("seed-b")])
+            .unwrap();
+        for i in 0..30 {
+            let outcome = mem
+                .append(
+                    "c",
+                    vec![
+                        user(&format!("user line {i} ----- padding padding padding")),
+                        assistant(&format!("assistant line {i} ----- padding padding")),
+                    ],
+                )
+                .unwrap();
+            if let Some(request) = &outcome.compaction {
+                mem.compact(request);
+            }
+        }
+        let summary = mem.summary("c").unwrap().expect("summary stored");
+        // Allow some slack for header + marker overhead.
+        let slack = "[Conversation summary so far]\n[\u{2026}truncated\u{2026}]\n".len();
+        assert!(
+            summary.as_str().len() <= cap + slack,
+            "summary grew to {} bytes (cap {}, slack {})",
+            summary.as_str().len(),
+            cap,
+            slack,
+        );
+    }
+
+    // ----- TemplateCompactor -----
+
+    #[test]
+    fn template_compactor_renders_system_messages() {
+        let summary = TemplateCompactor::new().compact(
+            &[
+                Message::System {
+                    content: "you are helpful".into(),
+                },
+                user("hi"),
+                assistant("hello"),
+            ],
+            None,
+        );
         let s = summary.as_str();
         assert!(s.contains("system: you are helpful"), "got: {s}");
         assert!(s.contains("user: hi"));
         assert!(s.contains("assistant: hello"));
     }
 
-    #[tokio::test]
-    async fn template_compactor_renders_tool_call_marker() {
-        let compactor = TemplateCompactor::new();
-        let evicted = vec![tool_call_msg(), tool_result_msg()];
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+    #[test]
+    fn template_compactor_renders_tool_call_marker() {
+        let summary = TemplateCompactor::new().compact(&[tool_call_msg(), tool_result_msg()], None);
         let s = summary.as_str();
         assert!(s.contains("[tool call: t]"), "got: {s}");
         assert!(s.contains("[tool result]"), "got: {s}");
     }
 
-    #[tokio::test]
-    async fn template_compactor_carry_over_threaded() {
+    #[test]
+    fn template_compactor_carry_over_threaded() {
         let compactor = TemplateCompactor::new();
-        let first = compactor
-            .compact("c", &[user("hello")], None)
-            .await
-            .unwrap();
+        let first = compactor.compact(&[user("hello")], None);
         assert!(!first.as_str().is_empty());
 
-        let second = compactor
-            .compact("c", &[assistant("world")], Some(&first))
-            .await
-            .unwrap();
-        // Carry-over text appears in the new summary.
+        let second = compactor.compact(&[assistant("world")], Some(&first));
         assert!(second.as_str().contains(first.as_str()));
         assert!(second.as_str().contains("assistant: world"));
     }
 
-    #[tokio::test]
-    async fn template_compactor_artifact_into_message() {
-        let s = TextSummary("rolled-up text".into());
-        let msg: Message = s.into();
+    #[test]
+    fn template_compactor_artifact_into_message() {
+        let msg: Message = TextSummary::new("rolled-up text").into();
         let Message::System { content } = msg else {
             panic!("expected system message");
         };
         assert_eq!(content, "rolled-up text");
     }
 
-    #[tokio::test]
-    async fn template_compactor_caps_summary_at_max_bytes() {
+    #[test]
+    fn template_compactor_caps_summary_at_max_bytes() {
         let cap = 256;
         let compactor = TemplateCompactor::new().with_max_bytes(cap);
-        // Build an evicted history large enough to exceed `cap` on its own.
-        let mut evicted = Vec::new();
-        for i in 0..50 {
-            evicted.push(user(&format!("message number {i} with some filler")));
-        }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let evicted: Vec<Message> = (0..50)
+            .map(|i| user(&format!("message number {i} with some filler")))
+            .collect();
+        let summary = compactor.compact(&evicted, None);
         assert!(
             summary.as_str().len()
                 <= cap + "[Conversation summary so far]\n[\u{2026}truncated\u{2026}]\n".len(),
@@ -2934,326 +1699,49 @@ mod tests {
             summary.as_str().len(),
             cap,
         );
-        // Header is preserved.
         assert!(
             summary
                 .as_str()
                 .starts_with("[Conversation summary so far]\n")
         );
-        // Truncation marker is present.
         assert!(summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
-        // Most recent line survives.
         assert!(summary.as_str().contains("message number 49"));
     }
 
-    #[tokio::test]
-    async fn template_compactor_unbounded_by_default() {
-        let compactor = TemplateCompactor::new();
-        let mut evicted = Vec::new();
-        for i in 0..200 {
-            evicted.push(user(&format!("msg {i}")));
-        }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
-        // Without a cap, no truncation marker should appear.
+    #[test]
+    fn template_compactor_unbounded_by_default() {
+        let evicted: Vec<Message> = (0..200).map(|i| user(&format!("msg {i}"))).collect();
+        let summary = TemplateCompactor::new().compact(&evicted, None);
         assert!(!summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
-        // Both ends are present.
         assert!(summary.as_str().contains("msg 0"));
         assert!(summary.as_str().contains("msg 199"));
     }
 
-    #[tokio::test]
-    async fn template_compactor_with_max_bytes_zero_is_unbounded() {
-        let compactor = TemplateCompactor::new().with_max_bytes(0);
-        let mut evicted = Vec::new();
-        for i in 0..200 {
-            evicted.push(user(&format!("msg {i}")));
-        }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+    #[test]
+    fn template_compactor_with_max_bytes_zero_is_unbounded() {
+        let evicted: Vec<Message> = (0..200).map(|i| user(&format!("msg {i}"))).collect();
+        let summary = TemplateCompactor::new()
+            .with_max_bytes(0)
+            .compact(&evicted, None);
         assert!(!summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
     }
 
-    #[tokio::test]
-    async fn compacting_summary_stays_bounded_across_rolls() {
-        // With a capped TemplateCompactor, repeated rolling must not let
-        // the summary grow without bound.
-        let cap = 512;
-        let mem = CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(2),
-            TemplateCompactor::new().with_max_bytes(cap),
-        );
-        mem.append("c", vec![user("seed-a"), assistant("seed-b")])
-            .await
-            .unwrap();
-        for i in 0..30 {
-            mem.append(
-                "c",
-                vec![
-                    user(&format!("user line {i} ----- padding padding padding")),
-                    assistant(&format!("assistant line {i} ----- padding padding")),
-                ],
-            )
-            .await
-            .unwrap();
-            mem.load("c").await.unwrap();
-        }
-        let loaded = mem.load("c").await.unwrap();
-        let Message::System { content } = &loaded[0] else {
-            panic!("expected summary");
-        };
-        // Allow some slack for header + marker overhead.
-        let slack = "[Conversation summary so far]\n[\u{2026}truncated\u{2026}]\n".len();
-        assert!(
-            content.len() <= cap + slack,
-            "summary grew to {} bytes (cap {}, slack {})",
-            content.len(),
-            cap,
-            slack,
-        );
-    }
-
-    #[tokio::test]
-    async fn compacting_concurrent_with_clear_does_not_resurrect_state() {
-        // A clear that lands while compaction is in flight must not be
-        // overwritten by the post-await state update.
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        struct GatedCompactor {
-            release: tokio::sync::Notify,
-            entered: AtomicBool,
-        }
-
-        impl Compactor for GatedCompactor {
-            type Artifact = TextSummary;
-
-            fn compact<'a>(
-                &'a self,
-                _conversation_id: &'a str,
-                _evicted: &'a [Message],
-                _carry_over: Option<&'a Self::Artifact>,
-            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-                Box::pin(async move {
-                    self.entered.store(true, Ordering::SeqCst);
-                    self.release.notified().await;
-                    Ok(TextSummary("late summary".into()))
-                })
-            }
-        }
-
-        let compactor = Arc::new(GatedCompactor {
-            release: tokio::sync::Notify::new(),
-            entered: AtomicBool::new(false),
-        });
-        let mem = Arc::new(CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        ));
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-
-        // Kick off a load that will block inside the compactor.
-        let mem_load = mem.clone();
-        let load_handle = tokio::spawn(async move { mem_load.load("c").await });
-
-        // Wait for the compactor to have entered.
-        while !compactor.entered.load(Ordering::SeqCst) {
-            tokio::task::yield_now().await;
-        }
-
-        // Clear while the compaction is in flight.
-        mem.clear("c").await.unwrap();
-
-        // Release the compactor; it should complete and *not* resurrect
-        // the cleared state.
-        compactor.release.notify_one();
-        let _ = load_handle.await.unwrap();
-
-        assert_eq!(mem.tracked_conversations(), 0);
-        // A subsequent load on the empty backend returns nothing.
-        assert!(mem.load("c").await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn compacting_dropped_load_releases_in_flight_gate() {
-        // If a `load(...)` future is dropped while awaiting the
-        // compactor, the in-flight gate must not leak: subsequent loads
-        // on the same conversation must be able to retry compaction.
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        struct GatedCompactor {
-            release: tokio::sync::Notify,
-            entered: AtomicUsize,
-        }
-
-        impl Compactor for GatedCompactor {
-            type Artifact = TextSummary;
-
-            fn compact<'a>(
-                &'a self,
-                _conversation_id: &'a str,
-                _evicted: &'a [Message],
-                _carry_over: Option<&'a Self::Artifact>,
-            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-                Box::pin(async move {
-                    self.entered.fetch_add(1, Ordering::SeqCst);
-                    self.release.notified().await;
-                    Ok(TextSummary("ran".into()))
-                })
-            }
-        }
-
-        let compactor = Arc::new(GatedCompactor {
-            release: tokio::sync::Notify::new(),
-            entered: AtomicUsize::new(0),
-        });
-        let mem = Arc::new(CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        ));
-        mem.append("c", vec![user("a"), assistant("b"), user("c")])
-            .await
-            .unwrap();
-
-        // Kick off a load that will block inside the compactor, then
-        // abort it while awaiting — simulating a caller-side timeout
-        // or `tokio::select!` cancellation.
-        let mem_load = mem.clone();
-        let handle = tokio::spawn(async move { mem_load.load("c").await });
-        while compactor.entered.load(Ordering::SeqCst) == 0 {
-            tokio::task::yield_now().await;
-        }
-        handle.abort();
-        let _ = handle.await;
-
-        // The aborted future was dropped without clearing in_flight via
-        // the success/error branches; the RAII guard's `Drop` should
-        // have released it. A new load must therefore be able to drive
-        // a fresh compaction rather than short-circuiting forever.
-        let mem_load = mem.clone();
-        let retry = tokio::spawn(async move { mem_load.load("c").await });
-        // Wait for the compactor to be entered a second time. If the
-        // gate had leaked, this would never happen — the load would
-        // short-circuit on `in_flight = true` and return immediately.
-        while compactor.entered.load(Ordering::SeqCst) < 2 {
-            tokio::task::yield_now().await;
-        }
-        compactor.release.notify_one();
-        let loaded = retry.await.unwrap().unwrap();
-        assert_eq!(loaded.len(), 2);
-        let Message::System { content } = &loaded[0] else {
-            panic!("expected summary")
-        };
-        assert_eq!(content, "ran");
-    }
-
-    #[tokio::test]
-    async fn compacting_stale_cancelled_load_does_not_clear_new_reservation() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        struct GatedCompactor {
-            release: tokio::sync::Notify,
-            rendezvous: tokio::sync::Notify,
-            entered: AtomicUsize,
-        }
-
-        impl Compactor for GatedCompactor {
-            type Artifact = TextSummary;
-
-            fn compact<'a>(
-                &'a self,
-                _conversation_id: &'a str,
-                _evicted: &'a [Message],
-                _carry_over: Option<&'a Self::Artifact>,
-            ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-                Box::pin(async move {
-                    self.entered.fetch_add(1, Ordering::SeqCst);
-                    self.rendezvous.notify_one();
-                    self.release.notified().await;
-                    Ok(TextSummary("ran".into()))
-                })
-            }
-        }
-
-        let compactor = Arc::new(GatedCompactor {
-            release: tokio::sync::Notify::new(),
-            rendezvous: tokio::sync::Notify::new(),
-            entered: AtomicUsize::new(0),
-        });
-        let mem = Arc::new(CompactingMemory::new(
-            InMemoryConversationMemory::new(),
-            SlidingWindowMemory::last_messages(1),
-            compactor.clone(),
-        ));
-
-        mem.append("c", vec![user("old 1"), assistant("old 2"), user("old 3")])
-            .await
-            .unwrap();
-
-        let mem_load = mem.clone();
-        let stale = tokio::spawn(async move { mem_load.load("c").await });
-        compactor.rendezvous.notified().await;
-        assert_eq!(compactor.entered.load(Ordering::SeqCst), 1);
-
-        mem.clear("c").await.unwrap();
-        mem.append(
-            "c",
-            vec![user("fresh 1"), assistant("fresh 2"), user("fresh 3")],
-        )
-        .await
-        .unwrap();
-
-        let mem_load = mem.clone();
-        let fresh = tokio::spawn(async move { mem_load.load("c").await });
-        compactor.rendezvous.notified().await;
-        assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
-
-        stale.abort();
-        let _ = stale.await;
-
-        let mem_load = mem.clone();
-        let mut concurrent = tokio::spawn(async move { mem_load.load("c").await });
-        let concurrent_kept = tokio::select! {
-            result = &mut concurrent => result.unwrap().unwrap(),
-            _ = compactor.rendezvous.notified() => {
-                panic!("stale guard must not clear the fresh in-flight reservation")
-            }
-        };
-        assert_eq!(
-            compactor.entered.load(Ordering::SeqCst),
-            2,
-            "stale guard must not clear the fresh in-flight reservation"
-        );
-
-        compactor.release.notify_one();
-        assert_eq!(fresh.await.unwrap().unwrap().len(), 2);
-        assert_eq!(concurrent_kept.len(), 1);
-        assert_eq!(compactor.entered.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn template_compactor_caps_summary_with_multiline_header() {
+    #[test]
+    fn template_compactor_caps_summary_with_multiline_header() {
         // A header containing embedded newlines must not break the
         // truncation boundary calculation. The first newline in the
         // assembled buffer marks the header/body split, regardless of
         // how the caller chose to format the header.
         let cap = 256;
         let compactor = TemplateCompactor::with_header("line one\nline two").with_max_bytes(cap);
-        let mut evicted = Vec::new();
-        for i in 0..50 {
-            evicted.push(user(&format!("message number {i} with some filler")));
-        }
-        let summary = compactor.compact("c", &evicted, None).await.unwrap();
-        let text = summary.as_str();
+        let evicted: Vec<Message> = (0..50)
+            .map(|i| user(&format!("message number {i} with some filler")))
+            .collect();
+        let text = compactor.compact(&evicted, None).into_string();
 
-        // The first line of the header is preserved as the header line.
         assert!(text.starts_with("line one\n"));
-        // Truncation marker is present and the most recent line survives.
         assert!(text.contains("[\u{2026}truncated\u{2026}]"));
         assert!(text.contains("message number 49"));
-        // Cap is honoured up to the header+marker overhead.
         let overhead = "line one\n".len() + "[\u{2026}truncated\u{2026}]\n".len();
         assert!(
             text.len() <= cap + overhead,

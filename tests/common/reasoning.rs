@@ -10,14 +10,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::agent::{MultiTurnStreamItem, StreamingError};
-use rig::completion::{self, CompletionModel};
+use rig::completion::PromptError;
+use rig::completion::{self};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::provider::{self, ProviderConfig, Runtime};
+use rig::stream::AgentRunItem;
+use rig::streaming::{StreamFinal, StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
-use rig::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -32,48 +33,55 @@ const ROUNDTRIP_TURN2_TEXT: &str = "\
 Now suppose both trains slow down by 10 km/h after traveling half \
 the original distance. When do they meet now?";
 
-pub(crate) struct ReasoningRoundtripAgent<M: CompletionModel> {
-    pub(crate) model: M,
+pub(crate) struct ReasoningRoundtripAgent {
+    pub(crate) provider: ProviderConfig,
+    pub(crate) rt: Runtime,
     pub(crate) preamble: String,
     pub(crate) additional_params: Option<serde_json::Value>,
 }
 
-impl<M> ReasoningRoundtripAgent<M>
-where
-    M: CompletionModel,
-{
-    pub(crate) fn new(model: M, additional_params: Option<serde_json::Value>) -> Self {
+impl ReasoningRoundtripAgent {
+    pub(crate) fn new(
+        provider: ProviderConfig,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
+        Self::with_runtime(provider, Runtime::new(), additional_params)
+    }
+
+    pub(crate) fn with_runtime(
+        provider: ProviderConfig,
+        rt: Runtime,
+        additional_params: Option<serde_json::Value>,
+    ) -> Self {
         Self {
-            model,
+            provider,
+            rt,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
             additional_params,
         }
     }
 }
 
-pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
-{
+pub(crate) async fn run_reasoning_roundtrip_streaming(agent: ReasoningRoundtripAgent) {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
 
-pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
-    agent: ReasoningRoundtripAgent<M>,
+pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<F>(
+    agent: ReasoningRoundtripAgent,
     mut inspect_final: F,
 ) where
-    M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
-    F: FnMut(&M::StreamingResponse),
+    F: FnMut(&StreamFinal),
 {
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -85,7 +93,9 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
+    let mut stream = provider::open_stream(&agent.provider, &agent.rt, request)
+        .await
+        .expect("Turn 1 stream");
 
     let mut assistant_content = Vec::new();
     let mut saw_reasoning_block = false;
@@ -121,9 +131,12 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
 
     assistant_content.push(AssistantContent::text(&streamed_text));
+    let response = stream
+        .into_response()
+        .expect("drained stream should finalize");
 
     let turn1_assistant = Message::Assistant {
-        id: stream.message_id.clone(),
+        id: response.message_id,
         content: OneOrMany::many(assistant_content).expect("non-empty"),
     };
 
@@ -132,9 +145,13 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -146,7 +163,9 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         record_telemetry_content: false,
     };
 
-    let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
+    let mut stream2 = provider::open_stream(&agent.provider, &agent.rt, request2)
+        .await
+        .expect("Turn 2 stream");
     let mut turn2_text = String::new();
 
     while let Some(chunk) = stream2.next().await {
@@ -175,17 +194,17 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     );
 }
 
-pub(crate) async fn run_reasoning_roundtrip_nonstreaming<M>(agent: ReasoningRoundtripAgent<M>)
-where
-    M: CompletionModel,
-{
+pub(crate) async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent) {
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -197,9 +216,7 @@ where
         record_telemetry_content: false,
     };
 
-    let response = agent
-        .model
-        .completion(request)
+    let response = provider::complete(&agent.provider, &agent.rt, request)
         .await
         .expect("Turn 1 completion");
 
@@ -230,9 +247,13 @@ where
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: OneOrMany::many(vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ])
+        .expect("non-empty"),
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -244,9 +265,7 @@ where
         record_telemetry_content: false,
     };
 
-    let response2 = agent
-        .model
-        .completion(request2)
+    let response2 = provider::complete(&agent.provider, &agent.rt, request2)
         .await
         .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
 
@@ -317,11 +336,7 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "Weather in {}: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW",
@@ -423,8 +438,8 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
     );
 }
 
-pub(crate) async fn collect_stream_stats<R>(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>,
+pub(crate) async fn collect_stream_stats(
+    stream: impl futures::Stream<Item = Result<AgentRunItem, PromptError>>,
     provider: &str,
 ) -> StreamStats {
     let mut stats = StreamStats::new();
@@ -433,7 +448,7 @@ pub(crate) async fn collect_stream_stats<R>(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+            Ok(AgentRunItem::Assistant(content)) => match content {
                 StreamedAssistantContent::Reasoning(ref reasoning) => {
                     record_reasoning(&mut stats, reasoning, provider);
                 }
@@ -468,14 +483,14 @@ pub(crate) async fn collect_stream_stats<R>(
                     stats.events.push("unknown");
                 }
             },
-            Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
+            Ok(AgentRunItem::User(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {
                     stats.tool_results_in_stream += 1;
                     stats.final_turn_text.clear();
                     stats.events.push("tool_result");
                 }
             },
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentRunItem::Final(response)) => {
                 stats.final_response_text = Some(response.output().to_owned());
                 stats.got_final_response = true;
             }

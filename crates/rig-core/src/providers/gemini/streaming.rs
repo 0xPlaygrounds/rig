@@ -1,22 +1,17 @@
 use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
 };
-use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
-    streaming_endpoint,
-};
+use super::completion::{function_call_finish_reason_error, map_finish_reason};
+use crate::completion::CompletionError;
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::Event;
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::SpanCombinator;
+use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -45,8 +40,10 @@ pub struct PartialUsage {
     pub traffic_type: Option<TrafficType>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl PartialUsage {
+    /// Normalizes Gemini streaming usage metadata into Rig's
+    /// [`crate::completion::Usage`].
+    pub fn token_usage(&self) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
         usage.input_tokens = self.prompt_token_count as u64;
@@ -71,241 +68,194 @@ pub struct StreamGenerateContentResponse {
     pub usage_metadata: Option<PartialUsage>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse {
-    pub usage_metadata: PartialUsage,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<FinishReason>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub finish_message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_version: Option<String>,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage_metadata.token_usage()
-    }
-}
-
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
     let reason = choice.finish_reason.as_ref()?;
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        let request = create_request_body(completion_request)?;
+/// Consume a `streamGenerateContent` SSE exchange as a raw streaming-choice
+/// stream. Driven by the data-oriented [`super::functions::open_stream`] path.
+///
+/// The stream is instrumented with `span` so `record_token_usage` and the
+/// response-metadata records land on the caller's completion span, as they
+/// did on the deleted `CompletionModel::stream`.
+pub(crate) fn generate_content_stream(
+    event_source: crate::http_client::sse::BoxedEventSource,
+    span: tracing::Span,
+) -> impl futures::Stream<Item = Result<streaming::RawStreamingChoice, CompletionError>> {
+    let mut event_source = event_source;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Gemini streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post_sse(streaming_endpoint(&request_model))?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
-
-        let stream = stream! {
-            let mut final_usage = None;
-            let mut final_finish_reason: Option<FinishReason> = None;
-            let mut final_finish_message: Option<String> = None;
-            let mut final_model_version: Option<String> = None;
-            let mut stream_failed = false;
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::debug!("SSE connection opened");
+    stream! {
+        let mut final_usage = None;
+        let mut final_finish_reason: Option<FinishReason> = None;
+        let mut final_model_version: Option<String> = None;
+        let mut final_response_id: Option<String> = None;
+        let mut stream_failed = false;
+        while let Some(event_result) = event_source.next().await {
+            match event_result {
+                Ok(Event::Open) => {
+                    tracing::debug!("SSE connection opened");
+                    continue;
+                }
+                Ok(Event::Message(message)) => {
+                    // Skip heartbeat messages or empty data
+                    if message.data.trim().is_empty() {
                         continue;
                     }
-                    Ok(Event::Message(message)) => {
-                        // Skip heartbeat messages or empty data
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
 
-                        let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
-                            Ok(d) => d,
-                            Err(error) => {
-                                tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                stream_failed = true;
-                                yield Err(CompletionError::JsonError(error));
-                                break;
-                            }
-                        };
-
-                        let span = tracing::Span::current();
-                        if let Some(response_id) = data.response_id.as_deref() {
-                            span.record("gen_ai.response.id", response_id);
-                        }
-                        if let Some(model_version) = &data.model_version {
-                            span.record("gen_ai.response.model", model_version.as_str());
-                            final_model_version = Some(model_version.clone());
-                        }
-                        if let Some(usage) = data.usage_metadata.as_ref() {
-                            span.record_token_usage(usage);
-                            final_usage = Some(usage.clone());
-                        }
-
-                        // Process the response data
-                        let Some(choice) = data.candidates.into_iter().next() else {
-                            tracing::debug!("There is no content candidate");
-                            continue;
-                        };
-
-                        // Capture before partial moves of choice fields
-                        let should_stop = choice.finish_reason.is_some();
-                        if let Some(fr) = &choice.finish_reason {
-                            final_finish_reason = Some(fr.clone());
-                        }
-                        if let Some(message) = &choice.finish_message {
-                            final_finish_message = Some(message.clone());
-                        }
-
-                        if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                    let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
+                        Ok(d) => d,
+                        Err(error) => {
+                            tracing::error!(?error, message = message.data, "Failed to parse SSE message");
                             stream_failed = true;
-                            yield Err(err);
+                            yield Err(CompletionError::JsonError(error));
                             break;
                         }
+                    };
 
-                        let Some(content) = choice.content else {
-                            tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
-                            // Gemini's final chunk may carry finishReason with no content — break instead of skip
-                            if should_stop {
-                                break;
-                            }
-                            continue;
-                        };
+                    let span = tracing::Span::current();
+                    if let Some(response_id) = data.response_id.as_deref() {
+                        span.record("gen_ai.response.id", response_id);
+                        final_response_id = Some(response_id.to_string());
+                    }
+                    if let Some(model_version) = &data.model_version {
+                        span.record("gen_ai.response.model", model_version.as_str());
+                        final_model_version = Some(model_version.clone());
+                    }
+                    if let Some(usage) = data.usage_metadata.as_ref() {
+                        span.record_token_usage(&usage.token_usage());
+                        final_usage = Some(usage.clone());
+                    }
 
-                        if content.parts.is_empty() {
-                            tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
-                        }
+                    // Process the response data
+                    let Some(choice) = data.candidates.into_iter().next() else {
+                        tracing::debug!("There is no content candidate");
+                        continue;
+                    };
 
-                        for part in content.parts {
-                            match part {
-                                Part {
-                                    part: PartKind::Text(text),
-                                    thought: Some(true),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        if thought_signature.is_some() {
-                                            // Signature arrives on the final chunk of a
-                                            // thinking block; emit a full Reasoning so the
-                                            // core accumulator captures the signature for
-                                            // Gemini 3+ roundtrip.
-                                            yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: None,
-                                                content: ReasoningContent::Text {
-                                                    text,
-                                                    signature: thought_signature,
-                                                },
-                                            });
-                                        } else {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                id: None,
-                                                reasoning: text,
-                                            });
-                                        }
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::Text(text),
-                                    ..
-                                } => {
-                                    if !text.is_empty() {
-                                        yield Ok(streaming::RawStreamingChoice::Message(text));
-                                    }
-                                },
-                                Part {
-                                    part: PartKind::FunctionCall(function_call),
-                                    thought_signature,
-                                    ..
-                                } => {
-                                    let tool_call = streaming::RawStreamingToolCall::new(
-                                        function_call.name.clone(),
-                                        function_call.name,
-                                        function_call.args,
-                                    )
-                                    .with_signature(thought_signature);
-                                    let tool_call = if let Some(id) = function_call.id {
-                                        tool_call.with_call_id(id)
-                                    } else {
-                                        tool_call
-                                    };
-                                    yield Ok(streaming::RawStreamingChoice::ToolCall(
-                                        tool_call
-                                    ));
-                                },
-                                part => {
-                                    tracing::warn!(?part, "Unsupported response type with streaming");
-                                }
-                            }
-                        }
+                    // Capture before partial moves of choice fields
+                    let should_stop = choice.finish_reason.is_some();
+                    if let Some(fr) = &choice.finish_reason {
+                        final_finish_reason = Some(fr.clone());
+                    }
+                    if let Some(err) = tool_protocol_finish_reason_error(&choice) {
+                        stream_failed = true;
+                        yield Err(err);
+                        break;
+                    }
 
-                        // Check if this is the final response
+                    let Some(content) = choice.content else {
+                        tracing::debug!(finish_reason = ?final_finish_reason, "Streaming candidate missing content");
+                        // Gemini's final chunk may carry finishReason with no content — break instead of skip
                         if should_stop {
                             break;
                         }
+                        continue;
+                    };
+
+                    if content.parts.is_empty() {
+                        tracing::trace!(reason = ?choice.finish_reason, "There is no part in the streaming content");
                     }
-                    Err(crate::http_client::Error::StreamEnded) => {
-                        break;
+
+                    for part in content.parts {
+                        match part {
+                            Part {
+                                part: PartKind::Text(text),
+                                thought: Some(true),
+                                thought_signature,
+                                ..
+                            } => {
+                                if !text.is_empty() {
+                                    if thought_signature.is_some() {
+                                        // Signature arrives on the final chunk of a
+                                        // thinking block; emit a full Reasoning so the
+                                        // core accumulator captures the signature for
+                                        // Gemini 3+ roundtrip.
+                                        yield Ok(streaming::RawStreamingChoice::Reasoning {
+                                            id: None,
+                                            content: ReasoningContent::Text {
+                                                text,
+                                                signature: thought_signature,
+                                            },
+                                        });
+                                    } else {
+                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            id: None,
+                                            reasoning: text,
+                                        });
+                                    }
+                                }
+                            },
+                            Part {
+                                part: PartKind::Text(text),
+                                ..
+                            } => {
+                                if !text.is_empty() {
+                                    yield Ok(streaming::RawStreamingChoice::Message(text));
+                                }
+                            },
+                            Part {
+                                part: PartKind::FunctionCall(function_call),
+                                thought_signature,
+                                ..
+                            } => {
+                                let tool_call = streaming::RawStreamingToolCall::new(
+                                    function_call.name.clone(),
+                                    function_call.name,
+                                    function_call.args,
+                                )
+                                .with_signature(thought_signature);
+                                let tool_call = if let Some(id) = function_call.id {
+                                    tool_call.with_call_id(id)
+                                } else {
+                                    tool_call
+                                };
+                                yield Ok(streaming::RawStreamingChoice::ToolCall(
+                                    tool_call
+                                ));
+                            },
+                            part => {
+                                tracing::warn!(?part, "Unsupported response type with streaming");
+                            }
+                        }
                     }
-                    Err(error) => {
-                        tracing::error!(?error, "SSE error");
-                        stream_failed = true;
-                        yield Err(CompletionError::from_stream_transport(error));
+
+                    // Check if this is the final response
+                    if should_stop {
                         break;
                     }
                 }
+                Err(crate::http_client::Error::StreamEnded) => {
+                    break;
+                }
+                Err(error) => {
+                    tracing::error!(?error, "SSE error");
+                    stream_failed = true;
+                    yield Err(CompletionError::from_stream_transport(error));
+                    break;
+                }
             }
+        }
 
-            // Ensure event source is closed when stream ends
-            event_source.close();
+        // Dropping the boxed event source when this stream ends is equivalent
+        // to closing it — the state machine is finished with it.
 
-            if !stream_failed {
-                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                    usage_metadata: final_usage.unwrap_or_default(),
-                    finish_reason: final_finish_reason,
-                    finish_message: final_finish_message,
-                    model_version: final_model_version,
-                }));
+        if !stream_failed {
+            let usage = final_usage.unwrap_or_default().token_usage();
+            let mut final_response = streaming::StreamFinal::new("gemini", usage);
+            if let Some(finish_reason) = final_finish_reason.as_ref() {
+                final_response = final_response.with_finish_reason(map_finish_reason(finish_reason));
             }
-        }.instrument(span);
-
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+            if let Some(message_id) = final_response_id {
+                final_response = final_response.with_message_id(message_id);
+            }
+            if let Some(model_version) = final_model_version {
+                final_response = final_response.with_model(model_version);
+            }
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
+        }
     }
+    .instrument(span)
 }
 
 #[cfg(test)]
@@ -434,7 +384,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(PartialUsage::token_usage)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -728,66 +678,66 @@ mod tests {
     }
 
     #[test]
-    fn test_streaming_completion_response_has_finish_reason_and_model_version() {
-        use super::super::completion::gemini_api_types::FinishReason;
+    fn test_stream_final_has_finish_reason_and_model_version() {
+        use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let response = StreamingCompletionResponse {
-            usage_metadata: PartialUsage::default(),
-            finish_reason: Some(FinishReason::Stop),
-            finish_message: None,
-            model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
-        };
+        let response = streaming::StreamFinal::new("gemini", PartialUsage::default().token_usage())
+            .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+            .with_model("gemini-2.5-pro-preview-05-06");
 
-        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
+        assert!(matches!(
+            response.finish_reason,
+            Some(NormalizedFinishReason::Stop)
+        ));
         assert_eq!(
-            response.model_version.as_deref(),
+            response.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
 
         let json = serde_json::to_string(&response).unwrap();
-        let deserialized: StreamingCompletionResponse = serde_json::from_str(&json).unwrap();
+        let deserialized: streaming::StreamFinal = serde_json::from_str(&json).unwrap();
         assert!(matches!(
             deserialized.finish_reason,
-            Some(FinishReason::Stop)
+            Some(NormalizedFinishReason::Stop)
         ));
         assert_eq!(
-            deserialized.model_version.as_deref(),
+            deserialized.model.as_deref(),
             Some("gemini-2.5-pro-preview-05-06")
         );
     }
 
     #[test]
-    fn test_streaming_completion_response_token_usage() {
-        let response = StreamingCompletionResponse {
-            usage_metadata: PartialUsage {
-                total_token_count: 150,
-                cached_content_token_count: None,
-                candidates_token_count: Some(75),
-                thoughts_token_count: None,
-                prompt_token_count: 75,
-                prompt_tokens_details: None,
-                cache_tokens_details: None,
-                candidates_tokens_details: None,
-                tool_use_prompt_token_count: None,
-                tool_use_prompt_tokens_details: None,
-                traffic_type: None,
-            },
-            finish_reason: Some(FinishReason::Stop),
-            finish_message: None,
-            model_version: Some("gemini-2.0-flash-001".to_string()),
-        };
+    fn test_stream_final_token_usage() {
+        use crate::completion::FinishReason as NormalizedFinishReason;
 
-        let token_usage = response.token_usage();
+        let usage = PartialUsage {
+            total_token_count: 150,
+            cached_content_token_count: None,
+            candidates_token_count: Some(75),
+            thoughts_token_count: None,
+            prompt_token_count: 75,
+            prompt_tokens_details: None,
+            cache_tokens_details: None,
+            candidates_tokens_details: None,
+            tool_use_prompt_token_count: None,
+            tool_use_prompt_tokens_details: None,
+            traffic_type: None,
+        };
+        let response = streaming::StreamFinal::new("gemini", usage.token_usage())
+            .with_finish_reason(super::map_finish_reason(&FinishReason::Stop))
+            .with_model("gemini-2.0-flash-001");
+
+        let token_usage = response.usage;
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.total_tokens, 150);
-        assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
-        assert_eq!(
-            response.model_version.as_deref(),
-            Some("gemini-2.0-flash-001")
-        );
+        assert!(matches!(
+            response.finish_reason,
+            Some(NormalizedFinishReason::Stop)
+        ));
+        assert_eq!(response.model.as_deref(), Some("gemini-2.0-flash-001"));
     }
 
     #[test]

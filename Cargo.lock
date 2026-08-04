@@ -238,6 +238,7 @@ dependencies = [
  "anyhow",
  "rig",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -248,6 +249,7 @@ dependencies = [
  "futures",
  "rig",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2031,6 +2033,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "cast"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "castaway"
@@ -3937,6 +3945,18 @@ dependencies = [
  "rmp-serde",
  "serde",
  "tempfile",
+]
+
+[[package]]
+name = "external_provider"
+version = "0.41.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -7259,6 +7279,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "minicov"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4869b6a491569605d66d3952bcdf03df789e5b536e5f0cf7758a7f08a55ae24d"
+dependencies = [
+ "cc",
+ "walkdir",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7874,6 +7904,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "oorandom"
+version = "11.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
+
+[[package]]
 name = "openai_agent_completions_api_otel"
 version = "0.41.0"
 dependencies = [
@@ -7906,6 +7942,7 @@ name = "openai_streaming_with_tools_otel"
 version = "0.41.0"
 dependencies = [
  "anyhow",
+ "futures",
  "opentelemetry 0.32.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.32.1",
@@ -9691,6 +9728,7 @@ name = "reqwest_middleware"
 version = "0.41.0"
 dependencies = [
  "anyhow",
+ "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
  "rig",
@@ -9805,6 +9843,7 @@ dependencies = [
  "rig-neo4j",
  "rig-postgres",
  "rig-qdrant",
+ "rig-rmcp",
  "rig-s3vectors",
  "rig-scylladb",
  "rig-sqlite",
@@ -9831,6 +9870,7 @@ dependencies = [
  "tracing-opentelemetry 0.33.0",
  "tracing-subscriber",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -9839,13 +9879,16 @@ version = "0.41.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "aws-sdk-bedrockruntime",
  "fastrand",
  "futures",
  "http 1.4.2",
  "indexmap 2.14.0",
+ "rig-bedrock",
  "rig-core",
  "rig-derive",
- "rmcp",
+ "rig-gemini-grpc",
+ "rig-memory",
  "schemars 1.2.1",
  "serde",
  "serde_json",
@@ -9868,6 +9911,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
+ "futures",
  "reqwest 0.13.4",
  "rig-agent",
  "rig-core",
@@ -9909,6 +9953,7 @@ dependencies = [
  "as-any",
  "assert_fs",
  "async-stream",
+ "async-trait",
  "base64 0.22.1",
  "bytes",
  "epub",
@@ -10133,6 +10178,19 @@ dependencies = [
  "testcontainers",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "rig-rmcp"
+version = "0.41.0"
+dependencies = [
+ "rig-core",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -13655,6 +13713,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-bindgen-test"
+version = "0.3.68"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb55e2540ad1c56eec35fd63e2aea15f83b11ce487fd2de9ad11578dfc047ea"
+dependencies = [
+ "async-trait",
+ "cast",
+ "js-sys",
+ "libm",
+ "minicov",
+ "nu-ansi-term",
+ "num-traits",
+ "oorandom",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test-macro",
+ "wasm-bindgen-test-shared",
+]
+
+[[package]]
+name = "wasm-bindgen-test-macro"
+version = "0.3.68"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caf0ca1bd612b988616bac1ab34c4e4290ef18f7148a1d8b7f31c150080e9295"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "wasm-bindgen-test-shared"
+version = "0.2.118"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23cda5ecc67248c48d3e705d3e03e00af905769b78b9d2a1678b663b8b9d4472"
+
+[[package]]
 name = "wasm-encoder"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13700,6 +13797,17 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wasm_hooks"
+version = "0.41.0"
+dependencies = [
+ "js-sys",
+ "rig",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

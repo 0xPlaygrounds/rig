@@ -3,18 +3,15 @@
 //! This crate provides a vector store implementation using Cloudflare Vectorize,
 //! a globally distributed vector database built for AI applications.
 //!
+//! Queries arrive pre-embedded via [`VectorSearchRequest`]; the store never
+//! embeds text itself.
+//!
 //! # Example
 //!
 //! ```ignore
-//! use rig_core::client::ProviderClient;
-//! use rig_core::providers::openai;
 //! use rig_vectorize::VectorizeVectorStore;
 //!
-//! let openai = openai::Client::from_env()?;
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
-//!
 //! let vector_store = VectorizeVectorStore::new(
-//!     embedding_model,
 //!     "your-account-id",
 //!     "your-index-name",
 //!     std::env::var("CLOUDFLARE_API_TOKEN").unwrap(),
@@ -31,12 +28,10 @@ pub use client::{
 };
 
 use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
-use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::{Embed, OneOrMany, embeddings::Embedding};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use rig_core::vector_store::{SearchHit, StoreRecord, VectorStoreError};
+use rig_core::{OneOrMany, embeddings::Embedding};
+use serde::{Serialize, de::DeserializeOwned};
 
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
@@ -46,128 +41,55 @@ impl From<VectorizeError> for VectorStoreError {
 
 /// A vector store backed by Cloudflare Vectorize.
 ///
-/// This struct implements [`VectorStoreIndex`] to provide vector similarity search
-/// using Cloudflare's globally distributed Vectorize service.
+/// Provides vector similarity search over pre-embedded queries using
+/// Cloudflare's globally distributed Vectorize service. The store holds no
+/// embedding model: queries and records arrive pre-embedded.
 #[derive(Debug, Clone)]
-pub struct VectorizeVectorStore<M> {
-    /// The embedding model used to generate query embeddings.
-    model: M,
+pub struct VectorizeVectorStore {
     /// The HTTP client for Vectorize API.
     client: VectorizeClient,
 }
 
-impl<M> VectorizeVectorStore<M> {
+impl VectorizeVectorStore {
     /// Creates a new Vectorize vector store.
     ///
     /// # Arguments
-    /// * `model` - The embedding model to use for query embedding
     /// * `account_id` - Cloudflare account ID
     /// * `index_name` - Name of the Vectorize index
     /// * `api_token` - Cloudflare API token with Vectorize read permissions
     pub fn new(
-        model: M,
         account_id: impl Into<String>,
         index_name: impl Into<String>,
         api_token: impl Into<String>,
     ) -> Self {
         Self {
-            model,
             client: VectorizeClient::new(account_id, index_name, api_token),
         }
     }
-}
 
-impl<M> VectorStoreIndex for VectorizeVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    type Filter = VectorizeFilter;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
-        &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        if let Some(filter) = req.filter() {
-            filter.validate()?;
-        }
-
-        let embedding = self.model.embed_text(req.query()).await?;
-
-        let query_request = ApiQueryRequest {
-            vector: embedding.vec,
-            top_k: req.samples(),
-            return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::All),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
-        };
-
-        let result = self.client.query(query_request).await?;
-
-        // Convert results to the expected format
-        let results = result
-            .matches
-            .into_iter()
-            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
-            .map(|m| {
-                let metadata = m.metadata.unwrap_or(serde_json::Value::Null);
-                let doc: T = serde_json::from_value(metadata)?;
-                Ok((m.score, m.id, doc))
-            })
-            .collect::<Result<Vec<_>, serde_json::Error>>()?;
-
-        Ok(results)
-    }
-
-    async fn top_n_ids(
-        &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if let Some(filter) = req.filter() {
-            filter.validate()?;
-        }
-
-        let embedding = self.model.embed_text(req.query()).await?;
-
-        let query_request = ApiQueryRequest {
-            vector: embedding.vec,
-            top_k: req.samples(),
-            return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::None),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
-        };
-
-        let result = self.client.query(query_request).await?;
-
-        // Convert results to (score, id) tuples
-        let results = result
-            .matches
-            .into_iter()
-            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
-            .map(|m| (m.score, m.id))
-            .collect();
-
-        Ok(results)
-    }
-}
-
-impl<M> InsertDocuments for VectorizeVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
-        &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
+    /// Insert precomputed records into the Vectorize index.
+    ///
+    /// Each embedding of a record becomes one stored vector whose metadata is
+    /// the record payload. A record with a single embedding is keyed by
+    /// [`StoreRecord::id`]; additional embeddings get `"{id}#{n}"` ids so they
+    /// don't overwrite each other.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         let mut vectors: Vec<ApiVectorInput> = Vec::new();
 
-        for (doc, embeddings) in documents {
-            let metadata = serde_json::to_value(&doc)?;
+        for record in records {
+            let single = record.embeddings.len() == 1;
 
-            for embedding in embeddings {
+            for (n, embedding) in record.embeddings.into_iter().enumerate() {
+                let id = if single {
+                    record.id.clone()
+                } else {
+                    format!("{id}#{n}", id = record.id)
+                };
+
                 vectors.push(ApiVectorInput {
-                    id: Uuid::new_v4().to_string(),
+                    id,
                     values: embedding.vec,
-                    metadata: Some(metadata.clone()),
+                    metadata: Some(record.payload.clone()),
                     namespace: None,
                 });
             }
@@ -190,5 +112,99 @@ where
         }
 
         Ok(())
+    }
+
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
+        &self,
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
+
+    /// Returns the top N most similar documents for a pre-embedded query.
+    ///
+    /// The [`SearchHit::payload`] is the stored vector metadata.
+    pub async fn top_n(
+        &self,
+        req: VectorSearchRequest<VectorizeFilter>,
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        if let Some(filter) = req.filter() {
+            filter.validate()?;
+        }
+
+        let query_request = ApiQueryRequest {
+            vector: req.query().first().vec,
+            top_k: req.samples(),
+            return_values: Some(false),
+            return_metadata: Some(ReturnMetadata::All),
+            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
+        };
+
+        let result = self.client.query(query_request).await?;
+
+        // Convert results to the expected format
+        let results = result
+            .matches
+            .into_iter()
+            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
+            .map(|m| SearchHit {
+                score: m.score,
+                id: m.id,
+                payload: m.metadata.unwrap_or(serde_json::Value::Null),
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Returns the top N most similar document IDs as `(score, id)` tuples.
+    pub async fn top_n_ids(
+        &self,
+        req: VectorSearchRequest<VectorizeFilter>,
+    ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+        if let Some(filter) = req.filter() {
+            filter.validate()?;
+        }
+
+        let query_request = ApiQueryRequest {
+            vector: req.query().first().vec,
+            top_k: req.samples(),
+            return_values: Some(false),
+            return_metadata: Some(ReturnMetadata::None),
+            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
+        };
+
+        let result = self.client.query(query_request).await?;
+
+        // Convert results to (score, id) tuples
+        let results = result
+            .matches
+            .into_iter()
+            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
+            .map(|m| (m.score, m.id))
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Returns the top N most similar documents deserialized into `T` as
+    /// `(score, id, document)` tuples. Sugar over [`Self::top_n`].
+    pub async fn top_n_as<T: DeserializeOwned>(
+        &self,
+        req: VectorSearchRequest<VectorizeFilter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
+            .into_iter()
+            .map(|hit| {
+                let doc = serde_json::from_value(hit.payload)?;
+                Ok((hit.score, hit.id, doc))
+            })
+            .collect()
     }
 }

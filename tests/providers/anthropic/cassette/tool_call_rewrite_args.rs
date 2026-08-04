@@ -8,13 +8,12 @@
 //! arguments reached execution — and the blocking and streaming tests assert the
 //! same behavior, since both drivers share the same tool-execution seam.
 
+use rig::prelude::*;
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::completion::Prompt;
-use rig::prelude::*;
+use rig::agent::ToolCallAction;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
@@ -82,11 +81,7 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.lock().expect("calls lock").push(ObservedCall {
             location: args.location.clone(),
             units: args.units.clone(),
@@ -107,24 +102,21 @@ impl Tool for GetWeather {
 /// call before it runs — the parameter-normalization use case for `ToolCallAction::Rewrite`
 /// exists for. It reads the model's emitted arguments, adds the field, and
 /// returns the rewritten object via [`ToolCallAction::rewrite`].
-struct PinUnitsToCelsius;
-
-impl AgentHook for PinUnitsToCelsius {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name != GetWeather::NAME {
-            return ToolCallAction::run();
+fn pin_units_to_celsius() -> HookEntry {
+    HookEntry::sync("pin-units-to-celsius", |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == GetWeather::NAME => {
+            let mut value = call.function.arguments.clone();
+            if !value.is_object() {
+                value = json!({});
+            }
+            if let Some(object) = value.as_object_mut() {
+                object.insert("units".to_string(), json!("celsius"));
+            }
+            HookDecision::ToolCall(ToolCallAction::rewrite(value))
         }
-        let mut value: serde_json::Value =
-            serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
-        if let Some(object) = value.as_object_mut() {
-            object.insert("units".to_string(), json!("celsius"));
-        }
-        ToolCallAction::rewrite(value)
-    }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
+    })
 }
 
 fn assert_units_were_injected(observations: &[ObservedCall]) {
@@ -152,13 +144,15 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)
-                .add_hook(PinUnitsToCelsius)
+                .add_hook(pin_units_to_celsius())
                 .build();
 
             let response = agent
-                .prompt(WEATHER_PROMPT)
+                .runner(WEATHER_PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("weather prompt should succeed");
 
             assert!(!response.is_empty(), "agent should produce a final answer");
@@ -181,10 +175,10 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble("You are a weather assistant. Always use the get_weather tool to answer.")
                 .tool(weather)
-                .add_hook(PinUnitsToCelsius)
+                .add_hook(pin_units_to_celsius())
                 .build();
 
-            let mut stream = agent.stream_prompt(WEATHER_PROMPT).max_turns(5).await;
+            let mut stream = agent.runner(WEATHER_PROMPT).max_turns(5).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming weather prompt should succeed");

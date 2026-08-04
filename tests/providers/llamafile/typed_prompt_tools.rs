@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::tool::Tool;
 
@@ -56,11 +55,7 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "The weather in {} is all fire and brimstone",
@@ -77,9 +72,8 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     }
 
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(
             "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
              The only valid tool name is `weather`; never invent or call any other tool. \

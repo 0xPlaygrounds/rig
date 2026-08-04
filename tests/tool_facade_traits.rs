@@ -2,17 +2,16 @@
 // style for integration tests here (see `tests/core.rs`); allow it crate-wide.
 #![allow(clippy::expect_used)]
 
-//! Regression tests for the root `rig::tool` facade surface (PR #2188).
+//! Regression tests for the root `rig::tool` facade surface.
 //!
-//! With default features, `rig::tool::Tool` must remain the classic *contextual*
-//! trait (so pre-split `use rig::tool::{Tool, ToolContext};` keeps compiling),
-//! while the runtime-independent contract stays reachable as
-//! `rig::tool::PortableTool`. Portable tools must still register with the classic
-//! runtime through the blanket impl. `rig_core::tool::Tool` no longer exists —
-//! these tests use `PortableTool`, and nothing in the workspace references the
-//! removed alias.
+//! With the data-oriented migration, `rig::tool::Tool` is the classic *name*
+//! for the one portable, context-free contract: an alias for
+//! `rig::tool::PortableTool` (the contextual trait, `ToolContext`, and
+//! `ToolSet` were removed). Pre-split `impl Tool for X` sites keep compiling
+//! once `call` drops the context parameter, and the same trait stays reachable
+//! through the explicit portable paths and the prelude.
 
-use rig::tool::{PortableTool, Tool, ToolContext, ToolExecutionError, ToolSet};
+use rig::tool::{PortableTool, Tool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -21,12 +20,13 @@ struct Amount {
     x: i32,
 }
 
-/// (1) `rig::tool::Tool` accepts a contextual `call(&mut ToolContext, Args)`.
+/// (1) `rig::tool::Tool` (the classic name) accepts a context-free
+/// `call(Args)` — it is the portable contract under its pre-split name.
 #[derive(Default)]
-struct ContextualAdder;
+struct ClassicNamedAdder;
 
-impl Tool for ContextualAdder {
-    const NAME: &'static str = "contextual_adder";
+impl Tool for ClassicNamedAdder {
+    const NAME: &'static str = "classic_named_adder";
     type Args = Amount;
     type Output = i32;
     type Error = ToolExecutionError;
@@ -39,16 +39,12 @@ impl Tool for ContextualAdder {
         json!({ "type": "object" })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + 1)
     }
 }
 
-/// (2) `rig::tool::PortableTool` accepts a context-free `call(Args)`.
+/// (2) `rig::tool::PortableTool` is the same trait under its explicit name.
 #[derive(Default)]
 struct PortableAdder;
 
@@ -72,25 +68,25 @@ impl PortableTool for PortableAdder {
 }
 
 #[test]
-fn classic_contextual_tool_impls_facade_tool() {
+fn classic_tool_name_is_the_portable_contract() {
+    // The alias is trait-identical: one impl satisfies both names.
     fn assert_tool<T: Tool>() {}
-    assert_tool::<ContextualAdder>();
-}
-
-#[test]
-fn portable_tool_impls_facade_portable_tool() {
     fn assert_portable<T: PortableTool>() {}
+    assert_tool::<ClassicNamedAdder>();
+    assert_portable::<ClassicNamedAdder>();
+    assert_tool::<PortableAdder>();
     assert_portable::<PortableAdder>();
 }
 
-/// (3) A portable tool registers with the classic runtime via the blanket
-/// `impl<T: PortableTool> Tool for T`, so `static_tool` (which requires the
-/// classic `Tool`) accepts it directly.
-#[test]
-fn portable_tool_registers_with_classic_toolset() {
-    let set: ToolSet = ToolSet::builder().static_tool(PortableAdder).build();
-    let names: Vec<String> = set
-        .get_tool_definitions()
+/// (3) A trait-authored tool erases to a `PortableDynamicTool` record and
+/// registers with the data-oriented runtime executor.
+#[tokio::test]
+async fn portable_tool_registers_with_the_executor() {
+    let executor = rig::executor::ToolExecutor::new()
+        .register(rig::tool::PortableDynamicTool::from_portable(PortableAdder));
+    let names: Vec<String> = executor
+        .catalog()
+        .definitions
         .into_iter()
         .map(|definition| definition.name)
         .collect();
@@ -108,48 +104,46 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `completion_model`,
-/// `agent`, and `extractor` — the full pre-split client surface from one import.
+/// A single `use rig::prelude::*` provides the whole construction surface:
+/// a provider `functions::Config`, the `ProviderConfig` that wraps it, and
+/// `AgentBuilder`. No provider type is threaded through the agent. (The classic
+/// `extractor` builder is gone too; structured extraction now goes through
+/// `rig::extract::*` over a `ProviderConfig`.)
 #[test]
-fn completion_client_single_import_surface() {
+fn provider_config_single_import_surface() {
     use rig::prelude::*;
 
-    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-    struct Extracted {
-        value: String,
-    }
-
-    // `openai::Client::new` builds without any network call, so the three
-    // builders reachable through the single `rig::prelude::*` import each run
-    // to completion offline. A regression in any builder itself (not merely its
-    // signature) now fails this test, unlike the previous compile-only check.
-    let client = rig::providers::openai::Client::new("test-key").expect("client builds");
-    let _model = client.completion_model("gpt-4o");
-    let _agent = client.agent("gpt-4o").build();
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build();
+    // Building a config performs no network call, so every surface reachable
+    // through the single `rig::prelude::*` import runs to completion offline.
+    // A regression in a builder itself (not merely its signature) fails here.
+    let cfg = rig::providers::openai::functions::Config::new("gpt-4o").with_api_key("test-key");
+    let provider = ProviderConfig::OpenAi(cfg);
+    assert_eq!(provider.model(), "gpt-4o");
+    let _agent = AgentBuilder::new(provider).build();
 }
 
-/// The explicit facade import pair `rig::client::{CompletionClient, AgentClientExt}`
-/// exposes the same `completion_model` + `agent` + `extractor` surface as the
-/// prelude, without depending on `rig-core`. Guards the restored
-/// `rig::client::CompletionClient` path (documented in `README.md` / `MIGRATING.md`).
+/// The same surface is reachable through explicit facade paths, without a
+/// prelude glob and without depending on `rig-core`: `rig::provider::ProviderConfig`
+/// plus `rig::AgentBuilder` (documented in `README.md` / `MIGRATING.md`).
 #[test]
-fn completion_client_explicit_facade_import_surface() {
-    use rig::client::{AgentClientExt, CompletionClient};
+fn provider_config_explicit_facade_import_surface() {
+    use rig::AgentBuilder;
+    use rig::provider::{ProviderConfig, Runtime};
 
-    #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
-    struct Extracted {
-        value: String,
-    }
-
-    let client = rig::providers::openai::Client::new("test-key").expect("client builds");
-    let _model = client.completion_model("gpt-4o"); // CompletionClient
-    let _agent = client.agent("gpt-4o").build(); // AgentClientExt
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build(); // AgentClientExt
+    let cfg = rig::providers::openai::functions::Config::new("gpt-4o").with_api_key("test-key");
+    let provider = ProviderConfig::OpenAi(cfg);
+    assert_eq!(
+        provider
+            .descriptor(&Runtime::new())
+            .expect("bundled descriptor is always available")
+            .name,
+        "openai"
+    );
+    let _agent = AgentBuilder::new(provider).build();
 }
 
-/// `use rig::prelude::*` still brings the classic contextual `Tool` and
-/// `ToolContext` into scope (pre-split prelude behaviour).
+/// `use rig::prelude::*` still brings `Tool` into scope under its classic
+/// name (pre-split prelude behaviour), now context-free.
 mod prelude_regression {
     use rig::prelude::*;
     use serde::Deserialize;
@@ -175,11 +169,7 @@ mod prelude_regression {
             serde_json::json!({ "type": "object" })
         }
 
-        async fn call(
-            &self,
-            _context: &mut ToolContext,
-            args: Self::Args,
-        ) -> Result<Self::Output, Self::Error> {
+        async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
             Ok(args.n)
         }
     }

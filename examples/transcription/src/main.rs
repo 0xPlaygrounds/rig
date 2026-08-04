@@ -1,9 +1,19 @@
+//! Demonstrates transcribing one audio file with every provider that speaks
+//! the transcription API.
+//!
+//! `TranscriptionModel` (and the client that handed it out) is gone. A
+//! transcription is now the same shape as any other provider call: a plain
+//! `<provider>::functions::Config` naming the model, a shared
+//! [`HttpRuntime`], and the provider's free `transcribe` function.
+//!
+//! Requires the matching provider keys (`OPENAI_API_KEY`, `GEMINI_API_KEY`,
+//! `AZURE_ENDPOINT`/`AZURE_API_VERSION`/an Azure credential, `GROQ_API_KEY`,
+//! `HUGGINGFACE_API_KEY`, `MISTRAL_API_KEY`). Pass the audio file as the first
+//! argument.
+
 use rig::prelude::*;
-use rig::providers::{huggingface, mistral};
-use rig::{
-    providers::{azure, gemini, groq, openai},
-    transcription::TranscriptionModel,
-};
+use rig::providers::{azure, gemini, groq, huggingface, mistral, openai};
+use rig::transcription::TranscriptionRequest;
 use std::env::args;
 
 #[tokio::main]
@@ -20,84 +30,69 @@ async fn main() -> Result<(), anyhow::Error> {
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("No file was specified"))?;
     println!("Transcribing {}", &file_path);
-    whisper(&file_path).await?;
-    gemini(&file_path).await?;
-    azure(&file_path).await?;
-    groq(&file_path).await?;
-    huggingface(&file_path).await?;
-    mistral(&file_path).await?;
+
+    // One transport, shared by every provider call below: configs are data,
+    // the live HTTP handle lives here.
+    let rt = HttpRuntime::new();
+
+    whisper(&rt, &file_path).await?;
+    gemini(&rt, &file_path).await?;
+    azure(&rt, &file_path).await?;
+    groq(&rt, &file_path).await?;
+    huggingface(&rt, &file_path).await?;
+    mistral(&rt, &file_path).await?;
 
     Ok(())
 }
 
-async fn whisper(file_path: &str) -> Result<(), anyhow::Error> {
-    let openai = openai::Client::from_env()?;
-    let whisper = openai.transcription_model(openai::WHISPER_1);
-    let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn whisper(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = openai::functions::Config::from_env(openai::WHISPER_1)?;
+    let response =
+        openai::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?)
+            .await?;
     println!("Whisper-1: {}", response.text);
     Ok(())
 }
 
-async fn gemini(file_path: &str) -> Result<(), anyhow::Error> {
-    let gemini = gemini::Client::from_env()?;
-    let model = gemini.transcription_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-    let response = model
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn gemini(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = gemini::functions::Config::from_env(gemini::completion::GEMINI_3_FLASH_PREVIEW)?;
+    let response =
+        gemini::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?)
+            .await?;
     println!("Gemini: {}", response.text);
     Ok(())
 }
 
-async fn azure(file_path: &str) -> Result<(), anyhow::Error> {
-    let azure = azure::Client::from_env()?;
-    let whisper = azure.transcription_model("whisper");
-    let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn azure(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = azure::functions::Config::from_env("whisper")?;
+    let response =
+        azure::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?).await?;
     println!("Azure Whisper-1: {}", response.text);
     Ok(())
 }
 
-async fn groq(file_path: &str) -> Result<(), anyhow::Error> {
-    let groq = groq::Client::from_env()?;
-    let whisper = groq.transcription_model(groq::WHISPER_LARGE_V3);
-    let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn groq(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = groq::functions::Config::from_env(groq::WHISPER_LARGE_V3)?;
+    let response =
+        groq::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?).await?;
     println!("Groq Whisper-Large-V3: {}", response.text);
     Ok(())
 }
 
-async fn huggingface(file_path: &str) -> Result<(), anyhow::Error> {
-    let huggingface = huggingface::Client::from_env()?;
-    let whisper = huggingface.transcription_model("whisper-large-v3");
-    let response = whisper
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn huggingface(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = huggingface::functions::Config::from_env("whisper-large-v3")?;
+    let response =
+        huggingface::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?)
+            .await?;
     println!("HuggingFace Whisper-Large-V3: {}", response.text);
     Ok(())
 }
 
-async fn mistral(file_path: &str) -> Result<(), anyhow::Error> {
-    let client = mistral::Client::from_env()?;
-    let model = client.transcription_model(mistral::VOXTRAL_MINI);
-    let response = model
-        .transcription_request()
-        .load_file(file_path)?
-        .send()
-        .await?;
+async fn mistral(rt: &HttpRuntime, file_path: &str) -> Result<(), anyhow::Error> {
+    let cfg = mistral::functions::Config::from_env(mistral::VOXTRAL_MINI)?;
+    let response =
+        mistral::functions::transcribe(&cfg, rt, TranscriptionRequest::from_file(file_path)?)
+            .await?;
     println!("Mistral: {}", response.text);
     Ok(())
 }

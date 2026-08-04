@@ -1,6 +1,5 @@
 //! Migrated from `examples/perplexity_agent.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::perplexity::{self, SONAR};
 

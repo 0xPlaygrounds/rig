@@ -1,12 +1,27 @@
+//! Dynamic tool selection as a hook recipe.
+//!
+//! Index-backed dynamic tool retrieval was removed from the agent builder.
+//! The replacement: register every candidate tool on the agent, embed the
+//! tools' documentation into a vector store up front, and use a
+//! completion-call hook that embeds each prompt, retrieves the best-matching
+//! tool names, and narrows the advertised set for that turn via
+//! `RequestPatch::active_tools`.
+//!
+//! A hook is an attach-and-forget record: a named `HookEntry` wrapping a
+//! closure over owned `HookEvent`s that returns a `HookDecision`.
+//!
+//! Embedding is plain data too: an `openai::functions::EmbeddingConfig` plus
+//! an [`HttpRuntime`], batched through [`EmbeddingJob`] (the replacement
+//! for `EmbeddingsBuilder`). The hook captures the config and the transport
+//! rather than an embedding model.
 use anyhow::Result;
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    completion::Prompt,
-    embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
-    tool::{Tool, ToolEmbedding, ToolSet},
-    vector_store::in_memory_store::InMemoryVectorStore,
+    embeddings::{EmbeddingJob, ToolSchema},
+    tool::Tool,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,10 +35,6 @@ struct OperationArgs {
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
 struct MathError;
-
-#[derive(Debug, thiserror::Error)]
-#[error("Math error")]
-struct InitError;
 
 #[derive(Deserialize, Serialize)]
 struct Add;
@@ -53,26 +64,10 @@ impl Tool for Add {
             }
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
-}
-impl ToolEmbedding for Add {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Add)
-    }
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Add x and y together".into()]
-    }
-    fn context(&self) -> Self::Context {}
 }
 #[derive(Deserialize, Serialize)]
 struct Subtract;
@@ -101,31 +96,65 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Subtract {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
+/// Selects which registered tools the model sees on each turn by similarity
+/// between the prompt and the tools' embedded documentation. The hook owns the
+/// embedding config, transport, store, and sample count; its invocation future
+/// borrows that state only until dispatch completes.
+fn tool_retrieval_hook(
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
+    store: InMemoryVectorStore,
+    samples: u64,
+) -> HookEntry {
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("tool-retrieval", state, |state, event| async move {
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_config, rt, store, samples) = state.as_ref();
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
 
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Subtract)
-    }
-
-    fn context(&self) -> Self::Context {}
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Subtract y from x (i.e.: x - y)".into()]
-    }
+        let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+            Ok(response) => match response.embeddings.into_iter().next() {
+                Some(embedding) => embedding,
+                None => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "no embedding returned for the query".to_string(),
+                    ));
+                }
+            },
+            Err(error) => {
+                return HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()));
+            }
+        };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n_ids(request).await {
+            // The store is keyed by tool name; narrow this turn's
+            // advertised tools to the retrieved names.
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+            }
+        }
+    })
 }
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // required to enable CloudWatch error logging by the runtime
@@ -135,32 +164,36 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    let toolset = ToolSet::builder()
-        .retrieved_tool(Add)
-        .retrieved_tool(Subtract)
-        .build();
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.schemas()?)?
-        .build()
+    let client = openai::Client::from_env()?;
+    let embedding_config = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
+    let rt = client.http();
+
+    // Embed the tools' documentation and index it by tool name.
+    let schemas = vec![
+        ToolSchema::new(Add::NAME, vec!["Add x and y together".into()]),
+        ToolSchema::new(
+            Subtract::NAME,
+            vec!["Subtract y from x (i.e.: x - y)".into()],
+        ),
+    ];
+    let embeddings = EmbeddingJob::new()
+        .documents(schemas)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embedding_config, &rt, texts))
         .await?;
 
-    // Create vector store with the embeddings
+    // Create vector store with the embeddings, keyed by tool name
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
-
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = openai_client
+    // Create an agent that carries every candidate tool but advertises only
+    // the retrieved one per prompt (sample rate 1).
+    let calculator_rag = client
         .agent(openai::GPT_4)
         .preamble("You are a calculator here to help the user perform arithmetic operations.")
-        // Add a dynamic tool source with a sample rate of 1 (i.e.: only
-        // 1 additional tool will be added to prompts)
-        .retrieved_tools(1, index, toolset)
+        .tool(Add)
+        .tool(Subtract)
+        .add_hook(tool_retrieval_hook(embedding_config, rt, vector_store, 1))
         .default_max_turns(2)
         .build();
 

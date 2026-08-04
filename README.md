@@ -65,8 +65,8 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Agentic workflows that can handle multi-turn streaming and prompting
 - A classic agent runtime enabled by default
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
-- 20+ model providers, all under one singular unified interface
-- 10+ vector store integrations, all under one singular unified interface
+- 20+ bundled model providers plus typed out-of-tree completion providers, all speaking one shared completion vocabulary — usable through concrete clients or plain serializable provider configuration
+- 10+ vector store integrations sharing one pre-embedded search vocabulary (`VectorSearchRequest`/`SearchHit`/`StoreRecord`), with concrete per-store surfaces
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities
 - Integrate LLMs in your app with minimal boilerplate
@@ -78,10 +78,12 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 Rig separates portable provider/backend contracts from agent orchestration:
 
-- `rig-core` contains provider-neutral messages, completion models, portable tools,
-  memory and vector-store contracts, and built-in provider mappings.
-- `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  contextual tools, extraction, and the serializable `AgentRun` state machine. It
+- `rig-core` contains provider-neutral messages, completion request/response data, portable tools,
+  the in-process conversation store, the shared vector-store data types (pre-embedded search
+  requests and hits; each store crate exposes its own concrete methods), and
+  built-in provider mappings.
+- `rig-agent` contains the classic builder, concrete client bridges, hook records,
+  tool execution, extraction, and the serializable `AgentRun` state machine. It
   remains enabled by default.
 
 The root `rig` facade re-exports both at their familiar paths, so most code
@@ -125,7 +127,7 @@ use rig::providers::openai;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
+    // The concrete client owns reusable connection data and transport.
     let client = openai::Client::from_env()?;
 
     // Create agent with a single context prompt
@@ -176,10 +178,12 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | SQLite | [`rig-sqlite`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-sqlite) | `sqlite` | `rig::sqlite` |
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 
-`rig::memory` is available without the `memory` feature; it contains the core
-conversation memory traits and in-memory backend re-exported from `rig-core`.
-Enabling `features = ["memory"]` adds reusable history-shaping policy types from
-the `rig-memory` companion crate to the same module.
+`rig::memory` is available without the `memory` feature; it contains the
+concrete in-process conversation store re-exported from `rig-core`. Memory is
+host-owned: load history before a run, append the run's committed transcript
+after it. Enabling `features = ["memory"]` adds the `rig-memory` companion
+crate's history-shaping policy data (sliding window, token budget, rolling
+summaries) to the same module.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

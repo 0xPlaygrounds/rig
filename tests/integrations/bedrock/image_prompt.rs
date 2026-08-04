@@ -2,21 +2,18 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::Prompt;
 use rig::message::{ImageMediaType, Message, UserContent};
-use rig::prelude::*;
 use tokio::fs;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent,
     support::{IMAGE_FIXTURE_PATH, assert_contains_any_case_insensitive, assert_nonempty_response},
 };
 
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock vision model access"]
 async fn image_prompt_from_fixture() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble("You are an image describer.")
         .temperature(0.5)
         .build();

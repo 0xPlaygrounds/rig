@@ -1,8 +1,8 @@
-//! Human-in-the-loop (HITL) tool-call approval with `AgentHook`.
+//! Human-in-the-loop (HITL) tool-call approval with a hook record.
 //!
 //! An agent is given two side-effecting tools (`send_email`, `delete_file`).
-//! Before *any* tool runs, an [`ApprovalHook`] pauses the run on the
-//! [`ToolCallEvent`] event, shows the human the tool name and arguments,
+//! Before *any* tool runs, the [`approval_hook`] record pauses the run on the
+//! [`HookEvent::ToolCall`] event, shows the human the tool name and arguments,
 //! and waits for a decision on stdin. Each decision maps to an existing
 //! event-specific action — no special HITL machinery is required:
 //!
@@ -13,16 +13,20 @@
 //! | **edit**       | [`ToolCallAction::rewrite`]      | the tool executes with human-supplied arguments instead            |
 //! | **abort**      | [`ToolCallAction::stop`]         | the whole run stops and surfaces the reason as an error            |
 //!
-//! Because `AgentHook::on_tool_call` is `async`, the hook can simply `.await` the
+//! Because a hook callback returns a future, the hook can simply `.await` the
 //! human's input inline (here from stdin; in a real app this might be an HTTP
-//! request to an approval UI, a Slack round-trip, or a database poll). The same
-//! hook works unchanged on the streaming driver (`stream_prompt`).
+//! request to an approval UI, a Slack round-trip, or a database poll). Hooks are
+//! attach-and-forget records — a plain function returning a [`HookEntry`] whose
+//! closure decides each event, ignoring every event other than
+//! [`HookEvent::ToolCall`]. The same entry works unchanged on the streaming
+//! driver (`stream_run`); only observing text / tool-call *deltas* would
+//! additionally require `HookEntry::observing_deltas`.
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 
 use anyhow::Result;
-use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::completion::Prompt;
+use rig::agent::ToolCallAction;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -68,11 +72,7 @@ impl Tool for SendEmail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would hit an email API here.
         println!(
             "   📧 [send_email] -> {} (subject: {:?}, {} chars)",
@@ -111,11 +111,7 @@ impl Tool for DeleteFile {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would delete the file here.
         println!("   🗑️  [delete_file] -> {}", args.path);
         Ok(format!("deleted {}", args.path))
@@ -155,12 +151,13 @@ async fn ask(prompt: &str) -> Option<String> {
 /// must never run them on ambiguous input — and note that the prompt is a UX
 /// affordance, not a security boundary; real authorization belongs inside the
 /// tool itself.
-struct ApprovalHook;
-
-impl AgentHook for ApprovalHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let tool_name = event.tool_name;
-        let args = event.args;
+fn approval_hook() -> HookEntry {
+    HookEntry::new("human-approval", |event| async move {
+        let HookEvent::ToolCall { call, .. } = event else {
+            return HookDecision::Continue;
+        };
+        let tool_name = call.function.name.clone();
+        let args = call.function.arguments.clone();
 
         println!("\n⏸  The agent wants to run a tool — your approval is required:");
         println!("     tool: {tool_name}");
@@ -170,18 +167,20 @@ impl AgentHook for ApprovalHook {
         let Some(choice) = ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort run? ").await
         else {
             println!("     → no input (stdin closed); aborting (fail-closed)");
-            return ToolCallAction::stop("no reviewer input available (stdin closed)");
+            return HookDecision::ToolCall(ToolCallAction::stop(
+                "no reviewer input available (stdin closed)",
+            ));
         };
 
-        // Match the whole (lowercased) answer, accepting either the hotkey or the
-        // full word, so typing "abort" can never be mistaken for "approve".
-        match choice.to_ascii_lowercase().as_str() {
+        // Match the whole (lowercased) answer, accepting either the hotkey or
+        // the full word, so typing "abort" can never be mistaken for "approve".
+        let action = match choice.to_ascii_lowercase().as_str() {
             "a" | "approve" => {
                 println!("     → approved");
                 ToolCallAction::run()
             }
-            // Deny: the tool does not run; the reason is fed back to the model as
-            // the tool result so it can choose another course of action.
+            // Deny: the tool does not run; the reason is fed back to the model
+            // as the tool result so it can choose another course of action.
             "d" | "deny" | "n" | "no" => {
                 let reason = ask("     reason (shown to the model): ")
                     .await
@@ -223,8 +222,9 @@ impl AgentHook for ApprovalHook {
                 println!("     ! unrecognized choice '{other}'; denying (fail-closed)");
                 ToolCallAction::skip(format!("denied: unrecognized reviewer input '{other}'"))
             }
-        }
-    }
+        };
+        HookDecision::ToolCall(action)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +233,8 @@ impl AgentHook for ApprovalHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
+    let client = openai::Client::from_env()?;
+    let agent = client
         .agent(openai::GPT_4O)
         .preamble(
             "You are an operations assistant. Use the available tools to carry out the user's \
@@ -250,10 +251,12 @@ async fn main() -> Result<()> {
     // Attach the approval hook for this run. It fires before every tool call;
     // the run pauses for your decision each time.
     let response = agent
-        .prompt(prompt)
+        .runner(prompt)
         .max_turns(10)
-        .add_hook(ApprovalHook)
-        .await?;
+        .add_hook(approval_hook())
+        .run()
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
 

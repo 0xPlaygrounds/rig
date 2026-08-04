@@ -1,8 +1,6 @@
 //! OpenAI agent completion smoke test.
 
-use rig::completion::Prompt;
-use rig::prelude::*;
-use rig::providers::openai;
+use rig::{prelude::*, providers::openai};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};

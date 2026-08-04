@@ -5,12 +5,8 @@
 
 use serde_json::json;
 
-use super::{Client, client::ApiResponse};
-use crate::{
-    embeddings::{self, EmbeddingError},
-    http_client::HttpClientExt,
-    wasm_compat::WasmCompatSend,
-};
+use super::ApiResponse;
+use crate::embeddings::{self, EmbeddingError};
 
 /// `gemini-embedding-001` embedding model (3072 dimensions by default)
 pub const EMBEDDING_001: &str = "gemini-embedding-001";
@@ -19,8 +15,13 @@ pub const EMBEDDING_004: &str = "text-embedding-004";
 
 /// Returns the default output dimensionality for known Gemini embedding models.
 ///
+/// Pure lookup table. Callers that want the provider's documented default
+/// dimensionality can feed it to
+/// [`EmbeddingConfig::with_dimensions`](super::functions::EmbeddingConfig::with_dimensions);
+/// leaving it unset lets Gemini apply the same default server-side.
+///
 /// See <https://ai.google.dev/gemini-api/docs/models#gemini-embedding>
-fn model_default_ndims(model: &str) -> Option<usize> {
+pub fn model_default_ndims(model: &str) -> Option<usize> {
     match model {
         EMBEDDING_001 => Some(3072),
         EMBEDDING_004 => Some(768),
@@ -28,126 +29,82 @@ fn model_default_ndims(model: &str) -> Option<usize> {
     }
 }
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    model: String,
-    ndims: usize,
+/// Build the serialized `batchEmbedContents` request body. Pure; used by
+/// [`super::functions::embed`].
+///
+/// `output_dimensionality` is included per entry when `Some`.
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+    output_dimensionality: Option<usize>,
+) -> Result<Vec<u8>, EmbeddingError> {
+    let requests: Vec<_> = texts
+        .iter()
+        .map(|doc| {
+            let mut entry = json!({
+                "model": format!("models/{model}"),
+                "content": json!({
+                    "parts": [json!({
+                        "text": doc.to_string()
+                    })]
+                }),
+            });
+            if let (Some(ndims), Some(object)) = (output_dimensionality, entry.as_object_mut()) {
+                object.insert("output_dimensionality".to_string(), json!(ndims));
+            }
+            entry
+        })
+        .collect();
+
+    let request_body = json!({ "requests": requests });
+
+    if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
+        tracing::trace!(
+            target: "rig::embedding",
+            "Sending embedding request to Gemini API {pretty_body}"
+        );
+    }
+
+    Ok(serde_json::to_vec(&request_body)?)
 }
 
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
+/// Parse a `batchEmbedContents` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; used by [`super::functions::embed`].
+/// Gemini reports no embedding usage.
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    // Preserve non-success bodies before deserialization because providers
+    // may return empty, non-JSON, or otherwise unexpected error payloads.
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
     }
 
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            ndims,
-        }
-    }
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: Clone + HttpClientExt + 'static,
-{
-    type Client = Client<T>;
-
-    const MAX_DOCUMENTS: usize = 1024;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
-        Self::new(client.clone(), model, ndims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-
-        // Google batch embed requests. See docstrings for API ref link.
-        let requests: Vec<_> = documents
-            .iter()
-            .map(|doc| {
-                json!({
-                    "model": format!("models/{}", self.model),
-                    "content": json!({
-                        "parts": [json!({
-                            "text": doc.to_string()
-                        })]
-                    }),
-                    "output_dimensionality": self.ndims,
+    match serde_json::from_str::<ApiResponse<gemini_api_types::EmbeddingResponse>>(body)? {
+        ApiResponse::Ok(response) => {
+            let embeddings = documents
+                .into_iter()
+                .zip(response.embeddings)
+                .map(|(document, embedding)| embeddings::Embedding {
+                    document,
+                    vec: embedding
+                        .values
+                        .into_iter()
+                        .filter_map(|n| n.as_f64())
+                        .collect(),
                 })
+                .collect();
+            Ok(embeddings::EmbeddingResponse {
+                embeddings,
+                usage: crate::completion::Usage::new(),
             })
-            .collect();
-
-        let request_body = json!({ "requests": requests  });
-
-        if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
-            tracing::trace!(
-                target: "rig::embedding",
-                "Sending embedding request to Gemini API {pretty_body}"
-            );
         }
-
-        let request_body = serde_json::to_vec(&request_body)?;
-        let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
-        let req = self
-            .client
-            .post(path.as_str())?
-            .body(request_body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        let status = response.status();
-        let body = response.into_body().await?;
-
-        // Preserve non-success bodies before deserialization because providers
-        // may return empty, non-JSON, or otherwise unexpected error payloads.
-        if !status.is_success() {
-            return Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
-        }
-
-        match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
-            ApiResponse::Ok(response) => {
-                let docs = documents
-                    .into_iter()
-                    .zip(response.embeddings)
-                    .map(|(document, embedding)| embeddings::Embedding {
-                        document,
-                        vec: embedding
-                            .values
-                            .into_iter()
-                            .filter_map(|n| n.as_f64())
-                            .collect(),
-                    })
-                    .collect();
-
-                Ok(docs)
-            }
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(EmbeddingError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
+        ApiResponse::Err(err) => {
+            tracing::warn!(message = %err.error.message, "provider returned an error response");
+            Err(EmbeddingError::from_http_response(status, body.to_string()))
         }
     }
 }
@@ -189,50 +146,10 @@ mod tests {
         assert_eq!(model_default_ndims("unknown-model"), None);
     }
 
-    #[test]
-    fn test_make_resolves_default_dims() {
-        let client = Client::new("test_key").unwrap();
-
-        // EMBEDDING_001 defaults to 3072
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, None);
-        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 3072);
-
-        // EMBEDDING_004 defaults to 768
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_004, None);
-        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
-
-        // Unknown model falls back to 768
-        let model = <EmbeddingModel as embeddings::EmbeddingModel>::make(
-            &client,
-            "some-future-model",
-            None,
-        );
-        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
-    }
-
-    #[test]
-    fn test_make_respects_explicit_dims() {
-        let client = Client::new("test_key").unwrap();
-
-        let model =
-            <EmbeddingModel as embeddings::EmbeddingModel>::make(&client, EMBEDDING_001, Some(256));
-        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
-    }
-
-    #[test]
-    fn test_new_uses_provided_ndims() {
-        let client = Client::new("test_key").unwrap();
-
-        let model = EmbeddingModel::new(client, EMBEDDING_001, 512);
-        assert_eq!(embeddings::EmbeddingModel::ndims(&model), 512);
-    }
-
     #[tokio::test]
     async fn embedding_non_success_preserves_status_and_body() {
-        use crate::client::embeddings::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // The non-success status guard preserves the raw provider body without
@@ -241,15 +158,10 @@ mod tests {
             r#"{"error":{"code":503,"message":"service unavailable","status":"UNAVAILABLE"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(EMBEDDING_001);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::EmbeddingConfig::new(EMBEDDING_001).with_api_key("test-key");
 
-        let error = model
-            .embed_texts(vec!["hello".to_string()])
+        let error = functions::embed(&cfg, &rt, vec!["hello".to_string()])
             .await
             .expect_err("should fail with non-success status");
 
@@ -263,22 +175,17 @@ mod tests {
 
     #[tokio::test]
     async fn embedding_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::embeddings::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel as _;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // 200 OK carrying Gemini's standard nested error envelope.
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(EMBEDDING_001);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::EmbeddingConfig::new(EMBEDDING_001).with_api_key("test-key");
 
-        let error = model
-            .embed_texts(vec!["hello".to_string()])
+        let error = functions::embed(&cfg, &rt, vec!["hello".to_string()])
             .await
             .expect_err("should fail with provider error envelope");
 

@@ -1,28 +1,28 @@
-//! Completion request, response, and provider trait definitions.
+//! Completion request and response definitions.
 //!
-//! Provider integrations implement [`CompletionModel`] and translate
-//! [`CompletionRequest`] into their native HTTP request format.
+//! Provider `functions` modules translate [`CompletionRequest`] into their
+//! native HTTP request format and parse the reply back into
+//! [`CompletionResponse`].
 //!
 //! # Low-level request example
 //!
 //! ```no_run
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{AssistantContent, CompletionModel},
+//!     completion::{AssistantContent, CompletionRequest},
+//!     http_runtime::HttpRuntime,
 //!     providers::openai,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::from_env()?;
-//! let model = client.completion_model(openai::GPT_5_2);
+//! let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+//! let rt = HttpRuntime::new();
 //!
-//! let request = model
-//!     .completion_request("Who are you?")
-//!     .preamble("You are a concise assistant.".to_string())
+//! let request = CompletionRequest::builder("Who are you?")
+//!     .preamble("You are a concise assistant.")
 //!     .temperature(0.5)
 //!     .build();
 //!
-//! let response = model.completion(request).await?;
+//! let response = openai::functions::complete(&cfg, &rt, request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {
 //!         println!("{}", text.text);
@@ -34,16 +34,10 @@
 
 use super::message::{AssistantContent, DocumentMediaType};
 use crate::message::ToolChoice;
+use crate::message::{Message, UserContent};
 use crate::provider_response;
-use crate::streaming::StreamingCompletionResponse;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{OneOrMany, http_client};
-use crate::{
-    json_utils,
-    message::{Message, UserContent},
-};
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::{Add, AddAssign};
@@ -115,6 +109,12 @@ pub enum CompletionError {
     /// Raw error response preserved from the completion model provider
     #[error("ProviderResponseError: {0}")]
     ProviderResponse(provider_response::ProviderResponseError),
+}
+
+impl From<crate::json_utils::RequestOverlayError> for CompletionError {
+    fn from(error: crate::json_utils::RequestOverlayError) -> Self {
+        Self::RequestError(Box::new(error))
+    }
 }
 
 crate::provider_response::impl_provider_response_helpers!(CompletionError);
@@ -207,48 +207,89 @@ impl ProviderToolDefinition {
     }
 }
 
-/// General completion response struct that contains the high-level completion choice
-/// and the raw response. The completion choice contains one or more assistant content.
-#[derive(Debug)]
-pub struct CompletionResponse<T> {
+/// Why the model stopped generating, normalized across providers.
+///
+/// Providers report this under different names and vocabularies
+/// (`finish_reason`, `stop_reason`, `stopReason`, …); each provider's
+/// response conversion maps its wire value onto these variants and preserves
+/// anything unmapped verbatim in [`FinishReason::Other`]. Closes #2090/#1886.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    /// Natural end of the response.
+    Stop,
+    /// The response hit the output-token limit.
+    Length,
+    /// The model stopped to call one or more tools.
+    ToolCalls,
+    /// The provider filtered the content.
+    ContentFilter,
+    /// A provider-specific reason outside the normalized vocabulary,
+    /// carried verbatim.
+    Other(String),
+}
+
+/// General completion response struct: the completion choice plus normalized
+/// response metadata. The completion choice contains one or more assistant
+/// content items.
+///
+/// This type is concrete — it carries no provider-typed payload. Callers who
+/// need a provider's raw typed response call that provider's own parse/
+/// completion functions directly, on the provider's side of the boundary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
     pub choice: OneOrMany<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// The raw response returned by the completion model provider
-    pub raw_response: T,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     /// Used to pair reasoning input items with their output items in multi-turn.
     pub message_id: Option<String>,
+    /// Why the model stopped generating, when the provider reported it.
+    pub finish_reason: Option<FinishReason>,
+    /// Name of the provider that produced this response (descriptor name,
+    /// e.g. `"openai"`).
+    pub provider: String,
+    /// Provider-reported model identifier for the response, when available.
+    pub model: Option<String>,
 }
 
-/// A trait for grabbing the token usage of a completion response.
-///
-/// Primarily designed for streamed completion responses in streamed multi-turn, as otherwise it would be impossible to do.
-pub trait GetTokenUsage {
-    /// Returns token usage for this response. Zero-valued usage is
-    /// [`Usage`]'s documented sentinel for missing provider usage metrics;
-    /// response types that carry no usage return [`Usage::new`].
-    fn token_usage(&self) -> crate::completion::Usage;
-}
-
-impl GetTokenUsage for () {
-    fn token_usage(&self) -> crate::completion::Usage {
-        crate::completion::Usage::new()
-    }
-}
-
-impl<T> GetTokenUsage for Option<T>
-where
-    T: GetTokenUsage,
-{
-    fn token_usage(&self) -> crate::completion::Usage {
-        if let Some(usage) = self {
-            usage.token_usage()
-        } else {
-            crate::completion::Usage::new()
+impl CompletionResponse {
+    /// Create a response from its required parts; optional metadata starts
+    /// unset and is filled with the `with_*` helpers.
+    pub fn new(
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        provider: impl Into<String>,
+    ) -> Self {
+        Self {
+            choice,
+            usage,
+            message_id: None,
+            finish_reason: None,
+            provider: provider.into(),
+            model: None,
         }
+    }
+
+    /// Attach the provider-assigned message ID.
+    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.message_id = Some(message_id.into());
+        self
+    }
+
+    /// Attach the normalized finish reason.
+    pub fn with_finish_reason(mut self, finish_reason: FinishReason) -> Self {
+        self.finish_reason = Some(finish_reason);
+        self
+    }
+
+    /// Attach the provider-reported model identifier.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 }
 
@@ -332,71 +373,11 @@ impl AddAssign for Usage {
     }
 }
 
-/// Trait defining a completion model that can be used to generate completion responses.
-/// This trait is meant to be implemented by the user to define a custom completion model,
-/// either from a third party provider (e.g.: OpenAI) or a local model.
-pub trait CompletionModel: Clone + WasmCompatSend + WasmCompatSync {
-    /// The raw response type returned by the underlying completion model.
-    type Response: WasmCompatSend + WasmCompatSync + Serialize + DeserializeOwned;
-    /// The raw response type returned by the underlying completion model when streaming.
-    type StreamingResponse: Clone
-        + Unpin
-        + WasmCompatSend
-        + WasmCompatSync
-        + Serialize
-        + DeserializeOwned
-        + GetTokenUsage;
-
-    /// Provider client type used to construct this model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    /// Generates a completion response for the given completion request.
-    fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<CompletionResponse<Self::Response>, CompletionError>,
-    > + WasmCompatSend;
-
-    fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> impl std::future::Future<
-        Output = Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>,
-    > + WasmCompatSend;
-
-    /// Generates a completion request builder for the given `prompt`.
-    fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self> {
-        CompletionRequestBuilder::new(self.clone(), prompt)
-    }
-
-    /// Whether this provider's native structured output (`output_schema` ->
-    /// `format`/`response_format`) composes with tool calls in the same
-    /// multi-turn request without suppressing them.
-    ///
-    /// Defaults to `false` (the safe assumption: the native constraint may make
-    /// the model emit schema JSON instead of calling its tools — see issue
-    /// #1928). Providers that enforce structured output *and* tool use together
-    /// (e.g. OpenAI, Anthropic) override this to `true`, which lets runtimes keep
-    /// guaranteed native structured output active when tools are present.
-    fn composes_native_output_with_tools(&self) -> bool {
-        false
-    }
-}
-
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
-    /// Legacy preamble field preserved for backwards compatibility.
-    ///
-    /// New code should prefer a leading [`Message::System`]
-    /// in `chat_history` as the canonical representation of system instructions.
-    pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
     pub chat_history: OneOrMany<Message>,
@@ -437,6 +418,60 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// Starts a fluent [`CompletionRequestBuilder`] for `prompt`.
+    ///
+    /// The builder holds only owned request data — no model, transport, or
+    /// provider — so [`CompletionRequestBuilder::build`] hands back a plain
+    /// [`CompletionRequest`] that you pass to a provider's `functions::complete`
+    /// or `functions::open_stream`.
+    ///
+    /// ```
+    /// use rig_core::completion::CompletionRequest;
+    ///
+    /// let request = CompletionRequest::builder("What is Rust?")
+    ///     .preamble("You are concise.")
+    ///     .temperature(0.2)
+    ///     .max_tokens(256)
+    ///     .build();
+    ///
+    /// // The preamble is canonicalized into a leading system message.
+    /// assert_eq!(request.chat_history.len(), 2);
+    /// ```
+    pub fn builder(prompt: impl Into<Message>) -> CompletionRequestBuilder {
+        CompletionRequestBuilder::new(prompt)
+    }
+
+    /// A request for `prompt` with `preamble` and prior `history`: the
+    /// canonical hand-built request shape (history first, prompt last, every
+    /// other field defaulted for functional-update syntax).
+    pub fn with_history(history: Vec<Message>, prompt: impl Into<Message>) -> Self {
+        let prompt = prompt.into();
+        let chat_history = match OneOrMany::many(history) {
+            Ok(mut messages) => {
+                messages.push(prompt);
+                messages
+            }
+            Err(_) => OneOrMany::one(prompt),
+        };
+        Self {
+            model: None,
+            chat_history,
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// A request for a bare `prompt` with no preamble or history.
+    pub fn from_prompt(prompt: impl Into<Message>) -> Self {
+        Self::with_history(Vec::new(), prompt)
+    }
+
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
     /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
@@ -448,6 +483,22 @@ impl CompletionRequest {
                 .unwrap_or("response_schema")
                 .to_string()
         })
+    }
+
+    /// Returns the normalized input messages used by runtime telemetry:
+    /// the chat history (which already carries any system preamble and the
+    /// prompt) with the request's documents inserted as a message after any
+    /// leading system messages.
+    pub fn messages_for_telemetry(&self) -> Vec<Message> {
+        let mut chat_history: Vec<Message> = self.chat_history.clone().into_iter().collect();
+        if let Some(documents) = Self::normalized_documents_from(&self.documents) {
+            let insert_at = chat_history
+                .iter()
+                .position(|message| !matches!(message, Message::System { .. }))
+                .unwrap_or(chat_history.len());
+            chat_history.insert(insert_at, documents);
+        }
+        chat_history
     }
 
     /// Returns documents normalized into a message (if any).
@@ -542,57 +593,31 @@ fn merge_provider_tools_into_additional_params(
     Some(serde_json::Value::Object(params_map))
 }
 
-/// Builder struct for constructing a completion request.
+/// A fluent builder for [`CompletionRequest`].
 ///
-/// Example usage:
+/// This is request *data* only: it stores no model, transport, provider, or
+/// callback, and has no type parameter. [`Self::build`] returns a concrete
+/// [`CompletionRequest`] which you hand to a provider's free functions —
+/// there is deliberately no `send`/`stream` terminal, because that would put
+/// a provider back inside the builder.
+///
 /// ```no_run
-/// use rig_core::{
-///     client::CompletionClient,
-///     providers::openai::{Client, self},
-///     completion::{CompletionModel, CompletionRequestBuilder},
-/// };
-///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.completion_model(openai::GPT_5_2);
+/// use rig_core::{completion::CompletionRequest, http_runtime::HttpRuntime, providers::openai};
 ///
-/// // Create the completion request and execute it separately
-/// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
-///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
-///     .temperature(0.5)
+/// let request = CompletionRequest::builder("Explain ownership.")
+///     .preamble("You are a Rust tutor.")
+///     .temperature(0.2)
 ///     .build();
 ///
-/// let response = model.completion(request).await?;
+/// let cfg = openai::functions::Config::from_env("gpt-4o")?;
+/// let response = openai::functions::complete(&cfg, &HttpRuntime::new(), request).await?;
+/// # let _ = response;
 /// # Ok(())
 /// # }
 /// ```
-///
-/// Alternatively, you can execute the completion request directly from the builder:
-/// ```no_run
-/// use rig_core::{
-///     client::CompletionClient,
-///     providers::openai::{Client, self},
-///     completion::CompletionRequestBuilder,
-/// };
-///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.completion_model(openai::GPT_5_2);
-///
-/// // Create the completion request and execute it directly
-/// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())
-///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
-///     .temperature(0.5)
-///     .send()
-///     .await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// Note: It is usually unnecessary to create a completion request builder directly.
-/// Instead, use the [CompletionModel::completion_request] method.
-pub struct CompletionRequestBuilder<M: CompletionModel> {
-    model: M,
+#[derive(Debug, Clone)]
+pub struct CompletionRequestBuilder {
     prompt: Message,
     request_model: Option<String>,
     preamble: Option<String>,
@@ -608,12 +633,15 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     record_telemetry_content: bool,
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
-    pub fn new(model: M, prompt: impl Into<Message>) -> Self {
+impl CompletionRequestBuilder {
+    /// Starts a builder for `prompt`. Prefer [`CompletionRequest::builder`].
+    pub fn new(prompt: impl Into<Message>) -> Self {
         Self {
-            model,
             prompt: prompt.into(),
             request_model: None,
+            // Builder state, not request data: held until `build()` so
+            // `.preamble(..)` is last-writer-wins and `.without_preamble()`
+            // can clear it precisely.
             preamble: None,
             chat_history: Vec::new(),
             documents: Vec::new(),
@@ -628,10 +656,16 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         }
     }
 
-    /// Sets the preamble for the completion request.
-    pub fn preamble(mut self, preamble: String) -> Self {
-        // Legacy public API: funnel preamble into canonical system messages at build-time.
-        self.preamble = Some(preamble);
+    /// Sets the preamble, canonicalized at [`Self::build`] into a leading
+    /// [`Message::System`] — the one representation of system instructions.
+    pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
+        self.preamble = Some(preamble.into());
+        self
+    }
+
+    /// Clears any preamble set so far.
+    pub fn without_preamble(mut self) -> Self {
+        self.preamble = None;
         self
     }
 
@@ -641,170 +675,140 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
-    /// Overrides the model used for this request.
+    /// Overrides the model used for this request, or clears the override.
     pub fn model_opt(mut self, model: Option<String>) -> Self {
         self.request_model = model;
         self
     }
 
-    pub fn without_preamble(mut self) -> Self {
-        self.preamble = None;
-        self
-    }
-
-    /// Adds a message to the chat history for the completion request.
+    /// Appends a message to the chat history.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);
-
         self
     }
 
-    /// Adds a list of messages to the chat history for the completion request.
+    /// Appends messages to the chat history, in order.
     pub fn messages(mut self, messages: impl IntoIterator<Item = Message>) -> Self {
         self.chat_history.extend(messages);
-
         self
     }
 
-    /// Adds a document to the completion request.
+    /// Appends a document to the request.
     pub fn document(mut self, document: Document) -> Self {
         self.documents.push(document);
         self
     }
 
-    /// Adds a list of documents to the completion request.
-    pub fn documents(self, documents: impl IntoIterator<Item = Document>) -> Self {
-        documents
-            .into_iter()
-            .fold(self, |builder, doc| builder.document(doc))
+    /// Appends documents to the request, in order.
+    pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
+        self.documents.extend(documents);
+        self
     }
 
-    /// Adds a tool to the completion request.
+    /// Appends a tool definition.
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
     }
 
-    /// Adds a list of tools to the completion request.
-    pub fn tools(self, tools: Vec<ToolDefinition>) -> Self {
-        tools
-            .into_iter()
-            .fold(self, |builder, tool| builder.tool(tool))
+    /// Appends tool definitions, in order.
+    pub fn tools(mut self, tools: impl IntoIterator<Item = ToolDefinition>) -> Self {
+        self.tools.extend(tools);
+        self
     }
 
-    /// Adds a provider-hosted tool to the completion request.
+    /// Appends a provider-hosted tool, merged into `additional_params.tools`
+    /// at [`Self::build`].
     pub fn provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
         self.provider_tools.push(tool);
         self
     }
 
-    /// Adds provider-hosted tools to the completion request.
-    pub fn provider_tools(self, tools: Vec<ProviderToolDefinition>) -> Self {
-        tools
-            .into_iter()
-            .fold(self, |builder, tool| builder.provider_tool(tool))
-    }
-
-    /// Adds additional parameters to the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
-    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
-        match self.additional_params {
-            Some(params) => {
-                self.additional_params = Some(json_utils::merge(params, additional_params));
-            }
-            None => {
-                self.additional_params = Some(additional_params);
-            }
-        }
+    /// Appends provider-hosted tools, in order.
+    pub fn provider_tools(
+        mut self,
+        tools: impl IntoIterator<Item = ProviderToolDefinition>,
+    ) -> Self {
+        self.provider_tools.extend(tools);
         self
     }
 
-    /// Sets the additional parameters for the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
+    /// **Merges** provider-specific parameters into any already set.
+    ///
+    /// Use [`Self::additional_params_opt`] to replace them outright.
+    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
+        self.additional_params = match self.additional_params {
+            Some(params) => Some(crate::json_utils::merge(params, additional_params)),
+            None => Some(additional_params),
+        };
+        self
+    }
+
+    /// **Replaces** provider-specific parameters (or clears them with `None`).
     pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
         self.additional_params = additional_params;
         self
     }
 
-    /// Sets the temperature for the completion request.
+    /// Sets the sampling temperature.
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
-    /// Sets the temperature for the completion request.
+    /// Sets or clears the sampling temperature.
     pub fn temperature_opt(mut self, temperature: Option<f64>) -> Self {
         self.temperature = temperature;
         self
     }
 
-    /// Sets the max tokens for the completion request.
-    /// Note: This is required if using Anthropic
+    /// Sets the maximum tokens. Required by Anthropic.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
         self.max_tokens = Some(max_tokens);
         self
     }
 
-    /// Sets the max tokens for the completion request.
-    /// Note: This is required if using Anthropic
+    /// Sets or clears the maximum tokens.
     pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
         self.max_tokens = max_tokens;
         self
     }
 
-    /// Sets the thing.
+    /// Sets whether the model must call a tool.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
     }
 
-    /// Sets the output schema for structured output. When set, providers that support
-    /// native structured outputs will constrain the model's response to match this schema.
-    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
-    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
-    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
-    /// to still be able to leverage structured outputs.
+    /// Sets or clears the tool-choice policy.
+    pub fn tool_choice_opt(mut self, tool_choice: Option<ToolChoice>) -> Self {
+        self.tool_choice = tool_choice;
+        self
+    }
+
+    /// Sets the JSON Schema constraining structured output.
     pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
         self.output_schema = Some(schema);
         self
     }
 
-    /// Sets the output schema for structured output from an optional value.
-    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
-    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
-    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
-    /// to still be able to leverage structured outputs.
+    /// Sets or clears the structured-output schema.
     pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
         self.output_schema = schema;
         self
     }
 
-    /// Opt in or out of recording sensitive request, response, and tool content
-    /// on GenAI telemetry spans for this request.
+    /// Opts in or out of recording sensitive content on GenAI telemetry spans.
     ///
-    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
-    /// tool results, model responses, and other sensitive or high-cardinality data
-    /// through OpenTelemetry span attributes, which can increase observability
-    /// backend storage and query costs. Only enable it when content telemetry is
-    /// acceptable for this request. Structural metadata and token
-    /// usage remain available when this is disabled.
-    ///
-    /// This low-level builder only stores the opt-in on the built request. It
-    /// does not guarantee portable input/output message fields for direct model
-    /// calls; exact coverage is provider- and surface-dependent. Agent APIs own
-    /// normalized input/output recording and provide the consistent surface.
+    /// Defaults to `false`. Enabling this can expose prompts, retrieved
+    /// context, tool results, and model responses through span attributes.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.record_telemetry_content = enabled;
         self
     }
 
-    /// Returns the normalized input messages used by runtime telemetry.
+    /// The normalized input messages runtime telemetry would record, without
+    /// consuming the builder.
     pub fn messages_for_telemetry(&self) -> Vec<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(preamble) = &self.preamble {
@@ -823,9 +827,12 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         chat_history
     }
 
-    /// Builds the completion request.
+    /// Builds the concrete [`CompletionRequest`].
+    ///
+    /// Any preamble becomes a leading [`Message::System`]; history keeps its
+    /// order with the prompt last; provider tools merge into
+    /// `additional_params.tools`.
     pub fn build(self) -> CompletionRequest {
-        // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
         let prompt = self.prompt;
         if let Some(preamble) = self.preamble {
@@ -843,7 +850,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 
         CompletionRequest {
             model: self.request_model,
-            preamble: None,
             chat_history,
             documents: self.documents,
             tools: self.tools,
@@ -855,23 +861,206 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             record_telemetry_content: self.record_telemetry_content,
         }
     }
+}
 
-    /// Sends the completion request to the completion model provider and returns the completion response.
-    pub async fn send(self) -> Result<CompletionResponse<M::Response>, CompletionError> {
-        let model = self.model.clone();
-        model.completion(self.build()).await
+#[cfg(test)]
+mod builder_equivalence_tests {
+    use super::*;
+
+    fn tool(name: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: format!("{name} description"),
+            parameters: serde_json::json!({ "type": "object" }),
+        }
     }
 
-    /// Stream the completion request
-    pub async fn stream<'a>(
-        self,
-    ) -> Result<StreamingCompletionResponse<M::StreamingResponse>, CompletionError>
-    where
-        <M as CompletionModel>::StreamingResponse: 'a,
-        Self: 'a,
-    {
-        let model = self.model.clone();
-        model.stream(self.build()).await
+    #[test]
+    fn build_matches_explicit_construction_for_the_default_shape() {
+        let built = CompletionRequest::builder("prompt").build();
+        let explicit = CompletionRequest::from_prompt("prompt");
+
+        // With one representation the two constructions agree field for field.
+        assert_eq!(built.chat_history, explicit.chat_history);
+        assert_eq!(built.model, explicit.model);
+        assert_eq!(built.documents, explicit.documents);
+        assert_eq!(built.tools, explicit.tools);
+        assert_eq!(built.temperature, explicit.temperature);
+        assert_eq!(built.max_tokens, explicit.max_tokens);
+        assert_eq!(built.tool_choice, explicit.tool_choice);
+        assert_eq!(built.additional_params, explicit.additional_params);
+        assert!(built.output_schema.is_none());
+        assert!(!built.record_telemetry_content);
+    }
+
+    #[test]
+    fn preamble_becomes_a_leading_system_message_not_the_legacy_field() {
+        let request = CompletionRequest::builder("prompt")
+            .preamble("be terse")
+            .build();
+
+        let messages: Vec<Message> = request.chat_history.clone().into_iter().collect();
+        assert_eq!(messages.len(), 2);
+        assert!(matches!(messages[0], Message::System { .. }));
+        assert_eq!(messages[1], Message::from("prompt"));
+    }
+
+    #[test]
+    fn history_precedes_the_prompt_and_keeps_its_order() {
+        let request = CompletionRequest::builder("prompt")
+            .message(Message::from("first"))
+            .messages([Message::from("second"), Message::from("third")])
+            .preamble("system")
+            .build();
+
+        let messages: Vec<Message> = request.chat_history.into_iter().collect();
+        assert!(matches!(messages[0], Message::System { .. }));
+        assert_eq!(messages[1], Message::from("first"));
+        assert_eq!(messages[2], Message::from("second"));
+        assert_eq!(messages[3], Message::from("third"));
+        assert_eq!(messages[4], Message::from("prompt"));
+    }
+
+    #[test]
+    fn without_preamble_clears_a_previously_set_preamble() {
+        let request = CompletionRequest::builder("prompt")
+            .preamble("discarded")
+            .without_preamble()
+            .build();
+
+        assert_eq!(request.chat_history.len(), 1);
+    }
+
+    #[test]
+    fn additional_params_merges_while_the_opt_setter_replaces() {
+        let merged = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params(serde_json::json!({ "b": 2 }))
+            .build();
+        assert_eq!(
+            merged.additional_params,
+            Some(serde_json::json!({ "a": 1, "b": 2 }))
+        );
+
+        let replaced = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params_opt(Some(serde_json::json!({ "b": 2 })))
+            .build();
+        assert_eq!(
+            replaced.additional_params,
+            Some(serde_json::json!({ "b": 2 }))
+        );
+
+        let cleared = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "a": 1 }))
+            .additional_params_opt(None)
+            .build();
+        assert_eq!(cleared.additional_params, None);
+    }
+
+    #[test]
+    fn optional_setters_clear_their_field() {
+        let request = CompletionRequest::builder("p")
+            .temperature(0.5)
+            .temperature_opt(None)
+            .max_tokens(10)
+            .max_tokens_opt(None)
+            .model("m")
+            .model_opt(None)
+            .output_schema_opt(None)
+            .build();
+
+        assert_eq!(request.temperature, None);
+        assert_eq!(request.max_tokens, None);
+        assert_eq!(request.model, None);
+        assert!(request.output_schema.is_none());
+    }
+
+    #[test]
+    fn tools_and_documents_accumulate_in_order() {
+        let request = CompletionRequest::builder("p")
+            .tool(tool("one"))
+            .tools([tool("two"), tool("three")])
+            .document(Document {
+                id: "a".into(),
+                text: "first".into(),
+                additional_props: HashMap::new(),
+            })
+            .documents([Document {
+                id: "b".into(),
+                text: "second".into(),
+                additional_props: HashMap::new(),
+            }])
+            .build();
+
+        let names: Vec<&str> = request.tools.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["one", "two", "three"]);
+        let ids: Vec<&str> = request.documents.iter().map(|d| d.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
+    }
+
+    #[test]
+    fn provider_tools_merge_into_additional_params_like_the_inherent_setters() {
+        let via_builder = CompletionRequest::builder("p")
+            .additional_params(serde_json::json!({ "keep": true }))
+            .provider_tool(ProviderToolDefinition::new("web_search"))
+            .provider_tools([ProviderToolDefinition::new("code_interpreter")])
+            .build();
+
+        let via_inherent = CompletionRequest {
+            additional_params: Some(serde_json::json!({ "keep": true })),
+            ..CompletionRequest::from_prompt("p")
+        }
+        .with_provider_tool(ProviderToolDefinition::new("web_search"))
+        .with_provider_tools(vec![ProviderToolDefinition::new("code_interpreter")]);
+
+        assert_eq!(
+            via_builder.additional_params,
+            via_inherent.additional_params
+        );
+        // And the merge really did land under `tools`, preserving `keep`.
+        let params = via_builder.additional_params.expect("params present");
+        assert_eq!(params["keep"], serde_json::json!(true));
+        assert_eq!(params["tools"].as_array().expect("tools array").len(), 2);
+    }
+
+    #[test]
+    fn messages_for_telemetry_matches_the_built_requests_view() {
+        let builder = CompletionRequest::builder("prompt")
+            .preamble("system")
+            .message(Message::from("history"))
+            .document(Document {
+                id: "d".into(),
+                text: "doc".into(),
+                additional_props: HashMap::new(),
+            });
+
+        let from_builder = builder.clone().messages_for_telemetry();
+        let from_request = builder.build().messages_for_telemetry();
+
+        assert_eq!(from_builder, from_request);
+        // Documents land after the system message, before the first non-system one.
+        assert!(matches!(from_builder[0], Message::System { .. }));
+    }
+
+    #[test]
+    fn scalar_setters_reach_the_built_request() {
+        let schema = schemars::schema_for!(String);
+        let request = CompletionRequest::builder("p")
+            .model("gpt-4o")
+            .temperature(0.25)
+            .max_tokens(512)
+            .tool_choice(ToolChoice::Auto)
+            .output_schema(schema)
+            .record_content_telemetry(true)
+            .build();
+
+        assert_eq!(request.model.as_deref(), Some("gpt-4o"));
+        assert_eq!(request.temperature, Some(0.25));
+        assert_eq!(request.max_tokens, Some(512));
+        assert_eq!(request.tool_choice, Some(ToolChoice::Auto));
+        assert!(request.output_schema.is_some());
+        assert!(request.record_telemetry_content);
     }
 }
 
@@ -889,13 +1078,10 @@ mod tests {
     }
 
     use super::*;
-    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
-        let default_request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
-                .build();
+        let default_request = CompletionRequest::from_prompt("completion prompt");
         assert!(!default_request.record_telemetry_content);
 
         let default_json = serde_json::to_value(&default_request).expect("serialize request");
@@ -907,10 +1093,10 @@ mod tests {
             serde_json::from_value(default_json).expect("deserialize default request");
         assert!(!default_roundtrip.record_telemetry_content);
 
-        let opt_in_request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
-                .record_content_telemetry(true)
-                .build();
+        let opt_in_request = CompletionRequest {
+            record_telemetry_content: true,
+            ..CompletionRequest::from_prompt("completion prompt")
+        };
         assert!(opt_in_request.record_telemetry_content);
 
         let opt_in_json = serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
@@ -936,12 +1122,12 @@ mod tests {
 
     #[test]
     fn message_telemetry_includes_normalized_documents() {
-        let builder = CompletionRequestBuilder::new(MockCompletionModel::default(), "prompt")
-            .preamble("system".to_string())
-            .message(Message::user("history"))
-            .document(test_document("doc1", "static context secret"));
+        let request = CompletionRequest::builder("prompt")
+            .messages(vec![Message::system("system"), Message::user("history")])
+            .documents(vec![test_document("doc1", "static context secret")])
+            .build();
 
-        let messages = builder.messages_for_telemetry();
+        let messages = request.messages_for_telemetry();
         assert_eq!(messages.len(), 4);
         assert!(matches!(messages[0], Message::System { .. }));
         assert!(is_document_message(&messages[1], "doc1"));
@@ -956,7 +1142,6 @@ mod tests {
                 if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
         ));
 
-        let request = builder.build();
         assert_eq!(messages, request.chat_history_with_documents());
     }
 
@@ -1023,7 +1208,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: vec![doc1, doc2],
             tools: Vec::new(),
@@ -1056,7 +1240,6 @@ mod tests {
     fn test_normalize_documents_without_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one("What is the capital of France?".into()),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -1072,111 +1255,9 @@ mod tests {
     }
 
     #[test]
-    fn preamble_builder_funnels_to_system_message() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .preamble("System prompt".to_string())
-                .message(Message::user("History"))
-                .build();
-
-        assert_eq!(request.preamble, None);
-
-        let history = request.chat_history.into_iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 3);
-        assert!(matches!(
-            &history[0],
-            Message::System { content } if content == "System prompt"
-        ));
-        assert!(matches!(&history[1], Message::User { .. }));
-        assert!(matches!(&history[2], Message::User { .. }));
-    }
-
-    #[test]
-    fn without_preamble_removes_legacy_preamble_injection() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .preamble("System prompt".to_string())
-                .without_preamble()
-                .build();
-
-        assert_eq!(request.preamble, None);
-        let history = request.chat_history.into_iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 1);
-        assert!(matches!(&history[0], Message::User { .. }));
-    }
-
-    #[test]
-    fn build_places_documents_after_preamble_system_message() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .preamble("System prompt".to_string())
-                .document(test_document("doc1", "Document text."))
-                .build();
-
-        assert_eq!(request.documents.len(), 1);
-
-        let history = request.chat_history_with_documents();
-        let history = history.iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 3);
-        assert!(matches!(
-            history[0],
-            Message::System { content } if content == "System prompt"
-        ));
-        assert!(is_document_message(history[1], "doc1"));
-        assert!(matches!(history[2], Message::User { .. }));
-    }
-
-    #[test]
-    fn build_places_documents_after_leading_system_messages_before_prior_history() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .message(Message::system("System one"))
-                .message(Message::system("System two"))
-                .message(Message::user("Earlier user turn"))
-                .message(Message::assistant("Earlier assistant turn"))
-                .document(test_document("doc1", "Document text."))
-                .build();
-
-        let history = request.chat_history_with_documents();
-        let history = history.iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 6);
-        assert!(matches!(
-            history[0],
-            Message::System { content } if content == "System one"
-        ));
-        assert!(matches!(
-            history[1],
-            Message::System { content } if content == "System two"
-        ));
-        assert!(is_document_message(history[2], "doc1"));
-        assert!(matches!(history[3], Message::User { .. }));
-        assert!(matches!(history[4], Message::Assistant { .. }));
-        assert!(matches!(history[5], Message::User { .. }));
-    }
-
-    #[test]
-    fn build_without_documents_keeps_message_order_unchanged() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
-                .message(Message::system("System prompt"))
-                .message(Message::user("Earlier user turn"))
-                .build();
-
-        let history = request.chat_history.iter().collect::<Vec<_>>();
-        assert_eq!(history.len(), 3);
-        assert!(matches!(
-            history[0],
-            Message::System { content } if content == "System prompt"
-        ));
-        assert!(matches!(history[1], Message::User { .. }));
-        assert!(matches!(history[2], Message::User { .. }));
-    }
-
-    #[test]
     fn chat_history_with_documents_places_documents_after_leading_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -1210,7 +1291,6 @@ mod tests {
     fn chat_history_with_documents_places_documents_before_mid_conversation_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("Leading system prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -1248,7 +1328,6 @@ mod tests {
     fn chat_history_with_documents_does_not_duplicate_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::user("Earlier user turn"),

@@ -3,11 +3,13 @@
 //! [`AgentRun`](rig::agent::run::AgentRun) state machine.
 #![allow(dead_code)]
 
+use rig::completion::CompletionRequest;
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall};
-use rig::completion::{CompletionModel, CompletionRequestBuilder, ToolDefinition, Usage};
+use rig::agent::run::{ModelAttemptId, ModelTurn, PendingToolCall};
+use rig::completion::{ToolDefinition, Usage};
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
@@ -15,7 +17,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub(crate) struct GeminiAgent {
-    model: gemini::completion::CompletionModel,
+    pub(crate) cfg: gemini::functions::Config,
+    pub(crate) rt: HttpRuntime,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -23,13 +26,14 @@ pub(crate) struct GeminiAgent {
 
 impl GeminiAgent {
     pub(crate) fn new(
-        model: gemini::completion::CompletionModel,
+        cfg: gemini::functions::Config,
         preamble: impl Into<String>,
         tool_names: &[&str],
         tool_choice: Option<ToolChoice>,
     ) -> Self {
         Self {
-            model,
+            cfg,
+            rt: HttpRuntime::new(),
             preamble: preamble.into(),
             tools: tool_names
                 .iter()
@@ -46,21 +50,15 @@ impl GeminiAgent {
         }
     }
 
-    pub(crate) fn request(
-        &self,
-        prompt: Message,
-        history: Vec<Message>,
-    ) -> CompletionRequestBuilder<gemini::completion::CompletionModel> {
-        let mut request = self
-            .model
-            .completion_request(prompt)
-            .messages(history)
-            .preamble(self.preamble.clone())
-            .tools(self.tools.clone());
-        if let Some(tool_choice) = &self.tool_choice {
-            request = request.tool_choice(tool_choice.clone());
+    pub(crate) fn request(&self, prompt: Message, history: Vec<Message>) -> CompletionRequest {
+        CompletionRequest {
+            tools: self.tools.clone(),
+            tool_choice: self.tool_choice.clone(),
+            ..CompletionRequest::builder(prompt)
+                .preamble(&self.preamble)
+                .messages(history)
+                .build()
         }
-        request
     }
 }
 
@@ -107,11 +105,7 @@ impl Tool for Add {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -132,11 +126,7 @@ impl Tool for Subtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -159,11 +149,7 @@ impl Tool for Sum {
         operation_definition(Self::NAME, "Add x and y together (alias of add)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -216,20 +202,21 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
 
 /// One hand-driven, non-streamed model call through an explicit raw model
 /// harness. This exercises the sans-IO `AgentRun` protocol without pretending
-/// to execute a configured `Agent`, whose only execution path is `AgentRunner`.
+/// to execute a configured `Agent`, whose only execution path is `SessionRunner`.
 pub(crate) async fn call_model(
     agent: &GeminiAgent,
     prompt: Message,
     history: Vec<Message>,
+    attempt_id: ModelAttemptId,
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
 ) -> ModelTurn {
-    let response = agent
-        .request(prompt, history)
-        .send()
-        .await
-        .expect("gemini completion should succeed");
+    let response =
+        gemini::functions::complete(&agent.cfg, &agent.rt, agent.request(prompt, history))
+            .await
+            .expect("gemini completion should succeed");
     ModelTurn::new(
+        attempt_id,
         response.message_id.clone(),
         response.choice.clone(),
         response.usage,

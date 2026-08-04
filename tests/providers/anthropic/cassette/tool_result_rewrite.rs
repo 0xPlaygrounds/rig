@@ -8,13 +8,12 @@
 //! the model's answer never contains it — and the blocking and streaming tests
 //! assert the same behavior, since both drivers share the same tool seam.
 
+use rig::prelude::*;
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{AgentHook, ToolResultAction, ToolResultEvent};
-use rig::completion::Prompt;
-use rig::prelude::*;
+use rig::agent::ToolResultAction;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_result_redaction;
 use serde::Deserialize;
@@ -78,11 +77,7 @@ impl Tool for GetUserRecord {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         // Constant (id-independent) so the round-trip is deterministic for replay.
         let record = format!("name=Alice; ssn={SECRET_SSN}; status=active");
         self.raw_outputs
@@ -111,20 +106,16 @@ fn redact_ssn(record: &str) -> String {
 /// A guardrail hook that redacts the SSN from `get_user_record` output on the
 /// `ToolResult` event, before the model ever sees it — the post-tool redaction
 /// use case `ToolResultAction::Rewrite` exists for.
-struct RedactSsnFromResult;
-
-impl AgentHook for RedactSsnFromResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == GetUserRecord::NAME {
-            ToolResultAction::rewrite(redact_ssn(&event.presentation.render()))
-        } else {
-            ToolResultAction::keep()
-        }
-    }
+fn redact_ssn_from_result() -> HookEntry {
+    HookEntry::sync("redact-ssn-from-result", |event| match event {
+        HookEvent::ToolResult {
+            call, presentation, ..
+        } if call.function.name == GetUserRecord::NAME => HookDecision::ToolResult(
+            ToolResultAction::rewrite(redact_ssn(&presentation.render())),
+        ),
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
+    })
 }
 
 fn assert_answer_hides_secret(answer: &str, tool_produced_secret: bool) {
@@ -150,13 +141,15 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
                 .tool(tool)
-                .add_hook(RedactSsnFromResult)
+                .add_hook(redact_ssn_from_result())
                 .build();
 
             let response = agent
-                .prompt(LOOKUP_PROMPT)
+                .runner(LOOKUP_PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking lookup should succeed");
 
             assert_answer_hides_secret(&response, execution_probe.produced_secret());
@@ -183,10 +176,10 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .preamble(PREAMBLE)
                 .tool(tool)
-                .add_hook(RedactSsnFromResult)
+                .add_hook(redact_ssn_from_result())
                 .build();
 
-            let mut stream = agent.stream_prompt(LOOKUP_PROMPT).max_turns(5).await;
+            let mut stream = agent.runner(LOOKUP_PROMPT).max_turns(5).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming lookup should succeed");

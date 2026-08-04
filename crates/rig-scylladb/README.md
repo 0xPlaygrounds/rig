@@ -5,7 +5,10 @@ Vector store implementation for [ScyllaDB](https://www.scylladb.com/). This inte
 ## Usage
 
 ```rust
-use rig::{providers::openai, vector_store::VectorStoreIndex, Embed};
+use rig::{
+    http_runtime::HttpRuntime, providers::openai, vector_store::request::VectorSearchRequest,
+    Embed, OneOrMany,
+};
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -19,29 +22,34 @@ struct Document {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create ScyllaDB session
     let session = create_session("127.0.0.1:9042").await?;
-    
-    // Create OpenAI client and embedding model
-    let openai_client = openai::Client::from_env();
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    
-    // Create vector store
+
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+
+    // Create vector store; queries arrive pre-embedded
     let vector_store = ScyllaDbVectorStore::new(
-        model,
         session,
         "vector_db",    // keyspace
         "documents",    // table
         1536,          // embedding dimensions
     ).await?;
-    
-    // Query the store
-    let results = vector_store
-        .top_n::<Document>("search query", 5)
-        .await?;
-    
+
+    // Embed the query, then query the store
+    let query_embedding =
+        openai::functions::embed(&embed_cfg, &rt, vec!["search query".to_string()])
+            .await?
+            .embeddings
+            .into_iter()
+            .next()
+            .expect("one embedding per input text");
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5);
+    let results = vector_store.top_n_as::<Document>(req).await?;
+
     for (score, id, doc) in results {
         println!("Score: {}, ID: {}, Document: {:?}", score, id, doc);
     }
-    
+
     Ok(())
 }
 ```

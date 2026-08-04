@@ -1,6 +1,5 @@
 //! Migrated from `examples/agent_with_llamafile.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
@@ -14,9 +13,8 @@ async fn completion_smoke() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(BASIC_PREAMBLE)
         .build();
 

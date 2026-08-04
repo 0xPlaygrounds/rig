@@ -1,11 +1,10 @@
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{
-        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
-    },
+    embeddings::EmbeddingJob,
+    vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
-use rig_fastembed::FastembedModel;
+use rig_fastembed::{EmbeddingConfig, FastembedModel, functions};
 use serde::{Deserialize, Serialize};
 
 // Shape of data that needs to be RAG'ed.
@@ -20,12 +19,18 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let fastembed_client = rig_fastembed::Client::new();
+    // Load the local FastEmbed model. There is no client type: the config
+    // says which weights to load, and `load()` hands back the runtime handle.
+    let embedding_model = EmbeddingConfig::new(FastembedModel::AllMiniLML6V2Q).load()?;
 
-    let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q)?;
-
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
+    // `EmbeddingJob` replaces the old `EmbeddingsBuilder`: it flattens each
+    // document's `#[embed]` fields, embeds them in batches, and re-associates
+    // the vectors with their document.
+    //
+    // The batch size and concurrency are explicit rather than descriptor-derived:
+    // fastembed runs the model in-process, so its limit is a crate constant and
+    // the embedding calls are deliberately serialized.
+    let embeddings = EmbeddingJob::new()
         .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
@@ -51,27 +56,25 @@ async fn main() -> Result<(), anyhow::Error> {
                     "A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])?
-        .build()
+        ])
+        .max_documents(rig_fastembed::MAX_DOCUMENTS)
+        .concurrency(1)
+        .run(|texts| async { functions::embed(&embedding_model, texts) })
         .await?;
 
-    // Create vector store with the embeddings
+    // Create vector store with the embeddings. The store never embeds text
+    // itself: queries arrive pre-embedded.
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
-
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
+    let query_embedding = functions::embed_text(&embedding_model, query)?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
-    let results = index
-        .top_n::<WordDefinition>(req.clone())
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req.clone())
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
@@ -79,7 +82,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!("Results: {results:?}");
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

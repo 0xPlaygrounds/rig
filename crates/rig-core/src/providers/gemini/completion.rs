@@ -28,16 +28,13 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
-use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::gemini::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     OneOrMany,
-    completion::{self, CompletionError, CompletionRequest, GetTokenUsage},
+    completion::{self, CompletionError, CompletionRequest},
 };
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
@@ -45,146 +42,6 @@ use gemini_api_types::{
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
-
-use super::Client;
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    type Response = GenerateContentResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = super::Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
-            &request_model,
-            CompletionOperation::GenerateContent,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let request = create_request_body(completion_request)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Gemini completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let path = completion_endpoint(&request_model);
-
-        let request = self
-            .client
-            .post(path.as_str())?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Vec<u8>>(request).await?;
-
-            if response.status().is_success() {
-                let response_body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-                let response: GenerateContentResponse = serde_json::from_slice(&response_body)
-                    .map_err(|err| {
-                        tracing::error!(
-                            error = %err,
-                            body = %response_text,
-                            "Failed to deserialize Gemini completion response"
-                        );
-                        CompletionError::JsonError(err)
-                    })?;
-
-                let span = tracing::Span::current();
-                span.record_response_metadata(&response);
-                span.record_token_usage(&response.usage_metadata);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Gemini completion response: {}",
-                        serde_json::to_string_pretty(&response)?
-                    );
-                }
-
-                response.try_into()
-            } else {
-                let status = response.status();
-                let body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        CompletionModel::stream(self, request).await
-    }
-}
 
 pub(crate) fn create_request_body(
     completion_request: CompletionRequest,
@@ -193,7 +50,6 @@ pub(crate) fn create_request_body(
 
     let CompletionRequest {
         model: _,
-        preamble,
         chat_history: _,
         documents: _,
         tools: function_tools,
@@ -209,16 +65,53 @@ pub(crate) fn create_request_body(
     full_history.extend(chat_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
-    let mut additional_params_payload = additional_params
-        .take()
-        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut additional_params_payload = additional_params.take().unwrap_or(Value::Null);
+    crate::json_utils::validated_additional_params(
+        Some(&additional_params_payload),
+        &[],
+        "Gemini generateContent request",
+    )?;
+    if additional_params_payload.is_null() {
+        additional_params_payload = Value::Object(Map::new());
+    }
     let mut additional_tools =
         extract_tools_from_additional_params(&mut additional_params_payload)?;
 
+    if let Some(raw_generation_config) = additional_params_payload.get("generationConfig") {
+        let mut reserved = Vec::new();
+        if temperature.is_some() {
+            reserved.push("temperature");
+        }
+        if max_tokens.is_some() {
+            reserved.push("maxOutputTokens");
+        }
+        if output_schema.is_some() {
+            reserved.extend(["responseMimeType", "responseJsonSchema"]);
+        }
+        crate::json_utils::validated_additional_params(
+            Some(raw_generation_config),
+            &reserved,
+            "Gemini generationConfig",
+        )?;
+    }
+
     let AdditionalParameters {
         mut generation_config,
+        safety_settings,
         additional_params,
     } = serde_json::from_value::<AdditionalParameters>(additional_params_payload)?;
+    crate::json_utils::validated_additional_params(
+        additional_params.as_ref(),
+        &[
+            "contents",
+            "generationConfig",
+            "safetySettings",
+            "tools",
+            "toolConfig",
+            "systemInstruction",
+        ],
+        "Gemini generateContent request",
+    )?;
 
     // Apply output_schema to generation_config, creating one if needed
     if let Some(schema) = output_schema {
@@ -240,9 +133,6 @@ pub(crate) fn create_request_body(
     });
 
     let mut system_parts: Vec<Part> = Vec::new();
-    if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {
-        system_parts.push(preamble.into());
-    }
     for content in history_system {
         if !content.is_empty() {
             system_parts.push(content.into());
@@ -282,7 +172,7 @@ pub(crate) fn create_request_body(
             })
             .collect::<Result<Vec<_>, _>>()?,
         generation_config,
-        safety_settings: None,
+        safety_settings,
         tools,
         tool_config,
         system_instruction,
@@ -406,7 +296,42 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+/// Maps Gemini's wire `finishReason` onto the normalized
+/// [`completion::FinishReason`] vocabulary, carrying unmapped values
+/// verbatim (in their wire SCREAMING_SNAKE_CASE form) in `Other`.
+pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReason {
+    match reason {
+        FinishReason::Stop => completion::FinishReason::Stop,
+        FinishReason::MaxTokens => completion::FinishReason::Length,
+        FinishReason::Safety
+        | FinishReason::Blocklist
+        | FinishReason::ProhibitedContent
+        | FinishReason::Spii => completion::FinishReason::ContentFilter,
+        FinishReason::FinishReasonUnspecified => {
+            completion::FinishReason::Other("FINISH_REASON_UNSPECIFIED".to_string())
+        }
+        FinishReason::Recitation => completion::FinishReason::Other("RECITATION".to_string()),
+        FinishReason::Language => completion::FinishReason::Other("LANGUAGE".to_string()),
+        FinishReason::Other => completion::FinishReason::Other("OTHER".to_string()),
+        FinishReason::MalformedFunctionCall => {
+            completion::FinishReason::Other("MALFORMED_FUNCTION_CALL".to_string())
+        }
+        FinishReason::UnexpectedToolCall => {
+            completion::FinishReason::Other("UNEXPECTED_TOOL_CALL".to_string())
+        }
+        FinishReason::MissingThoughtSignature => {
+            completion::FinishReason::Other("MISSING_THOUGHT_SIGNATURE".to_string())
+        }
+        FinishReason::TooManyToolCalls => {
+            completion::FinishReason::Other("TOO_MANY_TOOL_CALLS".to_string())
+        }
+        FinishReason::MalformedResponse => {
+            completion::FinishReason::Other("MALFORMED_RESPONSE".to_string())
+        }
+    }
+}
+
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -513,15 +438,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(gemini_api_types::UsageMetadata::token_usage)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = candidate.finish_reason.as_ref().map(map_finish_reason);
+
+        let mut converted = completion::CompletionResponse::new(choice, usage, "gemini");
+        if !response.response_id.is_empty() {
+            converted = converted.with_message_id(response.response_id.clone());
+        }
+        if let Some(finish_reason) = finish_reason {
+            converted = converted.with_finish_reason(finish_reason);
+        }
+        if let Some(model_version) = response.model_version.as_deref() {
+            converted = converted.with_model(model_version);
+        }
+
+        Ok(converted)
     }
 }
 
@@ -535,7 +468,6 @@ pub mod gemini_api_types {
     use serde::{Deserialize, Serialize};
     use serde_json::{Value, json};
 
-    use crate::completion::GetTokenUsage;
     use crate::message::{DocumentSourceKind, ImageMediaType, MessageError, MimeType};
     use crate::{
         completion::CompletionError,
@@ -547,7 +479,11 @@ pub mod gemini_api_types {
     #[serde(rename_all = "camelCase")]
     pub struct AdditionalParameters {
         /// Change your Gemini request configuration.
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub generation_config: Option<GenerationConfig>,
+        /// Optional provider-native safety policy for this request.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub safety_settings: Option<Vec<SafetySetting>>,
         /// Any additional parameters that you want.
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<serde_json::Value>,
@@ -1424,8 +1360,9 @@ pub mod gemini_api_types {
         }
     }
 
-    impl GetTokenUsage for UsageMetadata {
-        fn token_usage(&self) -> crate::completion::Usage {
+    impl UsageMetadata {
+        /// Normalizes Gemini usage metadata into Rig's [`crate::completion::Usage`].
+        pub fn token_usage(&self) -> crate::completion::Usage {
             let mut usage = crate::completion::Usage::new();
 
             usage.input_tokens = self.prompt_token_count as u64;
@@ -2174,14 +2111,14 @@ pub mod gemini_api_types {
     #[derive(Debug, Serialize)]
     pub struct CodeExecution {}
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct SafetySetting {
         pub category: HarmCategory,
         pub threshold: HarmBlockThreshold,
     }
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Deserialize, Serialize)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum HarmBlockThreshold {
         HarmBlockThresholdUnspecified,
@@ -2206,6 +2143,97 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["systemInstruction", "contents"] {
+            let mut request = CompletionRequest::from_prompt("Hello");
+            request.additional_params = Some(json!({ (key): "override" }));
+
+            let error =
+                create_request_body(request).expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "cachedContent": "cachedContents/example"
+        }));
+
+        let request = create_request_body(request).expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["cachedContent"], "cachedContents/example");
+    }
+
+    #[test]
+    fn request_rejects_non_object_additional_params_at_the_overlay_boundary() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!(["not", "an", "object"]));
+
+        let error = create_request_body(request)
+            .expect_err("non-object extensions must fail before provider deserialization");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("must be a JSON object"));
+    }
+
+    #[test]
+    fn request_treats_null_additional_params_as_no_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(Value::Null);
+
+        create_request_body(request).expect("null should mean no extensions");
+    }
+
+    #[test]
+    fn generation_config_rejects_only_nested_canonical_collisions() {
+        let mut colliding = CompletionRequest::from_prompt("Hello");
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(json!({
+            "generationConfig": {"temperature": 0.9, "topP": 0.8}
+        }));
+
+        let error =
+            create_request_body(colliding).expect_err("nested canonical field collision must fail");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = CompletionRequest::from_prompt("Hello");
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(json!({
+            "generationConfig": {"topP": 0.8}
+        }));
+        let request = create_request_body(passthrough)
+            .expect("unrelated nested provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(value["generationConfig"]["temperature"], 0.2);
+        assert_eq!(value["generationConfig"]["topP"], 0.8);
+    }
+
+    #[test]
+    fn request_promotes_provider_safety_settings_into_the_typed_shape() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "safetySettings": [{
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_ONLY_HIGH"
+            }]
+        }));
+
+        let request = create_request_body(request)
+            .expect("provider-native safety settings should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(
+            value["safetySettings"][0]["category"],
+            "HARM_CATEGORY_HARASSMENT"
+        );
+    }
 
     #[test]
     fn test_usage_metadata_deserializes_without_total_token_count() {
@@ -2318,7 +2346,6 @@ mod tests {
     fn test_resolve_request_model_uses_override() {
         let request = CompletionRequest {
             model: Some("gemini-2.5-flash".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2346,7 +2373,6 @@ mod tests {
     fn test_resolve_request_model_uses_default_when_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -2563,7 +2589,7 @@ mod tests {
             model_version: None,
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
         let first = converted.choice.first();
         assert!(matches!(
@@ -2634,10 +2660,8 @@ mod tests {
                 model_version: None,
             };
 
-            let err = crate::completion::CompletionResponse::<GenerateContentResponse>::try_from(
-                response,
-            )
-            .expect_err("tool protocol finish reason should fail");
+            let err = crate::completion::CompletionResponse::try_from(response)
+                .expect_err("tool protocol finish reason should fail");
 
             assert!(matches!(
                 err,
@@ -2688,7 +2712,7 @@ mod tests {
             model_version: Some("gemini-2.0-flash-001".to_string()),
         };
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
 
         assert_eq!(converted.usage.input_tokens, 40);
@@ -2778,7 +2802,7 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let converted: crate::completion::CompletionResponse<GenerateContentResponse> =
+        let converted: crate::completion::CompletionResponse =
             response.try_into().expect("response should convert");
         let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
             panic!("expected a tool call");
@@ -3433,7 +3457,6 @@ mod tests {
         ];
 
         let documents_message = CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(Message::user("placeholder")),
             documents,
             tools: vec![],
@@ -3449,8 +3472,8 @@ mod tests {
         .unwrap();
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
             chat_history: OneOrMany::many(vec![
+                Message::system("You are a helpful assistant".to_string()),
                 documents_message,
                 Message::user("What are my notes about?"),
             ])
@@ -3520,8 +3543,11 @@ mod tests {
         use crate::message::Message;
 
         let completion_request = CompletionRequest {
-            preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::one(Message::user("Hello")),
+            chat_history: OneOrMany::many(vec![
+                Message::system("You are a helpful assistant".to_string()),
+                Message::user("Hello"),
+            ])
+            .expect("non-empty"),
             documents: vec![], // No documents
             tools: vec![],
             temperature: None,
@@ -3552,24 +3578,18 @@ mod tests {
 
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::completion::CompletionClient;
-        use crate::completion::CompletionModel as _;
-        use crate::providers::gemini::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::gemini::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
-        let request = model.completion_request("hello").build();
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(super::GEMINI_3_FLASH_PREVIEW).with_api_key("test-key");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("should fail with non-success status");
 

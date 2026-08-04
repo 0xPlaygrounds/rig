@@ -1,13 +1,12 @@
 //! Migrated from `examples/anthropic_think_tool_with_other_tools.rs`.
 
+use rig::prelude::*;
 use std::iter::Peekable;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 use rig::tool::builtin::ThinkTool;
@@ -58,11 +57,7 @@ impl Tool for Calculator {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         evaluate_expression(&args.expression).map_err(CalculatorError)
     }
@@ -230,11 +225,7 @@ impl Tool for DatabaseLookup {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
 
         let value = match args.query {
@@ -303,15 +294,14 @@ async fn think_tool_with_other_tools() -> Result<()> {
         .build();
 
     let response = agent
-        .prompt(
+        .runner(
             "I ordered 3 units of Product A at $25 each and 2 units of Product B at $40 each. \
              I want to return 1 unit of Product A and exchange the 2 units of Product B for Product C. \
              How much will I get refunded, and is Product C in stock? \
              Also, how much would it cost to ship the exchanged items with express shipping? \
              Lastly, how much would it cost to buy Product A + 2 Product B with slow (standard) shipping?",
         )
-        .max_turns(10)
-        .extended_details()
+        .max_turns(10).run()
         .await?;
 
     assert_mentions_expected_number(&response.output, 25);

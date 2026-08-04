@@ -1,15 +1,12 @@
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::providers::cohere::CompletionModel;
-use crate::providers::cohere::completion::{CohereCompletionRequest, Usage};
+use crate::completion::CompletionError;
+use crate::http_client::sse::Event;
+use crate::providers::cohere::completion::Usage;
 use crate::streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::SpanCombinator;
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
+use serde::Deserialize;
 use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
@@ -59,81 +56,39 @@ struct MessageEndDelta {
     usage: Option<Usage>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse {
-    pub usage: Option<Usage>,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let tokens = self
-            .usage
-            .clone()
-            .and_then(|response| response.tokens)
-            .map(|tokens| {
-                (
-                    tokens.input_tokens.map(|x| x as u64),
-                    tokens.output_tokens.map(|y| y as u64),
-                )
-            });
-        let Some((Some(input), Some(output))) = tokens else {
-            return crate::completion::Usage::new();
-        };
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = input;
-        usage.output_tokens = output;
-        usage.total_tokens = input + output;
-
-        usage
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
-        let system_instructions = request.preamble.clone();
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            "cohere",
-            &request.model,
-            CompletionOperation::ChatStreaming,
+/// Normalize the streamed `message-end` usage payload; missing token counts
+/// yield the zero-usage sentinel.
+fn streamed_token_usage(usage: Option<&Usage>) -> crate::completion::Usage {
+    let tokens = usage.and_then(|usage| usage.tokens.as_ref()).map(|tokens| {
+        (
+            tokens.input_tokens.map(|x| x as u64),
+            tokens.output_tokens.map(|y| y as u64),
         )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
+    });
+    let Some((Some(input), Some(output))) = tokens else {
+        return crate::completion::Usage::new();
+    };
+    let mut usage = crate::completion::Usage::new();
+    usage.input_tokens = input;
+    usage.output_tokens = output;
+    usage.total_tokens = input + output;
 
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
+    usage
+}
 
-        request.additional_params = Some(params);
+/// Drive a fully built Cohere streaming request over `client`, returning the
+/// normalized streaming response.
+///
+/// Extracted from the deleted trait-path `CompletionModel::stream` so the data-oriented
+/// [`super::functions`] face reuses the exact same SSE machinery; both paths
+/// route through this single function.
+pub(super) fn stream_cohere_sse(
+    event_source: crate::http_client::sse::BoxedEventSource,
+    span: tracing::Span,
+) -> streaming::CompletionStream {
+    let mut event_source = event_source;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Cohere streaming completion input: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("/v2/chat")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
-
-        let stream = stream! {
+    let stream = stream! {
             let mut current_tool_call: Option<(String, String, String, String)> = None;
             let mut final_usage = None;
 
@@ -169,8 +124,9 @@ where
 
                             StreamingEvent::MessageEnd { delta: Some(delta) } => {
                                 let span = tracing::Span::current();
-                                span.record_token_usage(&delta.usage);
-                                final_usage = Some(delta.usage.clone());
+                                let token_usage = streamed_token_usage(delta.usage.as_ref());
+                                span.record_token_usage(&token_usage);
+                                final_usage = Some(token_usage);
                                 break;
                             },
 
@@ -234,18 +190,16 @@ where
                 }
             }
 
-            // Ensure event source is closed when stream ends
-            event_source.close();
+            // Dropping the boxed event source when this stream ends is
+            // equivalent to closing it — the state machine is finished with it.
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default()
-            }))
+            yield Ok(RawStreamingChoice::FinalResponse(streaming::StreamFinal::new(
+                "cohere",
+                final_usage.unwrap_or_else(crate::completion::Usage::new),
+            )))
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
+    streaming::CompletionStream::from_stream(stream)
 }
 
 #[cfg(test)]

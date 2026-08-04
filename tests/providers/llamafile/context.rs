@@ -1,6 +1,5 @@
 //! Llamafile context smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{CONTEXT_DOCS, CONTEXT_PROMPT, assert_contains_any_case_insensitive};
@@ -14,13 +13,13 @@ async fn context_smoke() {
         return;
     }
 
-    let client = support::client();
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(client.agent(support::model_name()), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(
+            support::client().agent(&support::model_name()),
+            |builder, doc| builder.context(doc),
+        )
         .build();
 
     let response = agent

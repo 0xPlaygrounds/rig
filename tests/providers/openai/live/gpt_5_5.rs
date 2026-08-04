@@ -1,18 +1,18 @@
 //! Dedicated GPT-5.5 live smoke tests.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::AgentBuilder;
+use rig::completion::Message;
 use rig::completion::message::Image;
-use rig::completion::{Chat, Message};
-use rig::completion::{Prompt, TypedPrompt};
 use rig::message::{DocumentSourceKind, ImageDetail, ImageMediaType};
 use rig::prelude::*;
+use rig::provider::ProviderConfig;
 use rig::providers::openai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "websocket")]
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 #[cfg(feature = "websocket")]
 use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
@@ -32,6 +32,25 @@ struct Gpt55Event {
     summary: String,
 }
 
+/// Responses-API provider config for `model`, built from the environment.
+fn responses_provider(model: &str) -> ProviderConfig {
+    openai::Client::from_env()
+        .expect("client should build")
+        .provider_config(model)
+}
+
+fn responses_agent(model: &str) -> AgentBuilder {
+    openai::Client::from_env()
+        .expect("client should build")
+        .agent(model)
+}
+
+fn completions_agent(model: &str) -> AgentBuilder {
+    openai::CompletionsClient::from_env()
+        .expect("client should build")
+        .agent(model)
+}
+
 fn gpt_5_5_reasoning_params() -> serde_json::Value {
     serde_json::json!({
         "reasoning": { "effort": "xhigh" }
@@ -41,9 +60,7 @@ fn gpt_5_5_reasoning_params() -> serde_json::Value {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_prompt_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(BASIC_PREAMBLE)
         .build();
 
@@ -58,13 +75,11 @@ async fn responses_prompt_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_streaming_prompt_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -75,9 +90,7 @@ async fn responses_streaming_prompt_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_tools_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -94,18 +107,16 @@ async fn responses_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_streaming_tools_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
         .build();
 
     let mut stream = agent
-        .stream_prompt(STREAMING_TOOLS_PROMPT)
+        .runner(STREAMING_TOOLS_PROMPT)
         .max_turns(3)
-        .await;
+        .stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -116,8 +127,7 @@ async fn responses_streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_structured_output_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client.agent(openai::GPT_5_5).build();
+    let agent = responses_agent(openai::GPT_5_5).build();
 
     let response: Gpt55Event = agent
         .prompt_typed("Return a concise event object for a local Rust meetup in Seattle.")
@@ -128,8 +138,7 @@ async fn responses_structured_output_smoke() {
     assert_nonempty_response(&response.category);
     assert_nonempty_response(&response.summary);
 
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .output_schema::<SmokeStructuredOutput>()
         .build();
     let response = agent
@@ -144,24 +153,23 @@ async fn responses_structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_extractor_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+    let agent = responses_agent(openai::GPT_5_5).build();
+    let response = agent
+        .extractor(EXTRACTOR_TEXT)
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -172,9 +180,7 @@ async fn responses_extractor_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_image_input_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble("You are an image describer.")
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
@@ -197,9 +203,8 @@ async fn responses_image_input_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_nonstreaming_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion_model(openai::GPT_5_5),
+        responses_provider(openai::GPT_5_5),
         Some(gpt_5_5_reasoning_params()),
     ))
     .await;
@@ -208,9 +213,8 @@ async fn responses_reasoning_nonstreaming_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_streaming_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
     reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion_model(openai::GPT_5_5),
+        responses_provider(openai::GPT_5_5),
         Some(gpt_5_5_reasoning_params()),
     ))
     .await;
@@ -220,9 +224,7 @@ async fn responses_reasoning_streaming_smoke() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -241,9 +243,7 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
     let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let client = openai::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = responses_agent(openai::GPT_5_5)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -251,9 +251,10 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
         .build();
 
     let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .runner(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(3)
-        .await;
+        .stream_run();
 
     let stats = reasoning::collect_stream_stats(stream, "openai").await;
     reasoning::assert_universal(&stats, &call_count, "openai");
@@ -262,11 +263,7 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_prompt_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .preamble(BASIC_PREAMBLE)
         .build();
 
@@ -281,15 +278,11 @@ async fn chat_completions_prompt_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_streaming_prompt_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming prompt should succeed");
@@ -300,11 +293,7 @@ async fn chat_completions_streaming_prompt_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_tools_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .preamble(TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
@@ -321,17 +310,13 @@ async fn chat_completions_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_streaming_tools_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming tool prompt should succeed");
@@ -342,11 +327,7 @@ async fn chat_completions_streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_structured_output_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .output_schema::<SmokeStructuredOutput>()
         .build();
 
@@ -363,26 +344,23 @@ async fn chat_completions_structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_extractor_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let extractor = client.extractor::<SmokePerson>(openai::GPT_5_5).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+    let agent = completions_agent(openai::GPT_5_5).build();
+    let response = agent
+        .extractor(EXTRACTOR_TEXT)
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("chat completions extractor request should succeed");
 
     assert_nonempty_response(
         response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first name should be present"),
     );
     assert_nonempty_response(
         response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last name should be present"),
@@ -393,11 +371,7 @@ async fn chat_completions_extractor_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_image_input_smoke() {
-    let client = openai::Client::from_env()
-        .expect("client should build")
-        .completions_api();
-    let agent = client
-        .agent(openai::GPT_5_5)
+    let agent = completions_agent(openai::GPT_5_5)
         .preamble("You are an image describer.")
         .build();
     let image_bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
@@ -421,13 +395,12 @@ async fn chat_completions_image_input_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY and --features websocket"]
 async fn responses_websocket_smoke() -> anyhow::Result<()> {
-    let client = openai::Client::from_env().expect("client should build");
-    let model = client.completion_model(openai::GPT_5_5);
-    let mut session = client.responses_websocket(openai::GPT_5_5).await?;
+    let cfg = openai::responses_api::functions::Config::from_env(openai::GPT_5_5)
+        .expect("config should build");
+    let mut session = openai::responses_api::websocket::connect(cfg).await?;
 
-    let request = model
-        .completion_request("Explain one benefit of websocket mode in one sentence.")
-        .build();
+    let request =
+        CompletionRequest::from_prompt("Explain one benefit of websocket mode in one sentence.");
     session.send(request).await?;
 
     let mut streamed_text = String::new();

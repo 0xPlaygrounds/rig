@@ -1,12 +1,12 @@
-use rig::integrations::discord_bot::DiscordExt;
+//! `Agent::into_discord_bot` is an inherent method now — the old `DiscordExt`
+//! trait is gone, so there is no trait import to bring into scope.
 use rig::prelude::*;
 use rig::providers::openai;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let discord_bot_token = std::env::var("DISCORD_BOT_TOKEN")?;
-    // Create OpenAI client
-    let client = rig::providers::openai::Client::from_env()?;
+    let client = openai::Client::from_env()?;
 
     // Create agent with a single context prompt
     let mut discord_bot = client

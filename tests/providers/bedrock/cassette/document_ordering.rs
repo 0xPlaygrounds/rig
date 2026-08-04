@@ -3,7 +3,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
 use rig::bedrock;
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
@@ -48,8 +48,9 @@ async fn documents_are_prepended_before_history() {
     with_bedrock_cassette(
         "document_ordering/documents_are_prepended_before_history",
         |client| async move {
+            let model_id = bedrock::completion::AMAZON_NOVA_LITE;
             let response = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion_model(model_id)
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

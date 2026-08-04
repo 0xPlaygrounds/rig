@@ -1,7 +1,7 @@
-//! Demonstrates the smallest typed extractor for classification.
+//! Demonstrates the smallest structured extraction for classification.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to map a short sentence into a structured sentiment enum.
-
+//!
 use anyhow::Result;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -24,11 +24,9 @@ struct DocumentSentiment {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let extractor = openai::Client::from_env()?
-        .extractor::<DocumentSentiment>(openai::GPT_4)
-        .build();
-
-    let sentiment = extractor.extract("I am happy").await?;
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(openai::GPT_4).build();
+    let sentiment: DocumentSentiment = agent.extractor("I am happy").run().await?;
 
     println!("GPT-4: {sentiment:?}");
 

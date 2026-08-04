@@ -3,7 +3,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use rig_agent::tool::{Tool, ToolContext};
+use rig_agent::tool::PortableTool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -26,7 +26,7 @@ impl Error for MathError {}
 
 #[derive(Deserialize, Serialize)]
 pub struct Adder;
-impl Tool for Adder {
+impl PortableTool for Adder {
     const NAME: &'static str = "add";
     type Error = MathError;
     type Args = OperationArgs;
@@ -52,11 +52,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }

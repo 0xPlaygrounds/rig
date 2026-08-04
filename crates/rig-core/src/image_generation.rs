@@ -1,6 +1,6 @@
 //! Everything related to core image generation abstractions in Rig.
-//! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
-use crate::markers::{Missing, Provided};
+//! Rig allows calling a number of different providers (that support image generation)
+//! through each provider's `functions::generate_image` free function over these types.
 use crate::{http_client, provider_response};
 use serde_json::Value;
 use thiserror::Error;
@@ -37,6 +37,12 @@ pub enum ImageGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
+impl From<crate::json_utils::RequestOverlayError> for ImageGenerationError {
+    fn from(error: crate::json_utils::RequestOverlayError) -> Self {
+        Self::RequestError(Box::new(error))
+    }
+}
+
 crate::provider_response::impl_provider_response_helpers!(ImageGenerationError);
 
 /// A unified response for a model image generation, returning both the image and the raw response.
@@ -46,24 +52,6 @@ pub struct ImageGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait ImageGenerationModel: Clone + Send + Sync {
-    type Response: Send + Sync;
-
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> impl std::future::Future<
-        Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
-    > + Send;
-
-    fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self, Missing> {
-        ImageGenerationRequestBuilder::new(self.clone())
-    }
-}
 /// An image generation request.
 #[non_exhaustive]
 pub struct ImageGenerationRequest {
@@ -73,86 +61,42 @@ pub struct ImageGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-/// A builder for `ImageGenerationRequest`.
-/// Can be sent to a model provider.
-#[non_exhaustive]
-pub struct ImageGenerationRequestBuilder<M, P = Missing>
-where
-    M: ImageGenerationModel,
-{
-    model: M,
-    prompt: P,
-    width: u32,
-    height: u32,
-    additional_params: Option<Value>,
-}
-
-impl<M> ImageGenerationRequestBuilder<M, Missing>
-where
-    M: ImageGenerationModel,
-{
-    pub fn new(model: M) -> Self {
+impl ImageGenerationRequest {
+    /// Creates a request from the prompt, defaulting to a 256x256 image.
+    ///
+    /// Refine with the `with_*` methods, then execute it with the provider's
+    /// `functions::generate_image`.
+    pub fn new(prompt: impl Into<String>) -> Self {
         Self {
-            model,
-            prompt: Missing,
-            height: 256,
+            prompt: prompt.into(),
             width: 256,
+            height: 256,
             additional_params: None,
         }
     }
-}
 
-impl<M, P> ImageGenerationRequestBuilder<M, P>
-where
-    M: ImageGenerationModel,
-{
-    /// Sets the prompt for the image generation request
-    pub fn prompt(self, prompt: &str) -> ImageGenerationRequestBuilder<M, Provided<String>> {
-        ImageGenerationRequestBuilder {
-            model: self.model,
-            prompt: Provided(prompt.to_string()),
-            width: self.width,
-            height: self.height,
-            additional_params: self.additional_params,
-        }
+    /// Sets the prompt for the image generation request.
+    pub fn with_prompt(mut self, prompt: impl Into<String>) -> Self {
+        self.prompt = prompt.into();
+        self
     }
 
-    /// The width of the generated image
-    pub fn width(mut self, width: u32) -> Self {
+    /// Sets the width of the generated image.
+    pub fn with_width(mut self, width: u32) -> Self {
         self.width = width;
         self
     }
 
-    /// The height of the generated image
-    pub fn height(mut self, height: u32) -> Self {
+    /// Sets the height of the generated image.
+    pub fn with_height(mut self, height: u32) -> Self {
         self.height = height;
         self
     }
 
-    /// Adds additional parameters to the image generation request.
-    pub fn additional_params(mut self, params: Value) -> Self {
+    /// Sets additional parameters for the image generation request.
+    pub fn with_additional_params(mut self, params: Value) -> Self {
         self.additional_params = Some(params);
         self
-    }
-}
-
-impl<M> ImageGenerationRequestBuilder<M, Provided<String>>
-where
-    M: ImageGenerationModel,
-{
-    pub fn build(self) -> ImageGenerationRequest {
-        ImageGenerationRequest {
-            prompt: self.prompt.0,
-            width: self.width,
-            height: self.height,
-            additional_params: self.additional_params,
-        }
-    }
-
-    pub async fn send(self) -> Result<ImageGenerationResponse<M::Response>, ImageGenerationError> {
-        let model = self.model.clone();
-
-        model.image_generation(self.build()).await
     }
 }
 

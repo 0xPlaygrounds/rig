@@ -1,12 +1,9 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
-use rig::completion::Prompt;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use super::super::support::with_openai_completions_cassette;
@@ -28,8 +25,7 @@ async fn completions_api_agent_prompt() {
         "completions_api/completions_api_agent_prompt",
         |client| async move {
             let agent = client
-                .completion_model(openai::GPT_4O)
-                .into_agent_builder()
+                .agent(openai::GPT_4O)
                 .preamble("You are a helpful assistant.")
                 .build();
 
@@ -46,28 +42,46 @@ async fn completions_api_agent_prompt() {
 
 #[tokio::test]
 async fn completions_api_raw_response_text_matches_normalized_choice_text() {
+    const SCENARIO: &str =
+        "completions_api/completions_api_raw_response_text_matches_normalized_choice_text";
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
             let response = client
                 .completion_model(openai::GPT_4O)
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
-                .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
+                .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
+                .messages(Vec::new())
                 .send()
                 .await
                 .expect("raw completions api request should succeed");
 
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");
-            let raw_text = response
-                .raw_response
-                .get_text_response()
-                .expect("raw completions api response should contain assistant text");
-
             assert_nonempty_response(&normalized_text);
-            assert_nonempty_response(&raw_text);
-            assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
-            assert_eq!(raw_text.trim(), normalized_text.trim());
+            assert_contains_all_case_insensitive(&normalized_text, &["cedar", "maple"]);
+
+            // The normalized response no longer carries the provider-typed
+            // `raw_response`; parse the recorded wire body to compare the raw
+            // completions text against the normalized choice text (replay only:
+            // the cassette file is written after the test body in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
+                assert_eq!(
+                    bodies.len(),
+                    1,
+                    "scenario should record a single interaction"
+                );
+                let raw: openai::completion::CompletionResponse = serde_json::from_str(&bodies[0])
+                    .expect("recorded body should deserialize as a completions api response");
+                let raw_text = raw
+                    .get_text_response()
+                    .expect("raw completions api response should contain assistant text");
+
+                assert_nonempty_response(&raw_text);
+                assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
+                assert_eq!(raw_text.trim(), normalized_text.trim());
+            }
         },
     )
     .await;
@@ -86,9 +100,9 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .runner(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -106,13 +120,14 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
+            let stream = client
+                .completion_model(openai::GPT_4O)
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+                .stream()
+                .await
+                .expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -125,14 +140,11 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request("Reply with exactly: cassette null tool calls ok")
-                .build();
-
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                client
+                    .completion_model(openai::GPT_4O)
+                    .completion_request("Reply with exactly: cassette null tool calls ok")
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -154,17 +166,14 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
-
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                client
+                    .completion_model(openai::GPT_4O)
+                    .completion_request(TWO_TOOL_STREAM_PROMPT)
+                    .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                    .tool(rig::tool::portable_tool_definition(&AlphaSignal))
+                    .tool(rig::tool::portable_tool_definition(&BetaSignal))
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -191,9 +200,9 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .runner(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(
@@ -212,15 +221,13 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
             let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
 
             let first_turn = collect_raw_stream_observation(
                 model
-                    .stream(request)
+                    .completion_request(ORDERED_TOOL_STREAM_PROMPT)
+                    .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                    .tool(rig::tool::portable_tool_definition(&AlphaSignal))
+                    .stream()
                     .await
                     .expect("raw completions api stream should start"),
             )
@@ -240,18 +247,12 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .build();
-
             let second_turn = collect_raw_stream_observation(
                 model
-                    .stream(followup_request)
+                    .completion_request("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+                    .preamble("Use the provided tool result and answer directly.")
+                    .messages([assistant_message, tool_result_message])
+                    .stream()
                     .await
                     .expect("raw completions api followup stream should start"),
             )
@@ -271,4 +272,65 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
         },
     )
     .await;
+}
+
+#[tokio::test]
+async fn completions_api_pure_functions_replay_recorded_request() {
+    // Replays the exchange recorded by `completions_api_agent_prompt`
+    // through the pure free-function path (functions::complete over
+    // HttpRuntime). The cassette server only serves the recorded response
+    // when the incoming request matches the recording — so a passing test
+    // proves `functions::build_request_body` emits byte-identical request
+    // bytes to the classic agent path, and exercises parse_response
+    // end to end.
+    use std::panic::AssertUnwindSafe;
+
+    use futures::FutureExt;
+    use rig::OneOrMany;
+    use rig::completion::CompletionRequest;
+    use rig::http_runtime::HttpRuntime;
+    use rig::message::Message;
+
+    use crate::cassettes::ProviderCassette;
+
+    let cassette = ProviderCassette::start(
+        "openai",
+        "completions_api/completions_api_agent_prompt",
+        "https://api.openai.com/v1",
+    )
+    .await;
+    let config = openai::functions::Config::new(openai::GPT_4O)
+        .with_api_key(cassette.api_key("OPENAI_API_KEY"))
+        .with_base_url(cassette.base_url());
+    let runtime = HttpRuntime::new();
+
+    let request = CompletionRequest {
+        model: None,
+        chat_history: OneOrMany::many(vec![
+            Message::system("You are a helpful assistant."),
+            Message::user("Hello world!"),
+        ])
+        .expect("history should be non-empty"),
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let result = AssertUnwindSafe(async {
+        let response = openai::functions::complete(&config, &runtime, request)
+            .await
+            .expect("pure-function completion should replay the recording");
+        assert_eq!(response.provider, "openai");
+        let text = assistant_text_response(&response.choice)
+            .expect("response should contain assistant text");
+        assert_nonempty_response(&text);
+    })
+    .catch_unwind()
+    .await;
+    cassette.finish_after_test(result).await;
 }

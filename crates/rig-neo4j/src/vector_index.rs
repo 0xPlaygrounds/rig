@@ -6,23 +6,20 @@
 
 use neo4rs::{Graph, Query};
 use rig_core::{
-    Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingModel},
-    vector_store::{
-        InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
-    },
+    OneOrMany,
+    embeddings::Embedding,
+    vector_store::{SearchHit, StoreRecord, VectorStoreError, request::VectorSearchRequest},
 };
-use serde::{Deserialize, Serialize, de::Error};
+use serde::{Deserialize, Serialize, de::DeserializeOwned, de::Error};
 
 use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 
-pub struct Neo4jVectorIndex<M>
-where
-    M: EmbeddingModel,
-{
+/// A vector index over a Neo4j vector index.
+///
+/// Queries arrive pre-embedded via [`VectorSearchRequest`]; the index never
+/// embeds text itself.
+pub struct Neo4jVectorIndex {
     graph: Graph,
-    embedding_model: M,
     index_config: IndexConfig,
 }
 
@@ -39,7 +36,7 @@ pub struct IndexConfig {
     pub index_name: String,
     pub embedding_property: String,
     pub similarity_function: VectorSimilarityFunction,
-    /// The node label that [`InsertDocuments`] writes to (and that the index
+    /// The node label that [`Neo4jVectorIndex::insert`] writes to (and that the index
     /// applies to). Populated from the index's `labelsOrTypes` when loaded via
     /// [`Neo4jClient::get_index`](crate::Neo4jClient::get_index).
     pub node_label: Option<String>,
@@ -81,7 +78,7 @@ impl IndexConfig {
         self
     }
 
-    /// Sets the node label that [`InsertDocuments`] writes to.
+    /// Sets the node label that [`Neo4jVectorIndex::insert`] writes to.
     pub fn node_label(mut self, node_label: &str) -> Self {
         self.node_label = Some(node_label.to_string());
         self
@@ -120,14 +117,10 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
     YIELD node, score
 ";
 
-impl<M> Neo4jVectorIndex<M>
-where
-    M: EmbeddingModel,
-{
-    pub fn new(graph: Graph, embedding_model: M, index_config: IndexConfig) -> Self {
+impl Neo4jVectorIndex {
+    pub fn new(graph: Graph, index_config: IndexConfig) -> Self {
         Self {
             graph,
-            embedding_model,
             index_config,
         }
     }
@@ -144,10 +137,12 @@ where
     /// ```
     pub fn build_vector_search_query(
         &self,
-        prompt_embedding: Embedding,
         return_node: bool,
         req: &VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Query {
+        // Neo4j's `db.index.vector.queryNodes` takes a single vector, so use
+        // the first query embedding.
+        let prompt_embedding = req.query().first();
         let where_clause = match (req.threshold(), req.filter()) {
             (Some(thresh), Some(filt)) => Neo4jSearchFilter::gt("distance", thresh.into())
                 .and(filt.clone())
@@ -212,11 +207,15 @@ impl Default for SearchParams {
     }
 }
 
+/// One row of a vector-search result: the score, the node's element id, and the
+/// node's properties. Neo4j returns properties as arbitrary JSON, which is what
+/// [`SearchHit::payload`] carries, so the node is decoded straight to
+/// [`serde_json::Value`].
 #[derive(Debug, Deserialize)]
-pub struct RowResultNode<T> {
+struct RowResultNode {
     score: f64,
     element_id: i64,
-    node: T,
+    node: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,52 +224,36 @@ struct RowResult {
     element_id: i64,
 }
 
-impl<M> VectorStoreIndex for Neo4jVectorIndex<M>
-where
-    M: EmbeddingModel + std::marker::Sync + Send,
-{
-    type Filter = Neo4jSearchFilter;
-
-    /// Get the top n nodes and scores matching the query.
+impl Neo4jVectorIndex {
+    /// Get the top n nodes and scores matching the pre-embedded query.
     ///
-    /// #### Generic Type Parameters
-    ///
-    /// - `T`: The type used to deserialize the result from the Neo4j query.
-    ///   It must implement the `serde::Deserialize` trait.
-    ///
-    /// #### Returns
-    ///
-    /// Returns a `Result` containing a vector of tuples. Each tuple contains:
-    /// - A `f64` representing the similarity score
-    /// - A `String` representing the node ID
-    /// - A value of type `T` representing the deserialized node data
-    ///
-    async fn top_n<T: for<'a> Deserialize<'a> + std::marker::Send>(
+    /// Each [`SearchHit`] contains the similarity score, the node ID, and the
+    /// node's properties as a JSON payload (with the embedding property nulled).
+    pub async fn top_n(
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let query = self.build_vector_search_query(true, &req);
 
-        let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
+        let rows = Neo4jClient::execute_and_collect::<RowResultNode>(&self.graph, query).await?;
 
-        let results = rows
+        Ok(rows
             .into_iter()
-            .map(|row| (row.score, row.element_id.to_string(), row.node))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+            .map(|row| SearchHit {
+                id: row.element_id.to_string(),
+                score: row.score,
+                payload: row.node,
+            })
+            .collect())
     }
 
     /// Get the top n ids and scores matching the query. Runs faster than top_n since it doesn't need to transfer and parse
     /// the full nodes and embeddings to the client.
-    async fn top_n_ids(
+    pub async fn top_n_ids(
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
-
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
+        let query = self.build_vector_search_query(true, &req);
 
         let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
 
@@ -281,29 +264,29 @@ where
 
         Ok(results)
     }
-}
 
-/// The node label [`InsertDocuments`] writes to when the index config does not
-/// specify one (i.e. `node_label` is `None`).
-const DEFAULT_NODE_LABEL: &str = "Document";
-
-/// The Cypher used to bulk-insert nodes from an `$items` parameter list.
-fn insert_documents_query(node_label: &str) -> String {
-    format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
-}
-
-impl<M> InsertDocuments for Neo4jVectorIndex<M>
-where
-    M: EmbeddingModel + Send + Sync,
-{
-    /// Inserts one node per embedding, flattening the document's JSON fields
-    /// onto the node alongside the embedding (`embedding_property`) and its
-    /// source text (`embedded_text`). Nodes are written under the index's
-    /// `node_label`, defaulting to [`DEFAULT_NODE_LABEL`].
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    /// Get the top n nodes deserialized into `T` as `(score, id, document)`
+    /// tuples. Sugar over [`Self::top_n`].
+    pub async fn top_n_as<T: DeserializeOwned>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
+        req: VectorSearchRequest<Neo4jSearchFilter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
+            .into_iter()
+            .map(|hit| {
+                let doc = serde_json::from_value(hit.payload)?;
+                Ok((hit.score, hit.id, doc))
+            })
+            .collect()
+    }
+
+    /// Inserts one node per embedding, flattening the record's JSON payload
+    /// fields onto the node alongside the record's `id`, the embedding
+    /// (`embedding_property`), and its source text (`embedded_text`). Nodes are
+    /// written under the index's `node_label`, defaulting to
+    /// `DEFAULT_NODE_LABEL`.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
         let node_label = self
             .index_config
             .node_label
@@ -313,18 +296,23 @@ where
 
         // Build one parameter map per embedding for a single UNWIND insert.
         let mut items: Vec<neo4rs::BoltType> = Vec::new();
-        for (document, embeddings) in documents {
-            let json_doc = serde_json::to_value(&document)?;
-
-            for embedding in embeddings {
+        for record in records {
+            for embedding in record.embeddings.iter() {
                 let mut props = neo4rs::BoltMap::new();
-                if let serde_json::Value::Object(map) = &json_doc {
+                if let serde_json::Value::Object(map) = &record.payload {
                     for (key, value) in map {
                         props.put(neo4rs::BoltString::new(key), value.to_bolt_type());
                     }
                 } else {
-                    props.put(neo4rs::BoltString::new("document"), json_doc.to_bolt_type());
+                    props.put(
+                        neo4rs::BoltString::new("document"),
+                        record.payload.to_bolt_type(),
+                    );
                 }
+                props.put(
+                    neo4rs::BoltString::new("id"),
+                    neo4rs::BoltType::String(neo4rs::BoltString::new(&record.id)),
+                );
                 props.put(
                     neo4rs::BoltString::new("embedded_text"),
                     neo4rs::BoltType::String(neo4rs::BoltString::new(&embedding.document)),
@@ -344,6 +332,27 @@ where
 
         Ok(())
     }
+
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
+        &self,
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
+}
+
+/// The node label [`Neo4jVectorIndex::insert`] writes to when the index config
+/// does not specify one (i.e. `node_label` is `None`).
+const DEFAULT_NODE_LABEL: &str = "Document";
+
+/// The Cypher used to bulk-insert nodes from an `$items` parameter list.
+fn insert_documents_query(node_label: &str) -> String {
+    format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
 }
 
 #[cfg(test)]

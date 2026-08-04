@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
@@ -58,7 +57,6 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -73,10 +71,9 @@ impl Tool for WeatherTool {
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
-        |client| async move {
+        |env| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
-                .agent(xai::GROK_4)
+            let agent = env.agent(xai::GROK_4)
                 .preamble(
                     "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
                      After calling the tool, respond with ONLY minified JSON matching this schema: \

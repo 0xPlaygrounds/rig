@@ -1,12 +1,10 @@
 //! End-to-end tool execution through the built-in agent drivers: real
 //! `ToolSet` execution behind `agent.prompt()` / `agent.chat()` /
-//! `agent.stream_prompt()`, pinning the wire contract of the handrolled tool
+//! `agent.runner(..).stream_run()`, pinning the wire contract of the handrolled tool
 //! pipeline ahead of the rmcp migration.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig_agent::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
 
 use super::super::agent_run_support::is_tool_result_user_message;
@@ -36,9 +34,9 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 .build();
 
             let response = agent
-                .prompt(CHAINED_PROMPT)
+                .runner(CHAINED_PROMPT)
                 .max_turns(5)
-                .extended_details()
+                .run()
                 .await
                 .expect("multi-turn tool prompt should succeed");
 
@@ -89,7 +87,7 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent.stream_prompt(CHAINED_PROMPT).max_turns(5).await;
+            let mut stream = agent.runner(CHAINED_PROMPT).max_turns(5).stream_run();
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -136,7 +134,7 @@ async fn parallel_tool_calls_land_in_one_tool_result_message() {
         "agent_tools/parallel_tool_calls_land_in_one_tool_result_message",
         |client| async move {
             let report = parallel_tools(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
                 |builder| builder,
                 None,
             )
@@ -154,7 +152,7 @@ async fn tool_concurrency_one_preserves_parallel_call_contract() {
         "agent_tools/tool_concurrency_one_preserves_parallel_call_contract",
         |client| async move {
             let report = parallel_tools(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
                 |builder| builder,
                 Some(1),
             )
@@ -172,7 +170,7 @@ async fn zero_arg_tool_call_round_trips() {
         "agent_tools/zero_arg_tool_call_round_trips",
         |client| async move {
             let report = zero_argument_tool(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
                 |builder| builder,
             )
             .await
@@ -189,7 +187,7 @@ async fn string_output_sent_verbatim_and_struct_output_serialized_as_json() {
         "agent_tools/string_output_verbatim_struct_output_json",
         |client| async move {
             let report = tool_output_serialization(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.provider_config(gemini::completion::GEMINI_2_5_FLASH),
                 |builder| builder,
             )
             .await

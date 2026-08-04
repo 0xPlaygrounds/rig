@@ -1,5 +1,4 @@
 use rig::{
-    completion::TypedPrompt,
     prelude::*,
     providers::{azure::Client, openai::GPT_5_MINI},
 };

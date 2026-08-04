@@ -1,9 +1,7 @@
 //! Anthropic prompt caching cassette tests.
 
-use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, GetTokenUsage,
-    ToolDefinition, Usage,
+    AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -33,8 +31,9 @@ async fn manual_prompt_caching_reuses_tool_cache() {
         "prompt_caching/manual_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching();
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools();
 
             let first = send_cache_probe(
@@ -66,8 +65,9 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
         "prompt_caching/streaming_prompt_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching();
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_prompt_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools_for("streaming prompt caching");
 
             let first = send_streaming_cache_probe(
@@ -104,9 +104,10 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
         "prompt_caching/prompt_and_automatic_caching_reuses_tool_cache",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+                .config(anthropic::completion::CLAUDE_SONNET_4_6)
                 .with_prompt_caching()
-                .with_automatic_caching();
+                .with_automatic_caching()
+                .bind_completion(client.runtime());
             let tools = cache_probe_tools_for("manual plus automatic prompt caching");
 
             let first = send_cache_probe(
@@ -138,11 +139,11 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
 }
 
 async fn send_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: CompletionHandle,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
-) -> RigCompletionResponse<anthropic::completion::CompletionResponse> {
+) -> RigCompletionResponse {
     model
         .completion_request(prompt)
         .preamble(preamble)
@@ -161,7 +162,7 @@ struct StreamingCacheProbeResponse {
 }
 
 async fn send_streaming_cache_probe(
-    model: anthropic::completion::CompletionModel,
+    model: CompletionHandle,
     prompt: &'static str,
     preamble: String,
     tools: Vec<ToolDefinition>,
@@ -170,9 +171,7 @@ async fn send_streaming_cache_probe(
         .completion_request(prompt)
         .preamble(preamble)
         .tools(tools)
-        .additional_params(json!({
-            "tool_choice": { "type": "none" }
-        }))
+        .tool_choice(ToolChoice::None)
         .temperature(0.0)
         .max_tokens(16)
         .stream()
@@ -185,7 +184,7 @@ async fn send_streaming_cache_probe(
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
             StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
             StreamedAssistantContent::Final(response) => {
-                usage = Some(response.token_usage());
+                usage = Some(response.usage);
             }
             _ => {}
         }
@@ -197,10 +196,7 @@ async fn send_streaming_cache_probe(
     }
 }
 
-fn assert_response_contains_cache_probe(
-    response: &RigCompletionResponse<anthropic::completion::CompletionResponse>,
-    expected: &str,
-) {
+fn assert_response_contains_cache_probe(response: &RigCompletionResponse, expected: &str) {
     let text = response_text(response);
     assert_text_contains_cache_probe(&text, expected);
 }
@@ -220,9 +216,7 @@ fn assert_cache_created_or_read(usage: &Usage, context: &str) {
     );
 }
 
-fn response_text(
-    response: &RigCompletionResponse<anthropic::completion::CompletionResponse>,
-) -> String {
+fn response_text(response: &RigCompletionResponse) -> String {
     response
         .choice
         .iter()

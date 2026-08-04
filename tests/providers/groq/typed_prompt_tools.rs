@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
-use rig::providers::groq;
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -59,7 +57,6 @@ impl Tool for WeatherTool {
 
     fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
         args: Self::Args,
     ) -> impl std::future::Future<Output = Result<Self::Output, Self::Error>> + Send {
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -74,9 +71,7 @@ impl Tool for WeatherTool {
 #[ignore = "requires GROQ_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
-        .agent(TYPED_PROMPT_TOOLS_MODEL)
+    let agent = rig::providers::groq::Client::from_env().expect("client should build").agent(TYPED_PROMPT_TOOLS_MODEL)
         .preamble(
             "You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. \
              The only valid tool name is `weather`; never invent or call any other tool. \

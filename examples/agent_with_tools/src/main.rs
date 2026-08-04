@@ -3,10 +3,9 @@
 //! Run it to see the model use arithmetic tools instead of answering from scratch.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{DynamicTool, ToolOutput};
+use rig::tool::{PortableDynamicTool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -16,7 +15,7 @@ struct OperationArgs {
     y: i32,
 }
 
-fn runtime_tools() -> Vec<DynamicTool> {
+fn runtime_tools() -> Vec<PortableDynamicTool> {
     let parameters = json!({
         "type": "object",
         "properties": {
@@ -26,32 +25,28 @@ fn runtime_tools() -> Vec<DynamicTool> {
         "required": ["x", "y"]
     });
     vec![
-        DynamicTool::new(
+        PortableDynamicTool::new(
             "add",
             "Add x and y",
             parameters.clone(),
-            |_context, args| {
-                Box::pin(async move {
-                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
-                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
-                            .with_source(error)
-                    })?;
-                    Ok(ToolOutput::json(json!(args.x + args.y)))
-                })
+            |args| async move {
+                let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                    rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                        .with_source(error)
+                })?;
+                Ok(ToolOutput::json(json!(args.x + args.y)))
             },
         ),
-        DynamicTool::new(
+        PortableDynamicTool::new(
             "subtract",
             "Subtract y from x",
             parameters,
-            |_context, args| {
-                Box::pin(async move {
-                    let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
-                        rig::tool::ToolExecutionError::invalid_args(error.to_string())
-                            .with_source(error)
-                    })?;
-                    Ok(ToolOutput::json(json!(args.x - args.y)))
-                })
+            |args| async move {
+                let args: OperationArgs = serde_json::from_value(args).map_err(|error| {
+                    rig::tool::ToolExecutionError::invalid_args(error.to_string())
+                        .with_source(error)
+                })?;
+                Ok(ToolOutput::json(json!(args.x - args.y)))
             },
         ),
     ]

@@ -12,8 +12,10 @@ use super::{
     converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
     json::AwsDocument,
 };
-use rig_core::completion::{self, GetTokenUsage};
+use rig_core::completion;
 use rig_core::telemetry::ProviderResponseExt;
+
+use crate::types::converse_output::StopReason;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
@@ -75,13 +77,29 @@ impl ProviderResponseExt for AwsConverseOutput {
     }
 }
 
-impl GetTokenUsage for AwsConverseOutput {
-    fn token_usage(&self) -> completion::Usage {
+impl AwsConverseOutput {
+    /// Token usage reported by the Converse API, zero-valued when missing.
+    pub fn token_usage(&self) -> completion::Usage {
         self.get_usage().unwrap_or_default()
     }
 }
 
-impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOutput> {
+/// Map a Bedrock Converse stop reason onto rig's normalized finish reason.
+pub(crate) fn map_finish_reason(stop_reason: &StopReason) -> completion::FinishReason {
+    match stop_reason {
+        StopReason::EndTurn => completion::FinishReason::Stop,
+        StopReason::MaxTokens => completion::FinishReason::Length,
+        StopReason::ToolUse => completion::FinishReason::ToolCalls,
+        StopReason::ContentFiltered => completion::FinishReason::ContentFilter,
+        StopReason::GuardrailIntervened => {
+            completion::FinishReason::Other("guardrail_intervened".to_owned())
+        }
+        StopReason::StopSequence => completion::FinishReason::Other("stop_sequence".to_owned()),
+        StopReason::Unknown(value) => completion::FinishReason::Other(value.to_string()),
+    }
+}
+
+impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
@@ -109,13 +127,12 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
         }?;
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
+        let finish_reason = map_finish_reason(&value.0.stop_reason);
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: value,
-            message_id: None,
-        })
+        Ok(
+            completion::CompletionResponse::new(choice, usage, "aws_bedrock")
+                .with_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -250,7 +267,6 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         OneOrMany, completion,
-        completion::GetTokenUsage,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
@@ -367,7 +383,7 @@ mod tests {
             converse_output.try_into();
         assert!(converse_output.is_ok());
         let converse_output = converse_output.unwrap();
-        let completion: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
+        let completion: Result<completion::CompletionResponse, _> =
             AwsConverseOutput(converse_output).try_into();
         assert!(completion.is_ok());
         let completion = completion.unwrap();
@@ -399,10 +415,9 @@ mod tests {
             ),
         ];
 
-        let completion: completion::CompletionResponse<AwsConverseOutput> =
-            make_output_with_content(content, None)
-                .try_into()
-                .expect("conversion should succeed");
+        let completion: completion::CompletionResponse = make_output_with_content(content, None)
+            .try_into()
+            .expect("conversion should succeed");
 
         let choice: Vec<_> = completion.choice.into_iter().collect();
         assert_eq!(choice.len(), 3);

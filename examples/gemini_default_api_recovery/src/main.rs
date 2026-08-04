@@ -4,18 +4,16 @@
 //! Run with `RIG_GEMINI_DEFAULT_API_CANARY_ATTEMPTS=6` to increase the chance of
 //! seeing the recoverable legacy tool-name emission.
 
-use futures::StreamExt;
-use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
-    PromptResponse, StreamingResult,
-};
+use rig::agent::{InvalidToolCallAction, PromptResponse};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolResultContent;
 use rig::prelude::*;
 use rig::providers::gemini::{
     self,
     completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::stream::{AgentRunItem, AgentRunStream};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -93,6 +91,14 @@ impl ExecutorResponse {
     }
 }
 
+impl rig::tool::IntoToolOutput for ExecutorResponse {
+    fn into_tool_output(
+        self,
+    ) -> std::result::Result<rig::tool::ToolOutput, rig::tool::ToolExecutionError> {
+        rig::tool::serialize_to_tool_output(&self)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("JavaScript tool error")]
 struct JavaScriptToolError;
@@ -114,11 +120,7 @@ impl Tool for JavaScript {
         schema_for!(JavaScriptProgram).to_value()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ExecutorResponse::ok(json!({
             "id": "collection-canary-id",
             "title": "Canary Collection",
@@ -134,35 +136,36 @@ impl Tool for JavaScript {
     }
 }
 
+/// Records every invalid tool name the model emitted. The hook is an
+/// attach-and-forget closure, so the state it observes is owned by the host and
+/// shared into the closure through an `Arc`.
 #[derive(Clone, Default)]
-struct DefaultApiRepairHook {
-    invalid_tool_names: Arc<Mutex<Vec<String>>>,
-}
+struct InvalidToolNames(Arc<Mutex<Vec<String>>>);
 
-impl DefaultApiRepairHook {
-    fn invalid_tool_names(&self) -> Vec<String> {
-        self.invalid_tool_names
-            .lock()
-            .map(|names| names.clone())
-            .unwrap_or_default()
+impl InvalidToolNames {
+    fn names(&self) -> Vec<String> {
+        self.0.lock().map(|names| names.clone()).unwrap_or_default()
     }
 }
 
-impl AgentHook for DefaultApiRepairHook {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        context: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        if let Ok(mut invalid_tool_names) = self.invalid_tool_names.lock() {
-            invalid_tool_names.push(context.tool_name.clone());
+/// The repair hook as a [`HookEntry`]: it answers only `InvalidToolCall` events,
+/// rewriting the legacy `default_api` name onto the real `JavaScript` tool and
+/// failing fast on anything else. Every other event gets
+/// `HookDecision::Continue`.
+fn default_api_repair_hook(observed: InvalidToolNames) -> HookEntry {
+    HookEntry::sync("default-api-repair", move |event| match event {
+        HookEvent::InvalidToolCall(context) => {
+            if let Ok(mut names) = observed.0.lock() {
+                names.push(context.tool_name.clone());
+            }
+            HookDecision::InvalidToolCall(if context.tool_name == "default_api" {
+                InvalidToolCallAction::repair(JavaScript::NAME)
+            } else {
+                InvalidToolCallAction::fail()
+            })
         }
-        Some(if context.tool_name == "default_api" {
-            InvalidToolCallAction::repair(JavaScript::NAME)
-        } else {
-            InvalidToolCallAction::fail()
-        })
-    }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[derive(Debug, Default)]
@@ -218,6 +221,7 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
             }),
             ..Default::default()
         }),
+        safety_settings: None,
         additional_params: None,
     };
 
@@ -225,34 +229,29 @@ fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Er
 }
 
 async fn consume_workspace_like_stream(
-    mut stream: StreamingResult<gemini::streaming::StreamingCompletionResponse>,
+    mut stream: AgentRunStream,
 ) -> Result<WorkspaceStreamObservation, String> {
     let mut observation = WorkspaceStreamObservation::default();
 
     while let Some(item) = stream.next().await {
         match item.map_err(|error| error.to_string())? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text.text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                reasoning,
-            )) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(reasoning)) => {
                 observation.events.push("reasoning");
                 observation
                     .reasoning_text
                     .push_str(&reasoning.display_text());
             }
-            MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { reasoning, .. },
-            ) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ReasoningDelta {
+                reasoning, ..
+            }) => {
                 observation.events.push("reasoning_delta");
                 observation.reasoning_text.push_str(&reasoning);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
                 observation.events.push("tool_call");
                 observation.tool_calls.push(tool_call.function.name.clone());
                 let execution: JavaScriptProgram =
@@ -260,16 +259,11 @@ async fn consume_workspace_like_stream(
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCallDelta {
-                ..
-            }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. }) => {
                 observation.events.push("tool_call_delta");
                 observation.tool_call_deltas += 1;
             }
-            MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            }) => {
+            AgentRunItem::User(StreamedUserContent::ToolResult { tool_result, .. }) => {
                 observation.events.push("tool_result");
                 let value = match tool_result.content.first() {
                     ToolResultContent::Json { value } => value.clone(),
@@ -288,14 +282,14 @@ async fn consume_workspace_like_stream(
                     serde_json::from_value(value).map_err(|error| error.to_string())?;
                 observation.executor_results.push(result);
             }
-            MultiTurnStreamItem::CompletionCall(completion_call) => {
+            AgentRunItem::CompletionCall(completion_call) => {
                 observation.events.push("completion_call");
                 observation.completion_calls.push(format!(
                     "call_index={}, usage={:?}",
                     completion_call.call_index, completion_call.usage
                 ));
             }
-            MultiTurnStreamItem::FinalResponse(final_response) => {
+            AgentRunItem::Final(final_response) => {
                 observation.events.push("final_response");
                 observation.final_response = Some(final_response);
                 return Ok(observation);
@@ -341,16 +335,16 @@ async fn run_workspace_canary_attempt(
         .default_max_turns(CANARY_MAX_TURNS)
         .temperature(0.0)
         .build();
-    let repair_hook = DefaultApiRepairHook::default();
+    let invalid_tool_names = InvalidToolNames::default();
 
     let stream = agent
-        .stream_prompt(workspace_canary_prompt(attempt))
-        .add_hook(repair_hook.clone())
+        .runner(workspace_canary_prompt(attempt))
+        .add_hook(default_api_repair_hook(invalid_tool_names.clone()))
         .history(Vec::<rig::message::Message>::new())
-        .await;
+        .stream_run();
 
     let mut observation = consume_workspace_like_stream(stream).await?;
-    observation.invalid_tool_names = repair_hook.invalid_tool_names();
+    observation.invalid_tool_names = invalid_tool_names.names();
     Ok(observation)
 }
 

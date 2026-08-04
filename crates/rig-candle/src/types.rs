@@ -1,6 +1,6 @@
 //! Public errors and response metadata.
 
-use rig_core::completion::{CompletionError, GetTokenUsage, Usage};
+use rig_core::completion::{CompletionError, Usage};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -194,11 +194,6 @@ pub enum CandleError {
         /// Result/call identifier supplied in history.
         result_id: String,
     },
-    /// `CompletionModel::make` cannot load a byte-backed model.
-    #[error(
-        "`CompletionModel::make` is unsupported for rig-candle; use a byte-backed `CandleModel` constructor or builder"
-    )]
-    UnsupportedMake,
     /// A native blocking inference task could not be joined.
     #[cfg(not(target_family = "wasm"))]
     #[error("Candle blocking task failed: {0}")]
@@ -250,13 +245,24 @@ pub struct CandleCompletionResponse {
     pub tokens_per_second: Option<f64>,
 }
 
-impl GetTokenUsage for CandleCompletionResponse {
-    fn token_usage(&self) -> Usage {
+impl CandleCompletionResponse {
+    /// Token usage derived from the local generation counters.
+    pub fn token_usage(&self) -> Usage {
         Usage {
             input_tokens: self.prompt_tokens,
             output_tokens: self.generated_tokens,
             total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
             ..Usage::new()
+        }
+    }
+}
+
+impl FinishReason {
+    /// Map the local finish reason onto rig's normalized finish reason.
+    pub fn normalized(&self) -> rig_core::completion::FinishReason {
+        match self {
+            FinishReason::Eos => rig_core::completion::FinishReason::Stop,
+            FinishReason::MaxTokens => rig_core::completion::FinishReason::Length,
         }
     }
 }

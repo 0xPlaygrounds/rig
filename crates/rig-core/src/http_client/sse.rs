@@ -1,13 +1,14 @@
-//! An SSE implementation that leverages [`crate::http_client::HttpClientExt`] to allow streaming with automatic retry handling for any implementor of HttpClientExt.
+//! The SSE transport edge.
 //!
-//! Primarily intended for internal usage. However if you also wish to implement generic HTTP streaming for your custom completion model,
-//! you may find this helpful.
+//! An event source over any `Backend`, with
+//! automatic retry handling. Providers never see it directly: they consume the
+//! boxed `BoxedEventSource`, which is where backend genericity ends.
 use crate::{
     http_client::{
-        HttpClientExt, Result as StreamResult,
-        retry::{DEFAULT_RETRY, ExponentialBackoff, RetryPolicy},
+        Backend, Result as StreamResult,
+        retry::{DEFAULT_RETRY, ExponentialBackoff},
     },
-    wasm_compat::{WasmCompatSend, WasmCompatSendStream},
+    wasm_compat::WasmCompatSendStream,
 };
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
@@ -27,7 +28,55 @@ use std::{
     time::Duration,
 };
 
+/// A type-erased stream of HTTP response-body byte chunks.
+///
+/// It is `Send` on native targets and local on browser WebAssembly, matching
+/// [`WasmBoxedFuture`](crate::wasm_compat::WasmBoxedFuture).
 pub type BoxedStream = Pin<Box<dyn WasmCompatSendStream<InnerItem = StreamResult<Bytes>>>>;
+
+/// A type-erased SSE event stream — the transport edge for the sans-IO
+/// provider stream parsers.
+///
+/// Provider stream state machines consume this concrete type instead of being
+/// generic over the crate-internal `Backend`: genericity ends at the boxing site (see
+/// `boxed_event_source` and `HttpRuntime::sse_events`).
+pub(crate) type BoxedEventSource = Pin<Box<dyn WasmCompatEventStream>>;
+
+/// Helper supertrait so [`BoxedEventSource`] can be a trait object:
+/// `WasmCompatSend` is not an auto trait, so it cannot be an additional bound
+/// on `dyn Stream`. `Send`-bounded on native targets, unbounded on browser wasm.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) trait WasmCompatEventStream:
+    Stream<Item = Result<Event, super::Error>> + Send
+{
+}
+/// Helper supertrait so [`BoxedEventSource`] can be a trait object.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+pub(crate) trait WasmCompatEventStream: Stream<Item = Result<Event, super::Error>> {}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> + Send {}
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl<T> WasmCompatEventStream for T where T: Stream<Item = Result<Event, super::Error>> {}
+
+/// Box an event source over `client` into the transport-edge
+/// [`BoxedEventSource`], ending the `Backend` genericity.
+pub(crate) fn boxed_event_source<HttpClient>(
+    client: HttpClient,
+    req: Request<Vec<u8>>,
+    allow_missing_content_type: bool,
+) -> BoxedEventSource
+where
+    HttpClient: Backend + Clone + 'static,
+{
+    let source = GenericEventSource::new(client, req);
+    let source = if allow_missing_content_type {
+        source.allow_missing_content_type()
+    } else {
+        source
+    };
+    Box::pin(source)
+}
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 type ResponseFuture = BoxFuture<'static, Result<Response<BoxedStream>, super::Error>>;
@@ -71,12 +120,12 @@ pin_project! {
 }
 
 pin_project! {
-    /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
+    /// An SSE event source over any [`Backend`].
     #[project = GenericEventSourceProjection]
-    pub struct GenericEventSource<HttpClient, RequestBody, Retry = ExponentialBackoff> {
+    pub(crate) struct GenericEventSource<HttpClient> {
         client: HttpClient,
-        req: Request<RequestBody>,
-        retry_policy: Retry,
+        req: Request<Vec<u8>>,
+        backoff: ExponentialBackoff,
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
         #[pin]
@@ -84,20 +133,19 @@ pin_project! {
     }
 }
 
-impl<HttpClient, RequestBody> GenericEventSource<HttpClient, RequestBody>
+impl<HttpClient> GenericEventSource<HttpClient>
 where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    HttpClient: Backend + Clone + 'static,
 {
     /// Create a new event source that will connect to the given request.
-    pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
+    pub fn new(client: HttpClient, req: Request<Vec<u8>>) -> Self {
         let response_future = Self::create_response_future(&client, &req, None);
         let state = SourceState::Connecting { response_future };
 
         Self {
             client,
             req,
-            retry_policy: DEFAULT_RETRY,
+            backoff: DEFAULT_RETRY,
             last_event_id: None,
             allow_missing_content_type: false,
             state,
@@ -112,7 +160,7 @@ where
     /// Create a response future for connecting/reconnecting
     fn create_response_future(
         client: &HttpClient,
-        req: &Request<RequestBody>,
+        req: &Request<Vec<u8>>,
         last_event_id: Option<&str>,
     ) -> ResponseFuture {
         let mut req_clone = req.clone();
@@ -132,20 +180,9 @@ where
         let client_clone = client.clone();
         Box::pin(async move { client_clone.send_streaming(req_clone).await })
     }
-
-    /// Get the last event id
-    pub fn last_event_id(&self) -> Option<&str> {
-        self.last_event_id.as_deref()
-    }
-
-    /// Close the event source, transitioning to the Closed state.
-    /// After calling this, the stream will yield `None` on the next poll.
-    pub fn close(&mut self) {
-        self.state = SourceState::Closed;
-    }
 }
 
-/// Events created by the [`GenericEventSource`]
+/// Events created by the SSE event source.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Event {
     /// The event fired when the connection is opened
@@ -160,10 +197,9 @@ impl From<MessageEvent> for Event {
     }
 }
 
-impl<HttpClient, RequestBody> Stream for GenericEventSource<HttpClient, RequestBody>
+impl<HttpClient> Stream for GenericEventSource<HttpClient>
 where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<Bytes> + Clone + WasmCompatSend + 'static,
+    HttpClient: Backend + Clone + 'static,
 {
     type Item = Result<Event, super::Error>;
 
@@ -197,7 +233,7 @@ where
                         }
                         Poll::Ready(Err(err)) => {
                             // First connection attempt failed - start retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
+                            if let Some(delay_duration) = this.backoff.retry(&err, None) {
                                 // Transition: Connecting -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
@@ -242,7 +278,7 @@ where
                         Poll::Ready(Err(err)) => {
                             // Reconnection attempt failed - continue retry cycle
                             if let Some(delay_duration) =
-                                this.retry_policy.retry(&err, Some(*last_retry))
+                                this.backoff.retry(&err, Some(*last_retry))
                             {
                                 let (retry_num, _) = *last_retry;
                                 // Transition: Reconnecting -> WaitingToRetry
@@ -268,13 +304,13 @@ where
                                 *this.last_event_id = Some(event.id.clone());
                             }
                             if let Some(duration) = event.retry {
-                                this.retry_policy.set_reconnection_time(duration);
+                                this.backoff.set_reconnection_time(duration);
                             }
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
                             // Connection error while open - start fresh retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
+                            if let Some(delay_duration) = this.backoff.retry(&err, None) {
                                 // Transition: Open -> WaitingToRetry
                                 this.state.set(SourceState::WaitingToRetry {
                                     retry_delay: Delay::new(delay_duration),
@@ -314,7 +350,7 @@ where
                         Poll::Ready(()) => {
                             // Transition: WaitingToRetry -> Reconnecting
                             let response_future =
-                                GenericEventSource::<HttpClient, RequestBody>::create_response_future(
+                                GenericEventSource::<HttpClient>::create_response_future(
                                     this.client,
                                     this.req,
                                     this.last_event_id.as_deref(),

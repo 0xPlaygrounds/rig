@@ -1,8 +1,16 @@
+//! RAG-backed structured extraction.
+//!
+//! Retrieval runs before the one-shot extraction and its documents are passed
+//! through the non-generic fluent extraction runner.
+use rig::OneOrMany;
+
+use rig::completion::Document;
+use rig::embeddings::EmbeddingJob;
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::providers::gemini::client::Client;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, vector_store::VectorSearchRequest, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -35,6 +43,40 @@ struct QuestionnaireResponses {
     responses: Vec<Answer>,
 }
 
+/// Passive RAG for the extractor: on every extraction attempt, embed the
+/// input text, search the questionnaire store, and inject the best-matching
+/// questions as per-turn context documents.
+///
+/// Retrieve the `samples` most relevant questionnaire entries for `query`.
+///
+/// Embedding is a free function over plain data — an `EmbeddingConfig` plus
+/// the shared `HttpRuntime` — and the store only sees pre-embedded requests.
+async fn retrieve_questions(
+    ecfg: &gemini::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+    store: &InMemoryVectorStore,
+    samples: u64,
+    query: &str,
+) -> Result<Vec<Document>, anyhow::Error> {
+    let embedded = gemini::functions::embed(ecfg, rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let request = VectorSearchRequest::new(OneOrMany::one(embedded), samples);
+    Ok(store
+        .top_n(request)
+        .await?
+        .into_iter()
+        .map(|hit| Document {
+            id: hit.id,
+            text: hit.payload.to_string(),
+            additional_props: Default::default(),
+        })
+        .collect())
+}
+
 const APPLICANT_INFO: &str = r#"
 Subject: Application details / quick background
 
@@ -62,13 +104,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create Gemini client
-    let gemini_client = Client::from_env()?;
-    let embedding_model = gemini_client.embedding_model(gemini::EMBEDDING_001);
+    let client = gemini::Client::from_env()?;
+    let ecfg = client.embedding_config(gemini::EMBEDDING_001);
+    let http = client.http();
 
-    // Generate embeddings for the definitions of all the documents using the specified embedding model.
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(vec![
+    // Generate embeddings for the definitions of all the documents.
+    // `EmbeddingsBuilder` is gone: `embed_documents` batches the documents
+    // through the provider's free `embed` function.
+    let questions = vec![
             Question {
                 id: "question_1".to_string(),
                 text: "Complete name".to_string(),
@@ -86,25 +129,39 @@ async fn main() -> Result<(), anyhow::Error> {
                 text: "Which technical skills do you have related to the job offer?".to_string(),
                 answer_options: "Open question. Examples are: Python, SQL, Excel, Git, CI, PLC/HMI troubleshooting (Siemens/Allen-Bradley basics)".to_string(),
             },
-        ])?
-        .build()
+        ];
+
+    let embeddings = EmbeddingJob::new()
+        .documents(questions)
+        .for_provider(&gemini::functions::DESCRIPTOR)
+        .run(|texts| gemini::functions::embed(&ecfg, &http, texts))
         .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
-    let rag_extractor = gemini_client.extractor::<QuestionnaireResponses>("gemini-2.5-flash")
-        .preamble("
+    let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
+
+    // Samples should match the number of questions.
+    let context = retrieve_questions(&ecfg, &http, &vector_store, 3, APPLICANT_INFO).await?;
+
+    const ROLE: &str = "
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.
-            ")
-        .dynamic_context(3, index) // Samples should match the number of questions
-        .build();
+            ";
+    let classic = ExtractOptions::classic_extractor();
+    let extraction_preamble = classic.preamble.clone().unwrap_or_default();
+    let preamble = format!(
+        "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{ROLE}"
+    );
+    let agent = client.agent("gemini-2.5-flash").build();
 
-    // Prompt the agent and print the response
-    let response = rag_extractor.extract(APPLICANT_INFO).await?;
+    // Prompt the model and print the response
+    let response: QuestionnaireResponses = agent
+        .extractor(APPLICANT_INFO)
+        .preamble(preamble)
+        .contexts(context)
+        .run()
+        .await?;
 
     println!("{response:#?}");
 

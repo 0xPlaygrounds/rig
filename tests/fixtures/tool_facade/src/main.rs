@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
-use rig::tool::{PortableTool, PortableToolEmbedding};
-use serde::{Deserialize, Serialize};
+use rig::tool::PortableTool;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct Arguments {
@@ -33,31 +33,6 @@ impl PortableTool for StablePortableTool {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
-struct StableContext {
-    label: String,
-}
-
-impl PortableToolEmbedding for StablePortableTool {
-    type InitError = Infallible;
-    type Context = StableContext;
-    type State = ();
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["stable portable document".to_string()]
-    }
-
-    fn context(&self) -> Self::Context {
-        StableContext {
-            label: "stable".to_string(),
-        }
-    }
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Self)
-    }
-}
-
 // The portable contract is reachable through every explicit path, in every
 // feature combination (including `--no-default-features`).
 fn assert_root_portable<T: rig::tool::PortableTool>() {}
@@ -75,71 +50,71 @@ fn main() {
         "portable_dynamic",
         "portable dynamic tool",
         serde_json::json!({"type": "object"}),
-        |arguments| Box::pin(async move { Ok(rig::tool::ToolOutput::json(arguments)) }),
+        |arguments| async move { Ok(rig::tool::ToolOutput::json(arguments)) },
     );
     let _ = &portable_dynamic;
 
-    // With the classic runtime (default), `rig::tool::Tool` is the *contextual*
-    // trait, and a portable tool still registers through the blanket impl.
+    // Tool discovery is owned data, and its record is reachable in every
+    // feature combination too.
+    let discovery = rig::embeddings::ToolSchema::new(
+        <StablePortableTool as rig::tool::PortableTool>::NAME,
+        vec!["stable portable document".to_string()],
+    );
+    assert_eq!(discovery.name, "stable_portable_tool");
+    assert!(discovery.context.is_null());
+
+    // Enabling the agent runtime is purely additive: `rig::tool::Tool` stays
+    // the portable, context-free trait it is under `--no-default-features`,
+    // and the runtime-defined tool record stays `PortableDynamicTool`.
     #[cfg(feature = "agent")]
     {
-        use rig::tool::{Tool, ToolContext};
+        use rig::tool::Tool;
 
-        struct ContextualTool;
+        struct RuntimeTool;
 
-        impl Tool for ContextualTool {
-            const NAME: &'static str = "contextual_tool";
+        impl Tool for RuntimeTool {
+            const NAME: &'static str = "runtime_tool";
             type Args = Arguments;
             type Output = String;
             type Error = Infallible;
 
             fn description(&self) -> String {
-                "contextual tool".to_string()
+                "runtime tool".to_string()
             }
 
             fn parameters(&self) -> serde_json::Value {
                 serde_json::json!({"type": "object"})
             }
 
-            async fn call(
-                &self,
-                _context: &mut ToolContext,
-                arguments: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
+            async fn call(&self, arguments: Self::Args) -> Result<Self::Output, Self::Error> {
                 Ok(arguments.value)
             }
         }
 
-        fn assert_classic_tool<T: rig::tool::Tool>() {}
+        fn assert_runtime_tool<T: rig::tool::Tool>() {}
 
-        // The classic contextual trait accepts a `call(&mut ToolContext, Args)`
-        // implementation, and a portable tool is usable as a classic tool via
-        // the blanket impl.
-        assert_classic_tool::<ContextualTool>();
-        assert_classic_tool::<StablePortableTool>();
+        // `rig::tool::Tool` is the same trait with or without the runtime, so
+        // an impl written against either path satisfies it.
+        assert_runtime_tool::<RuntimeTool>();
+        assert_runtime_tool::<StablePortableTool>();
 
-        let _classic_dynamic = rig::tool::DynamicTool::from_portable(portable_dynamic);
+        // Runtime-defined tools stay portable records — there is no separate
+        // runtime-only dynamic tool type to convert into.
+        let _runtime_dynamic: rig::tool::PortableDynamicTool = portable_dynamic;
 
-        // Regression: `#[rig_tool]` must auto-detect the *fully-qualified* facade
-        // path `rig::tool::ToolContext` as runtime context (not a model
-        // argument), matching the documented `use rig::tool::{Tool, ToolContext};`
-        // compatibility promise. If detection regresses, the context param is
-        // treated as a model argument and this fixture fails to compile.
-        // See rig-derive `is_tool_context_type`.
+        // Regression: `#[rig_tool]` expands against the facade and produces a
+        // type implementing the same portable `Tool` trait. `ToolContext` was
+        // removed, so a context parameter is now a hard compile error (see
+        // rig-derive `is_tool_context_parameter`); the supported way to reach
+        // host state is to close over it or use `PortableDynamicTool::new`.
         #[cfg(feature = "derive")]
         {
-            #[rig::tool_macro(description = "echoes using fully-qualified facade context")]
-            fn facade_qualified_context_tool(
-                context: &mut rig::tool::ToolContext,
-                value: String,
-            ) -> Result<String, rig::tool::ToolExecutionError> {
-                let _ = context;
+            #[rig::tool_macro(description = "echoes through the facade")]
+            fn facade_echo_tool(value: String) -> Result<String, rig::tool::ToolExecutionError> {
                 Ok(value)
             }
 
-            // The context param is stripped from the model-visible schema, so the
-            // generated tool implements the classic contextual `Tool` trait.
-            assert_classic_tool::<FacadeQualifiedContextTool>();
+            assert_runtime_tool::<FacadeEchoTool>();
         }
     }
 }

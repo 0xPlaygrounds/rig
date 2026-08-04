@@ -1,26 +1,26 @@
 //! VoyageAI reranking smoke test.
 
-use rig::client::{ProviderClient, RerankingClient};
+use rig::http_runtime::HttpRuntime;
 use rig::providers::voyageai;
-use rig::rerank::RerankModel;
 
 #[tokio::test]
 #[ignore = "requires VOYAGE_API_KEY"]
 async fn rerank_smoke() {
-    let client =
-        voyageai::Client::from_env().expect("client should build from VOYAGE_API_KEY env var");
-    let model = client.rerank_model(voyageai::RERANK_2_5);
+    let cfg = voyageai::functions::RerankConfig::from_env(voyageai::RERANK_2_5)
+        .expect("config should build from VOYAGE_API_KEY env var");
+    let rt = HttpRuntime::new();
 
-    let response = model
-        .rerank(
-            "capital of France",
-            vec![
-                "Paris is the capital of France.".to_string(),
-                "Madrid is the capital of Spain.".to_string(),
-            ],
-        )
-        .await
-        .expect("rerank request should succeed");
+    let response = voyageai::functions::rerank(
+        &cfg,
+        &rt,
+        "capital of France",
+        vec![
+            "Paris is the capital of France.".to_string(),
+            "Madrid is the capital of Spain.".to_string(),
+        ],
+    )
+    .await
+    .expect("rerank request should succeed");
 
     assert!(
         !response.results.is_empty(),

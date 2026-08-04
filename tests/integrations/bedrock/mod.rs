@@ -1,8 +1,8 @@
 #[path = "../../common/support.rs"]
 mod support;
 
-use rig::bedrock::{client::Client, completion, embedding, image as bedrock_image};
-use rig::client::ProviderClient;
+use rig::bedrock::functions::Config;
+use rig::bedrock::{completion, embedding, image as bedrock_image};
 
 pub(crate) const BEDROCK_COMPLETION_MODEL: &str = completion::AMAZON_NOVA_LITE;
 pub(crate) const BEDROCK_EMBEDDING_MODEL: &str = embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
@@ -18,8 +18,23 @@ pub(crate) fn anthropic_signature_only_model() -> String {
         .unwrap_or_else(|_| "global.anthropic.claude-opus-4-7".to_string())
 }
 
-pub(crate) fn client() -> Client {
-    Client::from_env().expect("client should build")
+/// The AWS Bedrock SDK client for the default credential chain — the
+/// `Client::from_env` replacement for the free-function provider surface
+/// (`rig::bedrock::functions::{complete, open_stream, embed}` all take it).
+pub(crate) async fn aws_client() -> aws_sdk_bedrockruntime::Client {
+    rig::bedrock::functions::client_from_config(&Config::new(BEDROCK_COMPLETION_MODEL)).await
+}
+
+/// A concrete client using the AWS SDK's default credential and region chains.
+pub(crate) fn client() -> rig::bedrock::Client {
+    rig::bedrock::Client::from_env()
+}
+
+/// An `AgentBuilder` for `model` over the default-credential Bedrock config.
+pub(crate) fn agent(model: &str) -> rig::agent::AgentBuilder {
+    use rig::prelude::*;
+
+    client().agent(model)
 }
 
 mod adaptive_thinking;

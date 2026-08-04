@@ -1,7 +1,7 @@
 //! Shared fixtures for the hook-system stress cassette suites
 //! (`cassette::hook_stress*`): a comprehensive event-tap observer, flexible
-//! request-patch / arg-rewrite / result-rewrite / terminate hooks, scratchpad
-//! probes, and a third counting arithmetic tool.
+//! request-patch / arg-rewrite / result-rewrite / terminate hooks, shared
+//! cross-hook state probes, and a third counting arithmetic tool.
 //!
 //! Every hook here is **deterministic** (no clocks/RNG), so the outbound
 //! requests it produces stay byte-identical across replay. See
@@ -10,15 +10,15 @@
 #![allow(dead_code)]
 
 use std::collections::{BTreeMap, BTreeSet};
+
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
-    StreamResponseFinish, TextDelta, ToolCall as ToolCallEvent, ToolCallAction, ToolCallDelta,
-    ToolResultAction, ToolResultEvent,
+    CompletionCallAction, ModelTurnAction, ObservationAction, RequestPatch, ToolCallAction,
+    ToolResultAction,
 };
 use rig::completion::Document;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -87,11 +87,7 @@ impl Tool for CountingMultiply {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x * args.y)
     }
@@ -108,37 +104,41 @@ pub(crate) struct Breadcrumb {
     pub(crate) turn: usize,
 }
 
-/// Cross-hook, cross-turn scratchpad value: how many `ToolCall`s have been seen.
+/// Cross-hook, cross-turn shared state: how many `ToolCall`s have been seen.
+/// The host owns it now (hooks are attach-and-forget closures that capture
+/// whatever state they share), replacing the old run-scoped scratchpad.
 #[derive(Clone, Default)]
-pub(crate) struct ToolCallTally(pub(crate) usize);
+pub(crate) struct ToolCallTally(Arc<Mutex<usize>>);
 
-/// A comprehensive observe-only hook: counts every event kind, records the
-/// `HookContext` identity (run id / streaming flag / agent name), captures each
-/// tool call's and result's `internal_call_id` for correlation, records an
-/// ordered `(tag, turn)` breadcrumb, and bumps a shared `Scratchpad` tally on
+impl ToolCallTally {
+    pub(crate) fn get(&self) -> usize {
+        *self.0.lock().expect("tally")
+    }
+    fn bump(&self) {
+        *self.0.lock().expect("tally") += 1;
+    }
+}
+
+/// A comprehensive observe-only hook: records an ordered `(tag, turn)`
+/// breadcrumb for every event kind, captures each tool call's and result's
+/// `internal_call_id` for correlation, and bumps a shared [`ToolCallTally`] on
 /// every `ToolCall`.
+///
+/// Tool events carry no turn index of their own, so the tap tracks the current
+/// turn from the turn-bearing events (a turn opens with `BeforeModelCall`),
+/// exactly reproducing what the old `HookContext::turn()` reported.
 #[derive(Clone, Default)]
 pub(crate) struct EventTap {
     breadcrumbs: Arc<Mutex<Vec<Breadcrumb>>>,
-    run_ids: Arc<Mutex<BTreeSet<String>>>,
-    streaming: Arc<Mutex<Option<bool>>>,
-    agent_name: Arc<Mutex<Option<String>>>,
     call_ids: Arc<Mutex<Vec<String>>>,
     result_ids: Arc<Mutex<Vec<String>>>,
+    current_turn: Arc<Mutex<usize>>,
+    tally: ToolCallTally,
 }
 
 impl EventTap {
     pub(crate) fn breadcrumbs(&self) -> Vec<Breadcrumb> {
         self.breadcrumbs.lock().expect("breadcrumbs").clone()
-    }
-    pub(crate) fn distinct_run_ids(&self) -> usize {
-        self.run_ids.lock().expect("run_ids").len()
-    }
-    pub(crate) fn is_streaming(&self) -> Option<bool> {
-        *self.streaming.lock().expect("streaming")
-    }
-    pub(crate) fn agent_name(&self) -> Option<String> {
-        self.agent_name.lock().expect("agent_name").clone()
     }
     pub(crate) fn count(&self, tag: &str) -> usize {
         self.breadcrumbs()
@@ -151,6 +151,11 @@ impl EventTap {
     }
     pub(crate) fn result_ids(&self) -> Vec<String> {
         self.result_ids.lock().expect("result_ids").clone()
+    }
+    /// The shared tally this tap writes; hand it to [`tally_reader`] to prove
+    /// cross-hook, cross-turn shared state.
+    pub(crate) fn tally(&self) -> ToolCallTally {
+        self.tally.clone()
     }
     /// Distinct turn indices observed, in ascending order.
     pub(crate) fn distinct_turns(&self) -> Vec<usize> {
@@ -170,131 +175,109 @@ impl EventTap {
         }
         map
     }
-}
 
-impl EventTap {
-    fn record(&self, ctx: &HookContext, tag: &'static str) {
-        self.run_ids
-            .lock()
-            .expect("run_ids")
-            .insert(ctx.run_id().as_str().to_string());
-        *self.streaming.lock().expect("streaming") = Some(ctx.is_streaming());
-        *self.agent_name.lock().expect("agent_name") = ctx.agent_name().map(str::to_string);
+    fn record(&self, tag: &'static str, turn: Option<usize>) {
+        let turn = match turn {
+            Some(turn) => {
+                *self.current_turn.lock().expect("current_turn") = turn;
+                turn
+            }
+            None => *self.current_turn.lock().expect("current_turn"),
+        };
         self.breadcrumbs
             .lock()
             .expect("breadcrumbs")
-            .push(Breadcrumb {
-                tag,
-                turn: ctx.turn(),
-            });
+            .push(Breadcrumb { tag, turn });
+    }
+
+    /// The observe-only hook record. Opted into delta observation so the
+    /// streaming suites still see `TextDelta` / `ToolCallDelta`.
+    pub(crate) fn entry(&self) -> HookEntry {
+        let tap = self.clone();
+        HookEntry::sync("event-tap", move |event| tap.observe(event)).observing_deltas()
+    }
+
+    fn observe(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::BeforeModelCall { turn, .. } => {
+                self.record("CompletionCall", Some(turn));
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            HookEvent::CompletionResponse { turn, .. } => {
+                self.record("CompletionResponse", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::ModelTurnFinished { turn, .. } => {
+                self.record("ModelTurnFinished", Some(turn));
+                HookDecision::ModelTurn(ModelTurnAction::continue_run())
+            }
+            HookEvent::InvalidToolCall(_) => {
+                self.record("InvalidToolCall", None);
+                // `None` in the classic hook: defer to a later entry.
+                HookDecision::Continue
+            }
+            HookEvent::ToolCall {
+                internal_call_id, ..
+            } => {
+                self.record("ToolCall", None);
+                self.call_ids
+                    .lock()
+                    .expect("call_ids")
+                    .push(internal_call_id.to_string());
+                self.tally.bump();
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            HookEvent::ToolResult {
+                internal_call_id, ..
+            } => {
+                self.record("ToolResult", None);
+                self.result_ids
+                    .lock()
+                    .expect("result_ids")
+                    .push(internal_call_id.to_string());
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            HookEvent::TextDelta { turn, .. } => {
+                self.record("TextDelta", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::ToolCallDelta { turn, .. } => {
+                self.record("ToolCallDelta", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            HookEvent::StreamResponseFinish { turn, .. } => {
+                self.record("StreamResponseFinish", Some(turn));
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
-impl AgentHook for EventTap {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        self.record(ctx, "CompletionCall");
-        CompletionCallAction::continue_run()
-    }
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "CompletionResponse");
-        ObservationAction::continue_run()
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        self.record(ctx, "ModelTurnFinished");
-        ModelTurnAction::continue_run()
-    }
-    async fn on_invalid_tool_call(
-        &self,
-        ctx: &HookContext,
-        _event: &rig::agent::InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        self.record(ctx, "InvalidToolCall");
-        None
-    }
-    async fn on_tool_call(&self, ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        self.record(ctx, "ToolCall");
-        self.call_ids
-            .lock()
-            .expect("call_ids")
-            .push(event.internal_call_id.to_string());
-        ctx.scratchpad()
-            .update(|tally: &mut ToolCallTally| tally.0 += 1);
-        ToolCallAction::run()
-    }
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.record(ctx, "ToolResult");
-        self.result_ids
-            .lock()
-            .expect("result_ids")
-            .push(event.internal_call_id.to_string());
-        ToolResultAction::keep()
-    }
-    async fn on_text_delta(&self, ctx: &HookContext, _event: TextDelta<'_>) -> ObservationAction {
-        self.record(ctx, "TextDelta");
-        ObservationAction::continue_run()
-    }
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        _event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "ToolCallDelta");
-        ObservationAction::continue_run()
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        _event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        self.record(ctx, "StreamResponseFinish");
-        ObservationAction::continue_run()
-    }
-}
-
-/// Registered *after* an [`EventTap`]: reads the shared `Scratchpad` tally on each
-/// `ModelTurnFinished` and appends it — proving cross-hook, cross-turn shared
-/// state.
+/// Registered *after* an [`EventTap`]: reads the shared [`ToolCallTally`] on
+/// each `ModelTurnFinished` and appends it — proving cross-hook, cross-turn
+/// shared state (the old `ScratchpadReader`, with the state owned by the host).
 #[derive(Clone, Default)]
-pub(crate) struct ScratchpadReader {
+pub(crate) struct TallyReader {
     tallies: Arc<Mutex<Vec<usize>>>,
 }
 
-impl ScratchpadReader {
+impl TallyReader {
     pub(crate) fn tallies(&self) -> Vec<usize> {
         self.tallies.lock().expect("tallies").clone()
     }
 }
 
-impl AgentHook for ScratchpadReader {
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        _event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        let tally = ctx
-            .scratchpad()
-            .get::<ToolCallTally>()
-            .map(|t| t.0)
-            .unwrap_or(0);
-        self.tallies.lock().expect("tallies").push(tally);
-        ModelTurnAction::continue_run()
-    }
+/// The reader's hook record over `tally`.
+pub(crate) fn tally_reader(reader: &TallyReader, tally: ToolCallTally) -> HookEntry {
+    let tallies = reader.tallies.clone();
+    HookEntry::sync("tally-reader", move |event| {
+        if matches!(event, HookEvent::ModelTurnFinished { .. }) {
+            tallies.lock().expect("tallies").push(tally.get());
+            return HookDecision::ModelTurn(ModelTurnAction::continue_run());
+        }
+        HookDecision::Continue
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -304,38 +287,29 @@ impl AgentHook for ScratchpadReader {
 /// Applies a fixed [`RequestPatch`] on every `CompletionCall` — the workhorse for
 /// the `RequestPatch` suite (preamble / temperature / max_tokens / tool_choice /
 /// active_tools / additional_params / extra_context / history).
-#[derive(Clone)]
-pub(crate) struct ApplyPatch(pub(crate) RequestPatch);
-
-impl AgentHook for ApplyPatch {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        CompletionCallAction::patch(self.0.clone())
-    }
+pub(crate) fn apply_patch(patch: RequestPatch) -> HookEntry {
+    HookEntry::sync("apply-patch", move |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 /// Applies a fixed [`RequestPatch`] only on the **first** turn. Use this for
 /// per-turn steering that must not repeat forever — e.g. a forced
 /// `tool_choice = Required`, which, if re-applied every turn, would force a tool
 /// call on every turn and loop until `max_turns`.
-#[derive(Clone)]
-pub(crate) struct FirstTurnPatch(pub(crate) RequestPatch);
-
-impl AgentHook for FirstTurnPatch {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if ctx.turn() == 1 {
-            CompletionCallAction::patch(self.0.clone())
-        } else {
-            CompletionCallAction::continue_run()
+pub(crate) fn first_turn_patch(patch: RequestPatch) -> HookEntry {
+    HookEntry::sync("first-turn-patch", move |event| match event {
+        HookEvent::BeforeModelCall { turn: 1, .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(patch.clone()))
         }
-    }
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 /// Convenience: a `Document` for `RequestPatch::context`.
@@ -348,85 +322,70 @@ pub(crate) fn fact_doc(id: &str, text: &str) -> Document {
 }
 
 /// Sets one key of a named tool's arguments, preserving the rest — chains with
-/// other `SetArg`s so several hooks compose.
-#[derive(Clone)]
-pub(crate) struct SetArg {
-    pub(crate) tool: &'static str,
-    pub(crate) key: &'static str,
-    pub(crate) value: serde_json::Value,
-}
-
-impl AgentHook for SetArg {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name == self.tool {
-            let mut parsed: serde_json::Value =
-                serde_json::from_str(event.args).unwrap_or_else(|_| json!({}));
-            parsed[self.key] = self.value.clone();
-            ToolCallAction::rewrite(parsed)
-        } else {
-            ToolCallAction::run()
+/// other `set_arg`s so several hooks compose.
+pub(crate) fn set_arg(
+    tool: impl Into<String>,
+    key: impl Into<String>,
+    value: serde_json::Value,
+) -> HookEntry {
+    let tool = tool.into();
+    let key = key.into();
+    HookEntry::sync("set-arg", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool => {
+            let mut parsed = call.function.arguments.clone();
+            if !parsed.is_object() {
+                parsed = json!({});
+            }
+            parsed[&key] = value.clone();
+            HookDecision::ToolCall(ToolCallAction::rewrite(parsed))
         }
-    }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
+    })
 }
 
-/// How a [`RewriteToolResult`] transforms a named tool's output.
+/// How a [`rewrite_tool_result`] transforms a named tool's output.
 #[derive(Clone)]
 pub(crate) enum ResultRewrite {
     /// Replace the whole result with a fixed marker.
-    Replace(&'static str),
+    Replace(String),
     /// Wrap the (possibly already-rewritten) result — chains with a prior rewrite.
-    Wrap {
-        prefix: &'static str,
-        suffix: &'static str,
-    },
+    Wrap { prefix: String, suffix: String },
     /// Keep only the first `n` characters.
     Truncate(usize),
 }
 
-/// Rewrites a named tool's result. Chains with other `RewriteToolResult`s.
-#[derive(Clone)]
-pub(crate) struct RewriteToolResult {
-    pub(crate) tool: &'static str,
-    pub(crate) rewrite: ResultRewrite,
-}
-
-impl AgentHook for RewriteToolResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name != self.tool {
-            return ToolResultAction::keep();
+/// Rewrites a named tool's result. Chains with other `rewrite_tool_result`s:
+/// each entry sees the running presentation, not the raw output.
+pub(crate) fn rewrite_tool_result(tool: impl Into<String>, rewrite: ResultRewrite) -> HookEntry {
+    let tool = tool.into();
+    HookEntry::sync("rewrite-tool-result", move |event| match event {
+        HookEvent::ToolResult {
+            call, presentation, ..
+        } if call.function.name == tool => {
+            let new = match &rewrite {
+                ResultRewrite::Replace(marker) => marker.clone(),
+                ResultRewrite::Wrap { prefix, suffix } => {
+                    format!("{prefix}{}{suffix}", presentation.render())
+                }
+                ResultRewrite::Truncate(n) => presentation.render().chars().take(*n).collect(),
+            };
+            HookDecision::ToolResult(ToolResultAction::rewrite(new))
         }
-        let new = match &self.rewrite {
-            ResultRewrite::Replace(marker) => (*marker).to_string(),
-            ResultRewrite::Wrap { prefix, suffix } => {
-                format!("{prefix}{}{suffix}", event.presentation.render())
-            }
-            ResultRewrite::Truncate(n) => event.presentation.render().chars().take(*n).collect(),
-        };
-        ToolResultAction::rewrite(new)
-    }
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
+    })
 }
 
 /// Terminates the run when a named tool *produces a result* (post-execution).
-#[derive(Clone)]
-pub(crate) struct TerminateOnResult {
-    pub(crate) tool: &'static str,
-    pub(crate) reason: &'static str,
-}
-
-impl AgentHook for TerminateOnResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == self.tool {
-            ToolResultAction::stop(self.reason)
-        } else {
-            ToolResultAction::keep()
+pub(crate) fn terminate_on_result(tool: impl Into<String>, reason: impl Into<String>) -> HookEntry {
+    let tool = tool.into();
+    let reason = reason.into();
+    HookEntry::sync("terminate-on-result", move |event| match event {
+        HookEvent::ToolResult { call, .. } if call.function.name == tool => {
+            HookDecision::ToolResult(ToolResultAction::stop(reason.clone()))
         }
-    }
+        HookEvent::ToolResult { .. } => HookDecision::ToolResult(ToolResultAction::keep()),
+        _ => HookDecision::Continue,
+    })
 }

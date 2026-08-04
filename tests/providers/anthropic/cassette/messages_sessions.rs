@@ -9,13 +9,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionRequest, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::stream::AgentRunItem;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
@@ -157,9 +155,10 @@ async fn sequential_tool_calls_streaming() {
                 .build();
 
             let mut stream = agent
-                .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
+                .runner(SEQUENTIAL_TOOLS_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(6)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -269,12 +268,12 @@ async fn long_history_replay_nonstreaming() {
 
             // First turn: obtain a real tool_use so the follow-up can echo its
             // id back, the way a caller-owned history would.
-            let first_request = model
-                .completion_request("Look up the harbor label with the tool.")
-                .preamble(preamble.to_string())
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let first_request =
+                CompletionRequest::builder("Look up the harbor label with the tool.")
+                    .preamble(preamble)
+                    .max_tokens(1024)
+                    .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                    .build();
             let first_response = model
                 .completion(first_request)
                 .await
@@ -288,42 +287,41 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .expect("first turn should call lookup_harbor_label");
             assert_eq!(
-                first_response.raw_response.stop_reason.as_deref(),
-                Some("tool_use"),
+                first_response.finish_reason,
+                Some(FinishReason::ToolCalls),
                 "a tool-using turn should preserve the tool_use stop reason"
             );
 
             // Follow-up: replay a long client-owned history around that tool
             // roundtrip, including assistant text before the tool_use (in the
             // same assistant message) and assistant text after the result.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequest::builder(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(preamble.to_string())
-                .max_tokens(1024)
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
+            )
+            .preamble(preamble)
+            .messages(vec![
+                Message::user("My favorite color is teal. Please remember it."),
+                Message::assistant("Noted - your favorite color is teal."),
+                Message::user("Now look up the harbor label with the tool."),
+                Message::Assistant {
                     id: None,
                     content: rig::OneOrMany::many(vec![
                         AssistantContent::text("Checking the harbor label now."),
                         AssistantContent::ToolCall(tool_call.clone()),
                     ])
                     .expect("assistant content should be non-empty"),
-                })
-                .message(Message::tool_result_with_call_id(
+                },
+                Message::tool_result_with_call_id(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
                     ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                ),
+                Message::assistant("The harbor label is crimson-harbor."),
+            ])
+            .max_tokens(1024)
+            .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+            .build();
 
             let response = model
                 .completion(request)
@@ -348,12 +346,19 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("end_turn"),
+                response.finish_reason,
+                Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
-                !response.raw_response.model.is_empty() && !response.raw_response.id.is_empty(),
+                response
+                    .model
+                    .as_deref()
+                    .is_some_and(|model| !model.is_empty())
+                    && response
+                        .message_id
+                        .as_deref()
+                        .is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(
@@ -379,17 +384,17 @@ async fn usage_accumulates_across_streaming_multi_turn() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .runner(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
 
             let mut saw_tool_result = false;
             let mut final_usage = None;
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    MultiTurnStreamItem::StreamUserItem(_) => saw_tool_result = true,
-                    MultiTurnStreamItem::FinalResponse(response) => {
+                    AgentRunItem::User(_) => saw_tool_result = true,
+                    AgentRunItem::Final(response) => {
                         final_usage = Some(response.usage());
                     }
                     _ => {}

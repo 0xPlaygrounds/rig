@@ -1,8 +1,12 @@
+//! A reasoning agent: extract the chain of thought, then execute it.
+//!
+//! `ReasoningAgent::prompt` is an ordinary inherent method. Structured
+//! extraction uses the non-generic [`Agent::extractor`] runner.
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::{CompletionError, CompletionModel, Prompt, PromptError},
-    extractor::Extractor,
+    completion::{CompletionError, PromptError},
     message::Message,
     providers::anthropic,
     tool::Tool,
@@ -21,19 +25,22 @@ struct ChainOfThoughtSteps {
     steps: Vec<String>,
 }
 
-struct ReasoningAgent<M: CompletionModel> {
-    chain_of_thought_extractor: Extractor<M, ChainOfThoughtSteps>,
-    executor: Agent<M>,
+struct ReasoningAgent {
+    chain_of_thought_agent: Agent,
+    chain_of_thought_preamble: String,
+    executor: Agent,
 }
 
-impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
-    #[allow(refining_impl_trait)]
+impl ReasoningAgent {
+    /// `Prompt` was a trait; it is an inherent method now.
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();
         let chat_history = vec![prompt.clone()];
         let extracted = self
-            .chain_of_thought_extractor
-            .extract(prompt)
+            .chain_of_thought_agent
+            .extractor(prompt)
+            .preamble(self.chain_of_thought_preamble.clone())
+            .run::<ChainOfThoughtSteps>()
             .await
             .map_err(|e| {
                 tracing::error!("Extraction error: {:?}", e);
@@ -48,10 +55,10 @@ impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
         }
         let response = self
             .executor
-            .prompt(reasoning_prompt.as_str())
-            .history(&chat_history)
+            .runner(reasoning_prompt.as_str())
+            .history(chat_history)
             .max_turns(20)
-            .extended_details()
+            .run()
             .await?;
         if let Some(messages) = &response.messages {
             let history_vec: Vec<_> = messages.clone().into_iter().collect();
@@ -65,6 +72,16 @@ impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
     }
 }
 
+/// The classic extraction protocol, with the chain-of-thought instructions
+/// appended to its preamble (what `ExtractorBuilder::preamble` did).
+fn chain_of_thought_preamble() -> String {
+    let classic = ExtractOptions::classic_extractor();
+    let preamble = classic.preamble.clone().unwrap_or_default();
+    format!(
+        "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{CHAIN_OF_THOUGHT_PROMPT}"
+    )
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -72,15 +89,14 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
-    let anthropic_client = anthropic::Client::from_env()?;
+    let client = anthropic::Client::from_env()?;
     let agent = ReasoningAgent {
-        chain_of_thought_extractor: anthropic_client
-            .extractor(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(CHAIN_OF_THOUGHT_PROMPT)
+        chain_of_thought_agent: client
+            .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .build(),
+        chain_of_thought_preamble: chain_of_thought_preamble(),
 
-        executor: anthropic_client
+        executor: client
             .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .preamble(
                 "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
@@ -146,11 +162,7 @@ impl Tool for Add {
             }
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -182,11 +194,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
@@ -220,11 +228,7 @@ impl Tool for Multiply {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
         Ok(result)
     }
@@ -258,11 +262,7 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
         Ok(result)
     }

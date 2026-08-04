@@ -18,45 +18,49 @@ struct Person {
     job: Option<String>,
 }
 
+fn serialize_params(params: AdditionalParameters) -> serde_json::Value {
+    serde_json::to_value(params).expect("Gemini additional params should serialize")
+}
+
 #[tokio::test]
 async fn extractor_smoke() {
     let additional_params =
         AdditionalParameters::default().with_config(GenerationConfig::default());
 
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
-        let extractor = client
-            .extractor::<SmokePerson>(gemini::completion::GEMINI_2_5_FLASH)
-            .additional_params(
-                serde_json::to_value(additional_params)
-                    .expect("Gemini additional params should serialize"),
-            )
-            .build();
-
-        let response = extractor
-            .extract_with_usage(EXTRACTOR_TEXT)
+        let response = client
+            .agent(gemini::completion::GEMINI_2_5_FLASH)
+            .additional_params(serialize_params(additional_params))
+            .build()
+            .extractor(EXTRACTOR_TEXT)
+            .run_with_usage::<SmokePerson>()
             .await
             .expect("extractor request should succeed");
 
         validate_extraction_fields(
             "gemini_extractor_smoke",
-            response.data.first_name.as_deref(),
-            response.data.last_name.as_deref(),
-            response.data.job.as_deref(),
+            response.value.first_name.as_deref(),
+            response.value.last_name.as_deref(),
+            response.value.job.as_deref(),
             response.usage,
         )
         .expect("portable extraction contract should hold");
 
         let first_name = response
-            .data
+            .value
             .first_name
             .as_deref()
             .expect("first_name should be present");
         let last_name = response
-            .data
+            .value
             .last_name
             .as_deref()
             .expect("last_name should be present");
-        let job = response.data.job.as_deref().expect("job should be present");
+        let job = response
+            .value
+            .job
+            .as_deref()
+            .expect("job should be present");
 
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);
@@ -71,13 +75,12 @@ async fn extractor_with_additional_params() {
     super::super::support::with_gemini_cassette(
         "extractor/extractor_with_additional_params",
         |client| async move {
-            let extractor = client
-                .extractor::<Person>(gemini::completion::GEMINI_2_5_FLASH)
-                .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
-
-            let person = extractor
-                .extract("Hello my name is John Doe! I am a software engineer.")
+            let person = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .additional_params(serialize_params(params))
+                .build()
+                .extractor("Hello my name is John Doe! I am a software engineer.")
+                .run::<Person>()
                 .await
                 .expect("extract should succeed");
 

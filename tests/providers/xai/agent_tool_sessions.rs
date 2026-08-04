@@ -10,12 +10,13 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, Message, Prompt};
+use rig::completion::{CompletionRequest, Message};
+use rig::http_runtime::HttpRuntime;
+
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai::responses_api::Output;
 use rig::providers::xai;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -140,11 +141,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -190,11 +187,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -229,11 +222,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -259,11 +248,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }
@@ -394,15 +379,29 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<xai::CompletionResponse>,
-) {
-    assert_nonempty_response(&response.raw_response.id);
-    assert_nonempty_response(&response.raw_response.model);
-    assert_eq!(response.raw_response.status.as_deref(), Some("completed"));
+fn assert_response_metadata(response: &rig::completion::CompletionResponse, scenario: &str) {
+    // The normalized response no longer carries the raw provider payload, so
+    // wire-specific fields (raw id/model, Responses `status`, raw usage
+    // presence) are re-checked against the recorded cassette body.
+    let raw_response = recorded_wire_response(scenario);
+    assert_nonempty_response(&raw_response.id);
+    assert_nonempty_response(&raw_response.model);
+    assert_eq!(raw_response.status.as_deref(), Some("completed"));
     assert!(
-        response.raw_response.usage.is_some(),
+        raw_response.usage.is_some(),
         "raw xAI response should preserve usage metadata"
+    );
+    assert_nonempty_response(
+        response
+            .message_id
+            .as_deref()
+            .expect("response should preserve the xAI response id"),
+    );
+    assert_nonempty_response(
+        response
+            .model
+            .as_deref()
+            .expect("response should preserve the xAI model"),
     );
     assert!(
         response
@@ -412,6 +411,18 @@ fn assert_response_metadata(
         "xAI Responses message id should be preserved, got {:?}",
         response.message_id
     );
+}
+
+/// Deserializes the last recorded response body for the scenario as an xAI
+/// wire (Responses API) completion response.
+fn recorded_wire_response(scenario: &str) -> xai::CompletionResponse {
+    let bodies = crate::cassettes::recorded_response_bodies("xai", scenario);
+    serde_json::from_str(
+        bodies
+            .last()
+            .expect("cassette should contain a recorded response body"),
+    )
+    .expect("recorded xAI body should deserialize as a wire completion response")
 }
 
 fn image_content() -> UserContent {
@@ -427,10 +438,10 @@ fn image_content() -> UserContent {
 async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
+            let agent = env
                 .agent(SESSION_MODEL)
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
@@ -469,10 +480,10 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
 async fn sequential_complex_tool_calls_streaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/sequential_complex_tool_calls_streaming",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
             let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
+            let agent = env
                 .agent(SESSION_MODEL)
                 .preamble(COMPLEX_SESSION_PREAMBLE)
                 .tool(ping)
@@ -483,9 +494,10 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .build();
 
             let mut stream = agent
-                .stream_chat(COMPLEX_SESSION_PROMPT, Vec::<Message>::new())
+                .runner(COMPLEX_SESSION_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(10)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             anyhow::ensure!(
@@ -529,8 +541,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let agent = client
+        |env| async move {
+            let agent = env
                 .agent(SESSION_MODEL)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -577,8 +589,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
 async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = client
+        |env| async move {
+            let agent = env
                 .agent(SESSION_MODEL)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
@@ -587,9 +599,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .runner(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -608,22 +620,20 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
-        |client| async move {
+        |env| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
-                    "Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
+            let request = CompletionRequest::builder("Call inspect_manifest exactly once for project rig-xai with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
-                     Do not write normal text before the tool call.",
-                )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                     Do not write normal text before the tool call.")
+                              .preamble("Use the requested tool call and no prose before it.")
+                              .tools(vec![rig::tool::portable_tool_definition(&tool)])
+                              .tool_choice(ToolChoice::Required)
+                              .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(xai::functions::open_stream(&cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -650,39 +660,39 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
 async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
-                .message(Message::user("My favorite color is teal. Please remember it."))
-                .message(Message::assistant("Noted: your favorite color is teal."))
-                .message(Message::user("For this release, use the canary lane."))
-                .message(Message::assistant("Understood: the release lane is canary."))
-                .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
-                        "call_REDACTED_1",
-                        "call_REDACTED_1".to_string(),
-                        AlphaSignal::NAME,
-                        json!({}),
-                    )),
-                })
-                .message(Message::tool_result_with_call_id(
-                    "call_REDACTED_1",
-                    Some("call_REDACTED_1".to_string()),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
+            let request = CompletionRequest::builder("Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.")
+                              .preamble("You are concise and should rely on the provided chat history.")
+                              .messages(vec![
+                        Message::user("My favorite color is teal. Please remember it."),
+                        Message::assistant("Noted: your favorite color is teal."),
+                        Message::user("For this release, use the canary lane."),
+                        Message::assistant("Understood: the release lane is canary."),
+                        Message::user("Look up the harbor label with the tool."),
+                        Message::Assistant {
+                            id: None,
+                            content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                                "call_REDACTED_1",
+                                "call_REDACTED_1".to_string(),
+                                AlphaSignal::NAME,
+                                json!({}),
+                            )),
+                        },
+                        Message::tool_result_with_call_id(
+                            "call_REDACTED_1",
+                            Some("call_REDACTED_1".to_string()),
+                            ALPHA_SIGNAL_OUTPUT,
+                        ),
+                        Message::assistant("The harbor label is crimson-harbor."),
+                    ])
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .tool_choice(ToolChoice::None)
+                              .build();
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -692,7 +702,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 "usage should be populated on long-history replay: {:?}",
                 response.usage
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+            );
 
             Ok(())
         },
@@ -704,20 +717,22 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
 
-            let required = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::Required)
-                        .build(),
-                )
-                .await?;
+            let required = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest {
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::Required),
+                    ..CompletionRequest::from_prompt(
+                        "Call lookup_harbor_label exactly once with an empty object and do not answer in prose.",
+                    )
+                },
+            )
+            .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
                     content,
@@ -728,20 +743,20 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 "required tool choice should force lookup_harbor_label"
             );
 
-            let specific = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Call the orchard-label tool exactly once with an empty object and do not call any other tool.",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool(rig::tool::tool_definition(&BetaSignal))
-                        .tool_choice(ToolChoice::Specific {
-                            function_names: vec![BetaSignal::NAME.to_string()],
-                        })
-                        .build(),
-                )
-                .await?;
+            let specific = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest::builder("Call the orchard-label tool exactly once with an empty object and do not call any other tool.",)
+                    .tools(vec![
+                        rig::tool::portable_tool_definition(&AlphaSignal),
+                        rig::tool::portable_tool_definition(&BetaSignal),
+                    ])
+                    .tool_choice(ToolChoice::Specific {
+                        function_names: vec![BetaSignal::NAME.to_string()],
+                    })
+                    .build(),
+            )
+            .await?;
             let specific_calls = specific
                 .choice
                 .iter()
@@ -756,17 +771,18 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                 specific_calls
             );
 
-            let none = model
-                .completion(
-                    model
-                        .completion_request(
-                            "Do not call tools. Reply with exactly this phrase: no-tool-answer",
-                        )
-                        .tool(rig::tool::tool_definition(&AlphaSignal))
-                        .tool_choice(ToolChoice::None)
-                        .build(),
-                )
-                .await?;
+            let none = xai::functions::complete(
+                &cfg,
+                &rt,
+                CompletionRequest {
+                    tools: vec![rig::tool::portable_tool_definition(&AlphaSignal)],
+                    tool_choice: Some(ToolChoice::None),
+                    ..CompletionRequest::from_prompt(
+                        "Do not call tools. Reply with exactly this phrase: no-tool-answer",
+                    )
+                },
+            )
+            .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
             assert_contains_all_case_insensitive(&none_text, &["no-tool-answer"]);
@@ -787,19 +803,17 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
 async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
-        |client| async move {
-            let model = client.completion_model(REASONING_MODEL);
-            let request = model
-                .completion_request(
-                    "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
-                )
-                .preamble("You are a concise reliability engineer.".to_string())
-                .additional_params(json!({
+        |env| async move {
+            let cfg = env.config(REASONING_MODEL);
+            let rt = HttpRuntime::new();
+            let request = CompletionRequest::builder("Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.")
+                              .preamble("You are a concise reliability engineer.")
+                              .additional_params(json!({
                     "reasoning": { "effort": "low", "summary": "detailed" }
                 }))
-                .build();
+                              .build();
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
 
             anyhow::ensure!(
                 response
@@ -808,9 +822,11 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                     .any(|content| matches!(content, AssistantContent::Reasoning(_))),
                 "xAI reasoning response should preserve a reasoning content block"
             );
+            let raw_response = recorded_wire_response(
+                "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
+            );
             anyhow::ensure!(
-                response
-                    .raw_response
+                raw_response
                     .output
                     .iter()
                     .any(|output| matches!(output, Output::Reasoning { .. })),
@@ -821,8 +837,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 "core usage should preserve xAI reasoning tokens: {:?}",
                 response.usage
             );
-            let raw_reasoning_tokens = response
-                .raw_response
+            let raw_reasoning_tokens = raw_response
                 .usage
                 .as_ref()
                 .and_then(|usage| usage.output_tokens_details.as_ref())
@@ -832,7 +847,10 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
                 "usage reasoning tokens should match raw provider details"
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
+            );
 
             Ok(())
         },
@@ -844,14 +862,12 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
 async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
-        |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
-                    "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
-                )
-                .preamble("Return only JSON matching the supplied schema.".to_string())
-                .additional_params(json!({
+        |env| async move {
+            let cfg = env.config(SESSION_MODEL);
+            let rt = HttpRuntime::new();
+            let request = CompletionRequest::builder("Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.")
+                              .preamble("Return only JSON matching the supplied schema.")
+                              .additional_params(json!({
                     "text": {
                         "format": {
                             "type": "json_schema",
@@ -888,9 +904,9 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                         }
                     }
                 }))
-                .build();
+                              .build();
 
-            let response = model.completion(request).await?;
+            let response = xai::functions::complete(&cfg, &rt, request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
@@ -912,7 +928,10 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                     .any(|check| check["name"] == "replay" && check["required"] == true),
                 "structured output should include replay=true"
             );
-            assert_response_metadata(&response);
+            assert_response_metadata(
+                &response,
+                "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
+            );
 
             Ok(())
         },
@@ -924,8 +943,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
 async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
-        |client| async move {
-            let agent = client
+        |env| async move {
+            let agent = env
                 .agent(VISION_MODEL)
                 .preamble("You answer image questions concisely and directly.")
                 .build();

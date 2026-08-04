@@ -1,10 +1,7 @@
 //! Everything related to audio generation (ie, Text To Speech).
-//! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-use crate::markers::{Missing, Provided};
-use crate::{
-    http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+//! Rig abstracts over a number of different providers via each provider's
+//! `functions::generate_audio` free function over these request/response types.
+use crate::{http_client, provider_response};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -45,6 +42,12 @@ pub enum AudioGenerationError {
     ProviderResponse(provider_response::ProviderResponseError),
 }
 
+impl From<crate::json_utils::RequestOverlayError> for AudioGenerationError {
+    fn from(error: crate::json_utils::RequestOverlayError) -> Self {
+        Self::RequestError(Box::new(error))
+    }
+}
+
 crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
 
 pub struct AudioGenerationResponse<T> {
@@ -52,24 +55,6 @@ pub struct AudioGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
-
-    type Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    fn audio_generation(
-        &self,
-        request: AudioGenerationRequest,
-    ) -> impl std::future::Future<
-        Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
-
-    fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
-        AudioGenerationRequestBuilder::new(self.clone())
-    }
-}
 #[non_exhaustive]
 pub struct AudioGenerationRequest {
     pub text: String,
@@ -78,89 +63,42 @@ pub struct AudioGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-#[non_exhaustive]
-pub struct AudioGenerationRequestBuilder<M, T = Missing, V = Missing>
-where
-    M: AudioGenerationModel,
-{
-    model: M,
-    text: T,
-    voice: V,
-    speed: f32,
-    additional_params: Option<Value>,
-}
-
-impl<M> AudioGenerationRequestBuilder<M, Missing, Missing>
-where
-    M: AudioGenerationModel,
-{
-    pub fn new(model: M) -> Self {
+impl AudioGenerationRequest {
+    /// Creates a request from the text and voice, defaulting to a speed of `1.0`.
+    ///
+    /// Refine with the `with_*` methods, then execute it with the provider's
+    /// `functions::generate_audio`.
+    pub fn new(text: impl Into<String>, voice: impl Into<String>) -> Self {
         Self {
-            model,
-            text: Missing,
-            voice: Missing,
+            text: text.into(),
+            voice: voice.into(),
             speed: 1.0,
             additional_params: None,
         }
     }
-}
 
-impl<M, T, V> AudioGenerationRequestBuilder<M, T, V>
-where
-    M: AudioGenerationModel,
-{
-    /// Sets the text for the audio generation request
-    pub fn text(self, text: &str) -> AudioGenerationRequestBuilder<M, Provided<String>, V> {
-        AudioGenerationRequestBuilder {
-            model: self.model,
-            text: Provided(text.to_string()),
-            voice: self.voice,
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
+    /// Sets the text for the audio generation request.
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
+        self
     }
 
-    /// The voice of the generated audio
-    pub fn voice(self, voice: &str) -> AudioGenerationRequestBuilder<M, T, Provided<String>> {
-        AudioGenerationRequestBuilder {
-            model: self.model,
-            text: self.text,
-            voice: Provided(voice.to_string()),
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
+    /// Sets the voice of the generated audio.
+    pub fn with_voice(mut self, voice: impl Into<String>) -> Self {
+        self.voice = voice.into();
+        self
     }
 
-    /// The speed of the generated audio
-    pub fn speed(mut self, speed: f32) -> Self {
+    /// Sets the speed of the generated audio.
+    pub fn with_speed(mut self, speed: f32) -> Self {
         self.speed = speed;
         self
     }
 
-    /// Adds additional parameters to the audio generation request.
-    pub fn additional_params(mut self, params: Value) -> Self {
+    /// Sets additional parameters for the audio generation request.
+    pub fn with_additional_params(mut self, params: Value) -> Self {
         self.additional_params = Some(params);
         self
-    }
-}
-
-impl<M> AudioGenerationRequestBuilder<M, Provided<String>, Provided<String>>
-where
-    M: AudioGenerationModel,
-{
-    pub fn build(self) -> AudioGenerationRequest {
-        AudioGenerationRequest {
-            text: self.text.0,
-            voice: self.voice.0,
-            speed: self.speed,
-            additional_params: self.additional_params,
-        }
-    }
-
-    pub async fn send(self) -> Result<AudioGenerationResponse<M::Response>, AudioGenerationError> {
-        let model = self.model.clone();
-
-        model.audio_generation(self.build()).await
     }
 }
 

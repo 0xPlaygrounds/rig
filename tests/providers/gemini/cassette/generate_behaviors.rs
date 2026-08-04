@@ -8,11 +8,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::FinishReason;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -38,38 +36,33 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .temperature(0.0)
-                .max_tokens(48)
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 0 }
-                    }
-                }))
-                .build();
+            let request = CompletionRequest::builder(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.")
+            .temperature(0.0)
+            .max_tokens(48)
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 0 }
+                }
+            }))
+            .build();
 
-            let response = model
+            let response = client
+                .completion_model(model)
                 .completion(request)
                 .await
                 .expect("a truncated response should still convert, not error");
 
-            let candidate = response
-                .raw_response
-                .candidates
-                .first()
-                .expect("response should carry a candidate");
             assert!(
-                matches!(candidate.finish_reason, Some(FinishReason::MaxTokens)),
-                "hitting maxOutputTokens should preserve the MAX_TOKENS finish reason, \
-                 got {:?}",
-                candidate.finish_reason
+                matches!(response.finish_reason, Some(FinishReason::Length)),
+                "hitting maxOutputTokens should surface the MAX_TOKENS finish reason as \
+                 the normalized Length variant, got {:?}",
+                response.finish_reason
             );
             let text: String = response
                 .choice
@@ -85,8 +78,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             );
             assert!(
                 response
-                    .raw_response
-                    .model_version
+                    .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"
@@ -143,3 +135,4 @@ async fn structured_output_nested_arrays_and_optional_fields() {
     )
     .await;
 }
+use rig::prelude::*;

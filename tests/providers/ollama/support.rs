@@ -1,5 +1,4 @@
 use futures::FutureExt;
-use rig::client::Nothing;
 use rig::providers::ollama;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,7 +12,6 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, ollama::Client) {
     let cassette = ProviderCassette::start("ollama", spec, "http://localhost:11434").await;
     let client = ollama::Client::builder()
-        .api_key(Nothing)
         .base_url(cassette.base_url())
         .build()
         .expect("client should build");

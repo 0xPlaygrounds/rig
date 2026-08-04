@@ -3,76 +3,17 @@
 //! This module reuses OpenAI's Responses API streaming types since xAI's API
 //! is designed to be compatible with OpenAI's format.
 
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
-
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
-use crate::json_utils;
+use crate::completion::CompletionError;
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
+    ResponsesStreamOptions, stream_from_event_source_with_options,
 };
-use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
 use crate::streaming;
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
-        let preamble = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request =
-            XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
-
-        request.additional_params = Some(params);
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "xAI streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/v1/responses")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        let span =
-            CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
-                .system_instructions(preamble.as_deref(), record_telemetry_content)
-                .build();
-
-        send_xai_streaming_request(self.client.clone(), req)
-            .instrument(span)
-            .await
-    }
-}
-
 /// Send a streaming request
-pub(crate) async fn send_xai_streaming_request<T>(
-    http_client: T,
-    req: http::Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-where
-    T: HttpClientExt + Clone + 'static,
-{
+pub(crate) async fn send_xai_streaming_request(
+    event_source: crate::http_client::sse::BoxedEventSource,
+) -> Result<streaming::CompletionStream, CompletionError> {
     let span = tracing::Span::current();
-    let event_source = GenericEventSource::new(http_client, req);
 
     Ok(stream_from_event_source_with_options(
         event_source,
@@ -129,7 +70,6 @@ mod tests {
     #[tokio::test]
     async fn xai_stream_surfaces_terminal_errors_after_completed_tool_calls() {
         use crate::test_utils::MockStreamingClient;
-        use futures::StreamExt;
         use serde_json::json;
 
         let tool_call_done = json!({
@@ -177,9 +117,11 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_xai_streaming_request(client, req)
-            .await
-            .expect("stream should start");
+        let mut stream = send_xai_streaming_request(crate::http_client::sse::boxed_event_source(
+            client, req, false,
+        ))
+        .await
+        .expect("stream should start");
 
         match stream
             .next()

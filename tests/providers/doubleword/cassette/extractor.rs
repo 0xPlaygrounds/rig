@@ -10,17 +10,18 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson};
 async fn extractor_smoke() {
     with_doubleword_cassette("extractor/extractor_smoke", |client| async move {
         let response = client
-            .extractor::<SmokePerson>(DEFAULT_MODEL)
+            .agent(DEFAULT_MODEL)
             .build()
-            .extract_with_usage(EXTRACTOR_TEXT)
+            .extractor(EXTRACTOR_TEXT)
+            .run_with_usage::<SmokePerson>()
             .await
             .expect("extractor request should succeed");
 
         validate_extraction_fields(
             "doubleword_extractor_smoke",
-            response.data.first_name.as_deref(),
-            response.data.last_name.as_deref(),
-            response.data.job.as_deref(),
+            response.value.first_name.as_deref(),
+            response.value.last_name.as_deref(),
+            response.value.job.as_deref(),
             response.usage,
         )
         .expect("portable extraction contract should hold");

@@ -11,6 +11,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → 0.42](#041--042-unreleased) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -165,7 +166,11 @@ the model. There is also a compile-time consequence — see
 
 The highest-impact change in this release. `max_turns` and
 `default_max_turns` now bound the **exact total number of model calls**,
-including the initial call, tool continuations, and retries.
+including the initial call, tool continuations, retries, local request-
+preparation failures, and failed or cancelled provider-operation reissues.
+Each emitted `AgentRunStep::CallModel` consumes one unit. Rolling back a failed
+operation restores its logical turn position and request patch, but never
+refunds that attempt.
 
 | Budget | Before | After |
 | --- | --- | --- |
@@ -178,7 +183,9 @@ preserve the maximum allowance of an old explicit budget `n`, account for the
 old effective `n + 2`; otherwise set the literal total you actually intend.
 
 If you set `max_turns` at all, re-derive the number. A budget that used to
-permit a tool round-trip may now stop after the first model call.
+permit a tool round-trip may now stop after the first model call. Hosts that
+continue polling a raw `AgentSession` or `AgentStream` after provider errors
+must budget for those retries; polling cannot issue unbounded billable calls.
 
 #### Providers that used to return empty text now error
 
@@ -274,6 +281,1252 @@ association.
 
 ---
 
+## 0.41 → 0.42 (unreleased)
+
+The agent runtime is now *data-oriented*: providers are plain configuration,
+and the classic `Agent` lost its model type parameter.
+
+### Streaming, model calls, and tool batches are transactional
+
+`CompletionStream` no longer treats every stopped stream as a completed
+response. Drain it to natural EOF and use the checked conversion:
+
+```rust
+while let Some(item) = stream.next().await {
+    handle(item?);
+}
+assert_eq!(
+    stream.termination(),
+    Some(CompletionStreamTermination::Exhausted),
+);
+let response = stream.into_response()?;
+```
+
+The former `CompletionResponse::from(stream)` / `stream.into()` conversion is
+removed. `into_response()` returns `CompletionStreamFinalizationError` for a
+running, cancelled, or failed stream. `cancel()` still ends iteration normally,
+but `termination()` reports `Cancelled` and its partial aggregate cannot be
+finalized. Provider errors are yielded once and report `Failed`, even if their
+message contains the word “aborted.”
+
+Pausing is event-driven. Existing `stream.pause()` / `stream.resume()` calls
+still work; when another task or select branch must resume an already-pending
+read, clone `stream.pause_handle()` first and call `resume()` on that handle.
+The parked read is woken without polling the provider source in a loop.
+
+Both agent drivers now keep each provider call in a transactional attempt.
+Preparation, provider-open/unary failure, midstream failure, and
+`AgentStream::close_turn()` restore the request patch and logical turn position
+and discard provisional history, usage, terminal metadata, and tool calls. The
+failed/cancelled operation remains charged to the `max_turns` attempt budget;
+a clean reissue is available only while capacity remains. This ownership
+survives cancellation of `advance()`,
+`next_item()`, or `reply_before_call()` while provider I/O is pending.
+Continuing reissues the same logical turn and merges any newly supplied
+patch; an already-answered `BeforeModelCall` decision is not dispatched again,
+so append-only fields such as `extra_context` are not applied twice. Text/tool
+deltas already returned to the host were provisional and may be returned again
+by that retry. Streamed invalid-tool retry/skip history, usage, and events are
+also provisional until the abandoned provider stream reaches checked EOF; a
+later provider error rolls them back with the rest of the attempt.
+
+Each provider operation now gets a fresh attempt identity, including a
+budgeted reissue of the same logical turn. The attempt owns the real prompt
+and the effective Tool-mode output contract until commit. Consequently,
+response hooks receive the real prompt without relying on a surfaced
+`BeforeModelCall`, streamed text aggregation cannot leak across reissues, and
+Tool-mode validation uses the schema actually advertised as the synthetic
+tool's parameters. `CompletionRequest::output_schema` remains `None` in Tool
+mode. A corrective structured-output retry inherits the violated contract by
+default; a new `RequestPatch::output_schema` replaces it, while an ordinary
+tool-loop continuation returns to the configured baseline.
+
+Current-turn metadata and tool identity now travel with their records:
+
+- `PreparedRequest::output_tool_contract` replaces the former
+  `output_tool_name` field and carries both the synthetic tool name and the
+  schema advertised as its parameters. `AgentRunStep::CallModel` now exposes
+  an `attempt_id`; hand-written drivers must capture it and pass
+  `Some(&attempt_id)` to `prepare_request` (standalone request preparation may
+  pass `None`). They must retain
+  `PreparedRequest::model_attempt` while provider I/O is in flight and consume
+  it with `into_model_turn` for unary responses or
+  `into_streamed_turn_assembler` before streaming. The receipt and assembler
+  are single-use rather than `Clone`; the assembler carries the prepared
+  prompt, attempt identity, schema, and validation name sets through partial
+  invalid-call recovery and final assembly. Direct `ModelTurn::new` and
+  `StreamedTurnAssembler::new` construction likewise require the authorizing
+  `ModelAttemptId`, and `record_streamed_completion_call` requires the same ID.
+  A stale response, partial recovery snapshot, terminal stream, completion
+  record, or replayed turn is rejected without mutating the current attempt.
+  On a corrective call, pass
+  `AgentRun::inherited_output_contract()` to the new `prepare_request`
+  argument so a per-attempt patched schema does not fall back to the baseline.
+  Callers that only inspect the name can map
+  `output_tool_contract.as_ref()` to its `output_tool_name`.
+- `AgentRun::with_output_validation` accepts `Option<schemars::Schema>` rather
+  than `Option<serde_json::Value>`. Convert untyped configuration at its input
+  boundary; schema values must be JSON objects or booleans. Invalid scalar or
+  array values now fail explicitly instead of silently dropping Tool mode.
+- `AgentStreamItem::TurnFinished` has `message_id: Option<String>`.
+- `ModelTurnOutcome::Continue` carries an `AcceptedModelTurn` containing the
+  canonical post-resolution content, turn index, message ID, usage, and
+  medium-specific response-observation suppression flag, plus accessors for
+  the committed attempt prompt, identity, and Tool-mode contract. Both drivers
+  use this record for their one normalized `ModelTurnFinished` verdict before
+  tool preflight, including after invalid-call repair. `AgentRun` now stores
+  “verdict required” and “ready to advance” as distinct states: call
+  `continue_model_turn` before `next_step`; checkpoints before the verdict
+  resurface it once, while checkpoints after it advance without redispatch.
+  The outcome is `#[must_use]`: match `Continue`, `NeedsResolution`, and
+  `TurnRetried` exhaustively instead of discarding the value.
+- Normal stream ingestion and invalid-call recovery now share one terminal
+  guard. Every provider item after the first `Final` is a protocol error,
+  including content that a Retry/Skip drain would otherwise discard. Runs with
+  no delta-observing hook also stop constructing a duplicate cumulative text
+  buffer.
+- `AgentStream::last_response()` describes only the current/most recently
+  completed attempt; a successful turn with no provider terminal record leaves
+  it as `None` rather than retaining an older turn's record.
+- Blocking and streaming `ToolResultReady` variants have
+  `internal_call_id: String`.
+- `ToolBatchOutput` replaces parallel `results`, `raw_results`, and
+  `call_spans` fields with ordered `records: Vec<ToolExecutionRecord>`. Use
+  `batch.results()` for a cloned visible projection or
+  `batch.into_results()` when consuming only the visible projection. Use
+  `batch.submissions()` / `batch.into_submissions()` when answering a driver.
+- `AgentSession::provide_tool_results` and `AgentStream::provide_tool_results`
+  accept `Vec<ToolResultSubmission>`, not bare `UserContent`. Build each record
+  from the corresponding pending call's `internal_call_id`; submissions may be
+  reordered safely even when provider call IDs duplicate. Rig joins by that
+  identity and commits the model-visible result message in the pending calls'
+  source order, not host submission order. Rig's executor was already
+  source-ordered; this wire-visible change matters to manual hosts submitting
+  out of order through `provide_tool_results`. At the lower-level
+  `AgentRun` boundary, use `tool_result_submissions` for the same protocol.
+  Rig validates both embedded provider correlation fields (`id` and `call_id`)
+  against the invocation selected by `internal_call_id`.
+  `ToolResultSubmission::new` declares that the host performed the execution
+  externally; submissions produced by Rig's executor or pre-resolved policy
+  retain their explicit `ToolInvocationDisposition`.
+  The `tool_results(Vec<UserContent>)` convenience remains only for batches
+  whose provider call IDs are unique and fails closed on ambiguous duplicates.
+- `ResolvedToolCall` now owns the complete effective call plus a normalized
+  `ResolvedToolCallDisposition` (`Run`, `Skip`, or `Stop`). Chained argument
+  rewrites therefore remain attached even when a later hook skips the call.
+
+Each `ToolExecutionRecord` keeps the batch index, unique Rig internal ID,
+original and effective call, structured result, visible result, explicit
+`ToolInvocationDisposition`, and optional telemetry span together. Provider
+call IDs are payload and may repeat. Rig generates
+missing/duplicate internal IDs before storing the pending batch in `AgentRun`,
+so they survive serialization and resume. Pending calls also serialize the
+original call and a data-only invocation disposition. Invalid-call
+recovery stores synthetic results positionally rather than by duplicate-prone
+provider IDs, preserving each call's `call_id`, reason, and classification.
+When recovery repairs a tool name, both unary and streamed execution retain the
+provider-emitted call as the record's `original_call` and the repaired call as
+its `effective_call`.
+Together these preserve rewrite-then-skip behavior when a `ToolCallsReady`
+inbox crosses a process boundary. Add `..` to exhaustive event-field patterns
+when you do not need the new identity fields.
+
+Unknown tools are classified before executable jobs and tracing spans are
+created. They retain the registry's model-visible not-found result, but emit no
+`ToolExecutionCommitted`, open no `execute_tool` span, and do not contribute to
+`ToolBatchOutput::last_span_id`. For live executor outcomes and policy skips,
+`ToolExecutionRecord::raw_result` is the authoritative structured outcome. If
+a host supplies pre-resolved content, or a serialized pre-resolved call is
+replayed without a live execution record, Rig can only reconstruct a lossy
+success-shaped `raw_result`; use `ToolInvocationDisposition` as the execution
+provenance rather than inferring execution from that reconstructed status.
+
+### Fluent builders are back (without the models)
+
+The data-oriented rewrite replaced several builders with explicit struct
+literals and multi-argument free functions. The ergonomics are restored, but
+the builders now hold **owned data only** — no model, transport, provider
+implementation, trait object, or typestate marker — so the architecture is
+unchanged. Where a builder used to end in a model-bound `.send()`/`.stream()`,
+it now ends in `.build()` and you pass the record to the provider's free
+function; that terminal is deliberately *not* restored.
+
+`CompletionRequestBuilder` returns via `CompletionRequest::builder(prompt)`:
+
+```rust
+// verbose form (still supported): the preamble is a leading system message
+let mut history = history;
+history.insert(0, Message::system("Be concise."));
+let request = CompletionRequest {
+    temperature: Some(0.5),
+    ..CompletionRequest::with_history(history, "Who are you?")
+};
+
+// fluent form
+let request = CompletionRequest::builder("Who are you?")
+    .preamble("Be concise.")
+    .messages(history)
+    .temperature(0.5)
+    .build();
+let response = openai::functions::complete(&cfg, &rt, request).await?;
+```
+
+**The two forms are interchangeable**, because there is now only one
+representation to produce: `.preamble(..)` is a convenience that inserts a
+leading `Message::System` at `build()` time, which is exactly what the verbose
+form writes by hand. The scalar `CompletionRequest::preamble` field is gone; a
+`Message::System` in `chat_history` is the only way to say it.
+
+Every provider renders that leading system message the same way it always
+rendered a preamble: emitted first, then system messages lifted out of the rest
+of the history. Verified provider by provider — Anthropic (`system` array +
+`history_system`), OpenAI chat and Responses, Gemini `generateContent`, Cohere,
+Ollama, OpenRouter, xAI, and Bedrock all agree — with a placement conversion
+test per provider outside the replay claim (for example
+`system_messages_land_in_system_instruction_not_contents` in
+`rig-vertexai` and `rig-gemini-grpc`). Recorded response payloads are unchanged.
+The fixture diff spans five files (7 insertions and 7 deletions): four
+OpenRouter request matchers whose `when.body` objects gain the now-forwarded
+`max_tokens` field, plus the Gemini hand-driven parallel-tool cassette whose
+two `functionResponse` parts now follow the model-emitted call order rather
+than the host's reverse submission order. Every other cassette is unchanged.
+
+Collapsing to one representation also closed a data-loss bug: Gemini's
+Interactions API used to prefer a scalar preamble and *discard* the history
+system messages (an `.or_else` where every other provider appended both). With
+nothing left to prefer, that path is gone by construction — every canonical
+system message is joined in order.
+
+At the request-builder layer, `additional_params` **merges** into whatever is
+already set; `additional_params_opt` replaces (and clears with `None`). At the
+provider wire boundary, extension maps no longer override canonical fields:
+non-object values and reserved-key collisions now return the modality's typed
+request error. Move values into the canonical request field, or keep only
+provider-native keys that do not collide. Typed provider extensions such as
+Anthropic output configuration, Groq native tools, and Gemini safety settings
+continue to work because their builders parse them before applying the
+collision boundary. Nested provider configuration is checked at the leaf that
+the canonical request actually owns, so settings such as Gemini `imageSize`
+can coexist with a canonical `aspectRatio`. Provider fallbacks such as an audio
+response format or language are applied only when the extension omitted them.
+
+Gemini and xAI image generation now translate supported `width`/`height`
+ratios into the provider's aspect-ratio field. A requested ratio that the
+provider cannot represent returns a request error unless the caller explicitly
+chooses a provider-native aspect ratio in `additional_params`; it no longer
+silently produces the provider's default dimensions.
+
+Provider configs convert into `ProviderConfig`, so `AgentBuilder::new` takes
+either:
+
+```rust
+// before
+let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg)).preamble("…").build();
+// after — both still compile
+let agent = AgentBuilder::new(cfg).preamble("…").build();
+```
+
+Extraction gained a fluent runner at `agent.extractor(prompt)`. It is not
+generic over the extracted type — pick that at the terminal:
+
+```rust
+let person: Person = agent.extractor("Alice is 30.").retries(2).run().await?;
+```
+
+Document embedding gained `EmbeddingJob`, which takes the provider closure only
+at the terminal:
+
+```rust
+// before
+let max_documents = openai::functions::DESCRIPTOR
+    .max_embedding_documents
+    .unwrap_or(usize::MAX);
+let embeddings = embed_documents(
+    docs,
+    max_documents,
+    default_concurrency(max_documents),
+    |texts| openai::functions::embed(&cfg, &rt, texts),
+)
+.await?;
+
+// after
+let embeddings = EmbeddingJob::new()
+    .documents(docs)
+    .for_provider(&openai::functions::DESCRIPTOR)
+    .run(|texts| openai::functions::embed(&cfg, &rt, texts))
+    .await?;
+```
+
+`embed_documents` and `default_concurrency` remain, so nothing forces the
+change. Tool registries use the concrete `ToolExecutor` directly: `.tool(..)`
+erases a typed tool on the spot, `.register(..)` adds one dynamic record, and
+`.register_all(..)` adds an ordered batch. The hollow `ToolExecutorBuilder` and
+its no-op `.build()` terminator are gone:
+
+| Before | After |
+| --- | --- |
+| `ToolExecutor::builder()` | `ToolExecutor::new()` |
+| `.tool(typed)` | `.tool(typed)` |
+| `.dynamic_tool(record)` | `.register(record)` |
+| `.dynamic_tools(records)` / `.tools(records)` | `.register_all(records)` |
+| `.build()` | delete |
+
+`VectorSearchRequest::new(..).with_*()` and the transcription,
+image-generation, and audio-generation request builders are unchanged.
+
+### Tool discovery is a record, not a trait
+
+`PortableToolEmbedding` is gone — along with its `InitError`, `Context`, and
+`State` associated types and its `init` method. Build the discovery record
+directly instead:
+
+```rust
+// before
+impl PortableToolEmbedding for Add {
+    type InitError = InitError;
+    type Context = ();
+    type State = ();
+    fn init(_state: (), _context: ()) -> Result<Self, InitError> { Ok(Add) }
+    fn embedding_docs(&self) -> Vec<String> { vec!["Add x and y".into()] }
+    fn context(&self) {}
+}
+let schemas = vec![ToolSchema::try_from(&Add)?];
+
+// after — the docs move to the construction site
+let schemas = vec![ToolSchema::new(Add::NAME, vec!["Add x and y".into()])];
+```
+
+Nothing in Rig ever called `init`, so no reconstruction path is lost. If you
+need to rebuild a tool from discovery data, keep your own registry keyed by
+tool name; `ToolSchema::context` is still there as an uninterpreted slot
+(`with_context` / `try_with_context`) if you want the entry to travel with the
+record. Dynamic tool selection is otherwise unchanged: register tools as
+executable records, embed the discovery batch, and narrow the advertised set
+per turn with `RequestPatch::active_tools`.
+
+### The portable filter operand is concrete
+
+`Filter<V>` is now `Filter`, with `serde_json::Value` operands — which is what
+every use in the workspace already instantiated. Constructors take
+`impl Into<serde_json::Value>`, so the `json!` wrapper is optional:
+
+```rust
+// before
+Filter::<serde_json::Value>::eq("category", serde_json::json!("fruit"))
+// after — both work
+Filter::eq("category", serde_json::json!("fruit"))
+Filter::eq("category", "fruit")
+```
+
+The serde representation is unchanged, so persisted filters still load.
+`VectorSearchRequest<F>` keeps its type parameter: backend-native filters with
+richer operators (vectorize `ne`/`in_values`, Milvus array ops, PostgreSQL
+membership, SQLite native expressions) are unaffected.
+
+### `RetryPolicy` is gone; backoff is configuration
+
+The SSE event source no longer takes a retry type parameter, and the
+`RetryPolicy` trait is deleted. `http_client::retry::ExponentialBackoff` is now
+plain configuration with inherent `retry` and `set_reconnection_time` methods.
+There was only ever one implementation and the `Stream` impl only covered the
+default specialization, so no working code could have substituted a policy.
+Reconnection timing, backoff clamping, and retry limits are unchanged.
+
+### Mongo and Neo4j wrappers are concrete
+
+`MongoDbVectorIndex<C>` is now `MongoDbVectorIndex`. `new` still accepts a
+collection of any document type and converts it internally, so most call sites
+are unchanged — only explicit type annotations need updating:
+
+```rust
+// before
+let index: MongoDbVectorIndex<MyDoc> = MongoDbVectorIndex::new(collection, "idx", params).await?;
+// after
+let index: MongoDbVectorIndex = MongoDbVectorIndex::new(collection, "idx", params).await?;
+```
+
+Neo4j's `RowResultNode<T>` was internal-only and is now private.
+
+### `rig-mcp` is renamed to `rig-rmcp`
+
+The crate is named after the `rmcp` SDK it wraps. Only a direct dependency
+needs changing:
+
+```toml
+# before
+rig-mcp = "0.41"
+# after
+rig-rmcp = "0.42"
+```
+
+```rust
+// before
+use rig_mcp::McpToolset;
+// after
+use rig_rmcp::McpToolset;
+```
+
+Nothing else moves: the facade re-export is still `rig::tool::mcp`, and the
+`mcp` feature (with `rmcp` as its legacy alias) is unchanged.
+
+### Device-code prompts are data, not a callback
+
+`chatgpt::auth::DeviceCodeHandler` and `copilot::auth::DeviceCodeHandler` —
+each an `Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>` — are replaced
+by a concrete `DeviceCodePrompter` enum:
+
+```rust
+// before
+let auth = Authenticator::new(source, token, api_key,
+    DeviceCodeHandler::new(|p| my_ui.show(p.user_code)), true);
+
+// after — receive the prompt as an owned event
+let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+let auth = Authenticator::new(source, token, api_key,
+    DeviceCodePrompter::Channel(tx), true);
+tokio::spawn(async move {
+    while let Some(p) = rx.recv().await { my_ui.show(p.user_code); }
+});
+```
+
+`DeviceCodePrompter::Stdout` is the default and prints exactly what the
+callback-less handler printed, so `DeviceCodeHandler::default()` becomes
+`DeviceCodePrompter::default()` with no behaviour change.
+`DeviceCodePrompter::Silent` is new, for unattended services.
+
+A full channel or dropped receiver is ignored rather than failing the sign-in,
+matching the old contract where a misbehaving callback was the host's problem.
+
+### Vector-store filters: the `SearchFilter` trait is gone
+
+`SearchFilter` was a tagless-final constructor trait whose only job was to
+make `Filter::interpret::<F>()` generic. Both are deleted. Each backend now
+exposes its constructors as inherent methods plus a concrete `from_filter`.
+
+The practical difference is that `SearchFilter::gt(...)` used to *infer* the
+backend filter type from context. Name the type you want instead:
+
+```rust
+// before — the trait method inferred Neo4jSearchFilter from the request type
+use rig_core::vector_store::request::SearchFilter;
+let req = VectorSearchRequest::new(embedding, 5)
+    .with_filter(SearchFilter::gt("node.year", 1990.into()));
+
+// after — a native filter
+use rig_neo4j::Neo4jSearchFilter;
+let req = VectorSearchRequest::new(embedding, 5)
+    .with_filter(Neo4jSearchFilter::gt("node.year", serde_json::json!(1990)));
+
+// after — the portable filter, translated by the backend
+use rig_core::vector_store::request::Filter;
+let portable = Filter::gt("node.year", serde_json::json!(1990));
+let native = Neo4jSearchFilter::from_filter(portable);
+```
+
+`VectorSearchRequest<F>` keeps its type parameter, so backend-native filters
+with richer operators — `VectorizeFilter::in_values`,
+`milvus::Filter::array_contains`, `PgSearchFilter::member`,
+`LanceDBFilter::array_has_any` — still reach a query unchanged.
+`Filter::interpret` is replaced by the backend's own `from_filter(Filter)`,
+which is fallible only where the operand type can reject a JSON value (milvus,
+scylladb, surrealdb, qdrant).
+
+### Document loaders: no more boxed iterators
+
+`FileLoader`, `PdfFileLoader` and `EpubFileLoader` no longer hold a
+`Box<dyn Iterator>`, and their `'a` lifetime parameter is gone.
+
+- `FileLoader<'a, T>` becomes `FileLoader<I>`, generic over its iterator. It
+  stays lazy. `read`/`read_with_path` are now one impl bounded on
+  `loaders::Readable` (newly `pub`), rather than three item-specific impls.
+- `PdfFileLoader<'a, T>` becomes `PdfFileLoader<T>` and
+  `EpubFileLoader<'a, T, P>` becomes `EpubFileLoader<T, P>`.
+- `loaders::IntoIter` (all three) is deleted; `IntoIterator` now yields the
+  underlying iterator.
+
+**Behavior change:** `PdfFileLoader` and `EpubFileLoader` are now **eager** —
+each stage materialises a `Vec` before the next runs, so a whole corpus is
+held in memory rather than streamed. `FileLoader` is unaffected. If you load
+large PDF or EPUB corpora, chunk the glob.
+
+### `EmbeddingConfig::ndims` replaces hardcoded widths
+
+`openai::functions::EmbeddingConfig::ndims()` reports the vector width of the
+configured model — an explicit `dimensions` override if set, else the model's
+native width. Use it to size a vector-store index instead of restating a
+literal:
+
+```rust
+// before
+const EMBEDDING_DIMS: usize = 1536;
+let store = SqliteVectorStore::with_distance_metric(conn, EMBEDDING_DIMS, metric).await?;
+
+// after
+let dims = embed_cfg.ndims().ok_or_else(|| anyhow!("unknown model width"))?;
+let store = SqliteVectorStore::with_distance_metric(conn, dims, metric).await?;
+```
+
+`dimensions` is unchanged and stays opt-in: it is the *request* field, and
+`text-embedding-ada-002` rejects it.
+
+### Anthropic prompt caching is reachable again
+
+`anthropic::functions::Config` gains `prompt_caching`, `automatic_caching` and
+`automatic_caching_ttl`, with `with_prompt_caching()`,
+`with_automatic_caching()` and `with_automatic_caching_1h()` mirroring the
+deleted `CompletionModel` builders. 0.41 shipped the caching machinery with no
+way to switch it on; requests were always built with caching off.
+
+```rust
+let cfg = anthropic::functions::Config::new(CLAUDE_SONNET_4_6)
+    .with_automatic_caching();
+```
+
+Defaults are unchanged (all off), so existing request bodies are identical.
+
+### Custom providers: use provider data plus a runtime handler
+
+`OpenAICompatibleProvider` and `AnthropicCompatibleProvider` are removed.
+`ProviderConfig` remains a closed, exhaustively matched serde enum, but now has
+one `External` arm for every out-of-tree completion provider. External crates
+do not add enum variants: they serialize an exact-version driver ID, model, and
+provider-owned settings, then register executable behavior on the process-local
+`Runtime`.
+
+For a wire-compatible OpenAI endpoint, configure the public OpenAI data API
+with the endpoint and credentials you own. Its public `build_request_body`,
+`build_request`, `parse_response`, `complete`, and `open_stream` functions are
+the supported sans-IO/execution seam:
+
+```rust
+let cfg = openai::functions::Config::new("my-model")
+    .with_api_key(api_key)
+    .with_base_url("https://provider.example/v1");
+let request = CompletionRequest::builder("Hello").build();
+let body = openai::functions::build_request_body(&cfg, &request, false)?;
+```
+
+If your provider has a different wire dialect, own its config, conversion,
+HTTP request, and parsing functions in your crate. Implement the typed
+`ExternalCompletionProvider` authoring trait and erase it into the concrete
+runtime record at registration:
+
+```rust,ignore
+let id = ExternalProviderId::new("com.example/my-provider@1")?;
+let config = ExternalProviderConfig::new(
+    id.clone(),
+    "my-model",
+    MySerializableConfig { /* ... */ },
+)?;
+
+let entry = ExternalCompletionProviderEntry::from_provider(
+    MyProvider::new(id), // implements ExternalCompletionProvider
+);
+let runtime = Arc::new(Runtime::new().with_external_provider(entry)?);
+let agent = AgentBuilder::new(config).runtime(runtime).build();
+let answer = agent.prompt("Hello").await?;
+```
+
+The trait's `complete` and `open_stream` methods return ordinary
+`impl Future`/`async` blocks. Do not box them: `from_provider` owns the private
+future-erasure boundary. For runtime-defined callbacks, use
+`ExternalCompletionProviderEntry::new` or `with_state`; those constructors also
+accept ordinary futures.
+
+Only the config serializes. After restore, construct a runtime registering the
+same exact-version handler. Its descriptor is the sole capability source; it is
+not copied into the serde config. Unknown IDs and invalid typed settings fail
+before provider I/O. The registered unary/streaming callbacks return Rig's
+normalized `CompletionResponse`/`CompletionStream`, after which the ordinary
+session drivers retain ownership of hooks, tools, retries, extraction, and
+cancellation. See `examples/external_provider` for the complete round trip.
+
+Rig's internal
+`compatible_typed_request`, `compatible_body_value`, and
+`compatible_open_stream` helpers are intentionally not public APIs. Adding a
+custom provider does not make those bundled-dialect helpers public; keep the
+wire parser in your crate.
+
+### `openai::send_compatible_streaming_request` is gone
+
+Chat-completions stream parsing no longer goes through a profile trait. The
+public `send_compatible_streaming_request` free function, the
+`CompatibleStreamProfile` trait, and `OpenAICompatibleProfile` are deleted.
+Bundled providers expose streaming through their public `functions::open_stream`
+entry point:
+
+```rust
+let stream = openai::functions::open_stream(&cfg, &runtime, request).await?;
+```
+
+The shared dialect state machine and boxed event-source adapter are internal;
+external custom dialects must own their streaming parser.
+
+### `Agent<M>` is now `Agent`
+
+Every classic runtime type lost its `M: CompletionModel` parameter:
+`Agent<M>` → `Agent`, `AgentBuilder<M>` → `AgentBuilder`,
+`AgentRunner<M>` → `AgentRunner`, `PromptRequest<S, M>` → `PromptRequest<S>`,
+`StreamingPromptRequest<M>` → `StreamingPromptRequest`, and the old
+`Extractor<M, T>`/`ExtractorBuilder<M, T>` pair is replaced by a concrete
+`ExtractionRunner` that selects `T` only on `.run::<T>()` or
+`.run_with_usage::<T>()`.
+
+If you only ever wrote `client.agent(model)…`, delete the type annotations
+and you are done — construction, the builder surface, hooks, memory, and the
+tool server are unchanged:
+
+```rust
+// before
+let agent: Agent<openai::responses_api::ResponsesCompletionModel> =
+    openai.agent(openai::GPT_5_2).preamble("…").build();
+// after
+let agent: Agent = openai.agent(openai::GPT_5_2).preamble("…").build();
+```
+
+### Agents hold a `ProviderConfig`, not a model
+
+Internally an `Agent` now stores a `rig::provider::ProviderConfig` (a serde
+enum with one arm per bundled provider) plus an `Arc<rig::provider::Runtime>`
+(the process-local transport handles). `client.agent(model)` still works: the
+new `rig::client::ToProviderConfig` trait (in the prelude) captures the
+client's connection details — base URL, headers, API-key placement — as plain
+configuration. You can also skip clients entirely:
+
+```rust
+use rig::agent::AgentBuilder;
+use rig::provider::ProviderConfig;
+let provider = ProviderConfig::OpenAiResponses(
+    rig::providers::openai::responses_api::functions::Config::new("gpt-5.2"),
+);
+let agent = AgentBuilder::new(provider).preamble("…").build();
+```
+
+The closed provider vocabulary is now feature-stable. `ProviderConfig::Bedrock`,
+`ProviderConfig::GeminiGrpc`, and their `EmbedderConfig` siblings exist even
+when the SDK/tonic fulfillment features are disabled. Their lightweight config
+types live at `rig::providers::{bedrock, gemini_grpc}`; the companion crates
+re-export the same types from `functions`, so feature-enabled source paths keep
+working. A disabled transport is reported only when `complete`, `open_stream`,
+or `embed` is called; Cargo feature unification no longer changes exhaustive
+matches or serde shape.
+
+`EmbedderConfig` also gains generated `Llamafile`, `Mistral`, `OpenRouter`, and
+`Together` variants and `From<EmbeddingConfig>` conversions. Both provider
+enums, their descriptor/model accessors, conversions, and fulfillment dispatch
+come from the same compile-time capability registry. The deterministic
+`MockScript`/`MockEmbedder` surface is also always present for the same
+shape-stability reason. `ProviderConfig::Mock` and `EmbedderConfig::Mock` are
+therefore production-visible enum and serde variants, not test-only feature
+arms, and exhaustive downstream matches must handle them. Mock scripts can
+deliberately leave selected provider operations pending until the caller
+cancels their futures. Hosts that deserialize provider configuration across an
+untrusted boundary must validate or allowlist provider variants and their
+fields before fulfillment. FastEmbed remains outside this vocabulary because
+loaded local weights cannot be serialized as resumable provider configuration.
+
+### `AgentBuilder::new` takes a `ProviderConfig`
+
+`AgentBuilder::new(model)` became `AgentBuilder::new(provider_config)`.
+Migrate `client.completion_model(m)` at agent-construction sites to
+`client.provider_config(m)` (from `ToProviderConfig`) or just
+`client.agent(m)`. The builder gained `.runtime(Arc<Runtime>)` for sharing
+one transport across agents (a fresh default `Runtime` is built otherwise).
+
+### `AgentModelExt` is gone
+
+`model.into_agent_builder()` was removed — a portable completion model no
+longer identifies a provider. Use `client.agent(model)` or
+`AgentBuilder::new(provider_config)`.
+
+### Providers that cannot be plain configuration
+
+`rig-candle` (in-memory model weights) and `rig-vertexai` (interactive OAuth)
+cannot put their live state inside serde configs. A host can now retain that
+state in an `ExternalCompletionProvider` implementation or `with_state`
+callback and put only a stable reconstruction key/settings in
+`ExternalProviderConfig`, restoring the full high-level agent facade. Hosts
+that want direct lifecycle control can still drive the sans-IO protocol —
+`AgentRun::new(prompt)` + `prepare_request(…)` + the provider's own completion
+call; see `rig-vertexai/examples/tool_vertexai.rs` for that loop.
+ChatGPT/Copilot clients bridge only credentials that are already cached
+(non-interactively); interactive OAuth flows still work through the classic
+clients themselves.
+
+### Prompting is inherent; extraction has a concrete fluent runner
+
+The `Prompt`, `Chat`, `TypedPrompt`, `StreamingPrompt`, and `StreamingChat`
+traits are gone, along with the `PromptRequest`/`TypedPromptRequest`
+typestate, generic `Extractor`/`ExtractorBuilder`, `stream_to_stdout`, and
+`client.extractor::<T>()`. `Agent` carries prompting as inherent methods and
+starts structured extraction with the non-generic `agent.extractor(prompt)`;
+the low-level `extract_with_options` function remains available:
+
+```rust
+// before
+use rig::completion::{Chat, Prompt};
+let answer = agent.prompt("hi").await?;
+// after — delete the import; the call is unchanged
+let answer = agent.prompt("hi").await?;
+```
+
+| Before | After |
+| --- | --- |
+| `agent.prompt(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run().await?.output` |
+| `agent.prompt(p).extended_details().await?` | `agent.run(p).await?` (or `agent.runner(p)….run().await?`) |
+| `agent.prompt_typed::<T>(p).max_turns(3).await?` | `agent.runner(p).max_turns(3).run_typed::<T>().await?` |
+| `client.extractor::<T>(m).build().extract(p).await?` | `client.agent(m).build().extractor(p).run::<T>().await?` |
+| `stream_to_stdout(&mut stream).await?` | drain the stream yourself (it was example sugar) |
+| `ChatBotBuilder::new().agent(a)` | `ChatBotBuilder::new(a)` |
+
+`agent.runner(prompt)` is now the fluent per-request surface (it already
+carried every setter `PromptRequest` had).
+
+**Extraction** moves to a free function with an options record:
+
+```rust
+use rig::extract::{ExtractOptions, extract_with_options};
+let outcome = extract_with_options::<Person>(
+    AgentConfig::new(), client.provider_config(MODEL), Arc::new(Runtime::new()),
+    text, ExtractOptions::classic_extractor().with_retries(1),
+).await?;
+let person = outcome.value;          // was `.data`
+```
+
+`ExtractOptions::classic_extractor()` reproduces the old builder exactly
+(output tool `submit`, the extraction preamble, `ToolChoice::Required`,
+prompt-repeating retries), so recorded exchanges keep replaying. It is also the
+default for `agent.extractor(prompt)`; `ExtractOptions::new()` remains the
+leaner default for the low-level free functions. `ExtractionResponse<T>` is now
+`ExtractionOutcome<T>`. Extraction has no hook stack — port hook-driven
+extractors to `agent.runner(..).output_tool(..)`.
+
+#### The fluent extraction runner now defaults to the classic protocol
+
+`ExtractionRunner::classic()` is gone. Existing calls should simply delete
+`.classic()`; the resulting runner has the same protocol configuration, and
+later fluent setters consistently override it instead of depending on setter
+order.
+
+This is a silent behavior change for code that already called
+`agent.extractor(prompt).run()` without `.classic()`: that source still
+compiles, but these runner defaults change:
+
+| Field | Previous runner default | New runner default |
+| --- | --- | --- |
+| `output_tool_name` | no override | `Some("submit")` |
+| `output_tool_description` | no override | `Some("Submit the structured data you extracted from the provided text.")` |
+| `augment_output_preamble` | no override | `Some(false)` |
+| `preamble` | no override | `Some(CLASSIC_EXTRACTOR_PREAMBLE)` |
+| `tool_choice` | no override | `Some(ToolChoice::Required)` |
+| `max_turns` | preserve the agent value, or use the two-call extraction seed when unset | `Some(1)` |
+| `ignore_unhandled_invalid_tool_calls` | `false` | `true` |
+| `repeat_prompt_on_retry` | `false` | `true` |
+
+To recover the previous lean runner behavior, use the low-level function with
+`ExtractOptions::new()` explicitly:
+
+```rust
+use std::sync::Arc;
+use rig::extract::{ExtractOptions, extract_with_options};
+
+let outcome = extract_with_options::<Person>(
+    agent.config.clone(),
+    agent.provider.clone(),
+    Arc::clone(&agent.rt),
+    prompt,
+    ExtractOptions::new(),
+)
+.await?;
+let person = outcome.value;
+```
+
+### One driver: the classic engine is deleted (single-architecture R5)
+
+`AgentRunner`, `StreamingPromptRequest`, `MultiTurnStreamItem`,
+`StreamingResult`, and `StreamingError` are gone, and with them the second
+agent engine (`drive_agent`/`TurnSource`). `AgentSession` and `AgentStream`
+are now the only drivers; `Agent` is a thin record over them, and the R1
+`SessionAgent` merged into `Agent` (`rig::agent_api::SessionAgent` survives
+only as a deprecated alias).
+
+**Blocking code is unchanged.** `agent.prompt/run/chat/prompt_typed` and the
+fluent `agent.runner(p)….run()` keep every method name and behavior — only
+the runner's *type* was renamed:
+
+| Before | After |
+| --- | --- |
+| `rig::AgentRunner` | `rig::SessionRunner` (`rig::agent::SessionRunner`) |
+| `agent.runner(p).max_turns(3).run().await?` | unchanged |
+| `agent.runner(p).run_typed::<T>().await?` | unchanged |
+
+**Streaming call sites change.** The old surface was a future returning a
+stream of `MultiTurnStreamItem`; the new one is the concrete `AgentRunStream`
+of `AgentRunItem`. Its inherent `next` method needs neither caller pinning nor
+a `StreamExt` import:
+
+```rust
+// before
+let mut stream = agent.stream_prompt("hi").max_turns(3).await;
+while let Some(item) = stream.next().await { … }
+
+// after
+let mut stream = agent.runner("hi").max_turns(3).stream_run();
+while let Some(item) = stream.next().await { … }
+```
+
+`AgentRunStream` still implements `Stream`; import `StreamExt` when you opt in
+to combinators such as `map`, `filter`, or `collect`.
+
+With no per-request setters, `agent.stream_run("hi")` is the whole call.
+`Agent::stream_prompt`/`stream_chat` now return the **host-driven**
+[`AgentStream`] instead (pull items with `next_item`/`next_item_with_tools`
+and answer the decision inboxes yourself) — use `stream_run()` for the
+classic fire-and-forget behavior, in which hooks are dispatched and tools
+executed for you.
+
+Item mapping:
+
+| `MultiTurnStreamItem` | `rig::stream::AgentRunItem` |
+| --- | --- |
+| `StreamAssistantItem(x)` | `Assistant(x)` |
+| `StreamUserItem(x)` | `User(x)` |
+| `CompletionCall(c)` | `CompletionCall(c)` |
+| `ToolExecutionCommitted { tool_call, internal_call_id }` | same fields |
+| `ModelTurnRetried { turn }` | same field |
+| `FinalResponse(r)` | `Final(r)` |
+
+`AgentRunItem` deliberately contains only the six driven observations in the
+table. `AgentStreamItem` is the separate host protocol returned by
+`AgentStream::next_item`; it additionally carries `BeforeModelCall`,
+`TurnFinished`, `InvalidToolCall`, `ToolCallPending`, `ToolCallsReady`, and
+`ToolResultReady`, which the host must answer. Exhaustive `stream_run()`
+matches no longer need a wildcard for unreachable decisions. The stream's
+error type is now `PromptError` directly: `StreamingError::Completion(e)` was
+`PromptError::CompletionError(e)` and `StreamingError::Prompt(b)` was `*b`.
+
+`PromptResponse`, `CompletionCall`, and the shared history/tool-result
+helpers moved from the private `agent::prompt_request` module to
+`rig::agent::response`; their public paths (`rig::agent::PromptResponse`,
+`rig::agent::CompletionCall`) are unchanged.
+
+### Hooks are records; memory is host-owned (single-architecture R3)
+
+The `AgentHook` trait, `HookStack`, `HookContext`, `Scratchpad`, and
+`StepEventKind` are gone. Hooks remain attach-and-forget, but a hook is now
+a `HookEntry` record instead of a trait impl:
+
+```rust
+// before
+struct Logger;
+impl AgentHook for Logger {
+    async fn on_completion_call(&self, ctx: &HookContext, e: CompletionCall<'_>)
+        -> CompletionCallAction { ... }
+}
+agent_builder.add_hook(Logger)
+// after — one entry, matching owned events
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
+fn logger() -> HookEntry {
+    HookEntry::new("logger", |event| async move {
+        match event {
+            HookEvent::BeforeModelCall { turn, prompt, .. } => { /* … */
+                HookDecision::Continue }
+            _ => HookDecision::Continue,
+        }
+    })
+}
+agent_builder.add_hook(logger())
+```
+
+The decision vocabulary (`RequestPatch`, `ToolCallAction`,
+`InvalidToolCallAction`, …) is unchanged and still lives at
+`rig::agent::hook`. Three behavior notes: delta observers must opt in with
+`HookEntry::new(..).observing_deltas()` or they never fire; run identity
+(`ctx.run_id()`/`is_streaming()`/`agent_name()`) and the run-scoped
+scratchpad are gone — capture your own state in the closure (`turn` is a
+field on the events that have it); and tool-call argument rewrites chain as
+`serde_json::Value` rather than JSON-encoded strings.
+
+`HookEvent` remains an owned value that an async callback may retain across
+await points, but immutable payload fields are now shared: messages,
+histories, content, calls, results, provider responses/finals, ids, and delta
+snapshots use `Arc<T>`, `Arc<[T]>`, or `Arc<str>`. Existing field access usually
+continues through `Arc` deref; code that moves a nested field must clone it or
+borrow it explicitly. For example, match a prompt with
+`let Message::User { content } = prompt.as_ref() else { … };`. Event `Debug`
+output is content-free. Returning a non-`Continue` decision variant for the
+wrong event is still semantically "no opinion," but now emits a warning with
+only the hook name and event/decision kinds.
+
+**Memory** is no longer wired into the agent. `ConversationMemory`,
+`MessageFilter`, `DemotionHook`, and `Compactor` are deleted along with
+`AgentBuilder::memory`/`conversation` and `AgentRunner::without_memory`.
+Load before the run and append after it:
+
+```rust
+let memory = InMemoryConversationMemory::new();
+let history = memory.load(conversation_id)?;          // fatal if it fails
+let response = agent.runner(prompt).history(history).run().await?;
+if let Err(error) = memory.append(conversation_id, response.messages.clone()) {
+    tracing::warn!(%error, "memory append failed");   // warn and proceed
+}
+```
+
+`InMemoryConversationMemory` is a concrete store with plain synchronous
+`load`/`append`/`clear`. `rig-memory`'s policies are now enums
+(`MemoryPolicy`, `TokenCounter`, `Compactor`) over one concrete
+`PolicyMemory`, whose `append` returns an owned
+`AppendOutcome { stored, demoted, compaction }` for the host to act on —
+replacing the demotion-hook and compactor callbacks.
+
+### The tool system is records, not traits (single-architecture R2)
+
+`ToolContext`, `ToolSet`, `ToolServer`, `DynamicTool`, `ToolEmbedding`, and the
+old zero-argument `Agent::into_tool()` adapter are gone. `rig::tool::Tool` is
+now an alias for the portable contract:
+
+```rust
+// before
+impl Tool for Adder {
+    async fn call(&self, _context: &mut ToolContext, args: Args) -> ... {}
+}
+// after — drop the context parameter; move state into the struct
+impl Tool for Adder {
+    async fn call(&self, args: Args) -> ... {}
+}
+```
+
+Dynamic tools are `PortableDynamicTool::new(name, desc, params, |args| async
+{...})`; tool collections are `rig::executor::ToolExecutor::new()
+.register(...)`; `#[rig_tool]` functions lose their `&mut ToolContext`
+parameter (a targeted compile error guides you) and gain a `.portable()`
+record constructor; custom `Serialize` outputs need a one-line
+`impl IntoToolOutput` via `serialize_to_tool_output` (the `Any`-based
+blanket impl is gone). Sub-agents-as-tools use
+`agent.into_tool(name, description)`, a data-to-data conversion into the same
+`PortableDynamicTool` record; it restores none of the classic context/server
+machinery or implicit `From<Agent>` conversion. MCP moved to `rig::tool::mcp`
+(`McpToolset`, host-polled `refresh()` instead of push updates); the `rmcp`
+cargo feature now aliases `mcp`.
+
+### Async tool and hook callbacks no longer expose boxing
+
+`PortableDynamicTool::new`, `HookEntry::new`, and `HookEntry::with_state` now
+accept ordinary futures. Code written against the transitional API may have
+returned an explicitly boxed wasm-compatible future; remove that wrapper and
+the corresponding future trait-object cast:
+
+```rust
+HookEntry::new("audit", |event| async move {
+    inspect(event).await;
+    HookDecision::Continue
+});
+```
+
+Stateful hooks receive an owned `Arc<S>` in each invocation future instead of
+a borrowed `&S` tied to a public boxed-future lifetime:
+
+```rust
+HookEntry::with_state("policy", state, |state, event| async move {
+    state.evaluate(event).await
+});
+```
+
+The records remain concrete and non-generic. Rig erases only each callback
+field behind a private `Arc<dyn Fn + Send + Sync>` and boxes the returned
+future internally. Consequently every stored callback has one allocation and
+vtable boundary, and every invocation through it allocates one boxed future
+(`HookEntry::sync` included).
+
+### Stored hooks and tools are `Send + Sync` on browser wasm
+
+Rig now separates a retained value from the future it produces. `HookEntry`
+callbacks and state, `PortableTool` values, dynamic-tool callbacks, and internal
+HTTP backends must be `Send + Sync` on every target. Invocation-local tool
+arguments, outputs, and errors and returned futures and streams still use the
+target-relaxed `WasmCompat*` bounds, so a shareable closure may return a
+browser-worker-local future.
+
+**Stored configuration is shareable; execution may remain worker-local.** A
+hook invocation future may own `Rc`, `RefCell`, a network future, a Promise, or
+a JavaScript handle even though the retained `HookEntry` and any
+`HookEntry::with_state` value remain `Send + Sync`.
+
+Browser-wasm code that stored `Rc`, `RefCell`, a DOM handle, or other
+JavaScript-affine state directly in a hook or tool no longer compiles. Acquire
+the handle inside the returned async block, keep persistent browser state in
+`thread_local!`, or use `Arc<Mutex<_>>`/`Arc<RwLock<_>>` for ordinary Rust
+shared state. Do not add an unsafe `Send`/`Sync` implementation for a
+JavaScript-affine value.
+
+The checked [`wasm_hooks` example](examples/wasm_hooks/README.md) shows the
+`thread_local!` pattern, and its wasm-bindgen tests execute Promise-backed async
+resolution, registration ordering, and terminal short-circuiting under Node.
+
+Portable tool error types may remain worker-local. On native targets,
+`ToolExecutionError::from_error` retains the concrete source for downcasting;
+on browser wasm it preserves the diagnostic and classification but drops every
+non-envelope concrete source, including a shareable source passed through this
+generic path. Use `from_send_sync_error` or `with_source` when the source is
+shareable and must remain downcastable on every target.
+
+### Mocking moved to `MockScript`
+
+`rig_core::test_utils::MockCompletionModel` no longer plugs into agents. Use
+the scripted mock provider (`test-utils` feature):
+
+```rust
+use rig::provider::{MockScript, ProviderConfig};
+let script = MockScript::from_responses(vec![/* CompletionResponse per turn */]);
+let agent = AgentBuilder::new(ProviderConfig::Mock(script.clone())).build();
+// `script` (clone shares the cursor) exposes .calls() and .requests().
+```
+
+### Custom HTTP transports move to `HttpRuntime`
+
+The deleted `.http_client(...)` provider generic is replaced by the public,
+transport-neutral `rig::http_client::HttpTransport` input protocol. Implement
+its buffered and streaming methods, then erase the value once at runtime
+construction:
+
+```rust
+let http = HttpRuntime::from_transport(my_transport);
+let client = provider::Client::builder()
+    // connection settings ...
+    .http_runtime(http.clone())
+    .build()?;
+
+let runtime = Arc::new(Runtime::with_http(http));
+let agent = AgentBuilder::new(provider_config).runtime(runtime).build();
+```
+
+The runtime, provider clients, configs, and provider free functions remain
+concrete; no transport type parameter is stored or threaded through provider
+APIs. A transport returns any HTTP status as an `Ok(Response)`, and Rig
+normalizes non-success buffered, multipart, and streaming responses while
+preserving their bodies for provider error handling. Implementations that do
+not support multipart may keep the default method, which returns the typed
+`Error::UnsupportedMultipart` capability error.
+
+`reqwest_middleware::ClientWithMiddleware` implements `HttpTransport` behind
+the `reqwest-middleware` feature, so pass it directly to
+`HttpRuntime::from_transport`; see `examples/reqwest_middleware` for retry
+middleware. `HttpRuntime::recording`, `sequenced`, and the other scripted
+constructors are test utilities behind `test-utils`, not production custom
+transport seams.
+
+### Concrete completion and streaming payloads
+
+`CompletionResponse<T>` is now the concrete `CompletionResponse` and the
+provider-typed streaming final is the normalized `StreamFinal`. Consequences:
+
+- **`raw_response` is gone.** If you need wire-typed provider data, call the
+  provider's own conversion on the raw HTTP payload instead of reading it off
+  the Rig response.
+- **`FinishReason` is normalized.** Every provider maps its stop/finish
+  vocabulary onto one shared `FinishReason` enum
+  (`Stop`/`Length`/`ToolCalls`/`ContentFilter`/`Other`), and responses carry
+  `provider` and `model` metadata.
+- **`GetTokenUsage` is removed.** Usage is a plain field on
+  `CompletionResponse` and `StreamFinal`; read `.usage` directly.
+- The retained streaming vocabulary lost its type parameters:
+  `RawStreamingChoice`/`CompletionStream`/
+  `StreamedAssistantContent`/`MultiTurnStreamItem` are all concrete, and
+  `CompletionModel` no longer has `type Response`/`type StreamingResponse`.
+  Provider-specific streaming-final aliases (deepseek, groq, mistral,
+  openrouter, gemini, copilot) are removed with nothing to replace them.
+- The core `StreamingResult = Pin<Box<dyn Stream<...>>>` alias is removed.
+  Provider implementations no longer import or annotate that erased type and
+  no longer box solely for the response constructor:
+
+  ```rust
+  // before
+  let stream: StreamingResult = Box::pin(provider_stream);
+  StreamingCompletionResponse::stream(stream)
+
+  // after
+  CompletionStream::from_stream(provider_stream)
+  ```
+
+  `CompletionStream` owns the pinning and dynamic erasure privately. Its
+  constructor requires an owned (`'static`) native `Send` stream while
+  retaining the existing browser-wasm relaxation, so worker-local JavaScript
+  execution remains valid. Here `'static` means the handle owns the source and
+  borrows no stack data; it does not mean the stream lives forever.
+- The live handle's aggregation fields are private. Replace direct reads with
+  the borrowing accessors:
+
+  ```rust
+  // before
+  let choice = &stream.choice;
+  let final_record = stream.response.as_ref();
+  let message_id = stream.message_id.as_deref();
+
+  // after
+  let choice = stream.choice();
+  let final_record = stream.final_record();
+  let message_id = stream.message_id();
+  ```
+
+- Live-stream inspection borrows; partial snapshots clone at their owned-data
+  boundary; exhausted streams convert into owned `CompletionResponse` data and
+  move the fields consumed by completed-turn assembly. The public
+  `StreamedTurnAssembler` signatures therefore change from owned-ID/borrowed-
+  choice inputs to borrowed-ID/owned-choice inputs:
+
+  ```rust
+  // before: allocate the live ID at the call site, then borrow the EOF choice
+  let partial = assembler.partial_turn(stream.message_id().map(str::to_owned));
+  // ... drain the stream to EOF ...
+  let turn = assembler.finish(
+      stream.message_id().map(str::to_owned),
+      stream.choice(),
+  );
+
+  // after: borrow while the stream is live; consume it after EOF
+  let partial = assembler.partial_turn(stream.message_id());
+  // ... drain the stream to EOF ...
+  let response = stream.into_response()?;
+  let turn = assembler.finish(response.message_id, response.choice, response.usage);
+  ```
+
+  `partial_turn` still returns a fully owned, serializable rollback snapshot;
+  it performs the one necessary message-ID copy internally because the provider
+  stream may continue, retry, or drain after the snapshot is created. For
+  read-only live inspection, continue using `choice()`, `final_record()`, and
+  `message_id()`; do not consume the stream until it is exhausted.
+
+- The unused
+  `openai::responses_api::streaming::StreamingCompletionResponse` wire DTO is
+  removed. There is no replacement: Responses stream events already contain
+  `openai::responses_api::CompletionResponse`, while normalized streaming uses
+  `CompletionStream` and `StreamFinal`.
+
+- `CompletionStream` and `AgentRunStream` now provide inherent
+  `.next().await`. The default loop needs neither caller pinning nor a
+  `futures::StreamExt` import:
+
+  ```rust
+  let mut stream = agent.stream_run("hello");
+  while let Some(item) = stream.next().await {
+      let item = item?;
+      // ...
+  }
+  ```
+
+  Both handles still implement `Stream`; import `StreamExt` only when using
+  ecosystem combinators. `AgentRunStream` retains its private boxed generator
+  so dropping a temporary `next()` future suspends rather than reconstructs an
+  in-flight hook or tool operation.
+
+- Gemini's low-level raw Interactions stream changes from the public
+  `InteractionEventStream = Pin<Box<dyn Stream<...>>>` alias to a concrete
+  `InteractionEventStream` handle. It also supports the same pin-free default
+  loop:
+
+  ```rust
+  let mut events = gemini::interactions_api::functions::stream_interaction_events(
+      &config,
+      &runtime,
+      request,
+  )
+  .await?;
+
+  while let Some(event) = events.next().await {
+      let event = event?;
+      // ...
+  }
+  ```
+
+  The handle stores the already-erased SSE transport rather than adding another
+  box. The default normalized completion path remains `CompletionStream`.
+
+### Completion requests are plain data with an optional bound facade
+
+The generic model-bound request builder is gone. `CompletionRequest` remains
+plain data and `CompletionRequest::builder(prompt)` returns the concrete,
+non-generic `CompletionRequestBuilder`. In the root `rig` facade, a concrete
+provider client can additionally bind that same builder to its config and
+runtime for `.send()` or `.stream()`.
+
+```rust
+// before
+let request = model
+    .completion_request("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .build();
+
+// after: fluent bound execution
+let response = client
+    .completion_model(openai::GPT_5_2)
+    .completion_request("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .send()
+    .await?;
+
+// low-level data escape hatch
+let request = CompletionRequest::builder("Who are you?")
+    .preamble("You are a concise assistant.")
+    .temperature(0.5)
+    .build();
+let response = openai::responses_api::functions::complete(&cfg, &runtime, request).await?;
+```
+
+### Modalities are free functions
+
+Embedding, transcription, image-generation, audio-generation, and rerank calls
+are extracted to per-provider free functions over plain configs: each provider
+exposes a `functions` module (e.g.
+`rig::providers::openai::functions::EmbeddingConfig` with free
+`embed`/`embed_batches` in `rig::provider`). The old generic
+`EmbeddingsBuilder`/`EmbeddingModel` client surface is removed. When a restored
+completion client also supports embeddings, use `client.embedding_config(model)`
+to preserve its connection data, then call the free embedding functions.
+
+### Vector stores: the shared traits are deleted
+
+`VectorStoreIndex`, `VectorStoreIndexDyn`, and `InsertDocuments` are removed,
+and **no shared trait replaces them**. Each store crate now exposes concrete
+inherent async methods — `top_n`, `top_n_ids`, `top_n_as::<T>`, `insert`,
+`insert_as::<T>` — over a *pre-embedded* vocabulary in
+`rig::vector_store`:
+
+- `VectorSearchRequest` now carries query **embeddings**
+  (`OneOrMany<Embedding>`), not text: you embed first, then search.
+- Results are `SearchHit { id, score, payload }`; inserts take
+  `StoreRecord { id, payload, embeddings }`.
+- Backend-specific filter types stay per store; score direction and id
+  handling are store-defined (see each store's docs).
+
+Store constructors no longer take an `EmbeddingModel` parameter. See
+`examples/custom_vector_store` for the canonical pre-embedded pattern.
+
+### `dynamic_context` and `retrieved_tools` are removed (again)
+
+`AgentBuilder::dynamic_context`, `ExtractorBuilder::dynamic_context`, and
+`AgentBuilder::retrieved_tools` — restored in 0.41 — are gone for good along
+with the shared store traits they depended on. Passive RAG is now an explicit
+hook recipe: register a `HookEntry` that matches `HookEvent::BeforeModelCall`,
+embed the prompt, query your concrete store's `top_n`, and inject the hits as
+per-turn context:
+
+```rust,ignore
+HookEntry::new("rag", move |event| async move {
+    // …embed the prompt, then `store.top_n(request).await` for `hits`…
+    HookDecision::CompletionCall(CompletionCallAction::patch(
+        RequestPatch::new().extra_context(hits),
+    ))
+})
+```
+
+A complete, copy-pasteable hook lives in the `rig::agent` module docs (the
+"Passive RAG agent example") and in `examples/rag`. Dynamic tool retrieval is
+per-turn `RequestPatch::active_tools`.
+
+---
+
 ## 0.40 → 0.41
 
 ### 1. The crate split
@@ -310,19 +1563,20 @@ from the tool's `name`, `description`, and `schema_as_json_value()`.
 
 ### 2. Client construction needs traits in scope
 
-Provider clients no longer carry inherent `.agent()` / `.extractor()` methods.
-There is one canonical `CompletionClient` (in `rig-core`, providing
-`completion_model`); the classic constructors live on a new `AgentClientExt`.
+Provider clients are concrete, monomorphic connection handles. Agent and bound
+completion construction are extension methods from the root facade; extraction
+starts from the resulting `Agent`.
 
 ```rust
-use rig::prelude::*;                  // brings both into scope
+use rig::prelude::*; // brings AgentClientExt and CompletionClientExt into scope
 
 let agent     = client.agent(model).build();          // AgentClientExt
-let extractor = client.extractor::<T>(model).build(); // AgentClientExt
-let m         = client.completion_model(model);       // CompletionClient
+let extractor = agent.extractor(prompt);              // concrete runner; T is terminal
+let m         = client.completion_model(model);       // CompletionClientExt
 ```
 
-Or import explicitly: `use rig::client::{CompletionClient, AgentClientExt};`
+Or import explicitly:
+`use rig::client::{AgentClientExt, CompletionClientExt, ToProviderConfig};`
 
 ### 3. The portable tool contract is `PortableTool`
 
@@ -367,7 +1621,7 @@ with `Agent::into_tool()`.
 | Before | After |
 | --- | --- |
 | `AgentBuilder::tools(Vec<Box<dyn ToolDyn>>)` | repeated `.tool(...)`, or `dynamic_tools(Vec<DynamicTool>)` |
-| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` |
+| `dynamic_tools(sample, index, toolset)` | `retrieved_tools` *(removed again in 0.42 — see above)* |
 | `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` |
 | `ToolSetBuilder::dynamic_tool(...)` (callbacks) | `dynamic_tool(DynamicTool)` |
 
@@ -418,7 +1672,10 @@ completion and streaming APIs still return typed raw provider responses.
 Invalid-tool hooks return `None` to defer; every explicit action, including
 `Fail`, is terminal for that hook stack. The atomically surfaced post-batch
 streaming event is named `ToolExecutionCommitted` — for live host lifecycle
-events, observe `on_tool_call` / `on_tool_result`.
+events, observe `on_tool_call` / `on_tool_result`. The event means a local body
+ran or the host explicitly supplied an externally executed result; a skipped,
+unknown, or otherwise pre-resolved call still produces durable model-visible
+feedback but does not emit this execution observation.
 
 ### 6. `AgentRunner` is the only execution path
 
@@ -438,7 +1695,9 @@ agent.runner(prompt).history(history).max_turns(3).stream().await;
 The runner consumes tool calls rather than returning the first raw model
 response. For intentionally hook-free transport, start from
 `model.completion_request(prompt).messages(history)` then `.send()` or
-`.stream()`.
+`.stream()`. *(In 0.42 the request builder is removed — use the
+`CompletionRequest::with_history`/`from_prompt` constructors instead; see
+above.)*
 
 `AgentRun::new(prompt).with_history(history)` remains a sans-I/O state machine
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
@@ -451,6 +1710,9 @@ raw request API, or construct a separate `Agent`.
 `Extractor` now routes through the full hook lifecycle.
 
 ### 7. `dynamic_context` is back, but it is a hook now
+
+*(Removed again in 0.42 — see the 0.41 → 0.42 section above for the
+replacement hook recipe. The notes below describe the 0.41 behavior.)*
 
 `AgentBuilder::dynamic_context` and `ExtractorBuilder::dynamic_context` were
 removed in #2174 and **restored in #2219**. If you are tracking `main`, you may
@@ -915,28 +2177,66 @@ If you were selecting a provider at runtime through `DynClientBuilder`, you now
 own that dispatch — a `match` over your own provider enum returning a boxed
 `Agent`, or an enum of concrete clients.
 
-### 2. Required builder fields are enforced by types
+### 2. Request typestate builders are gone — plain constructors instead
 
-Builders that used to accept a field and fail at `build()` now encode
-required-ness in the type (#1611), using the `Missing` / `Provided<T>` markers:
+The request builders that encoded required-ness in the type (`Missing` /
+`Provided<T>`, #1611) are deleted. Each request struct now takes its required
+fields in a constructor and its optional fields through `with_*` setters, the
+same shape `CompletionRequest` already uses. `Provided<T>` is removed;
+`markers::Missing` survives only inside `ClientBuilder`.
 
-| Builder | Required field(s) |
+| Deleted builder | Replacement constructor |
 | --- | --- |
-| `VectorSearchRequestBuilder` | `query`, `samples` |
-| `TranscriptionRequestBuilder` | `data` |
-| `ImageGenerationRequestBuilder` | `prompt` |
-| `AudioGenerationRequestBuilder` | `text`, `voice` |
-| `ChatBotBuilder` | the chatbot impl |
-| `ClientBuilder` | `api_key` (`NeedsApiKey` is now `Missing`) |
+| `VectorSearchRequestBuilder` | `VectorSearchRequest::new(query: OneOrMany<Embedding>, samples: u64)` |
+| `TranscriptionRequestBuilder` | `TranscriptionRequest::new(data: Vec<u8>)` |
+| `ImageGenerationRequestBuilder` | `ImageGenerationRequest::new(prompt: impl Into<String>)` |
+| `AudioGenerationRequestBuilder` | `AudioGenerationRequest::new(text: impl Into<String>, voice: impl Into<String>)` |
 
-Two consequences. `VectorSearchRequestBuilder::build()` returns
-`VectorSearchRequest<F>` instead of `Result<_, VectorStoreError>` — drop the `?`.
-And `TranscriptionRequestBuilder::load_file` returns
-`io::Result<TranscriptionRequestBuilder<M, Provided<Vec<u8>>>>`, so it needs a
-`?` where it previously did not.
+The builder-returning trait methods `TranscriptionModel::transcription_request`,
+`ImageGenerationModel::image_generation_request`, and
+`AudioGenerationModel::audio_generation_request` are removed with them, as is the
+builders' `send()`. Build the request, then call the model's
+`transcription`/`image_generation`/`audio_generation` method (or the provider's
+`functions::transcribe`/`generate_image`/`generate_audio` free function).
 
-Naming these builder types explicitly requires the marker parameters; chained
-builder expressions need no change.
+```rust
+// before
+let response = model
+    .transcription_request()
+    .data(bytes)
+    .filename(Some("audio.mp3".to_string()))
+    .temperature(0.5)
+    .send()
+    .await?;
+
+// after
+let request = TranscriptionRequest::new(bytes)
+    .with_filename("audio.mp3")
+    .with_temperature(0.5);
+let response = model.transcription(request).await?;
+```
+
+```rust
+// before
+let req = VectorSearchRequest::builder()
+    .query(query_embedding)
+    .samples(10)
+    .threshold(0.7)
+    .build();
+
+// after
+let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 10)
+    .with_threshold(0.7);
+```
+
+Renames to note: `queries(..)` is `with_queries(..)` (and `with_query(..)` takes
+a single `Embedding`); `filter(..)` is `with_filter(..)`;
+`additional_params(..)` is `with_additional_params(..)` and no longer returns a
+`Result`, so drop the `?`; `TranscriptionRequestBuilder::load_file(path)` is
+`TranscriptionRequest::from_file(path)`, still returning `io::Result`;
+`additional_params_opt` is `with_additional_params_opt`.
+
+`ChatBotBuilder` and `ClientBuilder` keep their typestate for now.
 
 ### 3. `ProviderClient` construction is fallible
 
@@ -1364,6 +2664,11 @@ Renamed or relocated items, for searching.
 | `CompletionClientDyn` / `EmbeddingsClientDyn` / `TranscriptionClientDyn` / `ImageGenerationClientDyn` / `AudioGenerationClientDyn` / `VerifyClientDyn` | the non-`Dyn` client traits | 0.36 |
 | `client::NeedsApiKey` | `markers::Missing` | 0.36 |
 | `ProviderClient::from_env() -> Self` | `-> Result<Self, Self::Error>` | 0.36 |
+| `VectorSearchRequestBuilder` | `VectorSearchRequest::new(query, samples)` + `with_*` | 0.37 |
+| `TranscriptionRequestBuilder` / `TranscriptionModel::transcription_request` | `TranscriptionRequest::new(data)` + `with_*` | 0.37 |
+| `ImageGenerationRequestBuilder` / `ImageGenerationModel::image_generation_request` | `ImageGenerationRequest::new(prompt)` + `with_*` | 0.37 |
+| `AudioGenerationRequestBuilder` / `AudioGenerationModel::audio_generation_request` | `AudioGenerationRequest::new(text, voice)` + `with_*` | 0.37 |
+| `markers::Provided<T>` | none — no typestate builders remain over it | 0.37 |
 | `VectorSearchRequestBuilder::build() -> Result<_, _>` | infallible `build()` | 0.36 |
 | `json_utils::empty_or_none` | none | 0.36 |
 | `anthropic::{CLAUDE_3_5_HAIKU, CLAUDE_3_5_SONNET, CLAUDE_3_7_SONNET, CLAUDE_4_OPUS, CLAUDE_4_SONNET}` | `CLAUDE_OPUS_4_6` / `CLAUDE_SONNET_4_6` / `CLAUDE_HAIKU_4_5` | 0.35 |

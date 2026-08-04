@@ -24,22 +24,16 @@ pub enum FileLoaderError {
 // ================================================================
 // Implementing Readable trait for reading file contents
 // ================================================================
-pub(crate) trait Readable {
+/// A loader item that can be turned into file contents.
+///
+/// Implemented for [`PathBuf`], `Vec<u8>`, and `Result<T, FileLoaderError>`
+/// over either. It is the bound on [`FileLoader::read`], which previously
+/// distinguished those cases by having three separate impls on a type-erased
+/// `FileLoader<'a, T>`; with the loader generic over its iterator those
+/// collapse into one impl, so the bound has to be nameable by callers.
+pub trait Readable {
     fn read(self) -> Result<String, FileLoaderError>;
     fn read_with_path(self) -> Result<(PathBuf, String), FileLoaderError>;
-}
-
-impl<'a> FileLoader<'a, PathBuf> {
-    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
-        FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read())),
-        }
-    }
-    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
-        FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
-        }
-    }
 }
 
 impl Readable for PathBuf {
@@ -112,11 +106,15 @@ impl<T: Readable> Readable for Result<T, FileLoaderError> {
 ///
 /// [FileLoader] uses strict typing between the iterator methods to ensure that transitions between
 ///   different implementations of the loaders and it's methods are handled properly by the compiler.
-pub struct FileLoader<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
+pub struct FileLoader<I> {
+    iterator: I,
 }
 
-impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
+impl<I> FileLoader<I>
+where
+    I: Iterator,
+    I::Item: Readable,
+{
     /// Reads the contents of the files within the iterator returned by [FileLoader::with_glob] or
     ///  [FileLoader::with_dir].
     ///
@@ -136,9 +134,11 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
+    pub fn read(
+        self,
+    ) -> FileLoader<impl Iterator<Item = Result<String, FileLoaderError>> + use<I>> {
         FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read())),
+            iterator: self.iterator.map(|res| res.read()),
         }
     }
     /// Reads the contents of the files within the iterator returned by [FileLoader::with_glob] or
@@ -161,17 +161,16 @@ impl<'a> FileLoader<'a, Result<PathBuf, FileLoaderError>> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
+    pub fn read_with_path(
+        self,
+    ) -> FileLoader<impl Iterator<Item = Result<(PathBuf, String), FileLoaderError>> + use<I>> {
         FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+            iterator: self.iterator.map(|res| res.read_with_path()),
         }
     }
 }
 
-impl<'a, T> FileLoader<'a, Result<T, FileLoaderError>>
-where
-    T: 'a,
-{
+impl<I> FileLoader<I> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  [FileLoader] state of iterator whose items are results.
     ///
@@ -188,14 +187,17 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn ignore_errors(self) -> FileLoader<'a, T> {
+    pub fn ignore_errors<T>(self) -> FileLoader<impl Iterator<Item = T> + use<I, T>>
+    where
+        I: Iterator<Item = Result<T, FileLoaderError>>,
+    {
         FileLoader {
-            iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
+            iterator: self.iterator.filter_map(|res| res.ok()),
         }
     }
 }
 
-impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
+impl FileLoader<std::vec::IntoIter<Result<PathBuf, FileLoaderError>>> {
     /// Creates a new [FileLoader] using a glob pattern to match files.
     ///
     /// # Example
@@ -208,16 +210,16 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_glob(
-        pattern: &str,
-    ) -> Result<FileLoader<'_, Result<PathBuf, FileLoaderError>>, FileLoaderError> {
+    pub fn with_glob(pattern: &str) -> Result<Self, FileLoaderError> {
         let paths = glob(pattern)?;
+        // Path enumeration is collected eagerly so the loader carries a
+        // nameable iterator type; the expensive step (`read`) stays lazy.
         Ok(FileLoader {
-            iterator: Box::new(
-                paths
-                    .into_iter()
-                    .map(|path| path.map_err(FileLoaderError::GlobError)),
-            ),
+            iterator: paths
+                .into_iter()
+                .map(|path| path.map_err(FileLoaderError::GlobError))
+                .collect::<Vec<_>>()
+                .into_iter(),
         })
     }
 
@@ -233,44 +235,31 @@ impl FileLoader<'_, Result<PathBuf, FileLoaderError>> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_dir(
-        directory: &str,
-    ) -> Result<FileLoader<'_, Result<PathBuf, FileLoaderError>>, FileLoaderError> {
+    pub fn with_dir(directory: &str) -> Result<Self, FileLoaderError> {
         Ok(FileLoader {
-            iterator: Box::new(fs::read_dir(directory)?.filter_map(|entry| {
-                let path = entry.ok()?.path();
-                if path.is_file() { Some(Ok(path)) } else { None }
-            })),
+            iterator: fs::read_dir(directory)?
+                .filter_map(|entry| {
+                    let path = entry.ok()?.path();
+                    if path.is_file() { Some(Ok(path)) } else { None }
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
         })
     }
 }
 
-impl<'a> FileLoader<'a, Vec<u8>> {
+impl FileLoader<std::vec::IntoIter<Vec<u8>>> {
     /// Ingest a  as a byte array.
-    pub fn from_bytes(bytes: Vec<u8>) -> FileLoader<'a, Vec<u8>> {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
         FileLoader {
-            iterator: Box::new(vec![bytes].into_iter()),
+            iterator: vec![bytes].into_iter(),
         }
     }
 
     /// Ingest multiple byte arrays.
-    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> FileLoader<'a, Vec<u8>> {
+    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> Self {
         FileLoader {
-            iterator: Box::new(bytes_vec.into_iter()),
-        }
-    }
-
-    /// Use this once you've created the loader to load the document in.
-    pub fn read(self) -> FileLoader<'a, Result<String, FileLoaderError>> {
-        FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read())),
-        }
-    }
-
-    /// Use this once you've created the reader to load the document in (and get the path).
-    pub fn read_with_path(self) -> FileLoader<'a, Result<(PathBuf, String), FileLoaderError>> {
-        FileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.read_with_path())),
+            iterator: bytes_vec.into_iter(),
         }
     }
 }
@@ -279,26 +268,12 @@ impl<'a> FileLoader<'a, Vec<u8>> {
 // Iterators for FileLoader
 // ================================================================
 
-pub struct IntoIter<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
-}
-
-impl<'a, T> IntoIterator for FileLoader<'a, T> {
-    type Item = T;
-    type IntoIter = IntoIter<'a, T>;
+impl<I: Iterator> IntoIterator for FileLoader<I> {
+    type Item = I::Item;
+    type IntoIter = I;
 
     fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            iterator: self.iterator,
-        }
-    }
-}
-
-impl<T> Iterator for IntoIter<'_, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
+        self.iterator
     }
 }
 

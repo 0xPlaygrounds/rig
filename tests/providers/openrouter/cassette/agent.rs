@@ -1,8 +1,5 @@
 //! Cassette-backed OpenRouter agent completion smoke test.
 
-use rig::completion::Prompt;
-use rig::prelude::*;
-
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
@@ -21,3 +18,4 @@ async fn completion_smoke() {
     })
     .await;
 }
+use rig::prelude::*;

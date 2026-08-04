@@ -1,6 +1,7 @@
 //! Perplexity multi-turn chat cassette coverage.
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
+
 use rig::prelude::*;
 use rig::providers::perplexity;
 
@@ -10,8 +11,8 @@ use super::super::support::with_perplexity_cassette;
 
 #[tokio::test]
 async fn chat_history_smoke() {
-    with_perplexity_cassette("chat/chat_history_smoke", |client| async move {
-        let agent = client
+    with_perplexity_cassette("chat/chat_history_smoke", |env| async move {
+        let agent = env
             .agent(perplexity::SONAR)
             .preamble("You are a memory test assistant. Keep answers short.")
             .max_tokens(48)

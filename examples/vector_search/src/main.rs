@@ -1,7 +1,14 @@
 //! Demonstrates embedding documents and querying an in-memory vector index with OpenAI.
 //! Requires `OPENAI_API_KEY` and the `derive` feature.
 //! Run it to compare `top_n` results with `top_n_ids`.
+//!
+//! Embedding is plain data plus free functions: an
+//! `openai::functions::EmbeddingConfig` (which names the embedding model) and
+//! an [`HttpRuntime`]. `EmbeddingsBuilder` is gone — [`EmbeddingJob`]
+//! accumulates the documents, takes the per-request limit from the provider's
+//! descriptor, and receives the provider closure only at `.run(..)`.
 
+use rig::embeddings::EmbeddingJob;
 use rig::prelude::*;
 use rig::providers::openai;
 use serde::{Deserialize, Serialize};
@@ -63,32 +70,43 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = openai::Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(sample_documents())?
-        .build()
+    let ecfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
+
+    // The provider descriptor carries the per-request document limit; the
+    // batching helper chunks and parallelizes to match it.
+    let embeddings = EmbeddingJob::new()
+        .documents(sample_documents())
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&ecfg, &rt, texts))
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    // Queries are embedded up front; the store only sees pre-embedded requests.
+    let query_embedding = openai::functions::embed(&ecfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
-    let index = vector_store.index(embedding_model);
-    let results = index
-        .top_n::<WordDefinition>(req.clone())
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req.clone())
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<SearchMatch>>();
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     print_matches("Top document matches", &results);
     print_id_matches("Top document ids", &id_results);

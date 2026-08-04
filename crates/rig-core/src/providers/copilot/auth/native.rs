@@ -1,4 +1,4 @@
-use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+use super::{AuthContext, AuthError, DeviceCodePrompt, DeviceCodePrompter};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ const DEVICE_CODE_SLOW_DOWN_SECONDS: u64 = 5;
 pub(super) struct PlatformAuthenticator {
     access_token_file: Option<PathBuf>,
     api_key_file: Option<PathBuf>,
-    device_code_handler: DeviceCodeHandler,
+    device_code_prompter: DeviceCodePrompter,
     allow_device_flow: bool,
 }
 
@@ -58,13 +58,13 @@ impl PlatformAuthenticator {
     pub(super) fn new(
         access_token_file: Option<PathBuf>,
         api_key_file: Option<PathBuf>,
-        device_code_handler: DeviceCodeHandler,
+        device_code_prompter: DeviceCodePrompter,
         allow_device_flow: bool,
     ) -> Self {
         Self {
             access_token_file,
             api_key_file,
-            device_code_handler,
+            device_code_prompter,
             allow_device_flow,
         }
     }
@@ -173,13 +173,10 @@ impl PlatformAuthenticator {
             .json::<DeviceCodeResponse>()
             .await?;
 
-        emit_device_code_prompt(
-            &self.device_code_handler,
-            DeviceCodePrompt {
-                verification_uri: device.verification_uri.clone(),
-                user_code: device.user_code.clone(),
-            },
-        );
+        self.device_code_prompter.emit(DeviceCodePrompt {
+            verification_uri: device.verification_uri.clone(),
+            user_code: device.user_code.clone(),
+        });
 
         let deadline = std::time::Instant::now()
             + std::time::Duration::from_secs(
@@ -305,6 +302,22 @@ impl PlatformAuthenticator {
         Ok(token)
     }
 
+    /// The cached, unexpired Copilot API key record, if one exists on disk.
+    ///
+    /// Read-only and non-interactive: no key refresh, no device flow, and no
+    /// record rewrite. When `bootstrap_token` is provided, the cached key
+    /// must be bound to that GitHub access token to be reused.
+    pub(super) fn cached_auth_context(&self, bootstrap_token: Option<&str>) -> Option<AuthContext> {
+        let record = self.read_api_key_record().ok()?;
+        if !record.can_reuse_for_oauth(bootstrap_token) {
+            return None;
+        }
+        let api_base = record.api_base();
+        record
+            .token
+            .map(|api_key| AuthContext { api_key, api_base })
+    }
+
     fn read_api_key_record(&self) -> Result<ApiKeyRecord, AuthError> {
         let Some(path) = &self.api_key_file else {
             return Ok(ApiKeyRecord::default());
@@ -373,17 +386,6 @@ fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
     let mut hasher = DefaultHasher::new();
     bootstrap_token.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
-}
-
-fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
-    if let Some(callback) = &handler.0 {
-        callback(prompt);
-    } else {
-        println!(
-            "Sign in with GitHub Copilot:\n1) Visit {}\n2) Enter code: {}",
-            prompt.verification_uri, prompt.user_code
-        );
-    }
 }
 
 fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
@@ -461,7 +463,7 @@ fn should_retry_with_fresh_access_token_status(status: Option<reqwest::StatusCod
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiKeyRecord, DeviceCodeHandler, PlatformAuthenticator, bootstrap_token_fingerprint,
+        ApiKeyRecord, DeviceCodePrompter, PlatformAuthenticator, bootstrap_token_fingerprint,
         next_poll_interval_seconds, normalize_poll_interval_seconds,
         should_retry_with_fresh_access_token_status,
     };
@@ -488,7 +490,7 @@ mod tests {
 
     #[tokio::test]
     async fn noninteractive_oauth_requires_sign_in_instead_of_device_flow() {
-        let auth = PlatformAuthenticator::new(None, None, DeviceCodeHandler::default(), false);
+        let auth = PlatformAuthenticator::new(None, None, DeviceCodePrompter::default(), false);
         let err = auth
             .auth_context_oauth()
             .await

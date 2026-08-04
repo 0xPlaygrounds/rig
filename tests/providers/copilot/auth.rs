@@ -1,16 +1,21 @@
 //! Copilot OAuth and bootstrap smoke tests.
+//!
+//! The classic `client.authorize()` step is now credential resolution at
+//! config-construction time: an [`Authenticator`] resolves the credential and
+//! `config_from_auth` folds it (and the token-reported endpoint) into a
+//! [`copilot::functions::Config`].
 
 use assert_fs::TempDir;
-use rig::completion::Prompt;
-use rig::prelude::*;
+use rig::AgentBuilder;
+use rig::provider::ProviderConfig;
 use rig::providers::copilot;
+use rig::providers::copilot::auth::{AuthSource, Authenticator};
 use serde_json::json;
 use std::fs;
 use std::path::Path;
 
 use crate::copilot::{
-    LIVE_MODEL, api_key_builder, copilot_api_key, copilot_github_access_token,
-    github_access_token_builder, oauth_builder,
+    LIVE_MODEL, authenticator, config_from_auth, copilot_api_key, copilot_github_access_token,
 };
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -23,24 +28,23 @@ fn required_copilot_github_access_token() -> String {
         .expect("COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN should be set")
 }
 
-fn oauth_builder_with_token_dir(path: &Path) -> copilot::ClientBuilder {
-    oauth_builder().token_dir(path)
+fn oauth_authenticator_with_token_dir(path: &Path) -> Authenticator {
+    authenticator(AuthSource::OAuth, Some(path), true)
+}
+
+/// Resolve `auth` into an [`AgentBuilder`] for `model` — the replacement for
+/// `client.authorize()` followed by `client.agent(model)`.
+async fn agent_for(model: &str, auth: &Authenticator) -> AgentBuilder {
+    AgentBuilder::new(ProviderConfig::Copilot(config_from_auth(model, auth).await))
 }
 
 #[tokio::test]
 #[ignore = "requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY"]
 async fn api_key_completion_smoke() {
-    let client = api_key_builder(required_copilot_api_key())
-        .build()
-        .expect("Copilot API key client should build");
+    let auth = authenticator(AuthSource::ApiKey(required_copilot_api_key()), None, false);
 
-    client
-        .authorize()
+    let response = agent_for(LIVE_MODEL, &auth)
         .await
-        .expect("api key auth should succeed");
-
-    let response = client
-        .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -53,17 +57,14 @@ async fn api_key_completion_smoke() {
 #[tokio::test]
 #[ignore = "requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN"]
 async fn github_access_token_completion_smoke() {
-    let client = github_access_token_builder(required_copilot_github_access_token())
-        .build()
-        .expect("Copilot bootstrap-token client should build");
+    let auth = authenticator(
+        AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
+        None,
+        false,
+    );
 
-    client
-        .authorize()
+    let response = agent_for(LIVE_MODEL, &auth)
         .await
-        .expect("bootstrap-token auth should succeed");
-
-    let response = client
-        .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -79,12 +80,8 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let temp = TempDir::new().expect("temp dir");
     let token_dir = temp.path();
 
-    let client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("Copilot OAuth client should build");
-
-    client
-        .authorize()
+    let auth = oauth_authenticator_with_token_dir(token_dir);
+    auth.auth_context()
         .await
         .expect("device authorization should succeed");
 
@@ -97,13 +94,8 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device flow should cache the Copilot API key"
     );
 
-    client
-        .authorize()
+    let response = agent_for(LIVE_MODEL, &auth)
         .await
-        .expect("cached oauth auth should succeed");
-
-    let response = client
-        .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)
@@ -112,15 +104,9 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     assert_nonempty_response(&response);
 
-    let cached_client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("cached Copilot client should build");
-    cached_client
-        .authorize()
+    let cached_auth = oauth_authenticator_with_token_dir(token_dir);
+    let cached_response = agent_for(LIVE_MODEL, &cached_auth)
         .await
-        .expect("cached oauth auth should succeed");
-    let cached_response = cached_client
-        .agent(LIVE_MODEL)
         .build()
         .prompt("Reply with the single word cached.")
         .await
@@ -150,14 +136,10 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     )
     .expect("expired api key record should be written");
 
-    let client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("Copilot OAuth client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("bootstrap refresh should succeed");
+    let auth = oauth_authenticator_with_token_dir(token_dir);
+    // Resolving the config performs the bootstrap refresh the classic
+    // `client.authorize()` used to trigger.
+    let cfg: copilot::functions::Config = config_from_auth(LIVE_MODEL, &auth).await;
 
     let api_key_record: serde_json::Value = serde_json::from_slice(
         &fs::read(token_dir.join("api-key.json")).expect("api key record should exist"),
@@ -183,8 +165,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
         );
     }
 
-    let response = client
-        .agent(LIVE_MODEL)
+    let response = AgentBuilder::new(cfg)
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

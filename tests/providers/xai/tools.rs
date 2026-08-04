@@ -1,6 +1,5 @@
 //! xAI tools smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
@@ -43,11 +42,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -76,19 +71,15 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
 
 #[tokio::test]
 async fn tools_smoke() {
-    with_xai_cassette("tools/tools_smoke", |client| async move {
-        let agent = client
+    with_xai_cassette("tools/tools_smoke", |env| async move {
+        let agent = env
             .agent(xai::completion::GROK_3_MINI)
             .preamble(TOOLS_PREAMBLE)
             .tool(Adder)

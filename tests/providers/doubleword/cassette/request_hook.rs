@@ -3,11 +3,10 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction,
-};
-use rig::completion::{Message, Prompt};
+use rig::agent::{CompletionCallAction, ObservationAction};
+use rig::completion::Message;
+
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
 
@@ -21,35 +20,39 @@ struct ObservingHook {
     seen_prompt: Arc<Mutex<Option<String>>>,
 }
 
-impl AgentHook for ObservingHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let Message::User { content } = event.prompt else {
-            return CompletionCallAction::stop("expected a user message");
-        };
-        let prompt = content
-            .iter()
-            .filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        self.prompt_calls.fetch_add(1, Ordering::SeqCst);
-        *self.seen_prompt.lock().expect("prompt hook lock") = Some(prompt);
-        CompletionCallAction::continue_run()
+impl ObservingHook {
+    /// The hook record: records the outbound prompt text and counts responses.
+    fn entry(&self) -> HookEntry {
+        let hook = self.clone();
+        HookEntry::sync("observing", move |event| hook.decide(event))
     }
 
-    async fn on_completion_response(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.response_calls.fetch_add(1, Ordering::SeqCst);
-        ObservationAction::continue_run()
+    fn decide(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::BeforeModelCall { prompt, .. } => {
+                let Message::User { content } = prompt.as_ref() else {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "expected a user message",
+                    ));
+                };
+                let prompt = content
+                    .iter()
+                    .filter_map(|item| match item {
+                        UserContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                self.prompt_calls.fetch_add(1, Ordering::SeqCst);
+                *self.seen_prompt.lock().expect("prompt hook lock") = Some(prompt);
+                HookDecision::CompletionCall(CompletionCallAction::continue_run())
+            }
+            HookEvent::CompletionResponse { .. } => {
+                self.response_calls.fetch_add(1, Ordering::SeqCst);
+                HookDecision::Observation(ObservationAction::continue_run())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
@@ -57,15 +60,17 @@ impl AgentHook for ObservingHook {
 async fn request_hook_records_prompt_and_response() {
     with_doubleword_cassette(
         "request_hook/request_hook_records_prompt_and_response",
-        |client| async move {
+        |env| async move {
             let hook = ObservingHook::default();
-            let response = client
+            let response = env
                 .agent(DEFAULT_MODEL)
                 .build()
-                .prompt("Entertain me with one short joke.")
-                .add_hook(hook.clone())
+                .runner("Entertain me with one short joke.")
+                .add_hook(hook.entry())
+                .run()
                 .await
-                .expect("hooked prompt should succeed");
+                .expect("hooked prompt should succeed")
+                .output;
             assert_nonempty_response(&response);
             assert_eq!(hook.prompt_calls.load(Ordering::SeqCst), 1);
             assert_eq!(hook.response_calls.load(Ordering::SeqCst), 1);

@@ -1,12 +1,9 @@
 use fixture::{as_record_batch, words};
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
-    vector_store::VectorStoreIndex,
-};
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 
 #[path = "./fixtures/lib.rs"]
@@ -14,16 +11,20 @@ mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_client = Client::from_env()?;
-
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embeddings come from a free function over plain configuration plus a
+    // shared HTTP runtime — there is no client or model object.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
+    let rt = HttpRuntime::new();
 
     // Generate embeddings for the test data.
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(words())?
-        .build()
+    let embeddings = EmbeddingJob::new()
+        .documents(words())
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
     // Define search_params params that will be used by the vector store to perform the vector search.
@@ -42,19 +43,24 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         db.create_table(
             "definitions",
-            vec![as_record_batch(embeddings, model.ndims())?],
+            vec![as_record_batch(embeddings, embedding_dims)?],
         )
         .execute()
         .await?
     };
 
-    let vector_store = LanceDbVectorIndex::new(table, model, "id", search_params).await?;
+    let vector_store = LanceDbVectorIndex::new(table, "id", search_params).await?;
 
+    // Queries are pre-embedded: embed the query text with the embedding model
+    // and pass the embedding to the search request.
     let query = "My boss says I zindle too much, what does that mean?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
     let results = vector_store.top_n_ids(req).await?;

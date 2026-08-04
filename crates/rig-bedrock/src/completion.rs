@@ -1,17 +1,12 @@
+//! Bedrock completion model identifiers.
+//!
 //! All supported models <https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html>
+//!
+//! Completions themselves are the free functions
+//! [`crate::functions::complete`] / [`crate::functions::open_stream`]; this
+//! module holds the model-id constants they are called with.
 
-use crate::{
-    client::Client,
-    types::{
-        assistant_content::AwsConverseOutput, completion_request::AwsCompletionRequest,
-        converse_output::InternalConverseOutput, errors::AwsSdkConverseError,
-    },
-};
-
-use rig_core::completion::{self, CompletionError, CompletionRequest};
-use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use tracing::Instrument;
+use rig_core::completion::CompletionRequest;
 
 /// `ai21.jamba-1-5-large-v1:0`
 pub const AI21_JAMBA_1_5_LARGE: &str = "ai21.jamba-1-5-large-v1:0";
@@ -158,47 +153,6 @@ pub const STABILITY_STABLE_IMAGE_CORE_1_0_V1_0: &str = "stability.stable-image-c
 /// `stability.stable-image-ultra-v1:0`
 pub const STABILITY_STABLE_IMAGE_ULTRA_1_0_V1_0: &str = "stability.stable-image-ultra-v1:0";
 
-#[derive(Clone)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
-    pub model: String,
-    /// When enabled, cache checkpoints are inserted into Converse API requests
-    /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
-    /// A checkpoint is placed after the system prompt and after the last message
-    /// in the chat history. Disabled by default.
-    pub prompt_caching: bool,
-}
-
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            prompt_caching: false,
-        }
-    }
-
-    /// Enable Bedrock prompt caching for this model.
-    ///
-    /// When enabled, `CachePoint` blocks are inserted after the serialized
-    /// `system` content and after the final `messages` entry in each Converse
-    /// API request. This allows Bedrock to cache and reuse repeated prompt
-    /// prefixes, reducing both latency and input token costs.
-    ///
-    /// This currently covers the `system` and `messages` request fields only.
-    /// Some Bedrock models also support caching `tools`, but that is not wired
-    /// up here yet.
-    ///
-    /// Cacheability and token thresholds are model-specific. If the cached
-    /// prefix is too short or the model does not support caching for a given
-    /// field, Bedrock ignores the checkpoint. See the Bedrock prompt caching
-    /// support table for current limits and field support.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-}
-
 pub(crate) fn resolve_request_model(
     default_model: &str,
     completion_request: &CompletionRequest,
@@ -207,80 +161,4 @@ pub(crate) fn resolve_request_model(
         .model
         .clone()
         .unwrap_or_else(|| default_model.to_string())
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = AwsConverseOutput;
-    type StreamingResponse = crate::streaming::BedrockStreamingResponse;
-
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<AwsConverseOutput>, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-
-        let span =
-            CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
-                .system_instructions(
-                    completion_request.preamble.as_deref(),
-                    completion_request.record_telemetry_content,
-                )
-                .build();
-
-        let request = AwsCompletionRequest {
-            inner: completion_request,
-            prompt_caching: self.prompt_caching,
-        };
-
-        let mut converse_builder = self
-            .client
-            .get_inner()
-            .await
-            .converse()
-            .model_id(request_model.clone());
-
-        let tool_config = request.tools_config()?;
-        let messages = request.messages()?;
-        let output_config = request.output_config()?;
-        converse_builder = converse_builder
-            .set_additional_model_request_fields(request.additional_params())
-            .set_inference_config(request.inference_config())
-            .set_tool_config(tool_config)
-            .set_system(request.system_prompt()?)
-            .set_messages(Some(messages))
-            .set_output_config(output_config);
-
-        async move {
-            let response = converse_builder.send().await.map_err(|sdk_error| {
-                Into::<CompletionError>::into(AwsSdkConverseError(sdk_error))
-            })?;
-
-            let response: InternalConverseOutput = response.try_into().map_err(|x| {
-                CompletionError::ProviderError(format!("Type conversion error: {x}"))
-            })?;
-
-            let aws_output = AwsConverseOutput(response);
-
-            let span = tracing::Span::current();
-            span.record_response_metadata(&aws_output);
-            span.record_token_usage(&aws_output);
-
-            aws_output.try_into()
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        CompletionModel::stream(self, request).await
-    }
 }

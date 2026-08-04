@@ -1,6 +1,4 @@
-use rig_agent::completion::Prompt;
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers;
 use rig_derive::rig_tool;
 
@@ -40,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "STRINGPROCESSOR: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&StringProcessor))?
+        serde_json::to_string_pretty(&rig_agent::tool::portable_tool_definition(&StringProcessor))?
     );
 
     for prompt in [

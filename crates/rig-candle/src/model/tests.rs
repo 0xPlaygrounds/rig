@@ -2,12 +2,24 @@ use candle_core::quantized::{GgmlDType, gguf_file};
 use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
-use futures::StreamExt;
 use rig_core::OneOrMany;
-use rig_core::completion::{CompletionModel, Document, GetTokenUsage, ToolDefinition};
+use rig_core::completion::{Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::StreamedAssistantContent;
+
+/// Concatenated visible text from a buffered completion's choice.
+#[cfg(not(target_family = "wasm"))]
+fn choice_text(response: &rig_core::completion::CompletionResponse) -> String {
+    response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            rig_core::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
 use safetensors::tensor::{Dtype, View, serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -231,7 +243,6 @@ fn config_with(
 fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: match OneOrMany::many(messages) {
             Ok(messages) => messages,
             Err(_) => OneOrMany::one(Message::user("hello")),
@@ -251,7 +262,7 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
 async fn collect_stream(
     model: &LlamaModel,
     request: CompletionRequest,
-) -> Result<(String, CandleCompletionResponse), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(String, rig_core::streaming::StreamFinal), Box<dyn std::error::Error + Send + Sync>> {
     let mut response = model.stream(request).await?;
     let mut text = String::new();
     let mut final_response = None;
@@ -283,7 +294,7 @@ fn controlled_model(
     loaded.test_control = Some(Arc::clone(&control));
     Ok((
         LlamaModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            loaded: Arc::new(loaded),
         },
         control,
         concurrency,
@@ -419,7 +430,7 @@ fn validates_tensor_shapes_dtypes_and_tied_embeddings()
         tokenizer: tiny_tokenizer()?,
         weights: checkpoint_custom(true, tensor(&[8, 4]), false)?,
     })?;
-    assert!(matches!(model.state, ModelState::Ready(_)));
+    assert_eq!(model.architecture(), ModelArchitecture::Llama);
     Ok(())
 }
 
@@ -642,9 +653,7 @@ fn context_limit_boundaries_clamp_and_detect_conversion_overflow() {
 #[test]
 fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::from_safetensors(model_data()?)?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model did not enter ready state".into());
-    };
+    let loaded = &model.loaded;
     assert!(loaded.runtime.is_consistent_cpu());
     assert_eq!(
         loaded.profile.definition.loader,
@@ -654,7 +663,7 @@ fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + S
         loaded.profile.definition.artifact_format,
         ArtifactFormat::Safetensors
     );
-    assert_eq!(model.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(model.model_family(), ModelFamily::Llama3);
     assert_eq!(model.quantization(), None);
     Ok(())
 }
@@ -696,7 +705,7 @@ fn borrowed_gguf_builder_keeps_borrowed_artifacts_and_all_settings() {
 async fn async_loading_succeeds_and_preserves_builder_settings()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let direct = CandleModel::from_safetensors_async(model_data()?).await?;
-    assert_eq!(direct.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(direct.model_family(), ModelFamily::Llama3);
 
     let configured = CandleModel::builder(model_data()?)
         .max_tokens(17)
@@ -709,9 +718,7 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
         .max_concurrent_requests(3)
         .build_async()
         .await?;
-    let ModelState::Ready(loaded) = &configured.state else {
-        return Err("async model did not enter ready state".into());
-    };
+    let loaded = &configured.loaded;
     assert_eq!(loaded.generation.max_tokens, 17);
     assert_eq!(loaded.generation.temperature, 0.25);
     assert_eq!(loaded.generation.top_k, Some(4));
@@ -737,9 +744,7 @@ async fn async_loading_preserves_typed_errors_and_converts_panics() {
     let panicked = join_model_load(tokio::task::spawn_blocking(|| {
         std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
         #[allow(unreachable_code)]
-        Ok(CandleModel {
-            state: ModelState::UnsupportedMake,
-        })
+        Err(CandleError::InvalidConcurrencyLimit)
     }))
     .await;
     assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
@@ -816,8 +821,13 @@ fn gguf_metadata_shapes_and_tensor_encodings_are_validated_before_loading()
 
 #[cfg(not(target_family = "wasm"))]
 #[test]
-fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rig_agent::{agent::AgentBuilder, completion::Prompt};
+fn loaded_model_works_with_agent_request_preparation()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Candle has no `ProviderConfig` arm (model tensors are not expressible
+    // as plain configuration), so drive the sans-IO agent path directly:
+    // `prepare_request` builds the turn request, `functions::complete` runs
+    // it on the loaded model.
+    use rig_agent::agent::{AgentConfig, ToolCatalog, prepare_request};
 
     let runtime = tokio::runtime::Builder::new_current_thread().build()?;
     runtime.block_on(async {
@@ -825,8 +835,19 @@ fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Err
             .temperature(0.0)
             .max_tokens(1)
             .build()?;
-        let agent = AgentBuilder::new(model).preamble("Be brief.").build();
-        let _answer = agent.prompt("hello").await?;
+        let config = AgentConfig::new().with_preamble("Be brief.");
+        let prepared = prepare_request(
+            &config,
+            &ToolCatalog::default(),
+            false,
+            Message::user("hello"),
+            &[],
+            None,
+            None,
+            None,
+            None,
+        )?;
+        let _answer = crate::functions::complete(&model, prepared.request).await?;
         Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
     })?;
     Ok(())
@@ -841,28 +862,17 @@ async fn buffered_and_streaming_generation_are_equivalent()
         .max_tokens(3)
         .build()?;
     let completion_request = request(vec![Message::user("hello")]);
-    let buffered = model.completion(completion_request.clone()).await?;
+    let buffered = model.complete(completion_request.clone()).await?;
     let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
 
-    assert_eq!(streamed_text, buffered.raw_response.text);
-    assert_eq!(streamed.text, buffered.raw_response.text);
-    assert_eq!(streamed.prompt_tokens, buffered.raw_response.prompt_tokens);
-    assert_eq!(
-        streamed.generated_tokens,
-        buffered.raw_response.generated_tokens
-    );
-    assert_eq!(streamed.finish_reason, buffered.raw_response.finish_reason);
-    assert_eq!(
-        streamed.requested_max_tokens,
-        buffered.raw_response.requested_max_tokens
-    );
-    assert_eq!(
-        streamed.effective_max_tokens,
-        buffered.raw_response.effective_max_tokens
-    );
-    assert_eq!(streamed.token_usage(), buffered.usage);
-    assert!(streamed.time_to_first_token_ms.is_some());
-    assert!(streamed.prefill_duration_ms <= streamed.generation_duration_ms);
+    assert_eq!(streamed_text, choice_text(&buffered));
+    assert_eq!(streamed.usage.input_tokens, buffered.usage.input_tokens);
+    assert_eq!(streamed.usage.output_tokens, buffered.usage.output_tokens);
+    assert_eq!(streamed.finish_reason, buffered.finish_reason);
+    assert!(streamed.finish_reason.is_some());
+    assert_eq!(streamed.usage, buffered.usage);
+    assert_eq!(streamed.provider, "candle");
+    assert_eq!(buffered.provider, "candle");
     Ok(())
 }
 
@@ -874,14 +884,15 @@ async fn streaming_reports_eos_and_excludes_the_stop_token()
     loaded.generation.temperature = 0.0;
     loaded.profile.stop_tokens.insert(0);
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        loaded: Arc::new(loaded),
     };
     let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
     assert!(text.is_empty());
-    assert!(raw.text.is_empty());
-    assert_eq!(raw.finish_reason, FinishReason::Eos);
-    assert_eq!(raw.generated_tokens, 1);
-    assert_eq!(raw.token_usage().output_tokens, 1);
+    assert_eq!(
+        raw.finish_reason,
+        Some(rig_core::completion::FinishReason::Stop)
+    );
+    assert_eq!(raw.usage.output_tokens, 1);
     Ok(())
 }
 
@@ -897,12 +908,15 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
     let model = LlamaModel {
-        state: ModelState::Ready(Arc::new(loaded)),
+        loaded: Arc::new(loaded),
     };
     let (_, raw) = collect_stream(&model, completion_request).await?;
-    assert_eq!(raw.requested_max_tokens, 10);
-    assert_eq!(raw.effective_max_tokens, 2);
-    assert_eq!(raw.generated_tokens, 2);
+    // The clamp's observable effect at the public stream boundary: 10 tokens
+    // were requested but the context limit clamps generation to 2, which the
+    // normalized final reports as output tokens. The requested/effective
+    // max-token internals are asserted at the `infer` level in
+    // generation-side tests.
+    assert_eq!(raw.usage.output_tokens, 2);
 
     for additional_params in [
         serde_json::json!({"unknown": true}),
@@ -995,19 +1009,23 @@ fn inference_clamps_context_and_uses_fresh_generation_state()
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
 
-    let first = infer(
+    let (first, first_raw) = infer(
         &loaded,
         completion_request.clone(),
         &CancellationSignal::default(),
     )?;
-    let second = infer(&loaded, completion_request, &CancellationSignal::default())?;
-    assert_eq!(first.raw_response.text, second.raw_response.text);
-    assert_eq!(first.raw_response.generated_tokens, 2);
-    assert_eq!(first.raw_response.requested_max_tokens, 10);
-    assert_eq!(first.raw_response.effective_max_tokens, 2);
-    assert_eq!(first.raw_response.finish_reason, FinishReason::MaxTokens);
+    let (_, second_raw) = infer(&loaded, completion_request, &CancellationSignal::default())?;
+    assert_eq!(first_raw.text, second_raw.text);
+    assert_eq!(first_raw.generated_tokens, 2);
+    assert_eq!(first_raw.requested_max_tokens, 10);
+    assert_eq!(first_raw.effective_max_tokens, 2);
+    assert_eq!(first_raw.finish_reason, FinishReason::MaxTokens);
+    assert_eq!(
+        first.finish_reason,
+        Some(rig_core::completion::FinishReason::Length)
+    );
     assert_eq!(first.usage.output_tokens, 2);
-    assert!(!first.raw_response.text.contains("hello"));
+    assert!(!first_raw.text.contains("hello"));
     Ok(())
 }
 
@@ -1018,11 +1036,16 @@ fn eos_is_counted_but_excluded_from_decoded_text()
     loaded.profile.stop_tokens.insert(0);
     let mut completion_request = request(vec![Message::user("hello")]);
     completion_request.temperature = Some(0.0);
-    let response = infer(&loaded, completion_request, &CancellationSignal::default())?;
-    assert_eq!(response.raw_response.finish_reason, FinishReason::Eos);
-    assert_eq!(response.raw_response.generated_tokens, 1);
+    let (response, raw_response) =
+        infer(&loaded, completion_request, &CancellationSignal::default())?;
+    assert_eq!(raw_response.finish_reason, FinishReason::Eos);
+    assert_eq!(raw_response.generated_tokens, 1);
+    assert_eq!(
+        response.finish_reason,
+        Some(rig_core::completion::FinishReason::Stop)
+    );
     assert_eq!(response.usage.output_tokens, 1);
-    assert!(response.raw_response.text.is_empty());
+    assert!(raw_response.text.is_empty());
     Ok(())
 }
 
@@ -1138,14 +1161,14 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
         .max_tokens(2)
         .max_concurrent_requests(2)
         .build()?;
-    let first = model.completion(request(vec![Message::user("hello")]));
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let first = model.complete(request(vec![Message::user("hello")]));
+    let second = model.complete(request(vec![Message::user("hello")]));
     let (first, second) = tokio::join!(first, second);
     let first = first?;
     let second = second?;
-    assert_eq!(first.raw_response.text, second.raw_response.text);
-    assert_eq!(first.raw_response.generated_tokens, 2);
-    assert_eq!(second.raw_response.generated_tokens, 2);
+    assert_eq!(choice_text(&first), choice_text(&second));
+    assert_eq!(first.usage.output_tokens, 2);
+    assert_eq!(second.usage.output_tokens, 2);
 
     let first_stream = collect_stream(&model, request(vec![Message::user("hello")]));
     let second_stream = collect_stream(&model, request(vec![Message::user("hello")]));
@@ -1153,9 +1176,8 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
     let (first_text, first_raw) = first_stream?;
     let (second_text, second_raw) = second_stream?;
     assert_eq!(first_text, second_text);
-    assert_eq!(first_raw.text, second_raw.text);
-    assert_eq!(first_raw.generated_tokens, 2);
-    assert_eq!(second_raw.generated_tokens, 2);
+    assert_eq!(first_raw.usage.output_tokens, 2);
+    assert_eq!(second_raw.usage.output_tokens, 2);
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
     semaphore.close();
@@ -1171,12 +1193,10 @@ async fn concurrent_completions_have_independent_caches_and_samplers()
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = LlamaModel::builder(model_data()?).build()?;
-    let ModelState::Ready(loaded) = &model.state else {
-        return Err("loaded model was not ready".into());
-    };
+    let loaded = &model.loaded;
     loaded.concurrency.close();
     let completion_error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("closed completion admission unexpectedly succeeded")?;
@@ -1206,12 +1226,12 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     let first_model = model.clone();
     let first = tokio::spawn(async move {
         first_model
-            .completion(request(vec![Message::user("hello")]))
+            .complete(request(vec![Message::user("hello")]))
             .await
     });
     control.wait_until_entered().await;
 
-    let second = model.completion(request(vec![Message::user("hello")]));
+    let second = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(second);
     assert!(futures::poll!(&mut second).is_pending());
 
@@ -1221,7 +1241,7 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
     control.release()?;
 
     let second = second.await?;
-    assert_eq!(second.raw_response.generated_tokens, 2);
+    assert_eq!(second.usage.output_tokens, 2);
     Ok(())
 }
 
@@ -1233,7 +1253,7 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
     let stream = model.stream(request(vec![Message::user("hello")])).await?;
     control.wait_until_entered().await;
 
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
 
@@ -1242,7 +1262,7 @@ async fn dropping_stream_cancels_worker_before_queued_request_runs()
     control.release()?;
 
     let queued = queued.await?;
-    assert_eq!(queued.raw_response.generated_tokens, 2);
+    assert_eq!(queued.usage.output_tokens, 2);
     Ok(())
 }
 
@@ -1256,14 +1276,14 @@ async fn public_stream_cancel_stops_worker_without_dropping_response()
 
     stream.cancel();
     assert!(stream.next().await.is_none());
-    let queued = model.completion(request(vec![Message::user("hello")]));
+    let queued = model.complete(request(vec![Message::user("hello")]));
     futures::pin_mut!(queued);
     assert!(futures::poll!(&mut queued).is_pending());
     assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
 
     control.release()?;
     let queued = queued.await?;
-    assert_eq!(queued.raw_response.generated_tokens, 2);
+    assert_eq!(queued.usage.output_tokens, 2);
     assert!(stream.next().await.is_none());
     Ok(())
 }
@@ -1295,7 +1315,7 @@ async fn blocking_task_panic_maps_to_typed_completion_error()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (model, _, _) = controlled_model(false, true, 1)?;
     let error = model
-        .completion(request(vec![Message::user("hello")]))
+        .complete(request(vec![Message::user("hello")]))
         .await
         .err()
         .ok_or("blocking task panic unexpectedly succeeded")?;
@@ -1523,32 +1543,5 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.time_to_first_token_ms, Some(10));
     assert_eq!(response.generation_duration_ms, 20);
     assert_eq!(response.tokens_per_second, Some(100.0));
-    Ok(())
-}
-
-#[test]
-fn unsupported_make_fails_for_buffered_and_streaming()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    runtime.block_on(async {
-        let model = <LlamaModel as CompletionModel>::make(&(), "llama");
-        let completion_error = model
-            .completion(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(
-            completion_error
-                .to_string()
-                .contains("CompletionModel::make")
-        );
-        let stream_error = model
-            .stream(request(vec![Message::user("hello")]))
-            .await
-            .err()
-            .ok_or("expected unsupported make")?;
-        assert!(stream_error.to_string().contains("CompletionModel::make"));
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })?;
     Ok(())
 }

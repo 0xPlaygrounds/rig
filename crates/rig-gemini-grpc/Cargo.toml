@@ -31,5 +31,5 @@ protoc-bin-vendored = "3.2.0"
 
 [dev-dependencies]
 anyhow = { workspace = true }
-rig-agent.workspace = true
+rig-agent = { workspace = true, features = ["gemini-grpc"] }
 tracing-subscriber = { workspace = true }

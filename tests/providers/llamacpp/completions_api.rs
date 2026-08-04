@@ -1,9 +1,9 @@
 //! Migrated from `examples/openai_agent_completions_api.rs` against a local llama.cpp server.
 
-use rig::completion::CompletionModel;
-use rig::completion::Prompt;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
-use rig::telemetry::ProviderResponseExt;
+use rig::providers::openai;
 
 use crate::support::{
     RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, assert_contains_all_case_insensitive,
@@ -15,10 +15,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completions_api_agent_prompt() {
-    let agent = support::client()
-        .completion_model(support::model_name())
-        .completions_api()
-        .into_agent_builder()
+    let agent = support::completions_client()
+        .agent(&support::model_name())
         .preamble("You are a helpful assistant.")
         .build();
 
@@ -33,24 +31,26 @@ async fn completions_api_agent_prompt() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completions_api_raw_response_text_matches_normalized_choice_text() {
-    let client = support::completions_client();
-    let response = client
-        .completion_model(support::model_name())
-        .completion_request(RAW_TEXT_RESPONSE_PROMPT)
-        .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-        .send()
-        .await
-        .expect("raw completions api request should succeed");
+    // The normalized `CompletionResponse` no longer exposes the raw provider
+    // payload, and this test runs live-only (no cassette to re-read the wire
+    // body from), so the previous raw-vs-normalized comparison now asserts the
+    // exact expected content directly on the normalized text.
+    let cfg = support::completions_client().config(support::model_name());
+    let rt = HttpRuntime::new();
+    let response = openai::functions::complete(
+        &cfg,
+        &rt,
+        CompletionRequest::builder(RAW_TEXT_RESPONSE_PROMPT)
+            .preamble(RAW_TEXT_RESPONSE_PREAMBLE)
+            .messages(Vec::new())
+            .build(),
+    )
+    .await
+    .expect("raw completions api request should succeed");
 
     let normalized_text = assistant_text_response(&response.choice)
         .expect("normalized completions api response should contain assistant text");
-    let raw_text = response
-        .raw_response
-        .get_text_response()
-        .expect("raw completions api response should contain assistant text");
 
     assert_nonempty_response(&normalized_text);
-    assert_nonempty_response(&raw_text);
-    assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
-    assert_eq!(raw_text.trim(), normalized_text.trim());
+    assert_contains_all_case_insensitive(&normalized_text, &["cedar", "maple"]);
 }

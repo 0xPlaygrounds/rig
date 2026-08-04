@@ -227,7 +227,6 @@ mod tests {
         assert_funnel!(crate::completion::CompletionError);
         assert_funnel!(crate::embeddings::embedding::EmbeddingError);
         assert_funnel!(crate::transcription::TranscriptionError);
-        assert_funnel!(crate::client::verify::VerifyError);
         assert_funnel!(crate::rerank::RerankError);
         #[cfg(feature = "image")]
         assert_funnel!(crate::image_generation::ImageGenerationError);

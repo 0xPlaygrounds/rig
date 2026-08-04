@@ -3,17 +3,64 @@
 //!
 //! The `rig` crate is the user-facing entry point for Rig. It re-exports the
 //! portable contracts from `rig_core` at their familiar `rig::...` paths and the
-//! classic runtime from `rig_agent` under `rig::agent`.
+//! agent runtime from `rig_agent` under `rig::agent`.
 //!
-//! `rig::tool` keeps the classic contextual tool API (`Tool`, `ToolContext`,
-//! …) with the default `agent` feature — the same surface as before the runtime
-//! split — and always exposes the runtime-independent contracts explicitly as
-//! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
-//! classic API also lives at [`crate::agent::tool`]. Classic construction
-//! methods such as `client.agent(...)` come from
-//! [`crate::client::AgentClientExt`]; `use rig::prelude::*;` brings it in
-//! alongside the canonical `CompletionClient`, the same surface as before the
-//! split.
+//! # Concrete clients over provider data
+//!
+//! Completion-capable providers expose concrete, monomorphic clients for the
+//! normal path. The prelude supplies fluent agent and direct-completion bridges:
+//!
+//! ```no_run
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use rig::prelude::*;
+//! use rig::providers::openai;
+//!
+//! let client = openai::Client::from_env()?;
+//! let response = client
+//!     .completion_model(openai::GPT_5_2)
+//!     .completion_request("Who are you?")
+//!     .temperature(0.2)
+//!     .send()
+//!     .await?;
+//! # let _ = response;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Agents use the same client connection and runtime:
+//!
+//! ```no_run
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use rig::prelude::*;
+//! use rig::providers::openai;
+//!
+//! let client = openai::Client::from_env()?;
+//! let agent = client.agent(openai::GPT_5_2)
+//!     .preamble("You are a helpful assistant.")
+//!     .build();
+//! # let _ = agent;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The underlying data layer remains public: each provider has serializable
+//! `functions::Config` records, pure request/response conversion, and free
+//! execution functions over `HttpRuntime`. `CompletionRequest::builder` builds
+//! request data without sending it. Embeddings follow the same low-level shape:
+//! a provider `functions::EmbeddingConfig`
+//! plus `functions::embed`, batched for stores through
+//! [`embeddings::embed_documents`].
+//!
+//! Genuinely new completion dialects implement
+//! [`provider::ExternalCompletionProvider`]. The constructor-position generic
+//! is erased into a concrete [`provider::ExternalCompletionProviderEntry`]
+//! registered on [`provider::Runtime`]; agents and sessions remain non-generic,
+//! and serialized [`provider::ExternalProviderConfig`] contains no callbacks.
+//!
+//! `rig::tool` exposes the portable, context-free tool contracts —
+//! `PortableTool` and `PortableDynamicTool` — and aliases `Tool` to
+//! `PortableTool`. The same surface also lives at [`crate::agent::tool`].
+//! Tool discovery is the owned [`embeddings::ToolSchema`] record.
 //!
 //! # Companion integrations
 //!
@@ -33,137 +80,161 @@
 //!
 //! Depend on the `rig-core` package directly when you only need the core Rig
 //! implementation crate, including provider abstractions, built-in core
-//! providers, tools, memory traits, and vector-store traits, without the root
+//! providers, tools, memory traits, and vector-store types, without the root
 //! facade's companion integration feature surface.
 
 pub use rig_core::*;
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, SessionRunner};
+
+/// Fluent concrete-client bridges for agents and direct completions.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod client {
+    pub use rig_agent::client::*;
+}
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
     pub use rig_core::*;
 }
 
-/// Classic agent orchestration and lifecycle APIs.
+/// Agent orchestration and lifecycle APIs.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod agent {
     pub use rig_agent::agent::*;
 
-    /// Contextual tools for the classic agent runtime.
+    /// Tool records executed by the agent runtime.
     pub mod tool {
         pub use rig_agent::tool::*;
     }
 }
 
-/// Provider clients plus classic agent/extractor constructors.
-pub mod client {
-    // Classic-runtime construction extensions: `agent()` / `extractor()` on any
-    // completion client (`AgentClientExt`) and `into_agent_builder()` on any
-    // completion model (`AgentModelExt`).
-    #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentClientExt, AgentModelExt};
-
-    // The full portable provider-client surface, including the canonical
-    // `CompletionClient`. `AgentClientExt` is a distinct name, so there is no
-    // shadow — just one canonical completion-client trait plus the classic
-    // construction extension.
-    pub use rig_core::client::*;
-}
-
-/// Low-level completion contracts plus classic prompting traits and errors.
+/// Low-level completion contracts plus the agent runtime's errors.
 pub mod completion {
     #[cfg(feature = "agent")]
-    pub use rig_agent::completion::{
-        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
-    };
+    pub use rig_agent::completion::{PromptError, StructuredOutputError};
     pub use rig_core::completion::*;
 }
 
-/// Classic typed extraction.
-#[cfg(feature = "agent")]
-#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub mod extractor {
-    pub use rig_agent::extractor::*;
-}
-
-/// Classic runtime integrations.
+/// Agent runtime integrations.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod integrations {
     pub use rig_agent::integrations::*;
 }
 
-/// Common portable imports plus additive classic-runtime conveniences.
+/// Provider configuration, external-provider registration, and the live-handle
+/// runtime — the data-oriented fulfilment layer.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::provider;
+
+/// The blocking session driver over the sans-IO run protocol.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::session;
+
+/// The streaming session driver over the sans-IO run protocol.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::stream;
+
+/// Automatic tool execution over the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::executor;
+
+/// Structured extraction over the session runtime.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::extract;
+
+/// Concrete, attach-and-forget hooks for the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::hooks;
+
+/// The thin, forward-looking agent over the session drivers.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub use rig_agent::agent_api;
+
+/// Deprecated alias for [`Agent`]: the two agent types merged when the
+/// classic runtime was retired.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.22.0",
+    note = "`SessionAgent` and `Agent` merged into one type; use `rig::Agent`"
+)]
+pub use rig_agent::agent_api::SessionAgent;
+
+/// Common portable imports plus the agent-runtime conveniences.
+///
+/// Providers arrive as data: pair a provider `functions::Config` with
+/// [`ProviderConfig`](rig_agent::provider::ProviderConfig) and hand it to
+/// [`AgentBuilder::new`](rig_agent::AgentBuilder::new).
 pub mod prelude {
-    // The classic contextual `Tool` and its mutable `ToolContext` — the same
-    // prelude surface as before the runtime split, so `use rig::prelude::*;
-    // impl Tool for X {…}` keeps working.
-    #[cfg(feature = "agent")]
-    pub use crate::tool::{Tool, ToolContext};
-    // The classic construction extension `AgentClientExt` (adding `agent()` /
-    // `extractor()`) sits alongside the canonical `CompletionClient` brought in
-    // by the `rig_core::prelude::*` glob below. The two traits share no method
-    // names, so both resolve without ambiguity and together restore the
-    // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
+    // `Tool` is an alias for the portable, context-free `PortableTool`, so
+    // `use rig::prelude::*; impl Tool for X {…}` keeps working once the
+    // implementation's `call` drops the removed `ToolContext` parameter.
+    pub use crate::tool::Tool;
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
-        TypedPrompt,
+        Agent, AgentBuilder, AgentClientExt, AgentRunItem, AgentRunStream, AgentStream,
+        AgentStreamItem, BindCompletionExt, BoundCompletionRequest, CompletionClientExt,
+        CompletionHandle, EmbedderConfig, ExternalCompletionProvider,
+        ExternalCompletionProviderEntry, ExternalProviderConfig, ExternalProviderId,
+        ExternalProviderRegistry, OwnedProviderDescriptor, PromptError, PromptResponse,
+        ProviderConfig, Runtime, SessionRunner, StructuredOutputError, ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }
 
-/// Low-level streaming values plus classic streaming traits.
+/// Low-level streaming values.
 pub mod streaming {
-    #[cfg(feature = "agent")]
-    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
     pub use rig_core::streaming::*;
 }
 
-/// Tools for the default (classic) runtime.
+/// Portable, context-free tool contracts (used by every Rig runtime).
 ///
-/// With the `agent` feature (on by default), `Tool`, `ToolContext`, and friends
-/// here are the classic *contextual* tool API — the same surface as before the
-/// runtime split, so `use rig::tool::{Tool, ToolContext};` keeps working. The
-/// runtime-independent portable contracts are always exposed explicitly as
-/// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
-/// [`crate::tool::PortableDynamicTool`] (and in full under
-/// [`crate::tool::portable`]). The classic API also lives at
+/// `Tool` is an alias for [`crate::tool::PortableTool`]: `impl Tool for X`
+/// sites keep compiling once their `call` signature drops the removed
+/// `ToolContext` parameter. Runtime-defined tools are
+/// [`crate::tool::PortableDynamicTool`] records — close over your state in
+/// the callback instead of threading a context. The full portable surface
+/// also lives under [`crate::tool::portable`], and the same exports are at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
+/// MCP tools live in `crate::tool::mcp` (the `rig-rmcp` crate, `mcp` feature).
 pub mod tool {
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
+        serialize_to_tool_output,
     };
     // Runtime-independent portable contracts — explicit, always available.
-    pub use rig_core::tool::{
-        PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
-    };
+    /// The familiar name for the one tool-authoring trait. See the module docs
+    /// for the (single) signature change relative to the removed contextual
+    /// trait.
+    pub use rig_core::tool::PortableTool as Tool;
+    pub use rig_core::tool::{PortableDynamicTool, PortableTool, portable_tool_definition};
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;
-
-    // Classic contextual tool API (default runtime). `Tool`/`ToolContext` are
-    // the classic contextual trait and its mutable context; none of these
-    // collide with the portable exports above.
-    // Native-only, matching every other `rmcp` gate: the module does not exist
-    // on wasm. Reaching this re-export there needs `rig-agent` to have compiled
-    // first, which its own `compile_error!` prevents, so the predicate is
-    // belt-and-braces — but the CI error-count assertion only builds
-    // `-p rig-agent`, so nothing else would catch this one drifting.
-    #[cfg(all(feature = "agent", feature = "rmcp", not(target_family = "wasm")))]
-    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub use rig_agent::tool::rmcp;
+    /// Session-flavoured MCP toolset: [`McpToolset`](mcp::McpToolset) pairs a
+    /// [`ToolCatalog`](rig_agent::agent::prepare::ToolCatalog) with MCP-backed
+    /// execution for the data-oriented runtime.
+    #[cfg(all(feature = "mcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+    pub use rig_rmcp as mcp;
+    // Runtime support the `#[derive(ToolRouter)]` expansion calls into.
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-    pub use rig_agent::tool::{
-        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
-        server, tool_definition,
-    };
+    pub use rig_agent::tool::router_support;
 
     /// The complete portable `rig-core` tool surface, under one explicit path.
     pub mod portable {
@@ -184,12 +255,29 @@ pub use rig_derive::rig_tool;
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool as tool_macro;
 
-/// Conversation memory APIs and optional memory policy helpers.
+/// The `#[derive(ToolRouter)]` macro: an inherent catalog/dispatch router
+/// over a struct of typed tools. Requires the agent runtime
+/// (`agent` feature) at expansion time.
+#[cfg(all(feature = "derive", feature = "agent"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "derive", feature = "agent"))))]
+pub mod tool_router {
+    pub use rig_derive::ToolRouter;
+}
+
+/// Host-owned conversation memory, plus optional history-shaping policies.
 ///
-/// This module is always available and re-exports the core memory traits and
-/// in-process backend from `rig_core::memory`. Enabling the `memory` feature
-/// additionally re-exports policy types from the `rig-memory` companion crate
-/// into this same module.
+/// Memory is not an agent slot: the host loads history before a run and
+/// appends the run's committed transcript afterwards (see the
+/// `rig_agent::agent_api` module docs for the exact recipe and failure
+/// semantics).
+///
+/// This module is always available and re-exports the concrete in-process
+/// store (`InMemoryConversationMemory`) and `MemoryError` from
+/// `rig_core::memory`. Enabling the `memory` feature additionally re-exports
+/// the `rig-memory` companion crate's policy data — `MemoryPolicy`,
+/// `TokenCounter`, `Compactor`, and the concrete `PolicyMemory` whose
+/// `append` returns an `AppendOutcome { stored, demoted, compaction }` — into
+/// this same module.
 pub mod memory {
     pub use rig_core::memory::*;
 

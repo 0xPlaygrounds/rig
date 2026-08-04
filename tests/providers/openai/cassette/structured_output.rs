@@ -1,7 +1,6 @@
 //! OpenAI structured output coverage, including the migrated example path.
 
 use rig::agent::OutputMode;
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::test_utils::RecordingHttpClient;
@@ -95,7 +94,7 @@ async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
     let client = openai::Client::builder()
         .api_key("test-key")
-        .http_client(http.clone())
+        .http_runtime(rig::http_runtime::HttpRuntime::recording(http.clone()))
         .build()
         .expect("OpenAI test client should build");
     let agent = client
@@ -142,12 +141,25 @@ async fn prompt_typed_and_output_schema() {
                 .expect("prompt_typed should succeed");
             assert_weather_forecast(&forecast, &["new york", "nyc"]);
 
-            let extended = agent
-                .prompt_typed::<WeatherForecast>("What's the weather forecast for Los Angeles?")
-                .extended_details()
+            // `run_typed` has no extended-details variant, so the usage-carrying
+            // half of the old `prompt_typed(..).extended_details()` goes through
+            // the untyped `run` on a Native-schema agent — the exact request
+            // `prompt_typed` used to build — plus an explicit deserialize.
+            let agent_with_native_schema = client
+                .agent(openai::GPT_4O)
+                .preamble(
+                    "You are a helpful weather assistant. Respond with realistic weather data.",
+                )
+                .output_schema::<WeatherForecast>()
+                .output_mode(OutputMode::Native)
+                .build();
+            let extended = agent_with_native_schema
+                .run("What's the weather forecast for Los Angeles?")
                 .await
                 .expect("extended prompt_typed should succeed");
-            assert_weather_forecast(&extended.output, &["los angeles", "la"]);
+            let extended_forecast: WeatherForecast = serde_json::from_str(&extended.output)
+                .expect("native structured output should deserialize");
+            assert_weather_forecast(&extended_forecast, &["los angeles", "la"]);
             assert!(extended.usage.total_tokens > 0, "usage should be populated");
 
             let agent_with_schema = client

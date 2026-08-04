@@ -1,12 +1,9 @@
 //! Implements Mistral (basic) transcription API
-use bytes::Bytes;
 use serde::Deserialize;
 
+use crate::http_client::MultipartForm;
 use crate::http_client::multipart::Part;
-use crate::http_client::{HttpClientExt, MultipartForm};
-use crate::providers::mistral::Client;
 use crate::transcription::{self, TranscriptionError};
-use crate::wasm_compat::WasmCompatSend;
 
 // ================================================================
 // Mistral Transcription API
@@ -90,90 +87,55 @@ impl TryFrom<MistralTranscriptionResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
+/// Build the multipart form for a transcription `request`. Pure.
+///
+/// Mistral's form carries no `prompt` field (faithful to the classic path).
+pub(crate) fn build_transcription_form(
+    model: &str,
+    request: transcription::TranscriptionRequest,
+) -> Result<MultipartForm, TranscriptionError> {
+    let mut body = MultipartForm::new()
+        .text("model", model.to_string())
+        .part(Part::bytes("file", request.data).filename(request.filename));
+
+    if let Some(language) = request.language {
+        body = body.text("language", language);
+    }
+
+    if let Some(ref temperature) = request.temperature {
+        body = body.text("temperature", temperature.to_string());
+    }
+
+    if let Some(params) = crate::json_utils::validated_additional_params(
+        request.additional_params.as_ref(),
+        &["model", "file", "language", "temperature"],
+        "Mistral transcription form",
+    )? {
+        for (key, value) in params {
+            body = body.text(key.to_owned(), value.to_string());
+        }
+    }
+
+    Ok(body)
 }
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + WasmCompatSend + 'static,
+/// Parse a transcription response body. Pure.
+pub(crate) fn parse_transcription_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<transcription::TranscriptionResponse<MistralTranscriptionResponse>, TranscriptionError>
 {
-    type Response = MistralTranscriptionResponse;
-    type Client = Client<T>;
+    if status.is_success() {
+        let response_body: MistralTranscriptionResponse = serde_json::from_slice(body)?;
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
+        tracing::info!(target: "rig", "Mistral transcription token usage: {}", &response_body.usage);
 
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let data = request.data;
-
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            for (key, value) in additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(
-                    "Additional Parameters to Mistral Transcription should be a map".into(),
-                )
-            })? {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post("/v1/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::RequestError(e.into()))?;
-
-        let response = self
-            .client
-            .send_multipart::<Bytes>(req)
-            .await
-            .map_err(TranscriptionError::HttpError)?;
-
-        let status = response.status();
-        let response_bytes = response.into_body().await?;
-
-        if status.is_success() {
-            let response_body: MistralTranscriptionResponse =
-                serde_json::from_slice(&response_bytes)?;
-
-            tracing::info!(target: "rig", "Mistral transcription token usage: {}", &response_body.usage);
-
-            Ok(transcription::TranscriptionResponse::try_from(
-                response_body,
-            )?)
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_bytes),
-            ))
-        }
-    }
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
+        transcription::TranscriptionResponse::try_from(response_body)
+    } else {
+        Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(body),
+        ))
     }
 }
 
@@ -271,24 +233,17 @@ mod test {
 
     #[tokio::test]
     async fn transcription_non_success_preserves_status_and_body() {
-        use crate::client::transcription::TranscriptionClient;
+        use crate::providers::mistral::functions;
         use crate::test_utils::RecordingHttpClient;
-        use crate::transcription::{TranscriptionError, TranscriptionModel as _};
+        use crate::transcription::{TranscriptionError, TranscriptionRequest};
 
         let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.transcription_model(VOXTRAL_MINI);
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(VOXTRAL_MINI).with_api_key("test-key");
 
-        let error = match model
-            .transcription_request()
-            .data(vec![0u8; 16])
-            .send()
+        let error = match functions::transcribe(&cfg, &rt, TranscriptionRequest::new(vec![0u8; 16]))
             .await
         {
             Err(error) => error,

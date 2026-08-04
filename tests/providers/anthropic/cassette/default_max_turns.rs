@@ -1,7 +1,6 @@
 //! Preserves the live default-max-turns example as provider-local regression coverage.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -43,11 +42,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -73,11 +68,7 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         if args.y == 0 {
             return Err(MathError::DivisionByZero);
         }

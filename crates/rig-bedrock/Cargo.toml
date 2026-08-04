@@ -30,6 +30,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
-rig-agent.workspace = true
+futures = { workspace = true }
+rig-agent = { workspace = true, features = ["bedrock"] }
 reqwest = { workspace = true, features = ["json", "stream"] }
 tracing-subscriber = { workspace = true }

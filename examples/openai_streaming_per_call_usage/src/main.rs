@@ -20,12 +20,11 @@
 //! `OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_API_KEY=local OPENAI_MODEL=local-model cargo run --example openai_streaming_per_call_usage`
 
 use anyhow::{Result, anyhow};
-use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::stream::AgentRunItem;
+use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -66,11 +65,7 @@ impl Tool for ProjectStatusTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "{} is approved for release after the final usage metrics check.",
             args.ticket
@@ -89,8 +84,10 @@ fn print_usage(label: &str, usage: Usage) {
 async fn main() -> Result<()> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| openai::GPT_4O_MINI.to_string());
 
-    let agent = openai::CompletionsClient::from_env()?
-        .agent(model)
+    // `OPENAI_BASE_URL` is honored by the concrete client.
+    let client = openai::Client::from_env()?;
+    let agent = client
+        .agent(&model)
         .preamble(
             "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \
@@ -102,37 +99,34 @@ async fn main() -> Result<()> {
         .build();
 
     let mut stream = agent
-        .stream_prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
+        .runner("Check ticket RIG-usage-42 and summarize the result in one sentence.")
         .max_turns(4)
-        .await;
+        .stream_run();
 
     let mut final_response = None;
     let mut printed_streamed_text = false;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Text(text)) => {
                 print!("{}", text.text);
                 io::stdout().flush()?;
                 printed_streamed_text = true;
             }
             // The tool call the *model emitted* (reported when the turn commits,
             // whether or not rig goes on to execute it).
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
             // Rig executed and atomically committed this tool call after its
             // batch settled. Live start/result observation belongs in hooks.
-            MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
+            AgentRunItem::ToolExecutionCommitted { tool_call, .. } => {
                 println!("rig committed tool execution: {}", tool_call.function.name);
             }
-            MultiTurnStreamItem::StreamUserItem(_) => {
+            AgentRunItem::User(_) => {
                 println!("tool result sent back to model");
             }
-            MultiTurnStreamItem::CompletionCall(completion_call) => {
+            AgentRunItem::CompletionCall(completion_call) => {
                 if printed_streamed_text {
                     println!();
                     printed_streamed_text = false;
@@ -151,7 +145,7 @@ async fn main() -> Result<()> {
                     );
                 }
             }
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response);
             }
             _ => {}

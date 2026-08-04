@@ -1,5 +1,5 @@
 //! The module defines the [Embed] trait, which must be implemented for types
-//! that can be embedded by the [crate::embeddings::EmbeddingsBuilder].
+//! that can be embedded by [`embed_documents`](crate::embeddings::embed_documents).
 //!
 //! The module also defines the [EmbedError] struct which is used for when the [Embed::embed]
 //! method of the [Embed] trait fails.

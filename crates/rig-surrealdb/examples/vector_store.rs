@@ -1,11 +1,9 @@
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::Embed;
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
-};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;
@@ -28,9 +26,9 @@ impl std::fmt::Display for TopicDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
 
     let surreal = Surreal::new::<Mem>(()).await?;
 
@@ -51,24 +49,37 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(topics)?
-        .build()
+    let documents = EmbeddingJob::new()
+        .documents(topics)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
-    let vector_store = SurrealVectorStore::with_defaults(model, surreal);
+    // The store receives precomputed vectors; embedding happens outside it.
+    let vector_store = SurrealVectorStore::with_defaults(surreal);
 
-    vector_store.insert_documents(documents).await?;
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .enumerate()
+                .map(|(i, (doc, embeddings))| (format!("topic{i}"), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
     let query = "Which dish is a Roman pasta recipe made with eggs, pecorino romano, black pepper, and guanciale?";
     println!("Attempting vector search with query: {query}");
 
-    let req = VectorSearchRequest::builder()
-        .query(query.to_string())
-        .samples(3)
-        .build();
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 3);
 
-    let results = vector_store.top_n::<TopicDefinition>(req).await?;
+    let results = vector_store.top_n_as::<TopicDefinition>(req).await?;
 
     anyhow::ensure!(
         results.len() == 3,
@@ -97,13 +108,9 @@ async fn main() -> Result<(), anyhow::Error> {
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
     );
-    let req = VectorSearchRequest::builder()
-        .query(query.to_string())
-        .samples(1)
-        .threshold(midpoint)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1).with_threshold(midpoint);
 
-    let results = vector_store.top_n::<TopicDefinition>(req).await?;
+    let results = vector_store.top_n_as::<TopicDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     anyhow::ensure!(

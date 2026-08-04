@@ -1,31 +1,34 @@
 //! ChatGPT extractor smoke test.
 
-use rig::prelude::*;
-
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn extractor_smoke() {
-    let extractor = live_client().extractor::<SmokePerson>(LIVE_MODEL).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+    let response = live_agent(LIVE_MODEL)
+        .await
+        .build()
+        .extractor(EXTRACTOR_TEXT)
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");
 
     let first_name = response
-        .data
+        .value
         .first_name
         .as_deref()
         .expect("first_name should be present");
     let last_name = response
-        .data
+        .value
         .last_name
         .as_deref()
         .expect("last_name should be present");
-    let job = response.data.job.as_deref().expect("job should be present");
+    let job = response
+        .value
+        .job
+        .as_deref()
+        .expect("job should be present");
 
     assert_nonempty_response(first_name);
     assert_nonempty_response(last_name);

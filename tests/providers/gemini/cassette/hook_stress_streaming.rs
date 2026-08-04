@@ -6,16 +6,13 @@
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::completion::Prompt;
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 
 use super::super::hook_stress_support::{
-    ApplyPatch, CHAIN_PREAMBLE, EventTap, ResultRewrite, RewriteToolResult,
+    CHAIN_PREAMBLE, EventTap, ResultRewrite, apply_patch, rewrite_tool_result,
 };
 use super::super::support::with_gemini_cassette;
-use super::super::tools_support::{CountingAdd, CountingSubtract, SkipToolHook};
+use super::super::tools_support::{CountingAdd, CountingSubtract, skip_tool_hook};
 use crate::support::{
     assert_mentions_expected_number, assert_nonempty_response, collect_stream_final_response,
 };
@@ -24,6 +21,7 @@ use crate::support::{
 async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     let tap = EventTap::default();
     let probe = tap.clone();
+    let tap_entry = tap.entry();
 
     with_gemini_cassette(
         "hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish",
@@ -36,17 +34,21 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("In one short sentence, describe the color of a clear daytime sky.")
-                .add_hook(tap)
+                .runner("In one short sentence, describe the color of a clear daytime sky.")
+                .add_hook(tap_entry)
                 .max_turns(2)
-                .await;
+                .stream_run();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");
             assert_nonempty_response(&final_text);
 
-            assert_eq!(probe.is_streaming(), Some(true));
+            // The streaming surface's own response-finish observation fires and
+            // the blocking one never does (the medium is observable from the
+            // event set itself).
+            assert!(probe.count("StreamResponseFinish") >= 1);
+            assert_eq!(probe.count("CompletionResponse"), 0);
             assert!(
                 probe.count("TextDelta") >= 1,
                 "a streamed text turn must emit TextDelta events"
@@ -70,6 +72,7 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
     let subtract = CountingSubtract::default();
     let tap = EventTap::default();
     let probe = tap.clone();
+    let tap_entry = tap.entry();
 
     with_gemini_cassette(
         "hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished",
@@ -84,20 +87,24 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
+                .runner(
                     "First add 40 and 2 with the add tool. Then subtract 10 from that sum with the \
                      subtract tool. Report the final number.",
                 )
-                .add_hook(tap)
+                .add_hook(tap_entry)
                 .max_turns(6)
-                .await;
+                .stream_run();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");
             assert_nonempty_response(&final_text);
 
-            assert_eq!(probe.is_streaming(), Some(true));
+            // The streaming surface's own response-finish observation fires and
+            // the blocking one never does (the medium is observable from the
+            // event set itself).
+            assert!(probe.count("StreamResponseFinish") >= 1);
+            assert_eq!(probe.count("CompletionResponse"), 0);
             assert!(
                 probe.count("ToolCall") >= 1,
                 "the streamed run should call tools"
@@ -131,15 +138,13 @@ async fn streaming_result_redaction_reaches_final_response() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
-                    "Use the add tool to add 5 and 5, then report the exact tool result.",
-                )
-                .add_hook(RewriteToolResult {
-                    tool: "add",
-                    rewrite: ResultRewrite::Replace("STREAM-REDACTED-Q3"),
-                })
+                .runner("Use the add tool to add 5 and 5, then report the exact tool result.")
+                .add_hook(rewrite_tool_result(
+                    "add",
+                    ResultRewrite::Replace("STREAM-REDACTED-Q3".to_owned()),
+                ))
                 .max_turns(4)
-                .await;
+                .stream_run();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -179,12 +184,12 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
-                .add_hook(ApplyPatch(
+                .runner("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
+                .add_hook(apply_patch(
                     RequestPatch::new().active_tools(["add"]).temperature(0.0),
                 ))
                 .max_turns(5)
-                .await;
+                .stream_run();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -226,13 +231,13 @@ async fn streaming_skip_leaves_tool_unexecuted() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Add 14 and 6, and subtract 9 from 40. Report what you can.")
-                .add_hook(SkipToolHook {
-                    tool_name: "subtract",
-                    reason: "the subtract tool is offline; continue without it",
-                })
+                .runner("Add 14 and 6, and subtract 9 from 40. Report what you can.")
+                .add_hook(skip_tool_hook(
+                    "subtract",
+                    "the subtract tool is offline; continue without it",
+                ))
                 .max_turns(5)
-                .await;
+                .stream_run();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -269,9 +274,11 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(sub_b)
                 .build();
             let response = agent
-                .prompt(PROMPT)
+                .runner(PROMPT)
                 .max_turns(6)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking parity run should succeed");
             assert_mentions_expected_number(&response, EXPECTED);
         },
@@ -292,7 +299,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(add_s)
                 .tool(sub_s)
                 .build();
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(6).await;
+            let mut stream = agent.runner(PROMPT).max_turns(6).stream_run();
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");
@@ -301,3 +308,4 @@ async fn blocking_and_streaming_produce_same_final_answer() {
     )
     .await;
 }
+use rig::prelude::*;

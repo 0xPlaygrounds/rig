@@ -1,6 +1,5 @@
 //! DeepSeek agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::deepseek;
 
@@ -9,8 +8,8 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 async fn completion_smoke() {
-    with_deepseek_cassette("agent/completion_smoke", |client| async move {
-        let agent = client
+    with_deepseek_cassette("agent/completion_smoke", |env| async move {
+        let agent = env
             .agent(deepseek::DEEPSEEK_V4_FLASH)
             .preamble(BASIC_PREAMBLE)
             .build();

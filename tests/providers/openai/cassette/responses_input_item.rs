@@ -131,7 +131,6 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 #[test]
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     let core_request = rig::completion::CompletionRequest {
-        preamble: None,
         chat_history: OneOrMany::one(CompletionMessage::user("hello")),
         documents: vec![],
         tools: vec![],
@@ -305,7 +304,6 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
 fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::Assistant {
                 id: Some("assistant_message_id".to_string()),
                 content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
@@ -449,7 +447,6 @@ fn user_tool_result_without_call_id_returns_request_error() {
 fn openai_responses_invalid_additional_params_returns_error_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::user("hello")),
             documents: vec![],
             tools: vec![],
@@ -470,14 +467,13 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
         Err(CompletionError::RequestError(error))
             if error
                 .to_string()
-                .contains("Invalid OpenAI Responses additional_params payload")
+                .contains("OpenAI Responses request additional parameters must be a JSON object")
     ));
 }
 
 #[test]
 fn openai_responses_request_preserves_prompt_cache_parameters() {
     let request = rig::completion::CompletionRequest {
-        preamble: None,
         chat_history: OneOrMany::one(CompletionMessage::user("hello")),
         documents: vec![],
         tools: vec![],

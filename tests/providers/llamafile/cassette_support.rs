@@ -30,7 +30,8 @@ async fn llamafile_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, llamafile::Client) {
     let cassette = ProviderCassette::start("llamafile", spec, &record_upstream()).await;
-    let client = llamafile::Client::from_url(&cassette.base_url()).expect("client should build");
+    let client = llamafile::Client::from_url(cassette.base_url())
+        .expect("Llamafile cassette client should build");
 
     (cassette, client)
 }

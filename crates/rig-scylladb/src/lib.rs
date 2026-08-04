@@ -4,24 +4,26 @@
 //! ScyllaDB keyspace and table. It stores document payloads and embeddings in
 //! ScyllaDB and performs application-level cosine similarity search.
 //!
+//! Queries arrive pre-embedded via [`VectorSearchRequest`]; the store never
+//! embeds text itself.
+//!
 //! The root `rig` facade re-exports this crate as `rig::scylladb` when the
 //! `scylladb` feature is enabled.
 
 use rig_core::{
-    Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingModel},
+    OneOrMany,
+    embeddings::Embedding,
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        SearchHit, StoreRecord, VectorStoreError,
+        request::{Filter as CoreFilter, FilterError, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
     statement::prepared::PreparedStatement,
     value::CqlValue,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -33,9 +35,7 @@ use uuid::Uuid;
 ///
 /// ScyllaDB is a high-performance NoSQL database that's compatible with Apache Cassandra
 /// and provides excellent performance for vector storage and similarity search operations.
-pub struct ScyllaDbVectorStore<M: EmbeddingModel> {
-    /// Model used to generate embeddings for the vector store
-    model: M,
+pub struct ScyllaDbVectorStore {
     /// Session instance for ScyllaDB communication
     pub session: Arc<Session>,
     /// Keyspace and table name for vector storage
@@ -105,38 +105,37 @@ impl std::hash::Hash for ScyllaSearchFilter {
     }
 }
 
-impl SearchFilter for ScyllaSearchFilter {
-    type Value = CqlValue;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+impl ScyllaSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} = ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} > ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: CqlValue) -> Self {
         Self {
             condition: format!("{} < ?", key.as_ref()),
             params: vec![value],
         }
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) AND ({})", self.condition, rhs.condition),
             params: self.params.into_iter().chain(rhs.params).collect(),
         }
     }
 
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self {
             condition: format!("({}) OR ({})", self.condition, rhs.condition),
             params: self.params.into_iter().chain(rhs.params).collect(),
@@ -157,28 +156,28 @@ impl ScyllaSearchFilter {
         }
     }
 
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn gte(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} >= ?"),
             params: vec![value],
         }
     }
 
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn lte(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} <= ?"),
             params: vec![value],
         }
     }
 
-    pub fn ne(key: String, value: <Self as SearchFilter>::Value) -> Self {
+    pub fn ne(key: String, value: CqlValue) -> Self {
         Self {
             condition: format!("{key} != ?"),
             params: vec![value],
         }
     }
 
-    pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
+    pub fn member(key: String, values: Vec<CqlValue>) -> Self {
         let placeholders = vec!["?"; values.len()].join(", ");
 
         Self {
@@ -188,34 +187,29 @@ impl ScyllaSearchFilter {
     }
 }
 
-impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
+impl TryFrom<CoreFilter> for ScyllaSearchFilter {
     type Error = FilterError;
 
-    fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
+    fn try_from(value: CoreFilter) -> Result<Self, Self::Error> {
         match value {
-            Filter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
-            Filter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
-            Filter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
-            Filter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
-            Filter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
+            CoreFilter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
+            CoreFilter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
+            CoreFilter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
+            CoreFilter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
+            CoreFilter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
         }
     }
 }
 
-impl<M> ScyllaDbVectorStore<M>
-where
-    M: EmbeddingModel,
-{
+impl ScyllaDbVectorStore {
     /// Creates a new instance of `ScyllaDbVectorStore`.
     ///
     /// # Arguments
-    /// * `model` - Embedding model instance
     /// * `session` - ScyllaDB session
     /// * `keyspace` - Keyspace name (will be created if it doesn't exist)
     /// * `table` - Table name for storing vectors
     /// * `dimensions` - Number of dimensions for the vectors
     pub async fn new(
-        model: M,
         session: Session,
         keyspace: &str,
         table: &str,
@@ -274,7 +268,6 @@ where
             .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
         Ok(Self {
-            model,
             session,
             keyspace: keyspace.to_string(),
             table: table.to_string(),
@@ -347,10 +340,12 @@ where
         }
     }
 
-    /// Generate query vector from text
-    async fn generate_query_vector(&self, query: &str) -> Result<Vec<f32>, VectorStoreError> {
-        let embedding = self.model.embed_text(query).await?;
-        Ok(embedding.vec.iter().map(|&x| x as f32).collect())
+    /// Extracts the query vector from a pre-embedded search request.
+    ///
+    /// Searches use the first query embedding. (Application-level scans compare
+    /// against a single query vector per pass.)
+    fn query_vector(req: &VectorSearchRequest<ScyllaSearchFilter>) -> Vec<f32> {
+        req.query().first().vec.iter().map(|&x| x as f32).collect()
     }
 
     async fn get_filter_statement_or_default(
@@ -395,21 +390,21 @@ where
             Ok(self.search_stmt.clone())
         }
     }
-}
 
-impl<Model> InsertDocuments for ScyllaDbVectorStore<Model>
-where
-    Model: EmbeddingModel + Send + Sync,
-{
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
-        &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
-        for (document, embeddings) in documents {
-            let metadata = serde_json::to_string(&document)?;
+    /// Insert precomputed records into the store.
+    ///
+    /// The backing table stores one row per embedding. The record's `id` (a
+    /// UUID string) identifies the row for the record's first embedding; any
+    /// additional embeddings are stored under freshly generated UUIDs since
+    /// `id` is the table's primary key.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
+        for record in records {
+            let metadata = serde_json::to_string(&record.payload)?;
             let now = chrono::Utc::now().timestamp();
+            let record_id = Uuid::parse_str(&record.id)
+                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
 
-            for embedding in embeddings.into_iter() {
+            for (i, embedding) in record.embeddings.into_iter().enumerate() {
                 let vector: Vec<f32> = embedding.vec.into_iter().map(|x| x as f32).collect();
 
                 if vector.len() != self.dimensions {
@@ -423,7 +418,7 @@ where
                     ));
                 }
 
-                let id = Uuid::new_v4();
+                let id = if i == 0 { record_id } else { Uuid::new_v4() };
 
                 self.session
                     .execute_unpaged(&self.insert_stmt, (id, vector, &metadata, now))
@@ -434,25 +429,30 @@ where
 
         Ok(())
     }
-}
 
-impl<M> VectorStoreIndex for ScyllaDbVectorStore<M>
-where
-    M: EmbeddingModel + std::marker::Sync + Send,
-{
-    type Filter = ScyllaSearchFilter;
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
+        &self,
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
 
-    /// Search for the top `n` nearest neighbors to the given query.
-    /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
+    /// Search for the top `n` nearest neighbors to the pre-embedded query.
+    /// Returns a list of [`SearchHit`]s carrying each document's JSON payload.
     ///
     /// Note: This implementation performs a brute-force search since ScyllaDB's native vector
     /// search is still in development. Once available, this will be optimized to use native
     /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    pub async fn top_n(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(req.query()).await?;
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let query_vector = Self::query_vector(&req);
 
         let statement = self.get_filter_statement_or_default(&req).await?;
         let params = req
@@ -488,25 +488,29 @@ where
                 continue;
             }
 
-            let payload: T = serde_json::from_str(&metadata)?;
+            let payload: serde_json::Value = serde_json::from_str(&metadata)?;
 
-            candidates.push((score, id.to_string(), payload));
+            candidates.push(SearchHit {
+                id: id.to_string(),
+                score,
+                payload,
+            });
         }
 
         // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+        candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
         candidates.truncate(req.samples() as usize);
 
         Ok(candidates)
     }
 
-    /// Search for the top `n` nearest neighbors to the given query.
+    /// Search for the top `n` nearest neighbors to the pre-embedded query.
     /// Returns a vector of tuples containing the score and ID of the nearest neighbors.
-    async fn top_n_ids(
+    pub async fn top_n_ids(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(req.query()).await?;
+        let query_vector = Self::query_vector(&req);
 
         let statement = self.get_filter_statement_or_default(&req).await?;
         let params = req
@@ -550,32 +554,21 @@ where
 
         Ok(candidates)
     }
-}
 
-impl<M> VectorStoreIndexDyn for ScyllaDbVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-            Ok(results)
-        })
-    }
-
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-            Ok(results)
-        })
+    /// Same as [`Self::top_n`] but deserializes each payload into `T`.
+    /// The result is a list of `(score, id, document)` tuples.
+    pub async fn top_n_as<T: DeserializeOwned>(
+        &self,
+        req: VectorSearchRequest<ScyllaSearchFilter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
+            .into_iter()
+            .map(|hit| {
+                let doc = serde_json::from_value(hit.payload)?;
+                Ok((hit.score, hit.id, doc))
+            })
+            .collect()
     }
 }
 

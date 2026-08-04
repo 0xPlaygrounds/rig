@@ -1,10 +1,21 @@
-use rig::client::Nothing;
+//! Passive RAG over an in-memory vector store, wired in as a hook — all
+//! local, against an Ollama server on `http://localhost:11434`.
+//!
+//! Both halves of this example are plain data now. Embedding is an
+//! `ollama::functions::EmbeddingConfig` plus an [`HttpRuntime`], driven
+//! through [`EmbeddingJob`] (the replacement for `EmbeddingsBuilder`);
+//! the agent is an `ollama::functions::Config` wrapped in
+//! [`ProviderConfig`]. The hook captures the embedding config and the
+//! transport instead of an embedding model. Ollama needs no credentials, so
+//! both configs are built with `new` rather than `from_env`.
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::completion::Document;
+use rig::embeddings::EmbeddingJob;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
-use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::ollama::Client,
-    vector_store::in_memory_store::InMemoryVectorStore,
-};
+use rig::providers::ollama;
 use serde::Serialize;
+use std::vec;
 
 // Data to be RAGged.
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -17,6 +28,71 @@ struct WordDefinition {
     definitions: Vec<String>,
 }
 
+/// Passive RAG as a hook entry: on every model call, embed the prompt, search
+/// the vector store, and inject the best-matching documents as per-turn
+/// context.
+///
+/// Hooks are attach-and-forget records — a named `HookEntry` wrapping a
+/// closure that receives an owned `HookEvent` and returns a `HookDecision`.
+/// Anything the callback needs is owned by the hook record. Each invocation
+/// future borrows that state only until its inline dispatch completes.
+fn rag_hook(
+    embedding_config: ollama::functions::EmbeddingConfig,
+    rt: HttpRuntime,
+    store: InMemoryVectorStore,
+    samples: u64,
+) -> HookEntry {
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("rag", state, |state, event| async move {
+        // Only the pre-model-call event is interesting; everything else
+        // falls through untouched.
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_config, rt, store, samples) = state.as_ref();
+
+        // Search with the prompt's text, falling back to the latest
+        // textual history message.
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
+
+        // Embed the query, then run a pre-embedded similarity search.
+        let embedded = match ollama::functions::embed(embedding_config, rt, vec![query]).await {
+            Ok(response) => match response.embeddings.into_iter().next() {
+                Some(embedding) => embedding,
+                None => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "no embedding returned for the query".to_string(),
+                    ));
+                }
+            },
+            Err(error) => {
+                return HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()));
+            }
+        };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n(request).await {
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().extra_context(hits.into_iter().map(|hit| Document {
+                    id: hit.id,
+                    text: hit.payload.to_string(),
+                    additional_props: Default::default(),
+                })),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+            }
+        }
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Initialize tracing
@@ -25,12 +101,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create ollama client
-    let ollama_client = Client::from_val(Nothing.into())?;
-    let embedding_model = ollama_client.embedding_model("nomic-embed-text");
+    let client = ollama::Client::from_env()?;
+    let embedding_config = client.embedding_config("nomic-embed-text");
+    let rt = client.http();
 
-    // Generate embeddings for the definitions of all the documents using the specified embedding model.
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
+    // Generate embeddings for the definitions of all the documents using the specified embedding config.
+    let embeddings = EmbeddingJob::new()
         .documents(vec![
             WordDefinition {
                 id: "doc0".to_string(),
@@ -56,21 +132,22 @@ async fn main() -> Result<(), anyhow::Error> {
                     "2. *linglingdong* (noun): A rare, mystical instrument crafted by the ancient monks of the Nebulon Mountain Ranges on the planet Quarm.".to_string()
                 ]
             },
-        ])?
-        .build()
-        .await?;
+        ])
+        .for_provider(&ollama::functions::DESCRIPTOR)
+        .run(|texts| ollama::functions::embed(&embedding_config, &rt, texts))
+    .await?;
 
     // Create vector store with the embeddings
-    let vector_store = InMemoryVectorStore::from_documents(embeddings);
+    let vector_store = InMemoryVectorStore::from_documents(embeddings)?;
 
-    // Create vector store index
-    let index = vector_store.index(embedding_model);
-    let rag_agent = ollama_client.agent("qwen2.5:14b")
+    let rag_agent = client
+        .agent("qwen2.5:14b")
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.
         ")
-        .dynamic_context(1, index)
+        // Passive RAG: retrieve one document per model call through the hook.
+        .add_hook(rag_hook(embedding_config, rt, vector_store, 1))
         .build();
 
     // Prompt the agent and print the response

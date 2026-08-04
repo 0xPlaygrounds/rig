@@ -6,7 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -24,15 +24,15 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
-            let model = client.completion_model(openai::GPT_4O).with_strict_tools();
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
-
+            let model = client
+                .config(openai::GPT_4O)
+                .with_strict_tools()
+                .bind_completion(client.runtime());
             let response = model
-                .completion(request)
+                .completion_request("Use the add tool to add 7 and 5.")
+                .preamble(TOOLS_PREAMBLE)
+                .tool(rig::tool::portable_tool_definition(&Adder))
+                .send()
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -72,38 +72,56 @@ async fn strict_tools_opt_in_roundtrip() {
 
 #[tokio::test]
 async fn incomplete_response_surfaces_partial_output() {
+    const SCENARIO: &str = "responses_behaviors/incomplete_response_surfaces_partial_output";
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
+            let response = client
+                .completion_model(openai::GPT_4O)
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
                 )
-                .preamble("You are a storyteller.".to_string())
+                .preamble("You are a storyteller.")
                 .max_tokens(16)
-                .build();
-
-            let response = model
-                .completion(request)
+                .send()
                 .await
                 .expect("an incomplete response should still convert, not error");
 
+            // The provider maps `status: incomplete` + reason
+            // `max_output_tokens` onto the normalized Length finish reason.
             assert_eq!(
-                response.raw_response.status,
-                ResponseStatus::Incomplete,
-                "hitting max_output_tokens should mark the response incomplete"
+                response.finish_reason,
+                Some(rig::completion::FinishReason::Length),
+                "hitting max_output_tokens should surface a Length finish reason"
             );
-            let reason = response
-                .raw_response
-                .incomplete_details
-                .as_ref()
-                .map(|details| details.reason.as_str());
-            assert_eq!(
-                reason,
-                Some("max_output_tokens"),
-                "incomplete_details should carry the truncation reason"
-            );
+            // The exact wire status and truncation reason are provider-typed
+            // data; assert them against the recorded body (replay only: the
+            // cassette file is written after the test body in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies("openai", SCENARIO);
+                assert_eq!(
+                    bodies.len(),
+                    1,
+                    "scenario should record a single interaction"
+                );
+                let raw: openai::responses_api::CompletionResponse =
+                    serde_json::from_str(&bodies[0])
+                        .expect("recorded body should deserialize as a Responses API response");
+                assert_eq!(
+                    raw.status,
+                    ResponseStatus::Incomplete,
+                    "hitting max_output_tokens should mark the response incomplete"
+                );
+                let reason = raw
+                    .incomplete_details
+                    .as_ref()
+                    .map(|details| details.reason.as_str());
+                assert_eq!(
+                    reason,
+                    Some("max_output_tokens"),
+                    "incomplete_details should carry the truncation reason"
+                );
+            }
             let text: String = response
                 .choice
                 .iter()
@@ -130,9 +148,11 @@ async fn system_messages_as_input_items_mid_conversation() {
             // `with_system_instructions_as_messages`, the preamble and the
             // mid-conversation system message are sent as `system` input
             // items instead of the top-level `instructions` field.
-            let agent = client
-                .with_system_instructions_as_messages()
-                .agent(openai::GPT_4O)
+            let config = client
+                .config(openai::GPT_4O)
+                .with_system_instructions_as_messages();
+            let agent = AgentBuilder::new(config)
+                .runtime(client.runtime())
                 .preamble("You are a concise assistant.")
                 .build();
             let mut history = vec![

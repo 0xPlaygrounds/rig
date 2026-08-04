@@ -158,12 +158,10 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
         },
     };
 
-    // Classify parameters: model-facing fields are built independently from
-    // function-call arguments so the host-only ToolContext never enters the
-    // generated JSON schema.
+    // Every parameter is model-facing: the host-only `ToolContext` was removed,
+    // and a leftover one is rejected below rather than entering the schema.
     let mut model_params = Vec::new();
     let mut call_arguments = Vec::new();
-    let mut context: Option<(&syn::PatType, syn::Ident)> = None;
 
     for arg in input_fn.sig.inputs.iter() {
         let syn::FnArg::Typed(pat_type) = arg else {
@@ -174,24 +172,12 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
         };
 
         let explicitly_marked = has_tool_context_marker(&pat_type.attrs)?;
-        let is_context = is_tool_context_parameter(&pat_type.ty, explicitly_marked, &refs)?;
-
-        if is_context {
-            if context.is_some() {
-                return Err(syn::Error::new_spanned(
-                    pat_type,
-                    "a tool function may have at most one `&mut ToolContext` parameter",
-                ));
-            }
-            let syn::Pat::Ident(param_ident) = &*pat_type.pat else {
-                return Err(syn::Error::new_spanned(
-                    &pat_type.pat,
-                    "the `ToolContext` parameter must be a plain identifier",
-                ));
-            };
-            context = Some((pat_type, param_ident.ident.clone()));
-            call_arguments.push(quote! { _context });
-            continue;
+        if is_tool_context_parameter(&pat_type.ty, explicitly_marked, &refs) {
+            return Err(syn::Error::new_spanned(
+                pat_type,
+                "ToolContext was removed; close over your state (or use \
+                 `PortableDynamicTool::new`) instead of a `&mut ToolContext` parameter",
+            ));
         }
 
         let syn::Pat::Ident(param_ident) = &*pat_type.pat else {
@@ -211,38 +197,14 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
         });
     }
 
-    let has_context = context.is_some();
-
-    // Contextual tools live in the classic runtime crate; give a targeted
-    // error when it is not reachable instead of emitting an unresolved path.
-    let agent_root = match (&context, &refs.agent) {
-        (Some(_), Some(agent)) => Some(agent.clone()),
-        (Some((pat_type, _)), None) => {
-            return Err(syn::Error::new_spanned(
-                pat_type,
-                "contextual tools (`&mut ToolContext`) require a dependency on `rig` or \
-                 `rig-agent`; portable tools only need `rig-core`",
-            ));
-        }
-        (None, _) => None,
-    };
-
     // Validate `params(...)` and `required(...)` names against the actual
     // parameter list so a typo cannot silently alter the advertised schema.
     let model_names: Vec<String> = model_params
         .iter()
         .map(|param| param.ident.to_string())
         .collect();
-    let context_name = context.as_ref().map(|(_, ident)| ident.to_string());
-
     let validate_name = |ident: &syn::Ident| -> syn::Result<()> {
         let name = ident.to_string();
-        if Some(&name) == context_name.as_ref() {
-            return Err(syn::Error::new_spanned(
-                ident,
-                "`ToolContext` is host-only and cannot be listed in `params(...)` or `required(...)`",
-            ));
-        }
         if !model_names.contains(&name) {
             return Err(syn::Error::new_spanned(
                 ident,
@@ -323,27 +285,72 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
     let params_struct_name = format_ident!("{}Parameters", struct_name);
     let static_name = format_ident!("{}", fn_name_str.to_uppercase());
 
-    let tool_module = match &agent_root {
-        Some(agent) => quote!(#agent::tool),
-        None => quote!(#core::tool),
-    };
-    // Contextual tools implement the classic `Tool` trait; context-free tools
-    // implement the portable `PortableTool` contract owned by `rig-core`.
-    let tool_trait = if has_context {
-        quote!(#tool_module::Tool)
-    } else {
-        quote!(#tool_module::PortableTool)
-    };
+    // Every generated tool implements the portable `PortableTool` contract
+    // owned by `rig-core`.
+    let tool_trait = quote!(#core::tool::PortableTool);
 
-    let context_arg = has_context.then(|| quote! { _context: &mut #tool_module::ToolContext, });
     let await_suffix = is_async.then(|| quote!(.await));
     let call_impl = quote! {
         async fn call(
             &self,
-            #context_arg
             args: Self::Args,
         ) -> Result<Self::Output, Self::Error> {
             #fn_name(#(#call_arguments),*) #await_suffix
+        }
+    };
+
+    // Tools additionally get a record constructor: the tool as a
+    // `PortableDynamicTool` value (name/description/parameters plus a callback
+    // wrapping the annotated function). The callback converts the concrete
+    // output type through its `IntoToolOutput` implementation — statically
+    // dispatched, no runtime type inspection — and normalizes the concrete
+    // error exactly like `PortableTool::map_error`'s default.
+    let portable_constructor = {
+        quote! {
+            impl #struct_name {
+                /// Build this tool as a runtime-authored portable record.
+                ///
+                /// The returned `PortableDynamicTool` carries the same name,
+                /// description, and parameter schema as the trait
+                /// implementation and executes the annotated function.
+                #vis fn portable(self) -> #core::tool::PortableDynamicTool {
+                    let description = #core::tool::PortableTool::description(&self);
+                    let parameters = #core::tool::PortableTool::parameters(&self);
+                    #core::tool::PortableDynamicTool::new(
+                        #tool_name,
+                        description,
+                        parameters,
+                        move |arguments| {
+                            async move {
+                                // Mirror the classic argument parser's `null`
+                                // fallback for tools without required fields.
+                                let arguments = if arguments.is_null() {
+                                    #core::serde_json::Value::Object(#core::serde_json::Map::new())
+                                } else {
+                                    arguments
+                                };
+                                let args: #params_struct_name =
+                                    #core::serde_json::from_value(arguments).map_err(|error| {
+                                        #core::tool::ToolExecutionError::invalid_args(
+                                            ::std::format!(
+                                                "failed to parse tool arguments: {error}"
+                                            ),
+                                        )
+                                        .with_source(error)
+                                    })?;
+                                match #fn_name(#(#call_arguments),*) #await_suffix {
+                                    Ok(output) => {
+                                        #core::tool::IntoToolOutput::into_tool_output(output)
+                                    }
+                                    Err(error) => Err(
+                                        #core::tool::ToolExecutionError::from_error(error),
+                                    ),
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         }
     };
 
@@ -396,6 +403,8 @@ pub(crate) fn expand_rig_tool(args: MacroArgs, input_fn: syn::ItemFn) -> syn::Re
 
             #call_impl
         }
+
+        #portable_constructor
 
         #vis static #static_name: #struct_name = #struct_name;
     })

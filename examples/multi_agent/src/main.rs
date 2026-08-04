@@ -1,69 +1,15 @@
+//! A multi agent application: a translator agent exposed as a tool to a main
+//! agent.
+//!
+//! The translator sub-agent is converted into a concrete portable tool record.
+//! When the main agent receives text that is not in English (or has grammatical
+//! errors), it calls the translator tool first, then answers.
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::{
-    agent::{Agent, AgentBuilder},
-    completion::{Chat, CompletionModel, Message},
-    providers::openai::Client as OpenAIClient,
-    tool::Tool,
-};
-use serde::Deserialize;
-use serde_json::json;
-
-// Define a wrapper around an agent so that it can be provided to another agent
-// as a tool
-struct TranslatorTool<M: CompletionModel>(Agent<M>);
 
 const TRANSLATOR_TOOL_NAME: &str = "translator";
-
-// The input that will be sent to the translator agent from the main agent
-#[derive(Deserialize)]
-struct TranslatorArgs {
-    prompt: String,
-}
-
-impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
-    const NAME: &'static str = TRANSLATOR_TOOL_NAME;
-
-    type Error = PromptError;
-
-    type Args = TranslatorArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Translate any text to English. If already in English, fix grammar and syntax issues."
-            .to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The text to translate to English"
-                }
-            },
-            "required": ["prompt"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        let mut empty_history = Vec::<Message>::new();
-        match self.0.chat(&args.prompt, &mut empty_history).await {
-            Ok(response) => {
-                println!("Translated prompt: {response}");
-                Ok(response)
-            }
-            Err(e) => Err(e),
-        }
-    }
-}
 
 /// A multi agent application that consists of two components:
 /// an agent specialized in translating prompt into english and a simple GPT-4 model.
@@ -72,20 +18,23 @@ impl<M: CompletionModel + 'static> Tool for TranslatorTool<M> {
 /// The answer in english is returned.
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = OpenAIClient::from_env()?;
-    let model = openai_client.completion_model(openai::GPT_4O);
+    let client = openai::Client::from_env()?;
 
-    let translator_agent = AgentBuilder::new(model.clone())
+    let translator_agent = client
+                .agent(openai::GPT_4O)
                 .preamble(
                     "You are a translator assistant that will translate any input text into english. \
                     If the text is already in english, simply respond with the original text but fix any mistakes (grammar, syntax, etc.)."
                 )
                 .build();
 
-    let translator_tool = TranslatorTool(translator_agent);
+    let translator_tool = translator_agent.into_tool(
+        TRANSLATOR_TOOL_NAME,
+        "Translate any text to English. If already in English, fix grammar and syntax issues.",
+    );
 
-    let multi_agent_system = AgentBuilder::new(model)
+    let multi_agent_system = client
+        .agent(openai::GPT_4O)
         .preamble(&format!(
             "You are a helpful assistant that can work with text in any language. \
             When you receive input that is not in English, or contains grammatical errors \
@@ -93,14 +42,11 @@ async fn main() -> Result<(), anyhow::Error> {
             Always show both the translated text and your final response.",
             TRANSLATOR_TOOL_NAME
         ))
-        .tool(translator_tool)
+        .dynamic_tool(translator_tool)
         .build();
 
     // Spin up a CLI chatbot using the multi-agent system
-    let chatbot = ChatBotBuilder::new()
-        .agent(multi_agent_system)
-        .max_turns(2)
-        .build();
+    let chatbot = ChatBotBuilder::new(multi_agent_system).max_turns(2).build();
 
     chatbot.run().await?;
 

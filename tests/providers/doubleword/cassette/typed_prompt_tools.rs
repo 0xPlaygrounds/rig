@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -47,11 +46,7 @@ impl Tool for WeatherTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "The weather in {} is all fire and brimstone",
@@ -64,9 +59,9 @@ impl Tool for WeatherTool {
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     with_doubleword_cassette_result(
         "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip",
-        |client| async move {
+        |env| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
-            let agent = client
+            let agent = env
                 .agent(TOOL_MODEL)
                 .preamble(
                     "When asked about weather, use the weather tool. Afterward return only JSON \

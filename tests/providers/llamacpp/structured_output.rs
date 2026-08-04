@@ -1,6 +1,5 @@
 //! llama.cpp structured output coverage, including the migrated example path.
 
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -52,8 +51,7 @@ fn assert_weather_forecast(forecast: &WeatherForecast, expected_city: &[&str]) {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn structured_output_smoke() {
-    let client = support::completions_client();
-    let agent = client.agent(support::model_name()).build();
+    let agent = support::client().agent(&support::model_name()).build();
 
     let response: SmokeStructuredOutput = agent
         .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
@@ -66,10 +64,9 @@ async fn structured_output_smoke() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn prompt_typed_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
-    let agent = client
-        .agent(model)
+    let agent = support::client()
+        .agent(&model)
         .preamble(WEATHER_PREAMBLE)
         .temperature(0.0)
         .build();
@@ -86,32 +83,31 @@ async fn prompt_typed_structured_output() {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn prompt_typed_extended_details_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
-    let agent = client
-        .agent(model)
-        .preamble(WEATHER_PREAMBLE)
-        .temperature(0.0)
-        .build();
-
-    let extended = agent
-        .prompt_typed::<WeatherForecast>(
-            "Return JSON weather data for Los Angeles with fields city, current.temperature_f, current.humidity_pct, and current.description.",
-        )
-        .extended_details()
-        .await
-        .expect("extended prompt_typed should succeed");
-    assert_weather_forecast(&extended.output, &["los angeles", "la"]);
+    let client = support::client();
+    // `prompt_typed(..).extended_details()` is gone; `extract_native` is the
+    // typed-plus-usage successor (same native structured-output request).
+    let extended = rig::extract::extract_native::<WeatherForecast>(
+        rig::agent::AgentConfig::new()
+            .with_preamble(WEATHER_PREAMBLE)
+            .with_temperature(0.0),
+        client.provider_config(&model),
+        client.runtime(),
+        "Return JSON weather data for Los Angeles with fields city, current.temperature_f, current.humidity_pct, and current.description.",
+        0,
+    )
+    .await
+    .expect("extended structured-output extraction should succeed");
+    assert_weather_forecast(&extended.value, &["los angeles", "la"]);
     assert!(extended.usage.total_tokens > 0, "usage should be populated");
 }
 
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn output_schema_structured_output() {
-    let client = support::completions_client();
     let model = support::model_name();
-    let agent_with_schema = client
-        .agent(model)
+    let agent_with_schema = support::client()
+        .agent(&model)
         .preamble(WEATHER_PREAMBLE)
         .temperature(0.0)
         .output_schema::<WeatherForecast>()

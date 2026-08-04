@@ -8,11 +8,9 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingChat;
 use rig::tool::Tool;
 
 use super::super::support::with_gemini_cassette;
@@ -152,9 +150,10 @@ async fn sequential_tool_calls_ordering_streaming() {
                 .build();
 
             let mut stream = agent
-                .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
+                .runner(SEQUENTIAL_TOOLS_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(6)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -190,28 +189,21 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-
+            let model = gemini::completion::GEMINI_2_5_FLASH;
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
             // client-constructed history (including model text before the
             // functionCall and after the functionResponse) must be accepted.
-            let request = model
-                .completion_request(
-                    "In one short sentence: what is my favorite color, and what was the \
+            let request = CompletionRequest::builder(
+                "In one short sentence: what is my favorite color, and what was the \
                      harbor label you looked up earlier?",
-                )
-                .preamble(
-                    "You are a concise assistant with perfect recall of this conversation."
-                        .to_string(),
-                )
-                .temperature(0.0)
-                .message(Message::user(
-                    "My favorite color is teal. Please remember it.",
-                ))
-                .message(Message::assistant("Noted - your favorite color is teal."))
-                .message(Message::user("Now look up the harbor label with the tool."))
-                .message(Message::Assistant {
+            )
+            .preamble("You are a concise assistant with perfect recall of this conversation.")
+            .messages(vec![
+                Message::user("My favorite color is teal. Please remember it."),
+                Message::assistant("Noted - your favorite color is teal."),
+                Message::user("Now look up the harbor label with the tool."),
+                Message::Assistant {
                     id: None,
                     content: rig::OneOrMany::many(vec![
                         AssistantContent::text("Checking the harbor label now."),
@@ -222,13 +214,16 @@ async fn long_history_replay_nonstreaming() {
                         ),
                     ])
                     .expect("assistant content should be non-empty"),
-                })
-                .message(Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                },
+                Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT),
+                Message::assistant("The harbor label is crimson-harbor."),
+            ])
+            .temperature(0.0)
+            .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+            .build();
 
-            let response = model
+            let response = client
+                .completion_model(model)
                 .completion(request)
                 .await
                 .expect("long history replay should be accepted by generateContent");
@@ -257,8 +252,7 @@ async fn long_history_replay_nonstreaming() {
             );
             assert!(
                 response
-                    .raw_response
-                    .model_version
+                    .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"
@@ -273,21 +267,21 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest::builder(
+                "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \
                      Think it through, then answer in one short sentence.",
-                )
-                .temperature(0.0)
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
-                    }
-                }))
-                .build();
+            )
+            .temperature(0.0)
+            .additional_params(serde_json::json!({
+                "generationConfig": {
+                    "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
+                }
+            }))
+            .build();
 
-            let response = model
+            let response = client
+                .completion_model(model)
                 .completion(request)
                 .await
                 .expect("thinking-enabled completion should succeed");
@@ -320,3 +314,4 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     )
     .await;
 }
+use rig::prelude::*;

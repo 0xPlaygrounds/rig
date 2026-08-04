@@ -1,12 +1,11 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::CompletionRequest;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 
 use serde_json::json;
@@ -150,7 +149,7 @@ async fn streaming_document_citations_accepts_null_citation_start() {
                 .temperature(0.0)
                 .build();
 
-            let mut stream = agent.stream_prompt(citation_prompt()).await;
+            let mut stream = agent.runner(citation_prompt()).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming document citations should accept null citations on text start");
@@ -169,15 +168,13 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
-            let first_turn = model
-                .completion_request(prompt.clone())
-                .preamble(
-                    "Answer using the supplied document and preserve citation metadata."
-                        .to_string(),
-                )
+            let first_request = CompletionRequest::builder(prompt.clone())
+                .preamble("Answer using the supplied document and preserve citation metadata.")
                 .max_tokens(256)
                 .temperature(0.0)
-                .send()
+                .build();
+            let first_turn = model
+                .completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
 
@@ -187,8 +184,20 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 &first_turn_text,
                 &["safety", "speed", "concurrency"],
             );
+            // The rig response no longer carries the provider wire struct, so
+            // re-check the wire-level text against the recorded first-turn body.
+            let recorded_bodies = crate::cassettes::recorded_response_bodies(
+                "anthropic",
+                "plaintext_document/document_citations_followup_preserves_history",
+            );
+            let first_wire: anthropic_completion::CompletionResponse = serde_json::from_str(
+                recorded_bodies
+                    .first()
+                    .expect("cassette should record the first citation turn"),
+            )
+            .expect("recorded first-turn body should deserialize as a Messages response");
             assert_eq!(
-                first_turn.raw_response.get_text_response().as_deref(),
+                first_wire.get_text_response().as_deref(),
                 Some(first_turn_text.as_str())
             );
 
@@ -210,20 +219,21 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 _ => false,
             }));
 
+            let followup_request =
+                CompletionRequest::builder("Reply exactly: citations follow-up ok")
+                    .preamble("Answer using the supplied document and preserve citation metadata.")
+                    .messages(vec![
+                        prompt,
+                        Message::Assistant {
+                            id: first_turn.message_id.clone(),
+                            content: first_turn.choice.clone(),
+                        },
+                    ])
+                    .max_tokens(64)
+                    .temperature(0.0)
+                    .build();
             let followup = model
-                .completion_request("Reply exactly: citations follow-up ok")
-                .preamble(
-                    "Answer using the supplied document and preserve citation metadata."
-                        .to_string(),
-                )
-                .max_tokens(64)
-                .temperature(0.0)
-                .message(prompt)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
+                .completion(followup_request)
                 .await
                 .expect("follow-up citation history turn should succeed");
 

@@ -3,38 +3,44 @@
 //! # Example
 //! ```no_run
 //! use rig_core::providers::moonshot;
-//! use rig_core::client::CompletionClient;
 //!
-//! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = moonshot::functions::Config::from_env(moonshot::KIMI_K2_5)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = moonshot::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
+//! ```
 //!
-//! let kimi_model = client.completion_model(moonshot::KIMI_K2_5);
+//! # Anthropic-compatible example
+//! ```no_run
+//! use rig_core::providers::{anthropic, moonshot};
+//!
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // Resolves `MOONSHOT_ANTHROPIC_API_BASE`, then a normalized
+//! // `MOONSHOT_API_BASE`, then `moonshot::ANTHROPIC_API_BASE_URL`.
+//! let cfg = moonshot::functions::anthropic_config_from_env(moonshot::KIMI_K2_5)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = anthropic::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Custom base URL
-//! The default base URL is `https://api.moonshot.ai/v1`. For China access,
-//! use `https://api.moonshot.cn/v1`:
+//! The default base URL is `https://api.moonshot.ai/v1`. For China access, use
+//! [`CHINA_API_BASE_URL`]:
 //! ```no_run
 //! use rig_core::providers::moonshot;
 //!
-//! let client = moonshot::Client::builder()
-//!     .api_key("YOUR_API_KEY")
-//!     .base_url("https://api.moonshot.ai/v1")
-//!     .build()
-//!     .expect("Failed to build Moonshot client");
+//! let cfg = moonshot::functions::Config::new(moonshot::KIMI_K2_5)
+//!     .with_api_key("YOUR_API_KEY")
+//!     .with_base_url(moonshot::CHINA_API_BASE_URL);
 //! ```
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client;
-use crate::http_client::HttpClientExt;
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
-};
-use crate::{completion::CompletionError, providers::openai};
 
 // ================================================================
-// Main Moonshot Client
+// Moonshot base URLs
 // ================================================================
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.moonshot.ai/v1";
@@ -43,203 +49,22 @@ pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 /// Anthropic-compatible base URL.
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotBuilder;
-#[derive(Debug, Default, Clone)]
-pub struct MoonshotAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotAnthropicExt;
-
-type MoonshotApiKey = BearerAuth;
-
-impl Provider for MoonshotExt {
-    type Builder = MoonshotBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for MoonshotAnthropicExt {
-    type Builder = MoonshotAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl DebugExt for MoonshotExt {}
-impl DebugExt for MoonshotAnthropicExt {}
-
-impl ProviderBuilder for MoonshotBuilder {
-    type Extension<H>
-        = MoonshotExt
-    where
-        H: HttpClientExt;
-    type ApiKey = MoonshotApiKey;
-
-    const BASE_URL: &'static str = GLOBAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotExt)
-    }
-}
-
-impl ProviderBuilder for MoonshotAnthropicBuilder {
-    type Extension<H>
-        = MoonshotAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MoonshotAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-impl<H> Capabilities<H> for MoonshotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for MoonshotAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
-pub type AnthropicClient<H = reqwest::Client> = client::Client<MoonshotAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotAnthropicBuilder, AnthropicKey, H>;
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Moonshot client from the `MOONSHOT_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(&api_key);
-        if let Some(base_url) = crate::client::optional_env_var("MOONSHOT_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MOONSHOT_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-        if let Some(base_url) =
-            anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?
-        {
-            builder = builder.base_url(base_url);
-        }
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-impl<H> ClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(GLOBAL_API_BASE_URL)
-    }
-
-    pub fn china(self) -> Self {
-        self.base_url(CHINA_API_BASE_URL)
-    }
-}
-
-impl<H> AnthropicClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
-}
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-fn anthropic_base_override(
+/// The Anthropic base-URL override, resolved from the process environment.
+///
+/// `primary_env` wins; otherwise `fallback_env` (an OpenAI-compatible base URL)
+/// is mapped onto the Anthropic entrypoint by
+/// [`normalize_anthropic_base_url`]. Pure logic lives in
+/// [`resolve_anthropic_base_override`].
+///
+/// # Errors
+/// [`ConfigError`](crate::providers::descriptor::ConfigError) when a variable
+/// is set but invalid.
+fn anthropic_base_override_from_env(
     primary_env: &'static str,
     fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
+) -> Result<Option<String>, crate::providers::descriptor::ConfigError> {
+    let primary = crate::providers::descriptor::optional_env_var(primary_env)?;
+    let fallback = crate::providers::descriptor::optional_env_var(fallback_env)?;
 
     Ok(resolve_anthropic_base_override(
         primary.as_deref(),
@@ -281,103 +106,20 @@ pub const KIMI_K2: &str = "kimi-k2";
 
 /// Kimi K2.5 — Native multimodal agentic model with 256K context
 pub const KIMI_K2_5: &str = "kimi-k2.5";
-
-/// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MoonshotExt, H>;
-
-impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    type StreamingUsage = openai::Usage;
-
-    // Moonshot's API rejects the `json_schema` response format; keep the
-    // pre-migration behavior of dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    type Response = openai::CompletionResponse;
-
-    fn prepare_request(
-        &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Moonshot only supports `auto`/`none` tool choices. Forcing one
-        // specific tool has no workaround; fail fast like the pre-migration
-        // conversion did (on main, `openai::ToolChoice::try_from` returned
-        // "Provider doesn't support only using specific tools" for every
-        // `ToolChoice::Specific`, single- or multi-name).
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Function { .. })
-        ) {
-            return Err(CompletionError::ProviderError(
-                "Moonshot does not support forcing a specific tool".to_string(),
-            ));
-        }
-
-        // Moonshot does not support `tool_choice: "required"`; coerce it to
-        // `auto` and steer the model with an extra user message instead.
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Required)
-        ) {
-            tracing::warn!(
-                "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
-            );
-            request.tool_choice = Some(openai::completion::ToolChoice::Auto);
-            request.messages.push(openai::Message::User {
-                content: crate::OneOrMany::one(openai::UserContent::Text {
-                    text: "Please select a tool to handle the current issue.".to_string(),
-                }),
-                name: None,
-            });
-        }
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{MoonshotExt, normalize_anthropic_base_url, resolve_anthropic_base_override};
+    use super::{functions, normalize_anthropic_base_url, resolve_anthropic_base_override};
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
     };
-    use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
-    };
+    use crate::providers::openai::completion::CompletionModelOptions;
 
     fn prepared_body(request: CompletionRequest, model: &str) -> serde_json::Value {
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: model.to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-        MoonshotExt
-            .prepare_request(&mut request)
-            .expect("prepare_request should succeed");
-        serde_json::to_value(request).expect("request should serialize")
-    }
-
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::moonshot::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::moonshot::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-        let _anthropic_client = crate::providers::moonshot::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new() failed");
-        let _anthropic_client_from_builder = crate::providers::moonshot::AnthropicClient::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("AnthropicClient::builder() failed");
+        let bytes =
+            functions::build_body(model, &request, CompletionModelOptions::default(), false)
+                .expect("body should build");
+        serde_json::from_slice(&bytes).expect("body should be json")
     }
 
     #[test]
@@ -402,7 +144,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(assistant),
             documents: vec![],
             tools: vec![],
@@ -437,7 +178,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(assistant),
             documents: vec![],
             tools: vec![],
@@ -460,7 +200,6 @@ mod tests {
     fn moonshot_specific_tool_choice_is_rejected() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
             documents: vec![],
             tools: vec![],
@@ -474,19 +213,13 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "kimi-k2.5".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: MoonshotExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-
-        let error = MoonshotExt
-            .prepare_request(&mut request)
-            .expect_err("specific tool choice should be rejected");
+        let error = functions::build_body(
+            "kimi-k2.5",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect_err("specific tool choice should be rejected");
         assert!(error.to_string().contains("specific tool"));
     }
 
@@ -494,7 +227,6 @@ mod tests {
     fn moonshot_required_tool_choice_is_coerced() {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
             documents: vec![],
             tools: vec![],
@@ -553,5 +285,350 @@ mod tests {
             override_url.as_deref(),
             Some("https://primary.example.com/anthropic")
         );
+    }
+}
+
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+
+pub mod functions {
+    //! Moonshot chat completions as config + pure functions.
+    //!
+    //! The data-oriented face of the Moonshot provider, mirroring
+    //! [`crate::providers::openai::functions`]: a serde [`Config`], a
+    //! [`DESCRIPTOR`] capability sheet, and pure
+    //! [`build_request`]/[`parse_response`] free functions plus the async
+    //! [`complete`]/[`open_stream`] wrappers over
+    //! [`HttpRuntime`]. The request/parse
+    //! mechanics are shared with the other OpenAI-compatible providers via
+    //! `openai::functions`'s stage helpers; this module owns Moonshot's own
+    //! dialect steps, paths, and provider name.
+
+    use serde::{Deserialize, Serialize};
+
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::anthropic::functions as anthropic_functions;
+    use crate::providers::descriptor::ChatCompletionsDialect;
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+    };
+    use crate::providers::openai;
+    use crate::providers::openai::completion::CompletionModelOptions;
+    use crate::providers::openai::functions as openai_functions;
+
+    /// Default Moonshot API base URL.
+    pub const DEFAULT_BASE_URL: &str = "https://api.moonshot.ai/v1";
+
+    /// Moonshot's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
+
+    /// Moonshot's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "moonshot",
+        supports_tools: true,
+        supports_response_format: false,
+        stream_include_usage: true,
+        emits_complete_single_chunk_tool_calls: false,
+        composes_native_output_with_tools: false,
+        max_embedding_documents: None,
+        verify_path: Some("/models"),
+    };
+
+    /// Plain-data Moonshot provider configuration.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
+        /// Model identifier requests are built for.
+        pub model: String,
+    }
+
+    crate::providers::client::impl_http_connection_config!(Config);
+
+    impl Config {
+        /// Config for `model` reading `MOONSHOT_API_KEY` from the environment.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::Env("MOONSHOT_API_KEY".to_string()),
+                ),
+                model: model.into(),
+            }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `MOONSHOT_API_KEY` (required) and `MOONSHOT_API_BASE` (optional
+        /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+        /// `moonshot::Client::from_env` read. The credential is validated
+        /// eagerly but stored as [`ApiKeyLocation::Env`], so the secret is read
+        /// at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            required_env_var("MOONSHOT_API_KEY")?;
+            if let Some(base_url) = optional_env_var("MOONSHOT_API_BASE")? {
+                cfg.base_url = base_url;
+            }
+            Ok(cfg)
+        }
+
+        /// Config for `model` with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Moonshot's straight-line chat-completions body assembly.
+    ///
+    /// Two tool-choice quirks: forcing one specific tool is unsupported and
+    /// fails fast, and `tool_choice: "required"` is coerced to `auto` with an
+    /// extra steering user message appended. Moonshot's API also rejects the
+    /// `json_schema` response format, so `output_schema` is dropped during the
+    /// typed conversion (see [`DESCRIPTOR`]).
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        // Moonshot only supports `auto`/`none` tool choices. Forcing one
+        // specific tool has no workaround; fail fast like the pre-migration
+        // conversion did (on main, `openai::ToolChoice::try_from` returned
+        // "Provider doesn't support only using specific tools" for every
+        // `ToolChoice::Specific`, single- or multi-name).
+        if matches!(
+            typed.tool_choice,
+            Some(openai::completion::ToolChoice::Function { .. })
+        ) {
+            return Err(CompletionError::ProviderError(
+                "Moonshot does not support forcing a specific tool".to_string(),
+            ));
+        }
+
+        // Moonshot does not support `tool_choice: "required"`; coerce it to
+        // `auto` and steer the model with an extra user message instead.
+        if matches!(
+            typed.tool_choice,
+            Some(openai::completion::ToolChoice::Required)
+        ) {
+            tracing::warn!(
+                "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
+            );
+            typed.tool_choice = Some(openai::completion::ToolChoice::Auto);
+            typed.messages.push(openai::Message::User {
+                content: crate::OneOrMany::one(openai::UserContent::Text {
+                    text: "Please select a tool to handle the current issue.".to_string(),
+                }),
+                name: None,
+            });
+        }
+
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// Anthropic-Messages surface configuration for `model`, built from the
+    /// process environment.
+    ///
+    /// The replacement for the deleted classic `AnthropicClient`:
+    /// Moonshot's Anthropic endpoint is reached through
+    /// [`anthropic::functions`](crate::providers::anthropic::functions) with a
+    /// Moonshot base URL and credential. Reads `MOONSHOT_API_KEY` (required) and
+    /// resolves the base URL from `MOONSHOT_ANTHROPIC_API_BASE`, falling back to a
+    /// normalized `MOONSHOT_API_BASE`, then to
+    /// [`ANTHROPIC_API_BASE_URL`](super::ANTHROPIC_API_BASE_URL) — the same precedence and default
+    /// the classic client used.
+    ///
+    /// `default_max_tokens` is forced to `4096` for every model, mirroring
+    /// Moonshot's `AnthropicDialect`; `anthropic_version`/`anthropic_betas` keep
+    /// the Anthropic defaults, which is what the classic builder used too.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn anthropic_config_from_env(
+        model: impl Into<String>,
+    ) -> Result<anthropic_functions::Config, ConfigError> {
+        let mut cfg = anthropic_functions::Config::new(model);
+        required_env_var("MOONSHOT_API_KEY")?;
+        cfg.api_key = ApiKeyLocation::Env("MOONSHOT_API_KEY".to_string());
+        cfg.base_url = anthropic_functions::normalize_base_url(super::ANTHROPIC_API_BASE_URL);
+        cfg.default_max_tokens = Some(4096);
+        if let Some(base_url) = super::anthropic_base_override_from_env(
+            "MOONSHOT_ANTHROPIC_API_BASE",
+            "MOONSHOT_API_BASE",
+        )? {
+            cfg.base_url = anthropic_functions::normalize_base_url(&base_url);
+        }
+        Ok(cfg)
+    }
+
+    /// Build the serialized chat-completions request body for `request`. Pure.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+    /// environment).
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        openai_functions::compatible_http_request(
+            &cfg.base_url,
+            &completion_path(&cfg.model),
+            &cfg.api_key,
+            &cfg.extra_headers,
+            build_request_body(cfg, request, stream)?,
+        )
+    }
+
+    /// Parse a chat-completions response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        openai_functions::compatible_parse_response::<openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
+    }
+
+    /// Open a streaming completion for `request`.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
+        let req = build_request(cfg, &request, true)?;
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
+    }
+
+    /// Send `request` to Moonshot and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                chat_history: OneOrMany::one(crate::message::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_and_model() {
+            let cfg = Config::new("test-model").with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "https://api.moonshot.ai/v1/chat/completions");
+            let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+            assert_eq!(value["model"], "test-model");
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "moonshot");
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
+        }
     }
 }

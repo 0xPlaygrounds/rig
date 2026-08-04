@@ -1,6 +1,6 @@
 //! Canonical model-visible tool output.
 
-use std::{any::Any, fmt};
+use std::fmt;
 
 use serde::Serialize;
 
@@ -9,13 +9,14 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// The canonical model-visible output produced by a tool.
 ///
 /// Every output is stored as one or more typed [`ToolResultContent`] blocks.
-/// Ordinary serializable Rust values are converted through [`IntoToolOutput`]:
-/// values that serialize as JSON strings become literal text blocks and all
-/// other values become structured JSON blocks. An explicit
-/// [`serde_json::Value`], including a JSON string, stays JSON. Multimodal tools
-/// opt in explicitly with [`Self::content`]. Rig never reparses text as JSON to
-/// guess whether it represents rich content.
-#[derive(Clone, PartialEq)]
+/// Ordinary serializable Rust values are converted through
+/// [`serialize_to_tool_output`]: values that serialize as JSON strings become
+/// literal text blocks and all other values become structured JSON blocks. An
+/// explicit [`serde_json::Value`], including a JSON string, stays JSON.
+/// Multimodal tools opt in explicitly with [`Self::content`]. Rig never
+/// reparses text as JSON to guess whether it represents rich content.
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct ToolOutput {
     content: OneOrMany<ToolResultContent>,
 }
@@ -145,17 +146,162 @@ impl From<OneOrMany<ToolResultContent>> for ToolOutput {
     }
 }
 
+/// Serialize an ordinary Rust value into canonical tool output.
+///
+/// This is the one serialization path for plain data: a value that serializes
+/// as a JSON string becomes a literal text block, and every other value
+/// becomes a structured JSON block. Construct [`ToolOutput::json`] directly
+/// when a JSON string must stay JSON, and use the rich-content constructors
+/// ([`ToolOutput::content`], [`ToolOutput::one`]) for multimodal output —
+/// rich content must never be routed through this function.
+pub fn serialize_to_tool_output<T: Serialize + ?Sized>(
+    value: &T,
+) -> Result<ToolOutput, ToolExecutionError> {
+    serde_json::to_value(value)
+        .map(|value| match value {
+            serde_json::Value::String(text) => ToolOutput::text(text),
+            value => ToolOutput::json(value),
+        })
+        .map_err(|error| {
+            ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
+                .with_source(error)
+        })
+}
+
 /// Conversion into Rig's canonical tool output.
 ///
-/// A blanket implementation keeps ordinary [`Serialize`] outputs ergonomic.
-/// Because that blanket implementation already covers every serializable type,
-/// it cannot be overridden with another implementation for a serializable
-/// custom type. Return [`ToolOutput`] from [`PortableTool::call`](crate::tool::PortableTool::call)
-/// when that type needs a custom presentation. Implement this trait directly
-/// only for output types that do not implement [`Serialize`].
+/// This trait is implemented explicitly, never blanket-implemented, so the
+/// rich output types keep identity semantics without any runtime type
+/// inspection. Rig provides implementations for [`ToolOutput`] (identity),
+/// [`ToolResultContent`] and `OneOrMany<ToolResultContent>` (explicit rich
+/// content), [`serde_json::Value`] (stays JSON, including JSON strings),
+/// strings (literal text), and plain data (`()`, `bool`, numbers, `char`,
+/// `Option<T>`, and `Vec<T>` via [`serialize_to_tool_output`]).
+///
+/// Implement it for a custom serializable output type with one call to
+/// [`serialize_to_tool_output`]:
+///
+/// ```
+/// use rig_core::tool::{IntoToolOutput, ToolExecutionError, ToolOutput, serialize_to_tool_output};
+///
+/// #[derive(serde::Serialize)]
+/// struct Sum {
+///     value: i64,
+/// }
+///
+/// impl IntoToolOutput for Sum {
+///     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+///         serialize_to_tool_output(&self)
+///     }
+/// }
+/// ```
 pub trait IntoToolOutput {
     /// Convert this value without routing structured data through a string.
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError>;
+}
+
+impl IntoToolOutput for ToolOutput {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        Ok(self)
+    }
+}
+
+impl IntoToolOutput for ToolResultContent {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        Ok(ToolOutput::one(self))
+    }
+}
+
+impl IntoToolOutput for OneOrMany<ToolResultContent> {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        Ok(ToolOutput::content(self))
+    }
+}
+
+impl IntoToolOutput for serde_json::Value {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        // An explicit JSON value stays JSON, including a JSON string.
+        Ok(ToolOutput::json(self))
+    }
+}
+
+impl IntoToolOutput for String {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        Ok(ToolOutput::text(self))
+    }
+}
+
+impl IntoToolOutput for &str {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        Ok(ToolOutput::text(self))
+    }
+}
+
+/// Plain-data implementations: everything routes through the one
+/// serialization path.
+macro_rules! serialize_into_tool_output {
+    ($($ty:ty),* $(,)?) => {$(
+        impl IntoToolOutput for $ty {
+            fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+                serialize_to_tool_output(&self)
+            }
+        }
+    )*};
+}
+
+serialize_into_tool_output!(
+    (),
+    bool,
+    char,
+    i8,
+    i16,
+    i32,
+    i64,
+    i128,
+    u8,
+    u16,
+    u32,
+    u64,
+    u128,
+    usize,
+    isize,
+    f32,
+    f64,
+);
+
+/// Tuple outputs are plain data: serialized as JSON arrays, exactly as any
+/// serializable aggregate.
+macro_rules! serialize_tuple_into_tool_output {
+    ($(($($name:ident),+)),* $(,)?) => {$(
+        impl<$($name: Serialize),+> IntoToolOutput for ($($name,)+) {
+            fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+                serialize_to_tool_output(&self)
+            }
+        }
+    )*};
+}
+
+serialize_tuple_into_tool_output!(
+    (A),
+    (A, B),
+    (A, B, C),
+    (A, B, C, D),
+    (A, B, C, D, E),
+    (A, B, C, D, E, F),
+    (A, B, C, D, E, F, G),
+    (A, B, C, D, E, F, G, H),
+);
+
+impl<T: Serialize> IntoToolOutput for Vec<T> {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        serialize_to_tool_output(&self)
+    }
+}
+
+impl<T: Serialize> IntoToolOutput for Option<T> {
+    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
+        serialize_to_tool_output(&self)
+    }
 }
 
 #[cfg(test)]
@@ -193,44 +339,6 @@ mod debug_tests {
         ] {
             assert!(!debug.contains(secret));
         }
-    }
-}
-
-impl<T> IntoToolOutput for T
-where
-    T: Serialize + 'static,
-{
-    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        // `ToolResultContent` and `OneOrMany<ToolResultContent>` are serializable
-        // because they also serve as transcript types. They nevertheless mean
-        // explicit rich output here; serializing them through the fallback would
-        // silently turn an image into a JSON object. Stable Rust cannot express
-        // a blanket `Serialize` impl with negative exceptions, so preserve these
-        // two canonical rich types before taking the serialization path.
-        let value = &self as &dyn Any;
-        if let Some(content) = value.downcast_ref::<ToolResultContent>() {
-            return Ok(ToolOutput::one(content.clone()));
-        }
-        if let Some(content) = value.downcast_ref::<OneOrMany<ToolResultContent>>() {
-            return Ok(ToolOutput::content(content.clone()));
-        }
-        let is_explicit_json = value.is::<serde_json::Value>();
-
-        serde_json::to_value(self)
-            .map(|value| match value {
-                serde_json::Value::String(text) if !is_explicit_json => ToolOutput::text(text),
-                value => ToolOutput::json(value),
-            })
-            .map_err(|error| {
-                ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
-                    .with_source(error)
-            })
-    }
-}
-
-impl IntoToolOutput for ToolOutput {
-    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        Ok(self)
     }
 }
 
@@ -305,6 +413,41 @@ mod tests {
         let output = content.clone().into_tool_output().unwrap();
 
         assert_eq!(output.as_content(), &content);
+    }
+
+    #[test]
+    fn tool_output_passes_through_the_blanket_impl_unchanged() {
+        let output = ToolOutput::content(
+            OneOrMany::many(vec![
+                ToolResultContent::text("before"),
+                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+            ])
+            .unwrap(),
+        );
+
+        assert_eq!(output.clone().into_tool_output().unwrap(), output);
+    }
+
+    #[test]
+    fn tool_output_serde_round_trips() {
+        let output = ToolOutput::content(
+            OneOrMany::many(vec![
+                ToolResultContent::text("before"),
+                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+                ToolResultContent::json(serde_json::json!({"after": true})),
+            ])
+            .unwrap(),
+        );
+
+        let json = serde_json::to_value(&output).unwrap();
+        let restored: ToolOutput = serde_json::from_value(json).unwrap();
+        assert_eq!(restored, output);
+
+        // Transparent representation: a ToolOutput serializes as its content.
+        assert_eq!(
+            serde_json::to_value(&output).unwrap(),
+            serde_json::to_value(output.as_content()).unwrap()
+        );
     }
 
     #[test]

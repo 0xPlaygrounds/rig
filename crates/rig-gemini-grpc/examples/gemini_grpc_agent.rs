@@ -1,18 +1,19 @@
-use rig_agent::prelude::*;
-use rig_gemini_grpc::Client;
+//! An agent talking to Gemini over gRPC.
+//!
+//! The concrete client retains the connected tonic channel for both fluent
+//! agents and low-level function calls.
+
+use rig_agent::client::AgentClientExt;
 
 #[tracing::instrument(ret)]
 #[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(false)
         .init();
 
-    // Initialize the Google Gemini gRPC client
-    let client = Client::from_env().map_err(|err| anyhow::anyhow!("{err}"))?;
-
-    // Create agent with a single context prompt
+    let client = rig_gemini_grpc::Client::from_env().await?;
     let agent = client
         .agent("gemini-2.5-flash")
         .preamble("Be creative and concise. Answer directly and clearly.")

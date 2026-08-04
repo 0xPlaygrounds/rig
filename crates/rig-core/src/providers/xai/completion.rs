@@ -2,21 +2,14 @@
 //!
 //! Uses the xAI Responses API: <https://docs.x.ai/docs/guides/chat>
 
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{Instrument, Level, enabled};
 
-use super::api::{ApiResponse, Message, ToolDefinition};
-use super::client::Client;
+use super::api::{Message, ToolDefinition};
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::providers::openai::responses_api::ToolChoice;
-use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
 use crate::providers::openai::responses_api::{Output, ResponsesUsage};
-use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
 
 /// xAI completion models as of 2025-06-04
 pub const GROK_2_1212: &str = "grok-2-1212";
@@ -57,10 +50,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
-        let mut input: Vec<Message> = req
-            .preamble
-            .as_ref()
-            .map_or_else(Vec::new, |p| vec![Message::system(p)]);
+        let mut input: Vec<Message> = Vec::new();
 
         let mut additional_params_payload = req.additional_params.unwrap_or(Value::Null);
 
@@ -72,6 +62,19 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
         let tool_choice = req.tool_choice.map(ToolChoice::try_from).transpose()?;
         let mut additional_tools =
             extract_tools_from_additional_params(&mut additional_params_payload)?;
+        crate::json_utils::validated_additional_params(
+            Some(&additional_params_payload),
+            &[
+                "model",
+                "input",
+                "temperature",
+                "max_output_tokens",
+                "tools",
+                "tool_choice",
+                "stream",
+            ],
+            "xAI Responses request",
+        )?;
         let mut tools = req
             .tools
             .into_iter()
@@ -113,6 +116,21 @@ fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
+/// Merge the top-level `stream: true` flag into `request`'s
+/// `additional_params` — the single place the xAI streaming flag is applied,
+/// shared by the trait streaming path and the data-oriented
+/// [`super::functions`] face.
+pub(super) fn apply_stream_flag(request: &mut XAICompletionRequest) {
+    let params = crate::json_utils::merge(
+        request
+            .additional_params
+            .take()
+            .unwrap_or(serde_json::json!({})),
+        serde_json::json!({"stream": true}),
+    );
+    request.additional_params = Some(params);
+}
+
 // ================================================================
 // Response Types
 // ================================================================
@@ -131,7 +149,28 @@ pub struct CompletionResponse {
     pub usage: Option<ResponsesUsage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Convert an xAI Responses usage payload into the normalized [`completion::Usage`].
+pub(super) fn usage_from_responses(usage: &ResponsesUsage) -> completion::Usage {
+    completion::Usage {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        total_tokens: usage.total_tokens,
+        cached_input_tokens: usage
+            .input_tokens_details
+            .as_ref()
+            .map(|details| details.cached_tokens)
+            .unwrap_or(0),
+        cache_creation_input_tokens: 0,
+        tool_use_prompt_tokens: 0,
+        reasoning_tokens: usage
+            .output_tokens_details
+            .as_ref()
+            .map(|details| details.reasoning_tokens)
+            .unwrap_or(0),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -149,128 +188,19 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(usage_from_responses)
             .unwrap_or_default();
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(message) => Some(message.id.clone()),
             _ => None,
         });
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id,
-        })
-    }
-}
-
-// ================================================================
-// Completion Model
-// ================================================================
-
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
+        let mut converted = completion::CompletionResponse::new(choice, usage, "xai")
+            .with_model(response.model.clone());
+        if let Some(message_id) = message_id {
+            converted = converted.with_message_id(message_id);
         }
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request =
-            XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
-        let span = CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "xAI completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post("/v1/responses")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.as_str());
-                        span.record("gen_ai.response.model", response.model.as_str());
-                        if let Some(usage) = &response.usage {
-                            span.record_token_usage(usage);
-                        }
-
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "xAI completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        response.try_into()
-                    }
-                    ApiResponse::Error(error) => {
-                        tracing::warn!(message = %error.message(), "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body),
-                        ))
-                    }
-                }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<BaseStreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        self.stream(request).await
+        Ok(converted)
     }
 }
 
@@ -279,21 +209,19 @@ mod tests {
     use super::XAICompletionRequest;
     use crate::OneOrMany;
     use crate::completion::request::Document;
-    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
+    use crate::completion::{CompletionRequest, Message, ToolDefinition};
     use crate::message::ToolChoice;
-    use crate::test_utils::MockCompletionModel;
 
     #[test]
     fn xai_request_includes_normalized_documents() {
-        let request =
-            CompletionRequestBuilder::new(MockCompletionModel::default(), "What is glarb-glarb?")
-                .message(Message::system("Use the provided context."))
-                .document(Document {
-                    id: "doc_1".to_string(),
-                    text: "Definition of glarb-glarb: an ancient tool.".to_string(),
-                    additional_props: Default::default(),
-                })
-                .build();
+        let request = CompletionRequest::builder("What is glarb-glarb?")
+            .messages(vec![Message::system("Use the provided context.")])
+            .documents(vec![Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }])
+            .build();
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
             .expect("request conversion should succeed");
@@ -314,7 +242,6 @@ mod tests {
     fn xai_direct_request_keeps_documents_after_system_messages() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
@@ -365,25 +292,27 @@ mod tests {
 
     #[test]
     fn xai_request_uses_responses_tool_choice_for_specific_tool() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(ToolDefinition {
-                name: "alpha".to_string(),
-                description: "Alpha tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool(ToolDefinition {
-                name: "beta".to_string(),
-                description: "Beta tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
+        let request = CompletionRequest::builder("Use a tool.")
+            .tools(vec![
+                ToolDefinition {
+                    name: "alpha".to_string(),
+                    description: "Alpha tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+                ToolDefinition {
+                    name: "beta".to_string(),
+                    description: "Beta tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+            ])
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["beta".to_string()],
             })
@@ -443,23 +372,17 @@ mod tests {
 
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::completion::CompletionError;
+        use crate::providers::xai::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":"boom","code":"503"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = crate::providers::xai::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+        );
+        let cfg = functions::Config::new(super::GROK_4).with_api_key("test-key");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, CompletionRequest::from_prompt("hello"))
             .await
             .expect_err("should fail with non-success status");
 
@@ -473,23 +396,16 @@ mod tests {
 
     #[tokio::test]
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::{CompletionError, CompletionModel as _};
+        use crate::completion::CompletionError;
+        use crate::providers::xai::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // Deserializes to `ApiResponse::Error(ApiError { error, code })` on a 200 OK.
         let body = r#"{"error":"boom","code":"503"}"#;
-        let http_client = RecordingHttpClient::new(body);
-        let client = crate::providers::xai::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let rt = crate::http_runtime::HttpRuntime::recording(RecordingHttpClient::new(body));
+        let cfg = functions::Config::new(super::GROK_4).with_api_key("test-key");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, CompletionRequest::from_prompt("hello"))
             .await
             .expect_err("should fail with provider error envelope");
 

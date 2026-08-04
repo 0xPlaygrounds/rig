@@ -7,11 +7,13 @@
 //! because the machine is fully serializable between steps — pause a run while
 //! tool calls are pending and resume it later (even in another process).
 //!
-//! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
+//! ## Part 2 — high-level [`rig::agent::SessionRunner`] with hooks
 //!
-//! For the common case you don't need that level of control: attach an
-//! [`AgentHook`] to observe tool calls (and every other event) without
-//! hand-driving the loop. Use `agent.runner(prompt).add_hook(h).run().await`.
+//! For the common case you don't need that level of control: attach a
+//! [`rig::hooks::HookEntry`] to observe tool calls (and every other event)
+//! without hand-driving the loop. Hooks are attach-and-forget records — a name
+//! plus a closure over owned [`rig::hooks::HookEvent`] values — so there is no
+//! trait to implement. Use `agent.runner(prompt).add_hook(entry).run().await`.
 //!
 //! Both approaches are demonstrated in `main` below.
 //!
@@ -21,14 +23,13 @@ use std::collections::BTreeSet;
 
 use anyhow::Result;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
-};
-use rig::completion::CompletionModel;
+use rig::agent::{InvalidToolCallAction, ToolCallAction};
+use rig::executor::ToolExecutor;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -65,39 +66,42 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
 
 // ---------------------------------------------------------------------------
-// A minimal AgentHook that logs every tool call routed through the runner.
-// Used in Part 2 below to show the high-level hook-based path.
+// A minimal hook record that logs every tool call routed through the runner.
+// Used in Part 2 below to show the high-level hook-based path. A hook is just a
+// named closure over `HookEvent`; events it has no opinion about answer
+// `HookDecision::Continue`.
 // ---------------------------------------------------------------------------
 
-struct ToolLoggerHook;
-
-impl AgentHook for ToolLoggerHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        println!("[hook] tool call: {}({})", event.tool_name, event.args);
-        ToolCallAction::run()
-    }
+fn tool_logger_hook() -> HookEntry {
+    HookEntry::sync("tool-logger", |event| match event {
+        HookEvent::ToolCall { call, .. } => {
+            println!(
+                "[hook] tool call: {}({})",
+                call.function.name, call.function.arguments
+            );
+            HookDecision::ToolCall(ToolCallAction::run())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = openai::Client::from_env()?;
-    let model = openai.completion_model(openai::GPT_4O);
-    let agent = rig::agent::AgentBuilder::new(model.clone())
+    let client = openai::CompletionsClient::from_env()?;
+    let model = client.completion_model(openai::GPT_4O);
+    let agent = client
+        .agent(openai::GPT_4O)
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
-    let local_tools = ToolSet::builder().static_tool(Add).build();
-    let tool_definitions = local_tools.get_tool_definitions();
+    let local_tools = ToolExecutor::from_tools([PortableDynamicTool::from_portable(Add)]);
+    let tool_definitions = local_tools.catalog().definitions;
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
 
@@ -107,6 +111,7 @@ async fn main() -> Result<()> {
                 prompt,
                 history,
                 turn,
+                attempt_id,
             } => {
                 println!("→ model call #{turn}");
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
@@ -114,11 +119,10 @@ async fn main() -> Result<()> {
                 // explicit raw model request and therefore has no agent hooks.
                 let response = model
                     .completion_request(prompt)
-                    .messages(history)
                     .preamble(
-                        "You are a calculator. Always use the provided tools to compute results."
-                            .to_string(),
+                        "You are a calculator. Always use the provided tools to compute results.",
                     )
+                    .messages(history)
                     .tools(tool_definitions.clone())
                     .send()
                     .await?;
@@ -132,17 +136,30 @@ async fn main() -> Result<()> {
                     .collect();
 
                 let mut outcome = run.model_response(ModelTurn::new(
+                    attempt_id,
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),
                     tool_names,
                 ))?;
-                while let ModelTurnOutcome::NeedsResolution(context) = outcome {
-                    eprintln!("model called unknown tool `{}`", context.tool_name);
-                    // Preserve the agent loop's default fail-fast behavior; a
-                    // driver could instead retry, repair, or skip here.
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                match outcome {
+                    ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        eprintln!("model called unknown tool `{}`", context.tool_name);
+                        // Preserve the agent loop's default fail-fast behavior; a
+                        // driver could instead retry, repair, or skip here.
+                        outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                        match outcome {
+                            ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                            ModelTurnOutcome::NeedsResolution(context) => anyhow::bail!(
+                                "invalid-tool resolution surfaced another unknown tool: {}",
+                                context.tool_name
+                            ),
+                            ModelTurnOutcome::TurnRetried => continue,
+                        }
+                    }
+                    ModelTurnOutcome::TurnRetried => continue,
                 }
             }
             AgentRunStep::CallTools { .. } => {
@@ -165,13 +182,19 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let name = &call.tool_call.function.name;
-                    let args = call.tool_call.function.arguments.to_string();
+                    let args = call.tool_call.function.arguments.clone();
                     println!("→ executing {name}({args})");
-                    let mut context = rig::tool::ToolContext::new();
-                    let result = local_tools.execute(name, args, &mut context).await;
+                    // Failures stay model-visible as tool results, mirroring
+                    // the automatic loop's semantics.
+                    let output = match local_tools.get(name) {
+                        Some(tool) => tool.execute(args).await.unwrap_or_else(|error| {
+                            ToolOutput::text(format!("tool failed: {error}"))
+                        }),
+                        None => ToolOutput::text(format!("unknown tool `{name}`")),
+                    };
                     results.push(UserContent::tool_result(
                         call.tool_call.id.clone(),
-                        result.output().clone().into_content(),
+                        output.into_content(),
                     ));
                 }
                 run_resumed.tool_results(results)?;
@@ -190,20 +213,23 @@ async fn main() -> Result<()> {
     }
 
     // -----------------------------------------------------------------------
-    // Part 2 — high-level AgentRunner path with hooks
+    // Part 2 — high-level SessionRunner path with hooks
     //
     // Most use-cases don't need the manual stepping above. `agent.runner(…)`
-    // returns an `AgentRunner` that drives the same machine internally while
-    // firing an `AgentHook` at every observable point. Attach hooks with
-    // `.add_hook(h)`; each call appends another hook to the stack.
+    // returns a `SessionRunner` that drives the same machine internally while
+    // dispatching a `HookEvent` at every observable point. Attach hooks with
+    // `.add_hook(entry)`; each call appends another record to the list, and they
+    // are dispatched in registration order. (An entry that wants the streaming
+    // `TextDelta` / `ToolCallDelta` events must be built with
+    // `.observing_deltas()`, or it never sees them.)
     // -----------------------------------------------------------------------
 
-    println!("\n--- Part 2: AgentRunner with ToolLoggerHook ---");
+    println!("\n--- Part 2: SessionRunner with ToolLoggerHook ---");
 
     let resp = agent
         .runner("What is 2 + 5?")
         .max_turns(2)
-        .add_hook(ToolLoggerHook)
+        .add_hook(tool_logger_hook())
         .run()
         .await?;
 

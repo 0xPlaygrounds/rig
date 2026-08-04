@@ -1,7 +1,6 @@
 use rig_agent::prelude::*;
-use rig_bedrock::client::Client;
+use rig_bedrock::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_core::client::ProviderClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -20,10 +19,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    let client = Client::from_env()?;
-    let data_extractor = client.extractor::<Person>(AMAZON_NOVA_LITE).build();
-    let person = data_extractor
-        .extract("Hello my name is John Doe! I am a software engineer.")
+    let client = Client::from_env();
+    let agent = client.agent(AMAZON_NOVA_LITE).build();
+    let person: Person = agent
+        .extractor("Hello my name is John Doe! I am a software engineer.")
+        .run()
         .await?;
 
     info!("AWS Bedrock: {}", serde_json::to_string_pretty(&person)?);

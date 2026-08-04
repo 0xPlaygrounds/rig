@@ -3,8 +3,7 @@
 //! `Terminate` from a `ToolResult` (post-execution), and model-driven recovery
 //! from a tool error. Recorded against real Gemini.
 
-use rig::completion::{Prompt, PromptError};
-use rig::prelude::*;
+use rig::completion::PromptError;
 use rig::providers::gemini;
 use rig_agent::test_utils::{
     validate_cancelled_failure, validate_result_redaction, validate_rewritten_arguments,
@@ -12,7 +11,7 @@ use rig_agent::test_utils::{
 use serde_json::json;
 
 use super::super::hook_stress_support::{
-    ResultRewrite, RewriteToolResult, SetArg, TerminateOnResult,
+    ResultRewrite, rewrite_tool_result, set_arg, terminate_on_result,
 };
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CodewordLookup, CountingAdd, MottoTool, ToolEventRecorder};
@@ -28,6 +27,7 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
     let add_calls = add.counter.clone();
     let recorder = ToolEventRecorder::default();
     let recorder_probe = recorder.clone();
+    let recorder_entry = recorder.entry();
 
     with_gemini_cassette(
         "hook_stress_tools/arg_rewrite_sets_one_key_preserving_rest_blocking",
@@ -41,16 +41,14 @@ async fn arg_rewrite_sets_one_key_preserving_rest_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 3 and 4, then report the tool's result.")
+                .runner("Use the add tool to add 3 and 4, then report the tool's result.")
                 .max_turns(4)
                 // Force x = 100 but leave y untouched, then observe.
-                .add_hook(SetArg {
-                    tool: "add",
-                    key: "x",
-                    value: json!(100),
-                })
-                .add_hook(recorder)
+                .add_hook(set_arg("add", "x", json!(100)))
+                .add_hook(recorder_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("single-key arg rewrite run should succeed");
 
             assert_nonempty_response(&response);
@@ -80,6 +78,7 @@ async fn two_arg_rewrites_chain_blocking() {
     let add = CountingAdd::default();
     let recorder = ToolEventRecorder::default();
     let recorder_probe = recorder.clone();
+    let recorder_entry = recorder.entry();
 
     with_gemini_cassette(
         "hook_stress_tools/two_arg_rewrites_chain_blocking",
@@ -93,22 +92,16 @@ async fn two_arg_rewrites_chain_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 1 and 1, then report the tool's result.")
+                .runner("Use the add tool to add 1 and 1, then report the tool's result.")
                 .max_turns(4)
                 // Two rewriters chain: the second sees the first's output and adds
                 // its own key, so the tool executes against {x:7, y:8}.
-                .add_hook(SetArg {
-                    tool: "add",
-                    key: "x",
-                    value: json!(7),
-                })
-                .add_hook(SetArg {
-                    tool: "add",
-                    key: "y",
-                    value: json!(8),
-                })
-                .add_hook(recorder)
+                .add_hook(set_arg("add", "x", json!(7)))
+                .add_hook(set_arg("add", "y", json!(8)))
+                .add_hook(recorder_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("chained arg rewrite run should succeed");
 
             assert_nonempty_response(&response);
@@ -160,21 +153,23 @@ async fn two_result_rewrites_chain_redact_then_wrap_blocking() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to add 2 and 2, then report the exact tool result.")
+                .runner("Use the add tool to add 2 and 2, then report the exact tool result.")
                 .max_turns(4)
                 // Redact -> wrap: the model sees "[SECRET]".
-                .add_hook(RewriteToolResult {
-                    tool: "add",
-                    rewrite: ResultRewrite::Replace("SECRET"),
-                })
-                .add_hook(RewriteToolResult {
-                    tool: "add",
-                    rewrite: ResultRewrite::Wrap {
-                        prefix: "[",
-                        suffix: "]",
+                .add_hook(rewrite_tool_result(
+                    "add",
+                    ResultRewrite::Replace("SECRET".to_owned()),
+                ))
+                .add_hook(rewrite_tool_result(
+                    "add",
+                    ResultRewrite::Wrap {
+                        prefix: "[".to_owned(),
+                        suffix: "]".to_owned(),
                     },
-                })
+                ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("chained result rewrite run should succeed");
 
             assert!(
@@ -210,13 +205,15 @@ async fn result_truncation_reaches_model_blocking() {
             // The motto is "steady hands\ncalm waters"; truncate to its first 6
             // chars ("steady") before the model sees it.
             let response = agent
-                .prompt("Call fetch_motto and report exactly what it returns.")
+                .runner("Call fetch_motto and report exactly what it returns.")
                 .max_turns(4)
-                .add_hook(RewriteToolResult {
-                    tool: "fetch_motto",
-                    rewrite: ResultRewrite::Truncate(6),
-                })
+                .add_hook(rewrite_tool_result(
+                    "fetch_motto",
+                    ResultRewrite::Truncate(6),
+                ))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("result truncation run should succeed");
 
             assert!(
@@ -253,15 +250,14 @@ async fn terminate_from_tool_result_cancels_after_execution_blocking() {
                 .build();
 
             let error = agent
-                .prompt("Use the add tool to add 21 and 21, then report the result.")
+                .runner("Use the add tool to add 21 and 21, then report the result.")
                 .max_turns(4)
                 // Unlike a ToolCall terminate, the tool body DOES run first; the
                 // hook then vetoes the run when it sees the result.
-                .add_hook(TerminateOnResult {
-                    tool: "add",
-                    reason: "result vetoed by policy hook",
-                })
+                .add_hook(terminate_on_result("add", "result vetoed by policy hook"))
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect_err("a ToolResult terminate should cancel the run");
 
             validate_cancelled_failure(&error, "result vetoed by policy hook", "add")
@@ -311,9 +307,11 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
             // The first (red) lookup errors with corrective guidance pointing at
             // the blue team; the model should retry and obtain the blue codeword.
             let response = agent
-                .prompt("Look up the codeword for the red team.")
+                .runner("Look up the codeword for the red team.")
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("tool-error recovery run should succeed");
 
             assert!(
@@ -329,3 +327,4 @@ async fn tool_error_guidance_drives_model_retry_blocking() {
     )
     .await;
 }
+use rig::prelude::*;

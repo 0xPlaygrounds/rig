@@ -6,6 +6,7 @@
     clippy::unreachable
 )]
 
+use rig::OneOrMany;
 use serde_json::json;
 use testcontainers::{
     GenericImage,
@@ -20,11 +21,10 @@ use qdrant_client::{
         VectorParamsBuilder,
     },
 };
+use rig::http_runtime::HttpRuntime;
 use rig::qdrant::QdrantVectorStore;
-use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
-};
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
+use rig::vector_store::request::VectorSearchRequest;
+use rig::{Embed, embeddings::embed_documents, providers::openai};
 
 const QDRANT_PORT: u16 = 6333;
 const QDRANT_PORT_SECONDARY: u16 = 6334;
@@ -161,16 +161,13 @@ async fn vector_search_test() {
             ));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
+    // Configure the (mocked) OpenAI embeddings face
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let points = create_points(model.clone()).await;
+    let points = create_points(&cfg, &rt).await;
 
     client
         .upsert_points(UpsertPointsBuilder::new(COLLECTION_NAME, points).wait(true))
@@ -178,15 +175,24 @@ async fn vector_search_test() {
         .unwrap();
 
     let query_params = QueryPointsBuilder::new(COLLECTION_NAME).with_payload(true);
-    let vector_store = QdrantVectorStore::new(client, model, query_params.build());
+    let vector_store = QdrantVectorStore::new(client, query_params.build());
 
-    let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    // Queries arrive pre-embedded: embed the query text with the (mocked)
+    // embedding model, then pass the embedding to the store.
+    let query_embedding =
+        openai::functions::embed(&cfg, &rt, vec!["What is a linglingdong?".to_string()])
+            .await
+            .unwrap()
+            .embeddings
+            .into_iter()
+            .next()
+            .unwrap();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
-    let results = vector_store.top_n::<serde_json::Value>(req).await.unwrap();
+    let results = vector_store
+        .top_n_as::<serde_json::Value>(req)
+        .await
+        .unwrap();
 
     let (_, _, value) = &results.first().unwrap();
 
@@ -199,7 +205,10 @@ async fn vector_search_test() {
     )
 }
 
-async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
+async fn create_points(
+    cfg: &openai::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+) -> Vec<PointStruct> {
     let words = vec![
         Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),
@@ -215,12 +224,17 @@ async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
         }
     ];
 
-    let documents = EmbeddingsBuilder::new(model)
-        .documents(words)
-        .unwrap()
-        .build()
-        .await
-        .unwrap();
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let documents = embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(cfg, rt, texts),
+    )
+    .await
+    .unwrap();
 
     documents
         .into_iter()

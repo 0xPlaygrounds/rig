@@ -5,20 +5,17 @@
 
 use std::collections::{BTreeSet, VecDeque};
 
-use futures::StreamExt;
 use rig::agent::run::{
-    AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
-    StreamedTurnEvent,
+    AgentRun, AgentRunStep, ModelAttemptId, StreamedInvalidToolCall, StreamedResolution,
+    StreamedTurnAssembler, StreamedTurnEvent,
 };
-use rig::agent::{
-    AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction,
-};
-use rig::completion::{GetTokenUsage, PromptError, Usage};
+use rig::agent::{InvalidToolCallAction, ToolCallAction};
+use rig::completion::{PromptError, Usage};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{Message, ToolChoice, ToolResult};
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::stream::AgentRunItem;
+use rig::streaming::StreamedAssistantContent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
@@ -50,17 +47,18 @@ async fn run_streamed_turn(
     run: &mut AgentRun,
     prompt: Message,
     history: Vec<Message>,
+    attempt_id: ModelAttemptId,
     executable: &BTreeSet<String>,
     allowed: &BTreeSet<String>,
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
-    let mut stream = agent
-        .request(prompt, history)
-        .stream()
-        .await
-        .expect("gemini stream should open");
-    let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
+    let mut stream =
+        gemini::functions::open_stream(&agent.cfg, &agent.rt, agent.request(prompt, history))
+            .await
+            .expect("gemini stream should open");
+    let mut assembler =
+        StreamedTurnAssembler::new(attempt_id.clone(), executable.clone(), allowed.clone());
     let mut recorded = false;
 
     while let Some(item) = stream.next().await {
@@ -79,13 +77,13 @@ async fn run_streamed_turn(
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
                 StreamedTurnEvent::Completed { usage, .. } => {
                     if !recorded {
-                        run.record_streamed_completion_call(usage)
+                        run.record_streamed_completion_call(&attempt_id, usage)
                             .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
                 }
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
-                    let partial = assembler.partial_turn(stream.message_id.clone());
+                    let partial = assembler.partial_turn(stream.message_id());
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
                     assert!(context.is_streaming);
                     assert_eq!(context.tool_name, invalid.tool_call.function.name);
@@ -107,7 +105,10 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage).expect(
+                                        run.record_streamed_completion_call(
+                                            &attempt_id,
+                                            drained_usage,
+                                        ).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -128,21 +129,22 @@ async fn run_streamed_turn(
         "the provider stream should end consistently"
     );
     if !recorded {
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(&attempt_id, Usage::new())
             .expect("turns without provider usage still record a completion call");
     }
-    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
+    let response = stream
+        .into_response()
+        .expect("drained stream should finalize");
+    let streamed_turn = assembler.finish(response.message_id, response.choice, response.usage);
     run.streamed_turn(streamed_turn)?;
+    run.continue_model_turn()?;
     Ok(TurnEnd::Finished)
 }
 
-async fn drain_stream_usage<R>(stream: &mut rig::streaming::StreamingCompletionResponse<R>) -> Usage
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
+async fn drain_stream_usage(stream: &mut rig::streaming::CompletionStream) -> Usage {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {
-            return final_response.token_usage();
+            return final_response.usage;
         }
     }
     Usage::new()
@@ -157,12 +159,14 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new()).is_err(),
+                fresh
+                    .record_streamed_completion_call(&ModelAttemptId::new(), Usage::new())
+                    .is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -178,13 +182,17 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let end = run_streamed_turn(
                             &agent,
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &names,
                             &names,
                             |invalid| {
@@ -243,7 +251,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -253,7 +261,10 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
 
             let mut run = AgentRun::new("What is 21 + 21? Use the add tool.").max_turns(2);
             let AgentRunStep::CallModel {
-                prompt, history, ..
+                prompt,
+                history,
+                attempt_id,
+                ..
             } = run.next_step().expect("run should advance")
             else {
                 panic!("a fresh run starts with a model call");
@@ -264,6 +275,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
                 &mut run,
                 prompt,
                 history,
+                attempt_id,
                 &executable,
                 &nothing_allowed,
                 |invalid| {
@@ -302,7 +314,7 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -318,13 +330,17 @@ async fn streamed_repair_continues_the_same_stream() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let end = run_streamed_turn(
                             &agent,
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &machine_names,
                             &machine_names,
                             |invalid| {
@@ -374,7 +390,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,
@@ -393,6 +409,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         let (allowed, expect_abandon) = if abandoned {
                             (&executable, false)
@@ -416,6 +433,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             &mut run,
                             prompt,
                             history,
+                            attempt_id,
                             &executable,
                             allowed,
                             |invalid| {
@@ -474,19 +492,18 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
+                .runner("What is 21 + 21? Use the add tool.")
                 .max_turns(2)
-                .await;
+                .stream_run();
 
             let mut prompt_error = None;
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                    Err(error) => {
+                        prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
 
@@ -518,17 +535,14 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
     .await;
 }
 
-#[derive(Clone)]
-struct CancelOnToolCall;
-
-impl AgentHook for CancelOnToolCall {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        _event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        ToolCallAction::stop("cancelled by test hook")
-    }
+/// Cancels the run from the pre-execution tool event.
+fn cancel_on_tool_call() -> HookEntry {
+    HookEntry::sync("cancel-on-tool-call", |event| match event {
+        HookEvent::ToolCall { .. } => {
+            HookDecision::ToolCall(ToolCallAction::stop("cancelled by test hook"))
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[tokio::test]
@@ -544,22 +558,21 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
-                .add_hook(CancelOnToolCall)
+                .runner("What is 21 + 21? Use the add tool.")
+                .add_hook(cancel_on_tool_call())
                 .max_turns(2)
-                .await;
+                .stream_run();
 
             let mut prompt_error = None;
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
+                    Ok(AgentRunItem::Final(_)) => saw_final = true,
                     Ok(_) => {}
-                    Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                    Err(error) => {
+                        prompt_error = Some(error);
                         break;
                     }
-                    Err(other) => panic!("expected a prompt error, got {other:?}"),
                 }
             }
             assert!(
@@ -591,3 +604,4 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
     )
     .await;
 }
+use rig::prelude::*;

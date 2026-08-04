@@ -14,14 +14,14 @@ use testcontainers::{
 };
 
 use futures::{StreamExt, TryStreamExt};
+use rig::http_runtime::HttpRuntime;
 use rig::neo4j::{Neo4jClient, ToBoltType};
-use rig::vector_store::VectorStoreIndex;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingsBuilder},
+    embeddings::{Embedding, embed_documents},
     providers::openai,
 };
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -144,17 +144,13 @@ async fn vector_search_test() {
             ));
     });
 
-    // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
+    // Configure the (mocked) OpenAI embeddings face
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
-    let embeddings = create_embeddings(model.clone()).await;
+    let embeddings = create_embeddings(&cfg, &rt).await;
 
     futures::stream::iter(embeddings)
         .map(|(doc, embeddings)| {
@@ -211,23 +207,24 @@ async fn vector_search_test() {
 
     println!("Index exists: {index_exists:?}");
 
-    // Create a vector index on our vector store
-    // IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client
-        .get_index(model, "vector_index")
-        .await
-        .expect("");
+    let index = neo4j_client.get_index("vector_index").await.expect("");
 
+    // Queries arrive pre-embedded: embed the query with the same model that
+    // was used to generate the document embeddings.
     let query = "What is a glarb?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .expect("")
+        .embeddings
+        .into_iter()
+        .next()
+        .expect("one embedding");
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Query the index
-    let results = index.top_n::<serde_json::Value>(req).await.expect("");
+    let results = index.top_n(req).await.expect("");
 
-    let (_, _, value) = &results.first().expect("");
+    let value = &results.first().expect("").payload;
 
     assert_eq!(
         value,
@@ -239,7 +236,10 @@ async fn vector_search_test() {
     )
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(
+    cfg: &openai::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+) -> Vec<(Word, OneOrMany<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),
@@ -255,10 +255,15 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMan
         }
     ];
 
-    EmbeddingsBuilder::new(model)
-        .documents(words)
-        .expect("")
-        .build()
-        .await
-        .expect("")
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(cfg, rt, texts),
+    )
+    .await
+    .expect("")
 }

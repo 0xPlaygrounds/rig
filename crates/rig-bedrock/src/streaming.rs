@@ -1,13 +1,13 @@
 use crate::types::completion_request::AwsCompletionRequest;
 use crate::{
-    completion::{CompletionModel, resolve_request_model},
+    completion::resolve_request_model,
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::GetTokenUsage;
-use rig_core::streaming::StreamingCompletionResponse;
-use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use rig_core::completion::FinishReason;
+use rig_core::streaming::{CompletionStream, StreamFinal};
+use rig_core::telemetry::{CompletionOperation, SpanCombinator, completion_span};
 use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
@@ -32,8 +32,9 @@ pub struct BedrockUsage {
     pub cache_write_input_tokens: Option<i32>,
 }
 
-impl GetTokenUsage for BedrockStreamingResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
+impl BedrockStreamingResponse {
+    /// Token usage reported by the Converse stream, zero-valued when missing.
+    pub fn token_usage(&self) -> rig_core::completion::Usage {
         self.usage
             .as_ref()
             .map(|u| rig_core::completion::Usage {
@@ -72,9 +73,7 @@ struct ReasoningState {
 /// Field required` when the conversation is replayed to Bedrock. We must emit
 /// whenever either the content or the signature is present; both-empty is
 /// still skipped.
-fn finalize_reasoning(
-    state: ReasoningState,
-) -> Option<RawStreamingChoice<BedrockStreamingResponse>> {
+fn finalize_reasoning(state: ReasoningState) -> Option<RawStreamingChoice> {
     if state.content.is_empty() && state.signature.is_none() {
         return None;
     }
@@ -87,32 +86,31 @@ fn finalize_reasoning(
     })
 }
 
-impl CompletionModel {
-    pub(crate) async fn stream(
-        &self,
-        completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<BedrockStreamingResponse>, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = AwsCompletionRequest {
-            inner: completion_request,
-            prompt_caching: self.prompt_caching,
-        };
-        let span = CompletionSpanBuilder::new(
+/// Streaming Converse implementation shared by the `CompletionModel` trait
+/// impl and [`crate::functions::open_stream`]. Extracted unchanged from the
+/// former `CompletionModel::stream` inherent method.
+pub(crate) async fn stream_converse(
+    client: &aws_sdk_bedrockruntime::Client,
+    default_model: &str,
+    prompt_caching: bool,
+    completion_request: rig_core::completion::CompletionRequest,
+) -> Result<CompletionStream, CompletionError> {
+    {
+        let request_model = resolve_request_model(default_model, &completion_request);
+        // Built before the request is moved into the AWS wrapper, so the span
+        // reads the canonical system messages off the request itself.
+        let span = completion_span(
             "aws_bedrock",
             &request_model,
             CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
+            &completion_request,
+        );
+        let request = AwsCompletionRequest {
+            inner: completion_request,
+            prompt_caching,
+        };
 
-        let mut converse_builder = self
-            .client
-            .get_inner()
-            .await
-            .converse_stream()
-            .model_id(request_model);
+        let mut converse_builder = client.converse_stream().model_id(request_model);
 
         let tool_config = request.tools_config()?;
         let prompt_with_history = request.messages()?;
@@ -133,9 +131,10 @@ impl CompletionModel {
                 Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
             })?;
 
-        let stream = Box::pin(stream! {
+        let stream = stream! {
             let span = tracing::Span::current();
             let mut current_tool_call: Option<ToolCallState> = None;
+            let mut finish_reason: Option<FinishReason> = None;
             let mut current_reasoning: Option<ReasoningState> = None;
             let mut stream = response.stream;
             loop {
@@ -228,6 +227,13 @@ impl CompletionModel {
                             }
                     },
                     aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
+                        finish_reason = Some(match &message_stop_event.stop_reason {
+                            aws_bedrock::StopReason::EndTurn => FinishReason::Stop,
+                            aws_bedrock::StopReason::MaxTokens => FinishReason::Length,
+                            aws_bedrock::StopReason::ToolUse => FinishReason::ToolCalls,
+                            aws_bedrock::StopReason::ContentFiltered => FinishReason::ContentFilter,
+                            other => FinishReason::Other(other.as_str().to_owned()),
+                        });
                         match message_stop_event.stop_reason {
                             aws_bedrock::StopReason::ToolUse => {
                                 if let Some(tool_call) = current_tool_call.take() {
@@ -254,7 +260,7 @@ impl CompletionModel {
                     aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
                         // Extract usage information from metadata
                         if let Some(usage) = metadata_event.usage {
-                            let final_response = BedrockStreamingResponse {
+                            let usage = BedrockStreamingResponse {
                                 usage: Some(BedrockUsage {
                                     input_tokens: usage.input_tokens,
                                     output_tokens: usage.output_tokens,
@@ -262,17 +268,22 @@ impl CompletionModel {
                                     cache_read_input_tokens: usage.cache_read_input_tokens,
                                     cache_write_input_tokens: usage.cache_write_input_tokens,
                                 }),
-                            };
-                            span.record_token_usage(&final_response);
+                            }
+                            .token_usage();
+                            span.record_token_usage(&usage);
+                            let mut final_response = StreamFinal::new("aws_bedrock", usage);
+                            if let Some(reason) = finish_reason.take() {
+                                final_response = final_response.with_finish_reason(reason);
+                            }
                             yield Ok(RawStreamingChoice::FinalResponse(final_response));
                         }
                     },
                     _ => {}
                 }
             }
-        }.instrument(span));
+        }.instrument(span);
 
-        Ok(StreamingCompletionResponse::stream(stream))
+        Ok(CompletionStream::from_stream(stream))
     }
 }
 
@@ -343,7 +354,7 @@ mod tests {
             }),
         };
 
-        // Test that GetTokenUsage trait is properly implemented
+        // Test that the token_usage conversion is properly implemented
         assert_eq!(
             response.token_usage(),
             rig_core::completion::Usage {

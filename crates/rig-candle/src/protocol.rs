@@ -96,8 +96,10 @@ fn validate_protocol_inputs(
     request: &CompletionRequest,
     protocol: ModelFamily,
 ) -> Result<(), CandleError> {
-    if let Some(preamble) = request.preamble.as_deref() {
-        validate_protocol_text(preamble, "preamble", protocol)?;
+    for message in request.chat_history.iter() {
+        if let rig_core::completion::Message::System { content } = message {
+            validate_protocol_text(content, "preamble", protocol)?;
+        }
     }
     for document in &request.documents {
         validate_protocol_text(&document.to_string(), "document", protocol)?;
@@ -325,9 +327,6 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
     let mut messages = Vec::new();
-    if let Some(preamble) = &request.preamble {
-        messages.push(Message::system(preamble.clone()));
-    }
     messages.extend(request.chat_history.iter().cloned());
     if !request.documents.is_empty() {
         let context = request
@@ -903,7 +902,6 @@ mod tests {
     fn request(messages: Vec<Message>) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(messages)
                 .unwrap_or_else(|_| OneOrMany::one(Message::user("fallback"))),
             documents: Vec::new(),
@@ -1254,5 +1252,27 @@ mod tests {
             render_prompt(&dangling_call, ModelFamily::Qwen3),
             Err(CandleError::MalformedToolCall(reason)) if reason.contains("no correlated")
         ));
+    }
+
+    /// Candle renders the conversation as a prompt string, so system messages
+    /// must survive `messages_with_documents` in order rather than being
+    /// dropped with the deleted preamble field.
+    #[test]
+    fn system_messages_survive_in_order() {
+        let req = request(vec![
+            Message::system("first"),
+            Message::system("second"),
+            Message::user("hello"),
+        ]);
+
+        let messages = messages_with_documents(&req);
+        let systems: Vec<&str> = messages
+            .iter()
+            .filter_map(|m| match m {
+                Message::System { content } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(systems, ["first", "second"]);
     }
 }

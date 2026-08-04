@@ -1,11 +1,11 @@
 //! Anthropic streaming tools smoke test.
 
-use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
+use rig::completion::PromptError;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::stream::AgentRunItem;
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -34,7 +34,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -58,9 +58,9 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .runner(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -119,11 +119,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
             .tool(OutOfOrderBetaSignal(order))
             .build();
 
-        let mut stream = agent
-            .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-            .max_turns(8)
-            .tool_concurrency(2)
-            .await;
+        let mut stream =agent .runner(TWO_TOOL_STREAM_PROMPT) .max_turns(8) .tool_concurrency(2) .stream_run();
         let observation = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             collect_concurrent_tool_observation(&mut stream),
@@ -213,11 +209,7 @@ impl Tool for OutOfOrderAlphaSignal {
         AlphaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
@@ -240,11 +232,7 @@ impl Tool for OutOfOrderBetaSignal {
         BetaSignal.parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.0.wait_until_this_tool_should_finish().await;
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
@@ -262,35 +250,31 @@ struct ConcurrentToolObservation {
     events: Vec<&'static str>,
 }
 
-async fn collect_concurrent_tool_observation<R>(
-    stream: &mut StreamingResult<R>,
+async fn collect_concurrent_tool_observation(
+    stream: &mut rig::stream::AgentRunStream,
 ) -> ConcurrentToolObservation {
     let mut observation = ConcurrentToolObservation::default();
     let mut tool_names_by_id = HashMap::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ToolCall {
+                tool_call, ..
             })) => {
                 tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
             }
-            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => {
+            Ok(AgentRunItem::ToolExecutionCommitted { .. }) => {
                 observation.events.push("tool_execution_committed");
             }
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
-                tool_result,
-                ..
-            })) => {
+            Ok(AgentRunItem::User(StreamedUserContent::ToolResult { tool_result, .. })) => {
                 observation
                     .streamed_tool_results
                     .push(tool_name_for_result(&tool_names_by_id, &tool_result.id));
                 observation.events.push("tool_result");
             }
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentRunItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 if let Some(history) = response.messages() {
@@ -301,31 +285,25 @@ async fn collect_concurrent_tool_observation<R>(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(_))) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ToolCallDelta { .. })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                _,
-            ))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(_))) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
-            )) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::ReasoningDelta { .. })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Final(_))) => {
                 observation.events.push("stream_final");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Unknown(_))) => {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Unknown(_))) => {
                 observation.events.push("unknown");
             }
-            Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
+            Ok(AgentRunItem::CompletionCall(_)) => {}
             Ok(_) => {}
             Err(error) => {
                 observation.errors.push(streaming_error_to_string(error));
@@ -337,7 +315,7 @@ async fn collect_concurrent_tool_observation<R>(
     observation
 }
 
-fn streaming_error_to_string(error: StreamingError) -> String {
+fn streaming_error_to_string(error: PromptError) -> String {
     error.to_string()
 }
 

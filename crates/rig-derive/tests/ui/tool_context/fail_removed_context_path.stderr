@@ -1,0 +1,5 @@
+error: ToolContext was removed; close over your state (or use `PortableDynamicTool::new`) instead of a `&mut ToolContext` parameter
+ --> tests/ui/tool_context/fail_removed_context_path.rs:7:5
+  |
+7 |     _context: &mut rig_agent::tool::ToolContext,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,12 +1,71 @@
+//! A complex agentic loop with Claude: an orchestrator agent that delegates to
+//! specialized sub-agents, a knowledge-base tool, and the built-in think tool.
+//!
+//! Each sub-agent is converted into one concrete portable tool record with
+//! `Agent::into_tool`.
 use anyhow::Result;
+use rig::OneOrMany;
+use rig::http_runtime::HttpRuntime;
 use rig::prelude::*;
-use rig::providers::anthropic::{self, Client};
+use rig::providers::{anthropic, openai};
+use rig::vector_store::{SearchHit, VectorSearchRequest, VectorStoreError};
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, message::Message,
-    tool::builtin::ThinkTool, vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingJob, message::Message, tool::builtin::ThinkTool,
+    vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::{Deserialize, Serialize};
-use std::env;
+
+/// A custom tool exposing the knowledge base to the agent. It embeds the
+/// model's query, then runs a pre-embedded search against the store.
+///
+/// Embedding is plain config data plus a free function, so the tool holds an
+/// `EmbeddingConfig` and an `HttpRuntime` rather than a model handle.
+struct KnowledgeBaseTool {
+    store: InMemoryVectorStore,
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
+}
+
+#[derive(Deserialize, Serialize)]
+struct KnowledgeBaseArgs {
+    query: String,
+}
+
+impl rig::tool::PortableTool for KnowledgeBaseTool {
+    const NAME: &'static str = "search_knowledge_base";
+    type Args = KnowledgeBaseArgs;
+    type Output = Vec<SearchHit>;
+    type Error = VectorStoreError;
+
+    fn description(&self) -> String {
+        "Retrieves the most relevant documents from the sustainability knowledge base.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The query string to search for relevant documents."
+                }
+            },
+            "required": ["query"]
+        })
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let response =
+            openai::functions::embed(&self.embedding_config, &self.rt, vec![args.query]).await?;
+        let Some(query_embedding) = response.embeddings.into_iter().next() else {
+            return Err(VectorStoreError::DatastoreError(
+                "the embedding provider returned no embedding".into(),
+            ));
+        };
+        let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 3);
+        self.store.top_n(req).await
+    }
+}
 
 // Define a knowledge base entry for our vector store
 #[derive(Embed, Clone, Deserialize, Debug, Serialize, Eq, PartialEq, Default)]
@@ -25,15 +84,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
-    let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
-    let anthropic_client = Client::builder().api_key(&anthropic_api_key).build()?;
+    let claude = anthropic::Client::from_env()?;
 
-    // Create the embedding model for our vector store
-    // We'll use OpenAI's embedding model for this example
-    let openai_client = rig::providers::openai::Client::from_env()?;
-    let embedding_model =
-        openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding config for our vector store — OpenAI's embedding model here.
+    let openai = openai::Client::from_env()?;
+    let rt = openai.http();
+    let embedding_config = openai.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![
@@ -68,20 +124,25 @@ async fn main() -> Result<(), anyhow::Error> {
     ];
 
     // Create embeddings for our knowledge base
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(knowledge_entries)?
-        .build()
+    let embeddings = EmbeddingJob::new()
+        .documents(knowledge_entries)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embedding_config, &rt, texts))
         .await?;
 
     // Create vector store with the embeddings
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |entry| entry.id.clone());
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |entry| entry.id.clone())?;
 
-    // Create vector store index
-    let vector_index = vector_store.index(embedding_model);
+    // Expose the knowledge base as a custom tool
+    let knowledge_base = KnowledgeBaseTool {
+        store: vector_store,
+        embedding_config,
+        rt,
+    };
 
     // Create specialized research agent that will be used as a tool
-    let research_agent = anthropic_client
+    let research_agent = claude
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a specialized research agent focused on environmental science and sustainability.
@@ -93,7 +154,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a data analysis agent that will be used as a tool
-    let analysis_agent = anthropic_client
+    let analysis_agent = claude
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a data analysis agent specialized in interpreting environmental and sustainability data.
@@ -105,7 +166,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create a recommendation agent that will be used as a tool
-    let recommendation_agent = anthropic_client
+    let recommendation_agent = claude
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are a recommendation agent specialized in suggesting practical sustainability solutions.
@@ -118,7 +179,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Create the main orchestrator agent that will use all the tools
-    let orchestrator_agent = anthropic_client
+    let orchestrator_agent = claude
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an environmental sustainability advisor that helps users understand complex environmental issues
@@ -141,10 +202,19 @@ async fn main() -> Result<(), anyhow::Error> {
             environmental sustainability issues."
         )
         .tool(ThinkTool)
-        .tool(vector_index)
-        .dynamic_tool(research_agent.into_tool())
-        .dynamic_tool(analysis_agent.into_tool())
-        .dynamic_tool(recommendation_agent.into_tool())
+        .tool(knowledge_base)
+        .dynamic_tool(research_agent.into_tool(
+            "research_agent",
+            "Delegate detailed environmental science research questions to a specialized research agent.",
+        ))
+        .dynamic_tool(analysis_agent.into_tool(
+            "data_analysis_agent",
+            "Delegate interpretation of environmental data and statistics to a specialized analysis agent.",
+        ))
+        .dynamic_tool(recommendation_agent.into_tool(
+            "recommendation_agent",
+            "Delegate generation of practical sustainability recommendations to a specialized agent.",
+        ))
         .name("orchestrator_agent")
         .build();
 
@@ -164,12 +234,12 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("\nProcessing...\n");
 
     // Send the query to the orchestrator agent with extended details to get chat history
-    let empty_history: &[Message] = &[];
+    let empty_history: Vec<Message> = Vec::new();
     let response = orchestrator_agent
-        .prompt(query)
+        .runner(query)
         .history(empty_history)
         .max_turns(15) // Allow multiple turns to demonstrate the complex loop
-        .extended_details()
+        .run()
         .await?;
 
     // Print the final response

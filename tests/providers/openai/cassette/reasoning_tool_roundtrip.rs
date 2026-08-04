@@ -6,9 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
-use rig::streaming::StreamingChat;
 
 use super::super::support::with_openai_cassette;
 use crate::reasoning::{self, WeatherTool};
@@ -28,9 +27,10 @@ async fn streaming() {
             .build();
 
         let stream = agent
-            .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+            .runner(reasoning::TOOL_USER_PROMPT)
+            .history(Vec::<Message>::new())
             .max_turns(3)
-            .await;
+            .stream_run();
 
         let stats = reasoning::collect_stream_stats(stream, "openai").await;
         reasoning::assert_universal(&stats, &call_count, "openai");

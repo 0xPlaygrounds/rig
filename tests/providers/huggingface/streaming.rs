@@ -1,12 +1,10 @@
 //! Hugging Face streaming coverage for the default and Together-backed inference paths.
 
-use rig::prelude::*;
-use rig::providers::huggingface::{self, SubProvider};
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
+use rig::prelude::*;
+use rig::providers::huggingface::{self, SubProvider};
 
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
@@ -17,7 +15,7 @@ async fn streaming_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -29,19 +27,17 @@ async fn streaming_smoke() {
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn together_subprovider_streaming() {
     let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY must be set");
-    let agent = huggingface::Client::builder()
-        .api_key(&api_key)
-        .subprovider(SubProvider::Together)
-        .build()
-        .expect("client should build")
-        .agent("deepseek-ai/DeepSeek-R1")
+    let cfg = huggingface::functions::Config::new("deepseek-ai/DeepSeek-R1")
+        .with_api_key(&api_key)
+        .with_sub_provider(SubProvider::Together);
+    let agent = AgentBuilder::new(cfg)
         .preamble("Be precise and concise.")
         .temperature(0.5)
         .build();
 
     let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
-        .await;
+        .runner("When and where and what type is the next solar eclipse?")
+        .stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

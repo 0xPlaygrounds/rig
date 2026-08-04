@@ -1,7 +1,10 @@
 //! MongoDB vector store integration for Rig.
 //!
-//! This crate provides [`MongoDbVectorIndex`], a Rig vector store index backed
+//! This crate provides [`MongoDbVectorIndex`], a Rig vector store backed
 //! by MongoDB Atlas Vector Search or compatible MongoDB vector search indexes.
+//!
+//! Queries arrive pre-embedded via [`VectorSearchRequest`]; the store never
+//! embeds text itself.
 //!
 //! The root `rig` facade re-exports this crate as `rig::mongodb` when the
 //! `mongodb` feature is enabled.
@@ -10,15 +13,14 @@ use futures::StreamExt;
 use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig_core::{
-    Embed, OneOrMany,
-    embeddings::embedding::{Embedding, EmbeddingModel},
+    OneOrMany,
+    embeddings::embedding::Embedding,
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, SearchFilter, VectorSearchRequest},
+        SearchHit, StoreRecord, VectorStoreError,
+        request::{Filter as CoreFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,10 +73,14 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 }
 
 /// A vector index for a MongoDB collection.
+///
+/// Queries arrive pre-embedded via [`VectorSearchRequest`]; the index never
+/// embeds text itself.
+///
 /// # Example
 /// ```no_run
-/// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig_core::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::{ProviderClient, EmbeddingsClient}};
+/// use rig_mongodb::{MongoDbVectorIndex, MongoDbSearchFilter, SearchParams};
+/// use rig_core::{providers::openai, vector_store::VectorSearchRequest, http_runtime::HttpRuntime};
 ///
 /// # async fn example() -> anyhow::Result<()> {
 /// #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -86,51 +92,54 @@ fn mongodb_to_rig_error(e: mongodb::error::Error) -> VectorStoreError {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai_client = openai::Client::from_env()?;
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
-/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+/// // Embedding is a free function over plain configuration plus a shared runtime.
+/// let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?; // <-- replace with your embedding model.
+/// let rt = HttpRuntime::new();
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
-///     model,
 ///     "vector_index", // <-- replace with the name of the index in your mongodb collection.
-///     SearchParams::new(), // <-- field name in `Document` that contains the embeddings.
+///     SearchParams::new(),
 /// )
 /// .await?;
 ///
-/// let req = VectorSearchRequest::builder()
-///     .query("My boss says I zindle too much, what does that mean?")
-///     .samples(1)
-///     .build();
+/// // Embed the query outside the store, then search with the pre-embedded query.
+/// let query = openai::functions::embed(
+///     &embed_cfg,
+///     &rt,
+///     vec!["My boss says I zindle too much, what does that mean?".to_string()],
+/// )
+/// .await?
+/// .embeddings
+/// .into_iter()
+/// .next()
+/// .ok_or_else(|| anyhow::anyhow!("no embedding returned"))?;
+/// let req =
+///     VectorSearchRequest::<MongoDbSearchFilter>::new(rig_core::OneOrMany::one(query), 1);
 ///
 /// // Query the index
 /// let definitions = index
-///     .top_n::<WordDefinition>(req)
+///     .top_n_as::<WordDefinition>(req)
 ///     .await?;
 /// # Ok(())
 /// # }
 /// # let _ = example();
 /// ```
-pub struct MongoDbVectorIndex<C, M>
-where
-    C: Send + Sync,
-    M: EmbeddingModel,
-{
-    collection: mongodb::Collection<C>,
-    model: M,
+pub struct MongoDbVectorIndex {
+    /// Every query and insert this index performs is expressed in BSON, so the
+    /// collection is held document-typed. [`MongoDbVectorIndex::new`] still
+    /// accepts a typed collection and converts it here.
+    collection: mongodb::Collection<bson::Document>,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
 }
 
-impl<C, M> MongoDbVectorIndex<C, M>
-where
-    C: Send + Sync,
-    M: EmbeddingModel,
-{
+impl MongoDbVectorIndex {
     /// Vector search stage of aggregation pipeline of mongoDB collection.
-    /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
+    /// Used by the `top_n` and `top_n_ids` methods on [`MongoDbVectorIndex`].
     fn pipeline_search_stage(
         &self,
         prompt_embedding: &Embedding,
@@ -168,7 +177,7 @@ where
     }
 
     /// Score declaration stage of aggregation pipeline of mongoDB collection.
-    /// /// To be used by implementations of top_n and top_n_ids methods on VectorStoreIndex trait for MongoDbVectorIndex.
+    /// Used by the `top_n` and `top_n_ids` methods on [`MongoDbVectorIndex`].
     fn pipeline_score_stage(&self) -> bson::Document {
         doc! {
           "$addFields": {
@@ -176,20 +185,17 @@ where
           }
         }
     }
-}
 
-impl<C, M> MongoDbVectorIndex<C, M>
-where
-    M: EmbeddingModel,
-    C: Send + Sync,
-{
     /// Create a new `MongoDbVectorIndex`.
     ///
     /// The index (of type "vector") must already exist for the MongoDB collection.
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
-    pub async fn new(
+    ///
+    /// The collection may carry any document type: it is converted to a
+    /// BSON-document collection on the way in, since every query this index
+    /// issues is expressed in BSON regardless.
+    pub async fn new<C: Send + Sync>(
         collection: mongodb::Collection<C>,
-        model: M,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
@@ -213,158 +219,26 @@ where
             ))?;
 
         Ok(Self {
-            collection,
-            model,
+            collection: collection.clone_with_type::<bson::Document>(),
             index_name: index_name.to_string(),
             embedded_field,
             search_params,
         })
     }
-}
 
-/// See [MongoDB Vector Search](`https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/`) for more information
-/// on each of the fields
-#[derive(Default)]
-pub struct SearchParams {
-    exact: Option<bool>,
-    num_candidates: Option<u32>,
-}
-
-impl SearchParams {
-    /// Initializes a new `SearchParams` with default values.
-    pub fn new() -> Self {
-        Self {
-            exact: None,
-            num_candidates: None,
-        }
-    }
-
-    /// Sets the exact field of the search params.
-    /// If exact is true, an ENN vector search will be performed, otherwise, an ANN search will be performed.
-    /// By default, exact is false.
-    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
-    pub fn exact(mut self, exact: bool) -> Self {
-        self.exact = Some(exact);
-        self
-    }
-
-    /// Sets the num_candidates field of the search params.
-    /// Only set this field if exact is set to false.
-    /// Number of nearest neighbors to use during the search.
-    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
-    pub fn num_candidates(mut self, num_candidates: u32) -> Self {
-        self.num_candidates = Some(num_candidates);
-        self
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MongoDbSearchFilter(Document);
-
-impl SearchFilter for MongoDbSearchFilter {
-    type Value = Bson;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(doc! { key: value })
-    }
-
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(doc! { key: { "$gt": value } })
-    }
-
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(doc! { key: { "$lt": value } })
-    }
-
-    fn and(self, rhs: Self) -> Self {
-        Self(doc! { "$and": [ self.0, rhs.0 ]})
-    }
-
-    fn or(self, rhs: Self) -> Self {
-        Self(doc! { "$or": [ self.0, rhs.0 ]})
-    }
-}
-
-impl MongoDbSearchFilter {
-    fn into_inner(self) -> Document {
-        self.0
-    }
-
-    pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self(doc! { key: { "$gte": value } })
-    }
-
-    pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self(doc! { key: { "$lte": value } })
-    }
-
-    #[allow(clippy::should_implement_trait)]
-    pub fn not(self) -> Self {
-        Self(doc! { "$nor": [self.0] })
-    }
-
-    /// Tests whether the value at `key` is the BSON type `typ`
-    pub fn is_type(key: String, typ: &'static str) -> Self {
-        Self(doc! { key: { "$type": typ } })
-    }
-
-    pub fn size(key: String, size: i32) -> Self {
-        Self(doc! { key: { "$size": size } })
-    }
-
-    // Array ops
-    pub fn all(key: String, values: Vec<Bson>) -> Self {
-        Self(doc! { key: { "$all": values } })
-    }
-
-    pub fn any(key: String, condition: Document) -> Self {
-        Self(doc! { key: { "$elemMatch": condition } })
-    }
-}
-
-impl From<Filter<serde_json::Value>> for MongoDbSearchFilter {
-    fn from(value: Filter<serde_json::Value>) -> Self {
-        fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
-            to_bson(v).unwrap_or(Bson::Null)
-        }
-
-        match value {
-            Filter::Eq(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::eq(k, bson_val)
-            }
-            Filter::Gt(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::gt(k, bson_val)
-            }
-            Filter::Lt(k, val) => {
-                let bson_val = serde_json_value_to_bson(&val);
-                MongoDbSearchFilter::lt(k, bson_val)
-            }
-            Filter::And(l, r) => Self::from(*l).and(Self::from(*r)),
-            Filter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
-        }
-    }
-}
-
-impl<C, M> VectorStoreIndex for MongoDbVectorIndex<C, M>
-where
-    C: Sync + Send,
-    M: EmbeddingModel + Sync + Send,
-{
-    type Filter = MongoDbSearchFilter;
-
-    /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
+    /// Returns the top N most similar documents for a pre-embedded query.
     ///
-    /// `VectorSearchRequest` similarity search threshold filter gets ignored here because it is already present and can already be added in the MongoDB vector store struct.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    /// MongoDB `$vectorSearch` takes a single query vector, so only the first
+    /// embedding of the request's query is used. Scores are Atlas
+    /// `vectorSearchScore` similarity scores: higher is better.
+    ///
+    /// Each [`SearchHit`]'s payload is the full MongoDB document (minus the
+    /// embedded field), including its `_id` and `score` fields.
+    pub async fn top_n(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
+    ) -> Result<Vec<SearchHit>, VectorStoreError> {
+        let prompt_embedding = req.query().first();
 
         let pipeline = vec![
             self.pipeline_search_stage(&prompt_embedding, &req),
@@ -400,14 +274,17 @@ where
                 )))
             })?;
             let id = id.to_string();
-            let doc_t: T = serde_json::from_value(doc).map_err(VectorStoreError::JsonError)?;
-            results.push((score, id, doc_t));
+            results.push(SearchHit {
+                id,
+                score,
+                payload: doc,
+            });
         }
 
         tracing::info!(target: "rig",
             "Selected documents: {}",
             results.iter()
-                .map(|(distance, id, _)| format!("{id} ({distance})"))
+                .map(|hit| format!("{} ({})", hit.id, hit.score))
                 .collect::<Vec<String>>()
                 .join(", ")
         );
@@ -415,12 +292,12 @@ where
         Ok(results)
     }
 
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    async fn top_n_ids(
+    /// Returns the top N most similar document IDs as `(score, id)` tuples.
+    pub async fn top_n_ids(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.model.embed_text(req.query()).await?;
+        let prompt_embedding = req.query().first();
 
         let pipeline = vec![
             self.pipeline_search_stage(&prompt_embedding, &req),
@@ -470,74 +347,209 @@ where
 
         Ok(results)
     }
-}
 
-impl<C, M> VectorStoreIndexDyn for MongoDbVectorIndex<C, M>
-where
-    C: Sync + Send,
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        let req = req.map_filter(MongoDbSearchFilter::from);
-
-        Box::pin(async move {
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-
-            Ok(results)
-        })
-    }
-
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        let req = req.map_filter(MongoDbSearchFilter::from);
-        Box::pin(async move {
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-
-            Ok(results)
-        })
-    }
-}
-
-impl<C, M> InsertDocuments for MongoDbVectorIndex<C, M>
-where
-    C: Send + Sync,
-    M: EmbeddingModel + Send + Sync,
-{
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    /// Returns the top N most similar documents deserialized into `T` as
+    /// `(score, id, document)` tuples. Sugar over [`Self::top_n`].
+    pub async fn top_n_as<T: DeserializeOwned>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> Result<(), VectorStoreError> {
-        let mongo_documents = documents
+        req: VectorSearchRequest<MongoDbSearchFilter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        self.top_n(req)
+            .await?
             .into_iter()
-            .map(|(document, embeddings)| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
-                let json_doc = serde_json::to_value(&document)?;
-
-                embeddings.into_iter().map(|embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
-                    Ok(doc! {
-                        "document": mongodb::bson::to_bson(&json_doc).map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?,
-                        "embedding": embedding.vec,
-                        "embedded_text": embedding.document,
-                    })
-                }).collect::<Result<Vec<_>, _>>()
+            .map(|hit| {
+                let doc: T =
+                    serde_json::from_value(hit.payload).map_err(VectorStoreError::JsonError)?;
+                Ok((hit.score, hit.id, doc))
             })
+            .collect()
+    }
+
+    /// Insert precomputed records into the collection.
+    ///
+    /// Each embedding of a record becomes one MongoDB document with the shape
+    /// `{ "id": ..., "document": <payload>, "embedding": [...], "embedded_text": ... }`.
+    ///
+    /// Note that [`StoreRecord::id`] is stored in the `id` field only; search
+    /// hits identify documents by the MongoDB-assigned `_id`, not this field.
+    pub async fn insert(&self, records: Vec<StoreRecord>) -> Result<(), VectorStoreError> {
+        let mongo_documents = records
+            .into_iter()
+            .map(
+                |record| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
+                    let StoreRecord {
+                        id,
+                        payload,
+                        embeddings,
+                    } = record;
+
+                    let payload = mongodb::bson::to_bson(&payload)
+                        .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+
+                    embeddings
+                        .into_iter()
+                        .map(
+                            |embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
+                                Ok(doc! {
+                                    "id": id.clone(),
+                                    "document": payload.clone(),
+                                    "embedding": embedding.vec,
+                                    "embedded_text": embedding.document,
+                                })
+                            },
+                        )
+                        .collect::<Result<Vec<_>, _>>()
+                },
+            )
             .collect::<Result<Vec<Vec<_>>, _>>()?
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
 
-        let collection = self.collection.clone_with_type::<mongodb::bson::Document>();
-
-        collection
+        self.collection
             .insert_many(mongo_documents)
             .await
             .map_err(mongodb_to_rig_error)?;
 
         Ok(())
+    }
+
+    /// Serializes each document and inserts it. Sugar over [`Self::insert`].
+    pub async fn insert_as<T: Serialize>(
+        &self,
+        docs: Vec<(String, T, OneOrMany<Embedding>)>,
+    ) -> Result<(), VectorStoreError> {
+        let records = docs
+            .into_iter()
+            .map(|(id, doc, embeddings)| StoreRecord::new(id, &doc, embeddings))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.insert(records).await
+    }
+}
+
+/// See [MongoDB Vector Search](`https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/`) for more information
+/// on each of the fields
+#[derive(Default)]
+pub struct SearchParams {
+    exact: Option<bool>,
+    num_candidates: Option<u32>,
+}
+
+impl SearchParams {
+    /// Initializes a new `SearchParams` with default values.
+    pub fn new() -> Self {
+        Self {
+            exact: None,
+            num_candidates: None,
+        }
+    }
+
+    /// Sets the exact field of the search params.
+    /// If exact is true, an ENN vector search will be performed, otherwise, an ANN search will be performed.
+    /// By default, exact is false.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
+    pub fn exact(mut self, exact: bool) -> Self {
+        self.exact = Some(exact);
+        self
+    }
+
+    /// Sets the num_candidates field of the search params.
+    /// Only set this field if exact is set to false.
+    /// Number of nearest neighbors to use during the search.
+    /// See [MongoDB vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/) for more information.
+    pub fn num_candidates(mut self, num_candidates: u32) -> Self {
+        self.num_candidates = Some(num_candidates);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MongoDbSearchFilter(Document);
+
+impl MongoDbSearchFilter {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: Bson) -> Self {
+        let key = key.as_ref().to_owned();
+        Self(doc! { key: value })
+    }
+
+    pub fn gt(key: impl AsRef<str>, value: Bson) -> Self {
+        let key = key.as_ref().to_owned();
+        Self(doc! { key: { "$gt": value } })
+    }
+
+    pub fn lt(key: impl AsRef<str>, value: Bson) -> Self {
+        let key = key.as_ref().to_owned();
+        Self(doc! { key: { "$lt": value } })
+    }
+
+    pub fn and(self, rhs: Self) -> Self {
+        Self(doc! { "$and": [ self.0, rhs.0 ]})
+    }
+
+    pub fn or(self, rhs: Self) -> Self {
+        Self(doc! { "$or": [ self.0, rhs.0 ]})
+    }
+}
+
+impl MongoDbSearchFilter {
+    fn into_inner(self) -> Document {
+        self.0
+    }
+
+    pub fn gte(key: String, value: Bson) -> Self {
+        Self(doc! { key: { "$gte": value } })
+    }
+
+    pub fn lte(key: String, value: Bson) -> Self {
+        Self(doc! { key: { "$lte": value } })
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self(doc! { "$nor": [self.0] })
+    }
+
+    /// Tests whether the value at `key` is the BSON type `typ`
+    pub fn is_type(key: String, typ: &'static str) -> Self {
+        Self(doc! { key: { "$type": typ } })
+    }
+
+    pub fn size(key: String, size: i32) -> Self {
+        Self(doc! { key: { "$size": size } })
+    }
+
+    // Array ops
+    pub fn all(key: String, values: Vec<Bson>) -> Self {
+        Self(doc! { key: { "$all": values } })
+    }
+
+    pub fn any(key: String, condition: Document) -> Self {
+        Self(doc! { key: { "$elemMatch": condition } })
+    }
+}
+
+impl From<CoreFilter> for MongoDbSearchFilter {
+    fn from(value: CoreFilter) -> Self {
+        fn serde_json_value_to_bson(v: &serde_json::Value) -> Bson {
+            to_bson(v).unwrap_or(Bson::Null)
+        }
+
+        match value {
+            CoreFilter::Eq(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::eq(k, bson_val)
+            }
+            CoreFilter::Gt(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::gt(k, bson_val)
+            }
+            CoreFilter::Lt(k, val) => {
+                let bson_val = serde_json_value_to_bson(&val);
+                MongoDbSearchFilter::lt(k, bson_val)
+            }
+            CoreFilter::And(l, r) => Self::from(*l).and(Self::from(*r)),
+            CoreFilter::Or(l, r) => Self::from(*l).or(Self::from(*r)),
+        }
     }
 }

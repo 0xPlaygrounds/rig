@@ -1,10 +1,9 @@
 //! AWS Bedrock extractor smoke tests inspired by the provider extractor tests.
 
 use rig::message::Message;
-use rig::prelude::*;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent,
     support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response},
 };
 
@@ -27,36 +26,30 @@ fn assert_smoke_person(person: &SmokePerson) {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_smoke() {
-    let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
-        .build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+    let agent = agent(BEDROCK_COMPLETION_MODEL).build();
+    let response = agent
+        .extractor(EXTRACTOR_TEXT)
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");
 
-    assert_smoke_person(&response.data);
+    assert_smoke_person(&response.value);
     assert!(response.usage.total_tokens > 0, "usage should be populated");
 }
 
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn extractor_with_chat_history_smoke() {
-    let extractor = client()
-        .extractor::<SmokePerson>(BEDROCK_COMPLETION_MODEL)
-        .build();
-
-    let response = extractor
-        .extract_with_chat_history_with_usage(
-            "The text is about Ada Lovelace, a mathematician.",
-            vec![Message::user(
-                "Extract the person's name and job from the next message.",
-            )],
-        )
+    let agent = agent(BEDROCK_COMPLETION_MODEL).build();
+    let response = agent
+        .extractor("The text is about Ada Lovelace, a mathematician.")
+        .history([Message::user(
+            "Extract the person's name and job from the next message.",
+        )])
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request with chat history should succeed");
 
-    assert_smoke_person(&response.data);
+    assert_smoke_person(&response.value);
     assert!(response.usage.total_tokens > 0, "usage should be populated");
 }

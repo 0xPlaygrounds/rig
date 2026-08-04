@@ -1,14 +1,10 @@
 //! Provider-agnostic reranking abstractions.
 //!
 //! Reranking models reorder a list of documents by relevance to a query.
-//! The [`RerankModel`] trait defines the interface, and [`RerankResponse`]
-//! carries both the scored results and token usage.
+//! Each provider exposes the call as a `functions::rerank` free function, and
+//! [`RerankResponse`] carries both the scored results and token usage.
 
-use crate::{
-    completion::Usage,
-    http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::{completion::Usage, http_client, provider_response};
 use serde::{Deserialize, Serialize};
 
 /// Errors returned by reranking models.
@@ -39,25 +35,6 @@ pub enum RerankError {
 }
 
 crate::provider_response::impl_provider_response_helpers!(RerankError);
-
-/// Trait for reranking models that score documents by relevance to a query.
-pub trait RerankModel: WasmCompatSend + WasmCompatSync {
-    /// The maximum number of documents that can be reranked in a single request.
-    const MAX_DOCUMENTS: usize;
-
-    /// Provider client type used to construct this rerank model.
-    type Client;
-
-    /// Construct a model handle from a provider client and model identifier.
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self;
-
-    /// Rerank a list of documents against a query.
-    fn rerank(
-        &self,
-        query: &str,
-        documents: Vec<String>,
-    ) -> impl std::future::Future<Output = Result<RerankResponse, RerankError>> + WasmCompatSend;
-}
 
 /// A single reranked document result.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,12 +1,17 @@
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+//! SQLite (`sqlite-vec`) vector search over precomputed embeddings.
+//!
+//! Embeddings are produced by `openai::functions::embed` — a free function
+//! over a plain `EmbeddingConfig` plus a shared `HttpRuntime` — and batched
+//! with `embed_documents`, the replacement for the retired
+//! `EmbeddingsBuilder`. Because there is no embedding-model object to ask
+//! for its dimensionality, the store is told the vector width directly.
+
+use rig_core::Embed;
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
-    vector_store::{InsertDocuments, VectorStoreIndex},
-};
 use rig_sqlite::{
     Column, ColumnValue, SqliteDistanceMetric, SqliteVectorStore, SqliteVectorStoreTable,
 };
@@ -59,9 +64,6 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
-
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
     unsafe {
@@ -73,8 +75,13 @@ async fn main() -> Result<(), anyhow::Error> {
     // Initialize SQLite connection
     let conn = Connection::open("vector_store.db").await?;
 
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
+    let rt = HttpRuntime::new();
 
     let documents = vec![
         Document {
@@ -91,38 +98,54 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    let embeddings = EmbeddingsBuilder::new(model.clone())
-        .documents(documents)?
-        .build()
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
-    // Initialize SQLite vector store
-    let vector_store: SqliteVectorStore<_, Document> =
-        SqliteVectorStore::with_distance_metric(conn, &model, SqliteDistanceMetric::Cosine).await?;
+    // Initialize SQLite vector store. Queries arrive pre-embedded, so the
+    // store only needs the embedding dimensionality.
+    let vector_store: SqliteVectorStore<Document> =
+        SqliteVectorStore::with_distance_metric(conn, embedding_dims, SqliteDistanceMetric::Cosine)
+            .await?;
 
-    // Add embeddings to vector store
-    vector_store.insert_documents(embeddings).await?;
+    // Add precomputed embeddings to the vector store. The row's own `id`
+    // column identifies each stored document.
+    vector_store
+        .insert_as(
+            embeddings
+                .into_iter()
+                .map(|(doc, embeddings)| (doc.id.clone(), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
-    // Create a vector index on our vector store
-    let index = vector_store.index(model);
-
+    // Embed the query, then send the pre-embedded request
     let query = "What is a linglingdong?";
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
     let samples = 1;
-    let req = VectorSearchRequest::builder()
-        .samples(samples)
-        .query(query)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), samples);
 
-    // Query the index
-    let results = index
-        .top_n::<Document>(req.clone())
+    // Query the store
+    let results = vector_store
+        .top_n_as::<Document>(req.clone())
         .await?
         .into_iter()
         .collect::<Vec<_>>();
 
     println!("Results: {results:?}");
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     println!("ID results: {id_results:?}");
 

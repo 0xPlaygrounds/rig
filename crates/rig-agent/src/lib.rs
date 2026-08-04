@@ -9,11 +9,13 @@
         clippy::unreachable
     )
 )]
-//! Rig's classic agent runtime.
+//! Rig's agent runtime.
 //!
-//! This crate owns the mature builder, run state machine, typed hook system,
-//! contextual tool registry, memory orchestration, extraction, and shared
-//! blocking/streaming driver. Portable provider, message, tool, and storage
+//! This crate owns the agent builder, the sans-IO run state machine, the two
+//! session drivers ([`session::AgentSession`] blocking and
+//! [`stream::AgentStream`] streaming) that every agent method rides, the
+//! concrete hook records, the tool executor, and extraction. Portable
+//! provider, message, tool, and storage
 //! contracts remain in [`rig_core`] and are reachable here through the
 //! explicit [`core`] namespace; this crate's root deliberately exports only
 //! runtime-owned items. The comprehensive end-user facade is the root `rig`
@@ -25,12 +27,13 @@
 //! supported with no feature flags to set — the relaxed async bounds follow
 //! from the target alone.
 //!
-//! The `rmcp` feature is unavailable on wasm: rmcp's `ClientHandler` requires
-//! `Send + Sync` unconditionally, which this crate's wasm tool registry cannot
-//! satisfy, so asking for it there raises a targeted `compile_error!`. WASI
-//! (`wasm32-wasip1`/`wasip2`) is **not supported**: the dependency graph does
-//! not build for it. See the crate README for the full matrix and the
-//! reasoning.
+//! Stored hooks, tools, and agent/session data remain `Send + Sync` on every
+//! target. Invocation-local arguments, outputs, errors, futures, and streams
+//! retain target-relaxed bounds on browser wasm. The `rig-rmcp` companion
+//! integration is still native-only because its client and cancellation
+//! machinery is target-gated. WASI (`wasm32-wasip1`/`wasip2`) is **not
+//! supported**: the dependency graph does not build for it. See the crate
+//! README for the full matrix and reasoning.
 
 extern crate self as rig;
 
@@ -61,22 +64,27 @@ pub mod core {
 }
 
 pub mod agent;
+pub mod agent_api;
 pub mod client;
 pub mod completion;
-pub mod extractor;
+pub mod executor;
 pub mod integrations;
 // Shared JSON helpers live in rig-core; re-export so call sites stay
 // `json_utils::merge` / `json_utils::serialize_json_value`.
 pub(crate) use rig_core::json_utils;
+pub mod extract;
+pub mod hooks;
 pub mod prelude;
+pub mod provider;
+pub mod session;
+pub mod stream;
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
 
-pub use agent::{Agent, AgentBuilder, AgentRun, AgentRunner};
-pub use extractor::ExtractionResponse;
+pub use agent::{Agent, AgentBuilder, AgentRun, SessionRunner};
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]

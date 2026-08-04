@@ -2,7 +2,6 @@
 
 use futures::FutureExt;
 use rig::OneOrMany;
-use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
@@ -12,7 +11,6 @@ use rig::providers::anthropic::completion::{
     ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,
     DocumentSource as AnthropicDocumentSource, Message as AnthropicMessage, Role as AnthropicRole,
 };
-use rig::streaming::StreamingPrompt;
 use serde::Deserialize;
 use serde_json::Value;
 use std::future::Future;
@@ -467,7 +465,7 @@ async fn streaming_document_file_id_roundtrip_live() {
                 assert_no_verifier_leaked_into_prompt(&stream_prompt);
                 assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
 
-                let mut stream = agent.stream_prompt(stream_prompt).await;
+                let mut stream = agent.runner(stream_prompt).stream_run();
                 let response = collect_stream_final_response(&mut stream)
                     .await
                     .expect("streaming Messages API should read uploaded PDF by file_id");

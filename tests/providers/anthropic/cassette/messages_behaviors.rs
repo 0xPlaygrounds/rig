@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -20,13 +20,12 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
         "messages_behaviors/max_tokens_truncation_preserves_stop_reason_and_partial_text",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(
-                    "Write a story of at least 150 words about a lighthouse keeper.",
-                )
-                .preamble("You are a storyteller.".to_string())
-                .max_tokens(64)
-                .build();
+            let request = CompletionRequest::builder(
+                "Write a story of at least 150 words about a lighthouse keeper.",
+            )
+            .preamble("You are a storyteller.")
+            .max_tokens(64)
+            .build();
 
             let response = model
                 .completion(request)
@@ -34,8 +33,8 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .expect("a truncated response should still convert, not error");
 
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("max_tokens"),
+                response.finish_reason,
+                Some(FinishReason::Length),
                 "hitting max_tokens should preserve the max_tokens stop reason"
             );
             let text: String = response

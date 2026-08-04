@@ -1,9 +1,6 @@
 //! OpenAI streaming coverage, including the migrated example path.
 
-use rig::completion::GetTokenUsage;
-use rig::prelude::*;
-use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
+use rig::{prelude::*, providers::openai};
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
@@ -19,16 +16,14 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let (response, provider_final): (
-            _,
-            openai::responses_api::streaming::StreamingCompletionResponse,
-        ) = collect_stream_final_response_and_provider_final(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
+        let (response, provider_final) =
+            collect_stream_final_response_and_provider_final(&mut stream)
+                .await
+                .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert!(provider_final.token_usage().total_tokens > 0);
+        assert!(provider_final.usage.total_tokens > 0);
     })
     .await;
 }
@@ -43,8 +38,8 @@ async fn example_streaming_prompt() {
             .build();
 
         let mut stream = agent
-            .stream_prompt("When and where and what type is the next solar eclipse?")
-            .await;
+            .runner("When and where and what type is the next solar eclipse?")
+            .stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");

@@ -1,13 +1,8 @@
 //! ChatGPT permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-    stream_to_stdout,
-};
-use rig::completion::Prompt;
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
+use rig::agent::{ToolCallAction, ToolResultAction};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -15,7 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::support::assert_nonempty_response;
 
 const TEST_FILE: &str = "test.txt";
@@ -63,11 +58,7 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(TEST_FILE)
@@ -98,11 +89,7 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(TEST_FILE)
@@ -119,31 +106,34 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl AgentHook for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-        if count == 0 {
-            ToolCallAction::skip(format!(
-                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
-                event.tool_name
-            ))
-        } else {
-            ToolCallAction::run()
-        }
+impl PermissionHook {
+    /// The hook record: vetoes the first tool call with a redirect reason, then
+    /// records every tool result's normalized presentation.
+    fn entry(&self) -> HookEntry {
+        let hook = self.clone();
+        HookEntry::sync("permission-control", move |event| hook.decide(event))
     }
 
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let normalized = event.presentation.render();
-        *self.last_result.lock().expect("lock last_result") = Some(normalized);
-        ToolResultAction::keep()
+    fn decide(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::ToolCall { call, .. } => {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+                if count == 0 {
+                    HookDecision::ToolCall(ToolCallAction::skip(format!(
+                        "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
+                        call.function.name
+                    )))
+                } else {
+                    HookDecision::ToolCall(ToolCallAction::run())
+                }
+            }
+            HookEvent::ToolResult { presentation, .. } => {
+                let normalized = presentation.render();
+                *self.last_result.lock().expect("lock last_result") = Some(normalized);
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
@@ -152,8 +142,8 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client()
-        .agent(LIVE_MODEL)
+    let agent = live_agent(LIVE_MODEL)
+        .await
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -167,13 +157,15 @@ async fn permission_control_prompt_example() -> Result<()> {
     };
 
     let _response = agent
-        .prompt(
+        .runner(
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
-        .add_hook(hook)
-        .await?;
+        .add_hook(hook.entry())
+        .run()
+        .await?
+        .output;
 
     let last = last_result.lock().expect("lock last_result").clone();
     anyhow::ensure!(last.as_deref() == Some("hello world"));
@@ -186,8 +178,8 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client()
-        .agent(LIVE_MODEL)
+    let agent = live_agent(LIVE_MODEL)
+        .await
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
         .tool(ReadFileTail)
@@ -201,13 +193,13 @@ async fn permission_control_streaming_example() -> Result<()> {
     };
 
     let mut stream = agent
-        .stream_prompt(
+        .runner(
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )
         .max_turns(5)
-        .add_hook(hook)
-        .await;
+        .add_hook(hook.entry())
+        .stream_run();
 
     let final_response = stream_to_stdout(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();
@@ -224,4 +216,38 @@ async fn permission_control_streaming_example() -> Result<()> {
     anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
 
     Ok(())
+}
+
+/// Local stand-in for the deleted `rig::agent::stream_to_stdout` helper:
+/// drains a streamed agent run to stdout and returns the final response.
+async fn stream_to_stdout(
+    stream: &mut rig::stream::AgentRunStream,
+) -> Result<rig::agent::PromptResponse, std::io::Error> {
+    use rig::message::Text;
+    use rig::stream::AgentRunItem;
+    use rig::streaming::StreamedAssistantContent;
+
+    let mut final_res = rig::agent::PromptResponse::empty();
+    print!("Response: ");
+    while let Some(content) = stream.next().await {
+        match content {
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(Text { text, .. }))) => {
+                print!("{text}");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(AgentRunItem::Assistant(StreamedAssistantContent::Reasoning(reasoning))) => {
+                print!("{}", reasoning.display_text());
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Ok(AgentRunItem::Final(res)) => final_res = res,
+            Ok(AgentRunItem::ModelTurnRetried { turn }) => {
+                print!("\n[model turn {turn} rejected; retry requested]\nResponse: ");
+                std::io::Write::flush(&mut std::io::stdout())?;
+            }
+            Err(err) => eprintln!("Error: {err}"),
+            _ => {}
+        }
+    }
+
+    Ok(final_res)
 }

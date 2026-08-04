@@ -24,27 +24,61 @@ Set your Gemini API key as an environment variable:
 export GEMINI_API_KEY=your_api_key_here
 ```
 
-## Example
+## Entry point: `functions`
+
+The crate's face is a serde `functions::Config` plus free functions. Because
+gRPC is a non-HTTP transport, the connected tonic channel cannot be plain
+data: `functions::client_from_config` turns a config into the live `Client`
+handle, which every free function takes.
 
 ```rust
-use rig::prelude::*;
-use rig_gemini_grpc::Client;
+use rig_core::completion::CompletionRequest;
+use rig_gemini_grpc::functions;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env();
+    // Reads GEMINI_API_KEY from the environment.
+    let cfg = functions::Config::new("gemini-2.5-flash");
+    let client = functions::client_from_config(&cfg).await?;
 
-    let agent = client
-        .agent("gemini-2.5-flash")
-        .preamble("You are a helpful assistant.")
-        .build();
-
-    let response = agent.prompt("Hello!").await?;
-    println!("{}", response);
+    let response = functions::complete(
+        &client,
+        &cfg.model,
+        CompletionRequest::from_prompt("Hello!"),
+    )
+    .await?;
+    println!("{:?}", response.choice);
 
     Ok(())
 }
 ```
+
+## As an agent
+
+The same config drops into `rig-agent` (feature `gemini-grpc`), which builds
+and caches the channel for you:
+
+```rust
+use rig_agent::{agent::AgentBuilder, provider::ProviderConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
+    let agent = AgentBuilder::new(ProviderConfig::GeminiGrpc(
+        rig_gemini_grpc::functions::Config::new("gemini-2.5-flash"),
+    ))
+    .preamble("You are a helpful assistant.")
+    .build();
+
+    println!("{}", agent.prompt("Hello!").await?);
+
+    Ok(())
+}
+```
+
+## Embeddings
+
+`functions::EmbeddingConfig` is the embeddings sibling; pass a client plus
+`cfg.model` / `cfg.ndims` to `functions::embed` or `functions::embed_batches`.
 
 ## Features
 

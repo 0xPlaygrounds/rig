@@ -3,8 +3,6 @@
 //! Run it to see the model answer from the supplied in-memory facts.
 
 use anyhow::Result;
-use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::cohere::{self, COMMAND_R};
 
@@ -19,13 +17,10 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = cohere::Client::from_env()?;
-    let model = client.completion_model(COMMAND_R);
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(AgentBuilder::new(model), |builder, doc| {
-            builder.context(doc)
-        })
+        .fold(client.agent(COMMAND_R), |builder, doc| builder.context(doc))
         .build();
 
     let response = agent.prompt(CONTEXT_PROMPT).await?;

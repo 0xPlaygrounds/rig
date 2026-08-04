@@ -1,15 +1,17 @@
-use crate::http_client::sse::BoxedStream;
-use bytes::Bytes;
+pub use crate::http_client::sse::BoxedStream;
+pub use bytes::Bytes;
 pub use http::{HeaderMap, HeaderValue, Method, Request, Response, Uri, request::Builder};
 use http::{HeaderName, StatusCode};
-use reqwest::Body;
 pub mod multipart;
 pub mod retry;
 pub mod sse;
+mod transport;
+pub use crate::wasm_compat::WasmBoxedFuture;
 use crate::wasm_compat::*;
 pub use multipart::MultipartForm;
 pub use reqwest::Client as ReqwestClient;
 use std::pin::Pin;
+pub use transport::{CustomTransport, HttpTransport};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -27,6 +29,9 @@ pub enum Error {
     StreamEnded,
     #[error("Invalid content type was returned: {0:?}")]
     InvalidContentType(HeaderValue),
+    /// The selected transport does not support multipart requests.
+    #[error("Multipart requests are not supported by this HTTP transport")]
+    UnsupportedMultipart,
     #[cfg(not(target_family = "wasm"))]
     #[error("Http client error: {0}")]
     Instance(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
@@ -75,9 +80,7 @@ async fn non_success_status_error(response: reqwest::Response) -> Error {
     Error::InvalidStatusCodeWithMessage(status, message)
 }
 
-pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
-pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
-
+/// A streaming HTTP response whose body yields transport-neutral byte chunks.
 pub type StreamingResponse = Response<BoxedStream>;
 
 #[derive(Debug, Clone, Copy)]
@@ -87,17 +90,6 @@ impl From<NoBody> for Bytes {
     fn from(_: NoBody) -> Self {
         Bytes::new()
     }
-}
-
-impl From<NoBody> for Body {
-    fn from(_: NoBody) -> Self {
-        reqwest::Body::default()
-    }
-}
-
-pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
-    let text = response.into_body().await?;
-    Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
 pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
@@ -121,42 +113,43 @@ pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
     Ok(req)
 }
 
-/// A helper trait to make generic requests (both regular and SSE) possible.
-pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
-    /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
-    fn send<T, U>(
+/// The concrete HTTP backends [`Transport`](crate::http_runtime::Transport)
+/// dispatches to.
+///
+/// This is deliberately *not* a public extension point: it exists so
+/// [`HttpRuntime`](crate::http_runtime::HttpRuntime) can hold `reqwest` and the
+/// test transports behind one enum. It replaced the public, body-generic
+/// `HttpClientExt` trait that used to be threaded through every provider as an
+/// `H` type parameter — providers now take an `HttpRuntime`, so no HTTP
+/// genericity reaches them. Bodies are `Vec<u8>` in and [`Bytes`] out; the only
+/// remaining type-erased edge is the streaming one, where the response body is
+/// a boxed byte stream.
+pub(crate) trait Backend: Send + Sync {
+    /// Send a request and read the full response body.
+    ///
+    /// Non-success statuses are reported as
+    /// [`Error::InvalidStatusCodeWithMessage`] with the body preserved, so
+    /// callers that want them as values can recover them.
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes>,
-        T: WasmCompatSend,
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+        req: Request<Vec<u8>>,
+    ) -> impl Future<Output = Result<Response<Bytes>>> + WasmCompatSend + 'static;
 
-    /// Send a HTTP request with a multipart body, get a response back (as bytes). Response must be able to be turned back into Bytes (although usually for the response, you will probably want to specify Bytes anyway).
-    fn send_multipart<U>(
+    /// Send a multipart request and read the full response body. Same
+    /// status-code contract as [`send`](Self::send).
+    fn send_multipart(
         &self,
         req: Request<MultipartForm>,
-    ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes>,
-        U: WasmCompatSend + 'static;
+    ) -> impl Future<Output = Result<Response<Bytes>>> + WasmCompatSend + 'static;
 
-    /// Send a HTTP request, get a streamed response back (as a stream of [`bytes::Bytes`].)
-    fn send_streaming<T>(
+    /// Send a request and return the response as a stream of byte chunks.
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend;
+        req: Request<Vec<u8>>,
+    ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend;
 }
 
-async fn into_lazy_response<U>(response: reqwest::Response) -> Result<Response<LazyBody<U>>>
-where
-    U: From<Bytes>,
-    U: WasmCompatSend + 'static,
-{
+async fn into_response(response: reqwest::Response) -> Result<Response<Bytes>> {
     if !response.status().is_success() {
         return Err(non_success_status_error(response).await);
     }
@@ -167,46 +160,35 @@ where
         *headers = response.headers().clone();
     }
 
-    let body: LazyBody<U> = Box::pin(async {
-        let bytes = response.bytes().await.map_err(instance_error)?;
-        Ok(U::from(bytes))
-    });
+    let bytes = response.bytes().await.map_err(instance_error)?;
 
-    res.body(body).map_err(Error::Protocol)
+    res.body(bytes).map_err(Error::Protocol)
 }
 
-macro_rules! impl_http_client_ext {
+macro_rules! impl_http_backend {
     ($(#[$attribute:meta])* $client:ty) => {
         $(#[$attribute])*
-        impl HttpClientExt for $client {
-            fn send<T, U>(
+        impl Backend for $client {
+            fn send(
                 &self,
-                req: Request<T>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-            where
-                T: Into<Bytes>,
-                U: From<Bytes> + WasmCompatSend + 'static,
-            {
+                req: Request<Vec<u8>>,
+            ) -> impl Future<Output = Result<Response<Bytes>>> + WasmCompatSend + 'static {
                 let (parts, body) = req.into_parts();
                 let req = self
                     .request(parts.method, parts.uri.to_string())
                     .headers(parts.headers)
-                    .body(body.into());
+                    .body(body);
 
                 async move {
                     let response = req.send().await.map_err(instance_error)?;
-                    into_lazy_response(response).await
+                    into_response(response).await
                 }
             }
 
-            fn send_multipart<U>(
+            fn send_multipart(
                 &self,
                 req: Request<MultipartForm>,
-            ) -> impl Future<Output = Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-            where
-                U: From<Bytes>,
-                U: WasmCompatSend + 'static,
-            {
+            ) -> impl Future<Output = Result<Response<Bytes>>> + WasmCompatSend + 'static {
                 let (parts, body) = req.into_parts();
                 let body = reqwest::multipart::Form::from(body);
 
@@ -217,17 +199,14 @@ macro_rules! impl_http_client_ext {
 
                 async move {
                     let response = req.send().await.map_err(instance_error)?;
-                    into_lazy_response(response).await
+                    into_response(response).await
                 }
             }
 
-            fn send_streaming<T>(
+            fn send_streaming(
                 &self,
-                req: Request<T>,
-            ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend
-            where
-                T: Into<Bytes> + WasmCompatSend,
-            {
+                req: Request<Vec<u8>>,
+            ) -> impl Future<Output = Result<StreamingResponse>> + WasmCompatSend {
                 let (parts, body) = req.into_parts();
 
                 let client = self.clone();
@@ -236,7 +215,7 @@ macro_rules! impl_http_client_ext {
                     let req = self
                         .request(parts.method, parts.uri.to_string())
                         .headers(parts.headers)
-                        .body(body.into())
+                        .body(body)
                         .build()
                         .map_err(|error| Error::Instance(error.into()))?;
                     let response: reqwest::Response =
@@ -274,10 +253,88 @@ macro_rules! impl_http_client_ext {
     };
 }
 
-impl_http_client_ext!(reqwest::Client);
+impl_http_backend!(reqwest::Client);
 
-impl_http_client_ext!(
-    #[cfg(feature = "reqwest-middleware")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
-    reqwest_middleware::ClientWithMiddleware
-);
+#[cfg(feature = "reqwest-middleware")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
+impl HttpTransport for reqwest_middleware::ClientWithMiddleware {
+    fn send(&self, req: Request<Vec<u8>>) -> WasmBoxedFuture<'static, Result<Response<Bytes>>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .body(body);
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_response(response).await
+        })
+    }
+
+    fn send_multipart(
+        &self,
+        req: Request<MultipartForm>,
+    ) -> WasmBoxedFuture<'static, Result<Response<Bytes>>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .multipart(reqwest::multipart::Form::from(body));
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_response(response).await
+        })
+    }
+
+    fn send_streaming(
+        &self,
+        req: Request<Vec<u8>>,
+    ) -> WasmBoxedFuture<'static, Result<StreamingResponse>> {
+        let (parts, body) = req.into_parts();
+        let req = self
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .body(body);
+
+        Box::pin(async move {
+            let response = req.send().await.map_err(instance_error)?;
+            into_unchecked_streaming_response(response)
+        })
+    }
+}
+
+#[cfg(feature = "reqwest-middleware")]
+async fn into_unchecked_response(response: reqwest::Response) -> Result<Response<Bytes>> {
+    let mut result = Response::builder().status(response.status());
+
+    if let Some(headers) = result.headers_mut() {
+        *headers = response.headers().clone();
+    }
+
+    let bytes = response.bytes().await.map_err(instance_error)?;
+    result.body(bytes).map_err(Error::Protocol)
+}
+
+#[cfg(feature = "reqwest-middleware")]
+fn into_unchecked_streaming_response(response: reqwest::Response) -> Result<StreamingResponse> {
+    #[cfg(not(target_family = "wasm"))]
+    let mut result = Response::builder()
+        .status(response.status())
+        .version(response.version());
+
+    #[cfg(target_family = "wasm")]
+    let mut result = Response::builder().status(response.status());
+
+    if let Some(headers) = result.headers_mut() {
+        *headers = response.headers().clone();
+    }
+
+    use futures::StreamExt;
+    let body: BoxedStream = Box::pin(
+        response
+            .bytes_stream()
+            .map(|chunk| chunk.map_err(instance_error)),
+    );
+    result.body(body).map_err(Error::Protocol)
+}

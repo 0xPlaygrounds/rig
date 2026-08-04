@@ -1,6 +1,4 @@
-use rig_agent::completion::Prompt;
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers;
 use rig_derive::rig_tool;
 

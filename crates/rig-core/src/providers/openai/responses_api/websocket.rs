@@ -5,11 +5,9 @@
 //! time, which matches OpenAI's current protocol constraints.
 
 use crate::completion::{self, CompletionError};
-use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, ResponseChunk, ResponseChunkKind, StreamingCompletionChunk,
 };
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -22,7 +20,8 @@ use tokio_tungstenite::{
 use tracing::Level;
 use url::Url;
 
-use super::{CompletionResponse, ResponseStatus, ResponsesCompletionModel};
+use super::functions::Config;
+use super::{CompletionResponse, ResponseStatus};
 
 type OpenAIWebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -191,16 +190,23 @@ impl ResponsesWebSocketEvent {
 ///
 /// The default builder applies a 30 second connection timeout and leaves the
 /// per-event timeout disabled.
-pub struct ResponsesWebSocketSessionBuilder<H = reqwest::Client> {
-    model: ResponsesCompletionModel<H>,
+pub struct ResponsesWebSocketSessionBuilder {
+    config: Config,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
 }
 
-impl<H> ResponsesWebSocketSessionBuilder<H> {
-    pub(crate) fn new(model: ResponsesCompletionModel<H>) -> Self {
+impl ResponsesWebSocketSessionBuilder {
+    /// Starts a websocket session builder for `config`.
+    ///
+    /// `config` is the same plain-data
+    /// [`Config`] the HTTP free functions take: its
+    /// base URL, credential, model, system-instructions placement, strict-tool
+    /// flag and default tools all apply to the requests this session sends.
+    #[must_use]
+    pub fn new(config: Config) -> Self {
         Self {
-            model,
+            config,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
             event_timeout: None,
         }
@@ -235,25 +241,27 @@ impl<H> ResponsesWebSocketSessionBuilder<H> {
     }
 }
 
-impl<H> ResponsesWebSocketSessionBuilder<H>
-where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-{
+impl ResponsesWebSocketSessionBuilder {
     /// Opens the websocket session using the configured builder options.
-    pub async fn connect(self) -> Result<ResponsesWebSocketSession<H>, CompletionError> {
+    pub async fn connect(self) -> Result<ResponsesWebSocketSession, CompletionError> {
         ResponsesWebSocketSession::connect_with_timeouts(
-            self.model,
+            self.config,
             self.connect_timeout,
             self.event_timeout,
         )
         .await
     }
+}
+
+/// Opens a websocket session for `config` with the default timeouts.
+///
+/// The WebSocket entry point of the OpenAI Responses provider, alongside
+/// [`complete`](super::functions::complete) and
+/// [`open_stream`](super::functions::open_stream).
+pub async fn connect(config: Config) -> Result<ResponsesWebSocketSession, CompletionError> {
+    ResponsesWebSocketSessionBuilder::new(config)
+        .connect()
+        .await
 }
 
 /// A stateful OpenAI Responses WebSocket session.
@@ -264,8 +272,8 @@ where
 ///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
-pub struct ResponsesWebSocketSession<H = reqwest::Client> {
-    model: ResponsesCompletionModel<H>,
+pub struct ResponsesWebSocketSession {
+    config: Config,
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,
     socket: OpenAIWebSocket,
@@ -275,27 +283,18 @@ pub struct ResponsesWebSocketSession<H = reqwest::Client> {
     failed: bool,
 }
 
-impl<H> ResponsesWebSocketSession<H>
-where
-    H: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-{
+impl ResponsesWebSocketSession {
     async fn connect_with_timeouts(
-        model: ResponsesCompletionModel<H>,
+        config: Config,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
     ) -> Result<Self, CompletionError> {
-        let url = websocket_url(model.client.base_url())?;
-        let request = websocket_request(&url, model.client.headers())?;
+        let url = websocket_url(&config.base_url)?;
+        let request = websocket_request(&url, &config_headers(&config)?)?;
         let socket = connect_websocket(request, connect_timeout).await?;
 
         Ok(Self {
-            model,
+            config,
             previous_response_id: None,
             pending_done_response_id: None,
             socket,
@@ -435,7 +434,7 @@ where
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<completion::CompletionResponse, CompletionError> {
         self.send(completion_request).await?;
         let response = self.wait_for_completed_response().await?;
         response.try_into()
@@ -463,7 +462,8 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<super::CompletionRequest, CompletionError> {
-        let mut request = self.model.create_completion_request(completion_request)?;
+        let mut request =
+            super::functions::build_typed_request(&self.config, &completion_request, false)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
         // are ignored by the provider and only add noise to the payload.
@@ -606,7 +606,7 @@ where
     }
 }
 
-impl<H> Drop for ResponsesWebSocketSession<H> {
+impl Drop for ResponsesWebSocketSession {
     fn drop(&mut self) {
         if !self.closed {
             tracing::warn!(
@@ -774,6 +774,33 @@ fn websocket_url(base_url: &str) -> Result<String, CompletionError> {
     Ok(url.to_string())
 }
 
+/// The HTTP headers the websocket upgrade carries: the same Bearer credential
+/// and extra headers [`build_request`](super::functions::build_request) puts on
+/// the HTTP requests.
+fn config_headers(config: &Config) -> Result<http::HeaderMap, CompletionError> {
+    use http::header::{AUTHORIZATION, HeaderName, HeaderValue};
+
+    let mut headers = http::HeaderMap::new();
+    let invalid = |error: http::Error| CompletionError::RequestError(Box::new(error));
+    if let Some(key) = config
+        .api_key
+        .resolve()
+        .map_err(|error| CompletionError::RequestError(Box::new(error)))?
+    {
+        let mut value = HeaderValue::from_str(&format!("Bearer {key}"))
+            .map_err(|error| invalid(error.into()))?;
+        value.set_sensitive(true);
+        headers.insert(AUTHORIZATION, value);
+    }
+    for (name, value) in &config.extra_headers {
+        headers.insert(
+            HeaderName::from_bytes(name.as_bytes()).map_err(|error| invalid(error.into()))?,
+            HeaderValue::from_str(value).map_err(|error| invalid(error.into()))?,
+        );
+    }
+    Ok(headers)
+}
+
 fn websocket_request(
     url: &str,
     headers: &http::HeaderMap,
@@ -830,8 +857,6 @@ mod tests {
         ResponsesWebSocketCreateOptions, ResponsesWebSocketDoneEvent, ResponsesWebSocketEvent,
         parse_server_event, terminal_response_result, websocket_url,
     };
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
     use crate::providers::openai::responses_api::{
         CompletionResponse, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
     };
@@ -841,6 +866,14 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio::time::sleep;
     use tokio_tungstenite::{accept_async, tungstenite::Message};
+
+    /// A config pointed at the in-test websocket server, standing in for the
+    /// deleted `Client::builder().api_key(..).base_url(..)` fixture.
+    fn test_config(base_url: &str) -> super::Config {
+        super::Config::new("gpt-4o")
+            .with_api_key("test-key")
+            .with_base_url(base_url)
+    }
 
     #[test]
     fn websocket_error_event_preserves_provider_payload_as_json() {
@@ -1134,19 +1167,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("request should send");
 
@@ -1160,7 +1186,7 @@ mod tests {
         );
 
         let closed = session
-            .send(model.completion_request("retry").build())
+            .send(crate::completion::CompletionRequest::from_prompt("retry"))
             .await
             .expect_err("session should close after fatal parse error");
         assert!(
@@ -1213,21 +1239,14 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket_builder("gpt-4o")
+        let mut session = super::ResponsesWebSocketSessionBuilder::new(test_config(&base_url))
             .event_timeout(Duration::from_millis(20))
             .connect()
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("request should send");
 
@@ -1243,7 +1262,7 @@ mod tests {
         );
 
         let closed = session
-            .send(model.completion_request("retry").build())
+            .send(crate::completion::CompletionRequest::from_prompt("retry"))
             .await
             .expect_err("timed-out session should close");
         assert!(
@@ -1319,19 +1338,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1342,7 +1354,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), Some("resp_1"));
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1415,19 +1427,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1440,7 +1445,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1557,19 +1562,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let error = session
@@ -1580,7 +1578,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1644,19 +1642,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let first = session
@@ -1667,7 +1658,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), Some("resp_1"));
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1764,19 +1755,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
         let error = session
@@ -1787,7 +1771,7 @@ mod tests {
         assert_eq!(session.previous_response_id(), None);
 
         session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect("second request should send");
         let second = session
@@ -1869,13 +1853,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
@@ -1911,24 +1889,17 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("first").build())
+            .send(crate::completion::CompletionRequest::from_prompt("first"))
             .await
             .expect("first request should send");
 
         let error = session
-            .send(model.completion_request("second").build())
+            .send(crate::completion::CompletionRequest::from_prompt("second"))
             .await
             .expect_err("second send while in-flight should error");
         assert!(
@@ -1955,21 +1926,16 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session.close().await.expect("close should succeed");
 
         let error = session
-            .send(model.completion_request("after close").build())
+            .send(crate::completion::CompletionRequest::from_prompt(
+                "after close",
+            ))
             .await
             .expect_err("send after close should error");
         assert!(
@@ -1996,13 +1962,7 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
@@ -2083,19 +2043,12 @@ mod tests {
         });
 
         let base_url = format!("http://{address}/v1");
-        let client = crate::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-4o");
-        let mut session = client
-            .responses_websocket("gpt-4o")
+        let mut session = super::connect(test_config(&base_url))
             .await
             .expect("session should connect");
 
         session
-            .send(model.completion_request("hello").build())
+            .send(crate::completion::CompletionRequest::from_prompt("hello"))
             .await
             .expect("send should succeed");
         let response = session

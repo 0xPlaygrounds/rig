@@ -5,38 +5,215 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::client::{CompletionClient, ProviderClient};
 //! use rig_core::providers::chatgpt;
 //!
-//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = chatgpt::Client::from_env()?;
-//! let model = client.completion_model(chatgpt::GPT_5_3_CODEX);
-//! # let _ = model;
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = chatgpt::functions::config_from_env(chatgpt::GPT_5_3_CODEX).await?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = chatgpt::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-mod auth;
+pub mod auth;
+pub mod functions;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
+#[allow(dead_code)]
+mod base_client {
+    crate::providers::client::define_http_client! {
+        config = super::functions::Config,
+        default_base_url = super::functions::DEFAULT_BASE_URL,
+        api_key_required = true,
+    }
+}
+
+/// Concrete ChatGPT client preserving account and request defaults.
+#[derive(Clone, Debug)]
+pub struct Client {
+    base: base_client::Client,
+    account_id: Option<String>,
+    default_instructions: Option<String>,
+    originator: String,
+    user_agent: String,
+}
+
+/// Monomorphic ChatGPT client builder.
+#[derive(Clone, Debug)]
+pub struct ClientBuilder {
+    base: base_client::ClientBuilder,
+    account_id: Option<String>,
+    default_instructions: Option<String>,
+    originator: String,
+    user_agent: String,
+}
+
+impl Client {
+    /// Build from an explicit `CHATGPT_ACCESS_TOKEN` environment credential.
+    pub fn from_env() -> Result<Self, crate::providers::ConfigError> {
+        let config = functions::Config::from_env(String::new())?;
+        Ok(Self::from_config_projection(config))
+    }
+
+    /// Build using the full ChatGPT environment/OAuth credential resolution.
+    pub async fn from_env_with_oauth() -> Result<Self, functions::ConfigFromEnvError> {
+        let config = functions::config_from_env(String::new()).await?;
+        Ok(Self::from_config_projection(config))
+    }
+
+    fn from_config_projection(config: functions::Config) -> Self {
+        let base = base_client::Client::from_connection(
+            config.connection,
+            crate::http_runtime::HttpRuntime::new(),
+        );
+        Self {
+            base,
+            account_id: config.account_id,
+            default_instructions: config.default_instructions,
+            originator: config.originator,
+            user_agent: config.user_agent,
+        }
+    }
+
+    /// Start a concrete client builder.
+    pub fn builder() -> ClientBuilder {
+        let defaults = functions::Config::new(String::new());
+        ClientBuilder {
+            base: base_client::Client::builder(),
+            account_id: None,
+            default_instructions: defaults.default_instructions,
+            originator: defaults.originator,
+            user_agent: defaults.user_agent,
+        }
+    }
+
+    /// Build with an explicit ChatGPT access token.
+    pub fn new(access_token: impl Into<String>) -> Self {
+        let defaults = functions::Config::new(String::new());
+        Self {
+            base: base_client::Client::new(access_token),
+            account_id: None,
+            default_instructions: defaults.default_instructions,
+            originator: defaults.originator,
+            user_agent: defaults.user_agent,
+        }
+    }
+
+    /// Materialize plain ChatGPT configuration for `model`.
+    pub fn config(&self, model: impl Into<String>) -> functions::Config {
+        let mut config = self.base.config(model);
+        config.account_id = self.account_id.clone();
+        config.default_instructions = self.default_instructions.clone();
+        config.originator = self.originator.clone();
+        config.user_agent = self.user_agent.clone();
+        config
+    }
+
+    /// Canonical HTTP connection data.
+    pub fn connection_config(&self) -> &crate::providers::HttpConnectionConfig {
+        self.base.connection_config()
+    }
+
+    /// Shared HTTP runtime.
+    pub fn http_runtime(&self) -> crate::http_runtime::HttpRuntime {
+        self.base.http_runtime()
+    }
+
+    /// Compatibility alias for [`Self::http_runtime`].
+    pub fn http(&self) -> crate::http_runtime::HttpRuntime {
+        self.http_runtime()
+    }
+}
+
+impl ClientBuilder {
+    /// Set an inline ChatGPT access token.
+    pub fn access_token(self, token: impl Into<String>) -> Self {
+        Self {
+            base: self.base.api_key(token),
+            ..self
+        }
+    }
+
+    /// Compatibility alias for [`Self::access_token`].
+    pub fn api_key(self, token: impl Into<String>) -> Self {
+        self.access_token(token)
+    }
+
+    /// Attach a ChatGPT account id.
+    pub fn account_id(mut self, account_id: impl Into<String>) -> Self {
+        self.account_id = Some(account_id.into());
+        self
+    }
+
+    /// Override the backend base URL.
+    pub fn base_url(self, base_url: impl Into<String>) -> Self {
+        Self {
+            base: self.base.base_url(base_url),
+            ..self
+        }
+    }
+
+    /// Override default instructions applied to every request.
+    pub fn default_instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.default_instructions = Some(instructions.into());
+        self
+    }
+
+    /// Clear default instructions.
+    pub fn without_default_instructions(mut self) -> Self {
+        self.default_instructions = None;
+        self
+    }
+
+    /// Override the required originator header.
+    pub fn originator(mut self, originator: impl Into<String>) -> Self {
+        self.originator = originator.into();
+        self
+    }
+
+    /// Override the user-agent header.
+    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.user_agent = user_agent.into();
+        self
+    }
+
+    /// Append a connection-wide header.
+    pub fn extra_header(self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            base: self.base.extra_header(name, value),
+            ..self
+        }
+    }
+
+    /// Reuse an existing HTTP runtime.
+    pub fn http_runtime(self, http: crate::http_runtime::HttpRuntime) -> Self {
+        Self {
+            base: self.base.http_runtime(http),
+            ..self
+        }
+    }
+
+    /// Validate and build the client.
+    pub fn build(self) -> Result<Client, crate::providers::ClientBuildError> {
+        Ok(Client {
+            base: self.base.build()?,
+            account_id: self.account_id,
+            default_instructions: self.default_instructions,
+            originator: self.originator,
+            user_agent: self.user_agent,
+        })
+    }
+}
+
 use crate::completion::{self, CompletionError};
-use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
-use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use std::fmt::Debug;
-use std::path::{Path, PathBuf};
-use tracing::{Level, enabled};
+use std::path::PathBuf;
 
-const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
-const DEFAULT_ORIGINATOR: &str = "rig";
-const DEFAULT_INSTRUCTIONS: &str = "You are ChatGPT, a helpful AI assistant.";
+pub(crate) const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+pub(crate) const DEFAULT_ORIGINATOR: &str = "rig";
+pub(crate) const DEFAULT_INSTRUCTIONS: &str = "You are ChatGPT, a helpful AI assistant.";
 
 /// `gpt-5.4`
 pub const GPT_5_4: &str = "gpt-5.4";
@@ -51,550 +228,111 @@ pub const GPT_5_3_INSTANT: &str = "gpt-5.3-instant";
 /// `gpt-5.3-chat-latest`
 pub const GPT_5_3_CHAT_LATEST: &str = "gpt-5.3-chat-latest";
 
-#[derive(Clone)]
-pub enum ChatGPTAuth {
-    AccessToken {
-        access_token: String,
-        account_id: Option<String>,
-    },
-    OAuth,
-}
+/// Build the ChatGPT Codex Responses request as plain data.
+///
+/// The single source of truth for ChatGPT request bodies;
+/// [`functions::build_request_body`] routes through it. The ChatGPT backend rejects the
+/// `system` role in `input`, so system instructions always use
+/// [`responses_api::SystemInstructionsPlacement::AllInstructions`], and the
+/// backend requires SSE — `stream` is always `Some(true)`, even for blocking
+/// completions.
+pub(crate) fn build_codex_responses_request(
+    model: String,
+    default_tools: &[responses_api::ResponsesToolDefinition],
+    strict_tools: bool,
+    default_instructions: Option<&str>,
+    request: completion::CompletionRequest,
+) -> Result<ResponsesRequest, CompletionError> {
+    // Materialize the configured default as a canonical leading system message
+    // *before* conversion, so the completion span and the wire body are derived
+    // from the same request. Previously this was merged into
+    // `request.instructions` after conversion, which meant
+    // `gen_ai.system_instructions` silently omitted an instruction that was
+    // actually sent — a gap no cassette can catch, because span attributes are
+    // not part of the recorded bytes.
+    let request = apply_default_instructions(request, default_instructions);
 
-impl ApiKey for ChatGPTAuth {}
-
-impl<S> From<S> for ChatGPTAuth
-where
-    S: Into<String>,
-{
-    fn from(value: S) -> Self {
-        Self::AccessToken {
-            access_token: value.into(),
-            account_id: None,
-        }
-    }
-}
-
-impl Debug for ChatGPTAuth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AccessToken { .. } => f.write_str("AccessToken(<redacted>)"),
-            Self::OAuth => f.write_str("OAuth"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ChatGPTBuilder {
-    auth_file: Option<PathBuf>,
-    default_instructions: Option<String>,
-    device_code_handler: auth::DeviceCodeHandler,
-    allow_device_flow: bool,
-    originator: String,
-    user_agent: Option<String>,
-}
-
-#[derive(Clone)]
-pub struct ChatGPTExt {
-    auth: auth::Authenticator,
-    default_instructions: Option<String>,
-    originator: String,
-    user_agent: String,
-}
-
-impl Debug for ChatGPTExt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ChatGPTExt")
-            .field("auth", &self.auth)
-            .field("default_instructions", &self.default_instructions)
-            .field("originator", &self.originator)
-            .field("user_agent", &self.user_agent)
-            .finish()
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<ChatGPTExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H>;
-
-impl Default for ChatGPTBuilder {
-    fn default() -> Self {
-        Self {
-            auth_file: default_auth_file(),
-            default_instructions: Some(
-                std::env::var("CHATGPT_DEFAULT_INSTRUCTIONS")
-                    .ok()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or_else(|| DEFAULT_INSTRUCTIONS.to_string()),
-            ),
-            device_code_handler: auth::DeviceCodeHandler::default(),
-            allow_device_flow: true,
-            originator: std::env::var("CHATGPT_ORIGINATOR")
-                .ok()
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| DEFAULT_ORIGINATOR.to_string()),
-            user_agent: std::env::var("CHATGPT_USER_AGENT")
-                .ok()
-                .filter(|value| !value.is_empty()),
-        }
-    }
-}
-
-impl Provider for ChatGPTExt {
-    type Builder = ChatGPTBuilder;
-
-    const VERIFY_PATH: &'static str = "";
-
-    fn with_custom(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
-        Ok(req
-            .header("originator", &self.originator)
-            .header("user-agent", &self.user_agent)
-            .header(http::header::ACCEPT, "text/event-stream"))
+    let mut request = ResponsesRequest::try_from(responses_api::ResponsesRequestParams {
+        model,
+        request,
+        system_instructions_placement: responses_api::SystemInstructionsPlacement::AllInstructions,
+    })?;
+    request.tools.extend(default_tools.iter().cloned());
+    if strict_tools {
+        request.tools = request
+            .tools
+            .into_iter()
+            .map(responses_api::ResponsesToolDefinition::normalize)
+            .collect();
     }
 
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
-        format!(
-            "{}/{}",
-            base_url.trim_end_matches('/'),
-            path.trim_start_matches('/')
-        )
+    // Byte-preservation for the empty-default case: the deleted merge emitted
+    // `Some("")` here, which a canonical system message cannot express. No
+    // instruction content is involved, so telemetry loses nothing.
+    if request.instructions.is_none() && default_instructions.is_some_and(str::is_empty) {
+        request.instructions = Some(String::new());
     }
-}
 
-impl responses_api::ResponsesProviderExt for ChatGPTExt {
-    // The ChatGPT backend rejects the `system` role in `input`, so every
-    // system message — including mid-conversation ones — is lifted into the
-    // top-level `instructions` field.
-    fn system_instructions_placement(&self) -> responses_api::SystemInstructionsPlacement {
-        responses_api::SystemInstructionsPlacement::AllInstructions
-    }
-}
+    request.temperature = None;
+    request.max_output_tokens = None;
+    request.stream = Some(true);
 
-impl<H> Capabilities<H> for ChatGPTExt {
-    type Completion = Capable<ResponsesCompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for ChatGPTExt {}
-
-impl ProviderBuilder for ChatGPTBuilder {
-    type Extension<H>
-        = ChatGPTExt
-    where
-        H: HttpClientExt;
-    type ApiKey = ChatGPTAuth;
-
-    const BASE_URL: &'static str = CHATGPT_API_BASE_URL;
-
-    fn build<H>(
-        builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
+    let include = request
+        .additional_parameters
+        .include
+        .get_or_insert_with(Vec::new);
+    if !include
+        .iter()
+        .any(|item| matches!(item, Include::ReasoningEncryptedContent))
     {
-        let auth = match builder.get_api_key() {
-            ChatGPTAuth::AccessToken {
-                access_token,
-                account_id,
-            } => auth::AuthSource::AccessToken {
-                access_token: access_token.clone(),
-                account_id: account_id.clone(),
-            },
-            ChatGPTAuth::OAuth => auth::AuthSource::OAuth,
-        };
+        include.push(Include::ReasoningEncryptedContent);
+    }
 
-        let ext = builder.ext();
+    request.additional_parameters.background = None;
+    request.additional_parameters.metadata.clear();
+    request.additional_parameters.parallel_tool_calls = None;
+    request.additional_parameters.service_tier = None;
+    request.additional_parameters.store = Some(false);
+    request.additional_parameters.text = None;
+    request.additional_parameters.top_p = None;
+    request.additional_parameters.user = None;
 
-        Ok(ChatGPTExt {
-            auth: auth::Authenticator::new(
-                auth,
-                ext.auth_file.clone(),
-                ext.device_code_handler.clone(),
-                ext.allow_device_flow,
-            ),
-            default_instructions: ext.default_instructions.clone(),
-            originator: ext.originator.clone(),
-            user_agent: ext.user_agent.clone().unwrap_or_else(default_user_agent),
-        })
+    Ok(request)
+}
+
+/// Parse a ChatGPT Codex SSE completion body into the normalized response,
+/// including the streamed-text fallback for empty `response.completed`
+/// payloads.
+///
+/// Used by [`functions::complete`]. Async
+/// only because the empty-output fallback reuses the async SSE accumulator.
+pub(crate) async fn parse_codex_sse_response(
+    status: http::StatusCode,
+    text: &str,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    if !status.is_success() {
+        return Err(CompletionError::from_http_response(
+            status,
+            text.to_string(),
+        ));
+    }
+
+    let raw_response = responses_api::streaming::parse_sse_completion_body(text, "ChatGPT")?;
+
+    let span = tracing::Span::current();
+    span.record("gen_ai.response.id", raw_response.id.as_str());
+    span.record("gen_ai.response.model", raw_response.model.as_str());
+
+    match raw_response.clone().try_into() {
+        Ok(response) => Ok(response),
+        Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
+            responses_api::streaming::completion_response_from_sse_body(text, raw_response).await
+        }
+        Err(error) => Err(error),
     }
 }
 
-impl ProviderClient for Client {
-    type Input = ChatGPTAuth;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let mut builder = Self::builder();
-
-        if let Some(base_url) = crate::client::optional_env_var("CHATGPT_API_BASE")?
-            .or(crate::client::optional_env_var("OPENAI_CHATGPT_API_BASE")?)
-        {
-            builder = builder.base_url(base_url);
-        }
-
-        if let Some(access_token) = crate::client::optional_env_var("CHATGPT_ACCESS_TOKEN")? {
-            let account_id = crate::client::optional_env_var("CHATGPT_ACCOUNT_ID")?;
-            builder
-                .api_key(ChatGPTAuth::AccessToken {
-                    access_token,
-                    account_id,
-                })
-                .build()
-                .map_err(Into::into)
-        } else {
-            builder.oauth().build().map_err(Into::into)
-        }
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-impl<H> client::ClientBuilder<ChatGPTBuilder, crate::markers::Missing, H> {
-    pub fn oauth(self) -> client::ClientBuilder<ChatGPTBuilder, ChatGPTAuth, H> {
-        self.api_key(ChatGPTAuth::OAuth)
-    }
-}
-
-impl<H> ClientBuilder<H> {
-    pub fn on_device_code<F>(self, handler: F) -> Self
-    where
-        F: Fn(auth::DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        self.over_ext(|mut ext| {
-            ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
-            ext
-        })
-    }
-
-    /// Control whether OAuth may fall back to an interactive device-code login
-    /// when the cached token is missing or cannot be refreshed.
-    ///
-    /// Default is `true` for CLI-style interactive use. Long-running services
-    /// should set this to `false` so a stale refresh token returns an actionable
-    /// auth error instead of printing a device code and waiting unattended.
-    pub fn allow_device_flow(self, allow: bool) -> Self {
-        self.over_ext(|mut ext| {
-            ext.allow_device_flow = allow;
-            ext
-        })
-    }
-
-    pub fn token_dir(self, path: impl AsRef<Path>) -> Self {
-        let auth_file = path.as_ref().join("auth.json");
-        self.over_ext(|mut ext| {
-            ext.auth_file = Some(auth_file);
-            ext
-        })
-    }
-
-    pub fn auth_file(self, path: impl AsRef<Path>) -> Self {
-        let auth_file = path.as_ref().to_path_buf();
-        self.over_ext(|mut ext| {
-            ext.auth_file = Some(auth_file);
-            ext
-        })
-    }
-
-    pub fn default_instructions(self, instructions: impl Into<String>) -> Self {
-        let instructions = instructions.into();
-        self.over_ext(|mut ext| {
-            ext.default_instructions = Some(instructions);
-            ext
-        })
-    }
-
-    pub fn originator(self, originator: impl Into<String>) -> Self {
-        let originator = originator.into();
-        self.over_ext(|mut ext| {
-            ext.originator = originator;
-            ext
-        })
-    }
-
-    pub fn user_agent(self, user_agent: impl Into<String>) -> Self {
-        let user_agent = user_agent.into();
-        self.over_ext(|mut ext| {
-            ext.user_agent = Some(user_agent);
-            ext
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct ResponsesCompletionModel<H = reqwest::Client> {
-    client: Client<H>,
-    pub model: String,
-    pub tools: Vec<responses_api::ResponsesToolDefinition>,
-    pub strict_tools: bool,
-}
-
-impl<H> ResponsesCompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            tools: Vec::new(),
-            strict_tools: false,
-        }
-    }
-
-    /// Enable strict mode for function tool schemas.
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-
-    pub fn with_tool(mut self, tool: impl Into<responses_api::ResponsesToolDefinition>) -> Self {
-        self.tools.push(tool.into());
-        self
-    }
-
-    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
-    where
-        I: IntoIterator<Item = Tool>,
-        Tool: Into<responses_api::ResponsesToolDefinition>,
-    {
-        self.tools.extend(tools.into_iter().map(Into::into));
-        self
-    }
-
-    fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPTExt, H> {
-        let mut model = responses_api::GenericResponsesCompletionModel::new(
-            self.client.clone(),
-            self.model.clone(),
-        );
-        model.tools = self.tools.clone();
-        model.strict_tools = self.strict_tools;
-        model
-    }
-
-    fn create_request(
-        &self,
-        request: completion::CompletionRequest,
-    ) -> Result<ResponsesRequest, CompletionError> {
-        let mut request = self.openai_model().create_completion_request(request)?;
-
-        if let Some(default_instructions) = &self.client.ext().default_instructions {
-            request.instructions = Some(merge_instructions(
-                default_instructions,
-                request.instructions.as_deref(),
-            ));
-        }
-
-        request.temperature = None;
-        request.max_output_tokens = None;
-        request.stream = Some(true);
-
-        let include = request
-            .additional_parameters
-            .include
-            .get_or_insert_with(Vec::new);
-        if !include
-            .iter()
-            .any(|item| matches!(item, Include::ReasoningEncryptedContent))
-        {
-            include.push(Include::ReasoningEncryptedContent);
-        }
-
-        request.additional_parameters.background = None;
-        request.additional_parameters.metadata.clear();
-        request.additional_parameters.parallel_tool_calls = None;
-        request.additional_parameters.service_tier = None;
-        request.additional_parameters.store = Some(false);
-        request.additional_parameters.text = None;
-        request.additional_parameters.top_p = None;
-        request.additional_parameters.user = None;
-
-        Ok(request)
-    }
-
-    fn add_auth_headers(
-        &self,
-        req: http_client::Builder,
-        context: &auth::AuthContext,
-    ) -> http_client::Builder {
-        let req = req
-            .header(
-                http::header::AUTHORIZATION,
-                format!("Bearer {}", context.access_token),
-            )
-            .header("session_id", crate::id::generate());
-
-        if let Some(account_id) = &context.account_id {
-            req.header("ChatGPT-Account-Id", account_id)
-        } else {
-            req
-        }
-    }
-
-    async fn completion_from_sse(
-        &self,
-        request: ResponsesRequest,
-    ) -> Result<completion::CompletionResponse<responses_api::CompletionResponse>, CompletionError>
-    {
-        let body = serde_json::to_vec(&request)?;
-        let auth = self
-            .client
-            .ext()
-            .auth
-            .auth_context()
-            .await
-            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
-
-        let req = self
-            .add_auth_headers(self.client.post("/responses")?, &auth)
-            .body(body)
-            .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let text = http_client::text(response).await?;
-        if !status.is_success() {
-            return Err(CompletionError::from_http_response(status, text));
-        }
-
-        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
-
-        match raw_response.clone().try_into() {
-            Ok(response) => Ok(response),
-            Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
-                responses_api::streaming::completion_response_from_sse_body(&text, raw_response)
-                    .await
-            }
-            Err(error) => Err(error),
-        }
-    }
-}
-
-impl<H> Client<H>
-where
-    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub async fn authorize(&self) -> Result<(), auth::AuthError> {
-        self.ext().auth.auth_context().await.map(|_| ())
-    }
-}
-
-impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Response = responses_api::CompletionResponse;
-    type StreamingResponse = responses_api::streaming::StreamingCompletionResponse;
-    type Client = Client<H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.create_request(completion_request)?;
-
-        let span = CompletionSpanBuilder::new("chatgpt", &request.model, CompletionOperation::Chat)
-            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        tracing_futures::Instrument::instrument(
-            async move {
-                let response = self.completion_from_sse(request).await?;
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &response.raw_response.id);
-                span.record("gen_ai.response.model", &response.raw_response.model);
-                span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
-                span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
-                span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    response.usage.cached_input_tokens,
-                );
-                Ok(response)
-            },
-            span,
-        )
-        .await
-    }
-
-    async fn stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        Self::stream(self, completion_request).await
-    }
-}
-
-impl<H> ResponsesCompletionModel<H>
-where
-    Client<H>: HttpClientExt + Clone + Debug + 'static,
-    H: Clone + Default + Debug + WasmCompatSend + WasmCompatSync + 'static,
-{
-    pub async fn stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<
-        StreamingCompletionResponse<responses_api::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    > {
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.create_request(completion_request)?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "ChatGPT Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let auth = self
-            .client
-            .ext()
-            .auth
-            .auth_context()
-            .await
-            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
-
-        let req = self
-            .add_auth_headers(self.client.post("/responses")?, &auth)
-            .body(body)
-            .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "chatgpt",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(request.instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        let client = self.client.clone();
-        let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
-            .allow_missing_content_type();
-
-        Ok(responses_api::streaming::stream_from_event_source(
-            event_source,
-            span,
-        ))
-    }
-}
-
-fn default_user_agent() -> String {
+pub(crate) fn default_user_agent() -> String {
     format!(
         "rig/{} ({} {}; {})",
         env!("CARGO_PKG_VERSION"),
@@ -604,7 +342,7 @@ fn default_user_agent() -> String {
     )
 }
 
-fn default_auth_file() -> Option<PathBuf> {
+pub(crate) fn default_auth_file() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("chatgpt").join("auth.json"))
 }
 
@@ -622,15 +360,49 @@ fn config_dir() -> Option<PathBuf> {
     }
 }
 
-fn merge_instructions(default_instructions: &str, existing_instructions: Option<&str>) -> String {
-    match existing_instructions
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some(existing) if existing.contains(default_instructions) => existing.to_string(),
-        Some(existing) => format!("{default_instructions}\n\n{existing}"),
-        None => default_instructions.to_string(),
+/// Prepend `default_instructions` to `request` as a leading canonical system
+/// message, unless the instructions it already carries contain them.
+///
+/// This replaced a post-conversion merge: the
+/// `AllInstructions` placement joins every system message with `"\n\n"`, so
+/// prepending here yields the same `instructions` string the post-conversion
+/// merge produced — while keeping telemetry and the wire body reading the same
+/// request.
+fn apply_default_instructions(
+    request: completion::CompletionRequest,
+    default_instructions: Option<&str>,
+) -> completion::CompletionRequest {
+    // An empty default carries no instruction text, so there is nothing to
+    // materialize — and nothing telemetry could report. It is still preserved
+    // on the wire below, because the Responses lift drops empty system
+    // messages and could not round-trip it as one.
+    let Some(default_instructions) = default_instructions.filter(|d| !d.is_empty()) else {
+        return request;
+    };
+
+    let existing = request
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            completion::Message::System { content } => Some(content.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // A request already carrying the
+    // default is left alone rather than repeating it.
+    if !existing.trim().is_empty() && existing.contains(default_instructions) {
+        return request;
     }
+
+    let mut request = request;
+    // `OneOrMany::insert` keeps the non-empty invariant by construction — no
+    // rebuild through the fallible `many` constructor.
+    request
+        .chat_history
+        .insert(0, completion::Message::system(default_instructions));
+    request
 }
 
 #[cfg(test)]
@@ -650,55 +422,62 @@ data: [DONE]"#;
         assert_eq!(response.model, "gpt-5");
     }
 
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::chatgpt::Client::builder()
-            .oauth()
-            .build()
-            .expect("Client::builder()");
+    /// The default is materialized as a leading system message on the request
+    /// itself, so telemetry and the wire body cannot disagree about it. These
+    /// pin the same three rules the deleted post-conversion merge had.
+    fn instructions_of(request: completion::CompletionRequest) -> String {
+        build_codex_responses_request(
+            GPT_5_3_CODEX.to_string(),
+            &[],
+            false,
+            Some(DEFAULT_INSTRUCTIONS),
+            request,
+        )
+        .expect("request")
+        .instructions
+        .expect("instructions")
     }
 
     #[test]
-    fn test_merge_instructions_uses_default_when_missing() {
-        assert_eq!(
-            merge_instructions(DEFAULT_INSTRUCTIONS, None),
-            DEFAULT_INSTRUCTIONS
-        );
+    fn default_instructions_used_when_request_has_none() {
+        let request = completion::CompletionRequest::from_prompt("hi");
+        assert_eq!(instructions_of(request), DEFAULT_INSTRUCTIONS);
     }
 
     #[test]
-    fn test_merge_instructions_appends_existing_request_instructions() {
-        let merged = merge_instructions(DEFAULT_INSTRUCTIONS, Some("Respond tersely."));
+    fn default_instructions_precede_request_instructions() {
+        let request = completion::CompletionRequest::builder("hi")
+            .preamble("Respond tersely.")
+            .build();
+        let merged = instructions_of(request);
         assert!(merged.starts_with(DEFAULT_INSTRUCTIONS));
         assert!(merged.ends_with("Respond tersely."));
     }
 
     #[test]
-    fn test_merge_instructions_avoids_duplicate_default() {
-        let merged = merge_instructions(
-            DEFAULT_INSTRUCTIONS,
-            Some("You are ChatGPT, a helpful AI assistant.\n\nRespond tersely."),
-        );
+    fn default_instructions_are_not_duplicated() {
+        let request = completion::CompletionRequest::builder("hi")
+            .preamble("You are ChatGPT, a helpful AI assistant.\n\nRespond tersely.")
+            .build();
         assert_eq!(
-            merged,
+            instructions_of(request),
             "You are ChatGPT, a helpful AI assistant.\n\nRespond tersely."
         );
     }
 
+    /// The request conversion the deleted `ResponsesCompletionModel` reached
+    /// through `openai_model().create_completion_request(...)`; the shaping
+    /// now lives entirely in `build_codex_responses_request`.
     fn chatgpt_conversion_request(
         chat_history: OneOrMany<completion::Message>,
     ) -> ResponsesRequest {
-        let client = crate::providers::chatgpt::Client::builder()
-            .oauth()
-            .build()
-            .expect("client");
-        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
-
-        model
-            .openai_model()
-            .create_completion_request(completion::CompletionRequest {
+        build_codex_responses_request(
+            GPT_5_3_CODEX.to_string(),
+            &[],
+            false,
+            None,
+            completion::CompletionRequest {
                 model: Some("gpt-5.4".to_string()),
-                preamble: Some("System one".to_string()),
                 chat_history,
                 documents: Vec::new(),
                 tools: Vec::new(),
@@ -708,14 +487,16 @@ data: [DONE]"#;
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            })
-            .expect("request")
+            },
+        )
+        .expect("request")
     }
 
     #[test]
     fn test_conversion_lifts_leading_system_messages_into_instructions() {
         let request = chatgpt_conversion_request(
             OneOrMany::many(vec![
+                completion::Message::system("System one"),
                 completion::Message::system("System two"),
                 completion::Message::user("hi"),
             ])
@@ -733,6 +514,7 @@ data: [DONE]"#;
     fn test_conversion_lifts_mid_conversation_system_messages() {
         let request = chatgpt_conversion_request(
             OneOrMany::many(vec![
+                completion::Message::system("System one"),
                 completion::Message::user("hi"),
                 completion::Message::system("Mid-conversation instruction"),
                 completion::Message::user("again"),
@@ -749,18 +531,19 @@ data: [DONE]"#;
 
     #[test]
     fn test_create_request_merges_default_and_request_instructions() {
-        let client = crate::providers::chatgpt::Client::builder()
-            .oauth()
-            .build()
-            .expect("client");
-        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
-
-        let request = model
-            .create_request(completion::CompletionRequest {
+        let request = build_codex_responses_request(
+            GPT_5_3_CODEX.to_string(),
+            &[],
+            false,
+            Some(DEFAULT_INSTRUCTIONS),
+            completion::CompletionRequest {
                 record_telemetry_content: false,
                 model: None,
-                preamble: Some("Respond tersely.".to_string()),
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: OneOrMany::many(vec![
+                    crate::message::Message::system("Respond tersely.".to_string()),
+                    completion::Message::user("hello"),
+                ])
+                .expect("non-empty"),
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -768,8 +551,9 @@ data: [DONE]"#;
                 tool_choice: None,
                 additional_params: None,
                 output_schema: None,
-            })
-            .expect("request");
+            },
+        )
+        .expect("request");
 
         let expected = format!("{DEFAULT_INSTRUCTIONS}\n\nRespond tersely.");
         assert_eq!(request.instructions.as_deref(), Some(expected.as_str()));
@@ -777,16 +561,13 @@ data: [DONE]"#;
 
     #[test]
     fn test_create_request_drops_temperature() {
-        let client = crate::providers::chatgpt::Client::builder()
-            .oauth()
-            .build()
-            .expect("client");
-        let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
-
-        let request = model
-            .create_request(completion::CompletionRequest {
+        let request = build_codex_responses_request(
+            GPT_5_3_CODEX.to_string(),
+            &[],
+            false,
+            None,
+            completion::CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(completion::Message::user("hello")),
                 documents: Vec::new(),
                 tools: Vec::new(),
@@ -796,8 +577,9 @@ data: [DONE]"#;
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            })
-            .expect("request");
+            },
+        )
+        .expect("request");
 
         assert!(request.temperature.is_none());
     }
@@ -830,8 +612,7 @@ data: [DONE]"#;
 
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let cases = [
@@ -848,24 +629,16 @@ data: [DONE]"#;
         ];
 
         for (status, body, message) in cases {
-            let http_client = RecordingHttpClient::with_error_response(status, body);
-            let client = crate::providers::chatgpt::Client::builder()
-                .api_key(ChatGPTAuth::AccessToken {
-                    access_token: "test-token".to_string(),
-                    account_id: Some("account-id".to_string()),
-                })
-                .http_client(http_client)
-                .build()
-                .expect("client should build");
-            let model = client.completion_model(GPT_5_4);
-            let request = model.completion_request("hello").build();
+            let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(status, body));
+            let cfg = functions::Config::new(GPT_5_4)
+                .with_access_token("test-token")
+                .with_account_id("account-id");
+            let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-            let error = model
-                .completion(request)
+            let error = functions::complete(&cfg, &rt, request)
                 .await
                 .expect_err("completion should fail with non-success status");
 
-            assert!(matches!(&error, CompletionError::HttpError(_)));
             assert_eq!(error.provider_response_status(), Some(status));
             assert_eq!(error.provider_response_body(), Some(body));
             assert!(

@@ -2,14 +2,13 @@ use anyhow::Result;
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::Prompt,
     message::Message,
     providers::{cohere, openai},
 };
 
 struct Debater {
-    gpt_4: Agent<openai::responses_api::ResponsesCompletionModel>,
-    coral: Agent<cohere::CompletionModel>,
+    gpt_4: Agent,
+    coral: Agent,
 }
 
 impl Debater {
@@ -18,18 +17,12 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client = openai::Client::from_env()?;
-        let cohere_client = cohere::Client::from_env()?;
+        let openai = openai::Client::from_env()?;
+        let cohere = cohere::Client::from_env()?;
 
         Ok(Self {
-            gpt_4: openai_client
-                .agent(openai::GPT_4)
-                .preamble(position_a)
-                .build(),
-            coral: cohere_client
-                .agent(cohere::COMMAND_R)
-                .preamble(position_b)
-                .build(),
+            gpt_4: openai.agent(openai::GPT_4).preamble(position_a).build(),
+            coral: cohere.agent(cohere::COMMAND_R).preamble(position_b).build(),
         })
     }
 
@@ -45,9 +38,9 @@ impl Debater {
             };
             let resp_a = self
                 .gpt_4
-                .prompt(prompt_a.as_str())
-                .history(&history_a)
-                .extended_details()
+                .runner(prompt_a.as_str())
+                .history(history_a.clone())
+                .run()
                 .await?;
             // Extract updated history for next iteration
             history_a = resp_a
@@ -58,9 +51,9 @@ impl Debater {
             println!("================================================================");
             let resp_b = self
                 .coral
-                .prompt(resp_a.output.as_str())
-                .history(&history_b)
-                .extended_details()
+                .runner(resp_a.output.as_str())
+                .history(history_b.clone())
+                .run()
                 .await?;
             // Extract updated history for next iteration
             history_b = resp_b

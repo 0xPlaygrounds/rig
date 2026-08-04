@@ -7,9 +7,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -21,16 +20,16 @@ async fn required_maps_to_any_and_forces_function_call() {
     with_gemini_cassette(
         "generate_tool_modes/required_maps_to_any_and_forces_function_call",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Please greet me.")
-                .preamble(TOOLS_PREAMBLE.to_string())
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest::builder("Please greet me.")
+                .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
                 .tool_choice(ToolChoice::Required)
                 .build();
 
-            let response = model
+            let response = client
+                .completion_model(model)
                 .completion(request)
                 .await
                 .expect("required tool choice completion should succeed");
@@ -57,3 +56,4 @@ async fn required_maps_to_any_and_forces_function_call() {
     )
     .await;
 }
+use rig::prelude::*;

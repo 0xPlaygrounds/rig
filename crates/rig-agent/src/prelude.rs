@@ -1,29 +1,26 @@
-//! Common imports for Rig's classic runtime.
+//! Common imports for building and driving agents.
+//!
+//! Provider operation data remains available as
+//! `<provider>::functions::Config` and [`ProviderConfig`]. Concrete,
+//! monomorphic provider clients add fluent agent and bound-completion methods
+//! through the extension traits exported here.
 
-pub use rig_core::client::ProviderClient;
-pub use rig_core::client::embeddings::EmbeddingsClient;
-pub use rig_core::client::model_listing::ModelListingClient;
-pub use rig_core::client::transcription::TranscriptionClient;
-pub use rig_core::client::verify::{VerifyClient, VerifyError};
-
-#[cfg(feature = "audio")]
-pub use rig_core::client::audio_generation::AudioGenerationClient;
-#[cfg(feature = "image")]
-pub use rig_core::client::image_generation::ImageGenerationClient;
-
-pub use crate::agent::{Agent, MultiTurnStreamItem, StreamingResult};
-pub use crate::client::{AgentClientExt, AgentModelExt};
-pub use crate::completion::{
-    Chat, CompletionError, CompletionModel, Message, Prompt, PromptError, StructuredOutputError,
-    TypedPrompt,
+pub use crate::agent::{Agent, AgentBuilder, PromptResponse, SessionRunner};
+pub use crate::client::{
+    AgentClientExt, BindCompletionExt, BoundCompletionRequest, CompletionClientExt,
+    CompletionHandle, ToProviderConfig,
 };
-pub use crate::streaming::{StreamingChat, StreamingPrompt};
-pub use crate::tool::{Tool, ToolSet};
-pub use rig_core::client::completion::CompletionClient;
+pub use crate::completion::{CompletionError, Message, PromptError, StructuredOutputError};
+pub use crate::provider::{
+    EmbedderConfig, ExternalCompletionProvider, ExternalCompletionProviderEntry,
+    ExternalProviderConfig, ExternalProviderId, ExternalProviderRegistry, OwnedProviderDescriptor,
+    ProviderConfig, Runtime,
+};
+pub use crate::stream::{AgentRunItem, AgentRunStream, AgentStream, AgentStreamItem};
+pub use crate::tool::{PortableDynamicTool, PortableTool};
 
 pub use rig_core::Embed;
 pub use rig_core::OneOrMany;
-pub use rig_core::embeddings::{EmbeddingModel, EmbeddingsBuilder};
-pub use rig_core::vector_store::VectorStoreIndex;
+pub use rig_core::providers::ConfigError;
 pub use rig_core::vector_store::in_memory_store::InMemoryVectorStore;
 pub use rig_core::vector_store::request::VectorSearchRequest;

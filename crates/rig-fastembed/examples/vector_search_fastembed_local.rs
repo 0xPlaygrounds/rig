@@ -3,14 +3,13 @@ use fastembed::{
     EmbeddingModel as FastembedModel, Pooling, TextEmbedding as FastembedTextEmbedding,
     TokenizerFiles, UserDefinedEmbeddingModel, read_file_to_bytes,
 };
+use rig_core::OneOrMany;
 use rig_core::{
     Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{
-        VectorStoreIndex, in_memory_store::InMemoryVectorStore, request::VectorSearchRequest,
-    },
+    embeddings::EmbeddingJob,
+    vector_store::{in_memory_store::InMemoryVectorStore, request::VectorSearchRequest},
 };
-use rig_fastembed::EmbeddingModel;
+use rig_fastembed::{EmbeddingModel, functions};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -83,27 +82,33 @@ async fn main() -> Result<(), anyhow::Error> {
         },
     ];
 
-    // Create embeddings using EmbeddingsBuilder
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(documents)?
-        .build()
+    // Create embeddings. `EmbeddingJob` replaces the old `EmbeddingsBuilder`:
+    // it flattens each document's `#[embed]` fields, embeds them in batches,
+    // and re-associates the vectors with their document.
+    //
+    // The batch size and concurrency are set explicitly rather than taken from
+    // a provider descriptor: fastembed runs the model in-process, so its limit
+    // is a crate constant and the embedding calls are deliberately serialized.
+    let embeddings = EmbeddingJob::new()
+        .documents(documents)
+        .max_documents(rig_fastembed::MAX_DOCUMENTS)
+        .concurrency(1)
+        .run(|texts| async { functions::embed(&embedding_model, texts) })
         .await?;
 
-    // Create vector store
+    // Create vector store. The store never embeds text itself: queries arrive
+    // pre-embedded.
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
+    let query_embedding = functions::embed_text(&embedding_model, query)?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
-    let results = index
-        .top_n::<WordDefinition>(req)
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))

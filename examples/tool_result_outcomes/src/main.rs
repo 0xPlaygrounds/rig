@@ -1,25 +1,36 @@
 //! Classifying tool failures as structured facts and applying policy in hooks.
 //!
 //! `SystemProbe` simulates Erik Tews's two failure cases: disk I/O (`EIO`) and
-//! network unreachable (`ENETUNREACH`). The tool classifies each error and adds
-//! typed operation metadata; it does not decide whether the agent may continue.
+//! network unreachable (`ENETUNREACH`). The tool classifies each error and
+//! carries typed failure metadata on the error itself; it does not decide
+//! whether the agent may continue.
 //!
-//! A narrow completion-call hook reliably invokes `system_probe` on turn 1,
-//! while the prompt requests the desired operation. It does nothing on later
-//! turns, leaving the recoverable run free to produce a final answer. Two tool-result
-//! hooks then run in registration order:
+//! Hooks are attach-and-forget records — a named `HookEntry` wrapping a closure
+//! over owned `HookEvent` values — so policy lives in plain functions, not in a
+//! trait impl. A narrow completion-call hook reliably invokes `system_probe` on
+//! turn 1, while the prompt requests the desired operation. It does nothing on
+//! later turns, leaving the recoverable run free to produce a final answer. Two
+//! tool-result hooks then run in registration order:
 //!
-//! 1. `FailureRecorder` copies the event's call ID, structured error, and typed
-//!    result metadata into a run-scoped scratchpad ledger.
-//! 2. `FatalFailurePolicy` looks up that same call ID, terminating on `Other`/`EIO`
+//! 1. `failure_recorder` copies the event's call ID, structured error, and typed
+//!    failure metadata into a shared ledger.
+//! 2. `fatal_failure_policy` looks up that same call ID, terminating on `Other`/`EIO`
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `ToolResultEvent` carries facts about one execution: `raw_result` contains the
-//! standard classification and `tool_context` holds tool/application-specific typed
-//! metadata that is never sent to the model. The scratchpad is different: it is
-//! shared, run-scoped hook state. Here it lets one hook record facts for the next
-//! hook without coupling either hook to model-visible result text.
+//! `HookEvent::ToolResult` carries facts about one execution: `result` contains
+//! the standard classification (kind, code, model feedback), and the concrete
+//! tool error attached via `with_source` can be recovered with
+//! `ToolExecutionError::downcast_ref` for tool-specific typed metadata that is
+//! never sent to the model. The ledger is different: it is state the *host*
+//! owns and both closures capture (an `Arc<Mutex<_>>`): run-scoped hook state
+//! now lives with the host, not inside the hook system. Here it lets one hook
+//! record facts for the next hook without coupling either hook to
+//! model-visible result text.
+//!
+//! (Neither hook observes streaming deltas; an entry that wants
+//! `HookEvent::TextDelta` / `ToolCallDelta` must be built with
+//! `.observing_deltas()` or it never receives them.)
 //!
 //! Live commands (require `OPENAI_API_KEY`):
 //!
@@ -32,15 +43,13 @@
 //! lets the network failure return to the model. `--help` requires no credentials.
 
 use anyhow::{Result, bail};
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
-    ToolResultAction, ToolResultEvent,
-};
-use rig::completion::Prompt;
+use rig::agent::{CompletionCallAction, RequestPatch, ToolResultAction};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
+use rig::tool::{Tool, ToolErrorKind, ToolExecutionError, ToolResult};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -63,7 +72,7 @@ struct ProbeArgs {
     operation: Operation,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct FailureSite {
     operation: Operation,
     resource: &'static str,
@@ -75,6 +84,22 @@ enum ProbeError {
     DiskIo,
     #[error("network is unreachable for backup.example.net")]
     NetworkUnreachable,
+}
+
+impl ProbeError {
+    /// Typed, model-invisible metadata describing where the failure happened.
+    const fn site(&self) -> FailureSite {
+        match self {
+            Self::DiskIo => FailureSite {
+                operation: Operation::ReadDisk,
+                resource: "/data/archive.bin",
+            },
+            Self::NetworkUnreachable => FailureSite {
+                operation: Operation::ConnectNetwork,
+                resource: "backup.example.net",
+            },
+        }
+    }
 }
 
 struct SystemProbe;
@@ -119,33 +144,13 @@ impl Tool for SystemProbe {
         }
     }
 
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        let (error, site) = match args.operation {
-            Operation::ReadDisk => (
-                ProbeError::DiskIo,
-                FailureSite {
-                    operation: args.operation,
-                    resource: "/data/archive.bin",
-                },
-            ),
-            Operation::ConnectNetwork => (
-                ProbeError::NetworkUnreachable,
-                FailureSite {
-                    operation: args.operation,
-                    resource: "backup.example.net",
-                },
-            ),
-        };
-        context.insert_result(site);
-        Err(error)
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        Err(match args.operation {
+            Operation::ReadDisk => ProbeError::DiskIo,
+            Operation::ConnectNetwork => ProbeError::NetworkUnreachable,
+        })
     }
 }
-
-struct ForceSystemProbeOnFirstTurn;
 
 fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     (turn == 1).then(|| {
@@ -155,17 +160,17 @@ fn system_probe_patch(turn: usize) -> Option<RequestPatch> {
     })
 }
 
-impl AgentHook for ForceSystemProbeOnFirstTurn {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        match system_probe_patch(event.turn) {
-            Some(patch) => CompletionCallAction::patch(patch),
-            None => CompletionCallAction::continue_run(),
+/// Forces `system_probe` on turn 1 only; every other event is left alone.
+fn force_system_probe_on_first_turn() -> HookEntry {
+    HookEntry::sync("force-system-probe", |event| match event {
+        HookEvent::BeforeModelCall { turn, .. } => {
+            HookDecision::CompletionCall(match system_probe_patch(turn) {
+                Some(patch) => CompletionCallAction::patch(patch),
+                None => CompletionCallAction::continue_run(),
+            })
         }
-    }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,20 +183,24 @@ struct FailureRecord {
     resource: &'static str,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 struct FailureLedger(Vec<FailureRecord>);
 
-struct FailureRecorder;
+/// The ledger the two hooks share. The host owns it and both closures capture a
+/// clone, which is how run-scoped hook state works now that hooks are plain
+/// records rather than trait objects.
+#[derive(Clone, Default)]
+struct SharedLedger(Arc<Mutex<FailureLedger>>);
 
 fn failure_record(
     internal_call_id: &str,
     tool_name: &str,
     result: &ToolResult,
-    tool_context: &ToolContext,
 ) -> Option<FailureRecord> {
-    let (Some(error), Some(site)) = (result.error(), tool_context.result::<FailureSite>()) else {
-        return None;
-    };
+    let error = result.error()?;
+    // Tool-specific typed metadata travels on the error source, never to the
+    // model. Downcast recovers it without parsing model-visible text.
+    let site = error.downcast_ref::<ProbeError>().map(ProbeError::site)?;
 
     Some(FailureRecord {
         internal_call_id: internal_call_id.to_string(),
@@ -203,32 +212,32 @@ fn failure_record(
     })
 }
 
-impl AgentHook for FailureRecorder {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let Some(record) = failure_record(
-            event.internal_call_id,
-            event.tool_name,
-            event.raw_result,
-            event.tool_context,
-        ) else {
-            return ToolResultAction::keep();
-        };
-        println!(
-            "[recorder] {} {} failed: kind={}, code={}, resource={}",
-            record.tool_name,
-            record.operation.as_str(),
-            record.kind,
-            record.code.as_deref().unwrap_or("none"),
-            record.resource
-        );
-        ctx.scratchpad()
-            .update(|ledger: &mut FailureLedger| ledger.0.push(record));
-        ToolResultAction::keep()
-    }
+/// Records structured failures into the shared ledger; never steers the run.
+fn failure_recorder(ledger: SharedLedger) -> HookEntry {
+    HookEntry::sync("failure-recorder", move |event| match event {
+        HookEvent::ToolResult {
+            call,
+            internal_call_id,
+            result,
+            ..
+        } => {
+            if let Some(record) = failure_record(&internal_call_id, &call.function.name, &result) {
+                println!(
+                    "[recorder] {} {} failed: kind={}, code={}, resource={}",
+                    record.tool_name,
+                    record.operation.as_str(),
+                    record.kind,
+                    record.code.as_deref().unwrap_or("none"),
+                    record.resource
+                );
+                if let Ok(mut ledger) = ledger.0.lock() {
+                    ledger.0.push(record);
+                }
+            }
+            HookDecision::ToolResult(ToolResultAction::keep())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -269,21 +278,29 @@ fn policy_action(ledger: Option<&FailureLedger>, internal_call_id: &str) -> Tool
     }
 }
 
-struct FatalFailurePolicy;
-
-impl AgentHook for FatalFailurePolicy {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.raw_result.error().is_none() {
-            return ToolResultAction::keep();
+/// Reads the ledger the recorder wrote, correlating by `internal_call_id`, and
+/// terminates the run on a fatal classification.
+fn fatal_failure_policy(ledger: SharedLedger) -> HookEntry {
+    HookEntry::sync("fatal-failure-policy", move |event| match event {
+        HookEvent::ToolResult {
+            internal_call_id,
+            result,
+            ..
+        } => {
+            let action = if result.error().is_none() {
+                ToolResultAction::keep()
+            } else {
+                match ledger.0.lock() {
+                    Ok(ledger) => policy_action(Some(&*ledger), &internal_call_id),
+                    // A poisoned ledger means the recorder panicked; fall
+                    // back to the no-record path (keep the result).
+                    Err(_) => policy_action(None, &internal_call_id),
+                }
+            };
+            HookDecision::ToolResult(action)
         }
-
-        let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_action(ledger.as_ref(), event.internal_call_id)
-    }
+        _ => HookDecision::Continue,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -328,19 +345,25 @@ async fn main() -> Result<()> {
     };
     println!("Running simulated {operation} path");
 
-    let agent = openai::Client::from_env()?
+    let client = openai::Client::from_env()?;
+    let agent = client
         .agent(openai::GPT_4O)
         .preamble("Follow the user's requested system_probe operation exactly.")
         .tool(SystemProbe)
         .build();
 
+    // The recorder must see the result before the policy reads its ledger, so
+    // the entries are registered in that order.
+    let ledger = SharedLedger::default();
     let response = agent
-        .prompt(prompt)
+        .runner(prompt)
         .max_turns(2)
-        .add_hook(ForceSystemProbeOnFirstTurn)
-        .add_hook(FailureRecorder)
-        .add_hook(FatalFailurePolicy)
-        .await?;
+        .add_hook(force_system_probe_on_first_turn())
+        .add_hook(failure_recorder(ledger.clone()))
+        .add_hook(fatal_failure_policy(ledger))
+        .run()
+        .await?
+        .output;
     println!("\nFinal response:\n{response}");
     Ok(())
 }
@@ -348,14 +371,15 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig::tool::ToolSet;
+    use rig::tool::PortableDynamicTool;
 
-    async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
-        let tools = ToolSet::from_tools(vec![SystemProbe]);
-        let mut context = ToolContext::new();
-        let args = serde_json::json!({ "operation": operation }).to_string();
-        let result = tools.execute(SystemProbe::NAME, args, &mut context).await;
-        (result, context)
+    async fn structured_failure(operation: Operation) -> ToolResult {
+        let tool = PortableDynamicTool::from_portable(SystemProbe);
+        let args = serde_json::json!({ "operation": operation });
+        match tool.execute(args).await {
+            Ok(output) => ToolResult::success(output),
+            Err(error) => ToolResult::failed(error),
+        }
     }
 
     #[test]
@@ -374,7 +398,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_network_preserves_classification_and_typed_metadata() {
-        let (result, context) = structured_failure(Operation::ConnectNetwork).await;
+        let result = structured_failure(Operation::ConnectNetwork).await;
         assert!(result.error().is_some(), "probe should fail");
         let Some(error) = result.error() else {
             return;
@@ -383,8 +407,8 @@ mod tests {
         assert_eq!(error.code(), Some("ENETUNREACH"));
         assert_eq!(result.output().as_text(), error.model_feedback());
         assert_eq!(
-            context.result::<FailureSite>(),
-            Some(&FailureSite {
+            error.downcast_ref::<ProbeError>().map(ProbeError::site),
+            Some(FailureSite {
                 operation: Operation::ConnectNetwork,
                 resource: "backup.example.net",
             })
@@ -393,23 +417,13 @@ mod tests {
 
     #[tokio::test]
     async fn recorder_data_drives_fatal_and_recoverable_actions_by_call_id() {
-        let (fatal_result, fatal_context) = structured_failure(Operation::ReadDisk).await;
-        let (recoverable_result, recoverable_context) =
-            structured_failure(Operation::ConnectNetwork).await;
+        let fatal_result = structured_failure(Operation::ReadDisk).await;
+        let recoverable_result = structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
-        let fatal_record = failure_record(
-            "fatal-call",
-            SystemProbe::NAME,
-            &fatal_result,
-            &fatal_context,
-        );
-        let recoverable_record = failure_record(
-            "recoverable-call",
-            SystemProbe::NAME,
-            &recoverable_result,
-            &recoverable_context,
-        );
+        let fatal_record = failure_record("fatal-call", SystemProbe::NAME, &fatal_result);
+        let recoverable_record =
+            failure_record("recoverable-call", SystemProbe::NAME, &recoverable_result);
         assert!(fatal_record.is_some(), "fatal failure record");
         assert!(recoverable_record.is_some(), "recoverable failure record");
         let (Some(fatal_record), Some(recoverable_record)) = (fatal_record, recoverable_record)
@@ -437,16 +451,11 @@ mod tests {
 
     #[tokio::test]
     async fn missing_metadata_cannot_create_a_record_or_reuse_stale_state() {
-        let (result, _context) = structured_failure(Operation::ReadDisk).await;
-        assert!(
-            failure_record(
-                "current-call",
-                SystemProbe::NAME,
-                &result,
-                &ToolContext::new(),
-            )
-            .is_none()
-        );
+        // An error without the tool's typed source carries no failure site, so
+        // no record can be created from it.
+        let untyped =
+            ToolResult::failed(ToolExecutionError::other("disk read failed").with_code("EIO"));
+        assert!(failure_record("current-call", SystemProbe::NAME, &untyped).is_none());
 
         let stale = FailureLedger(vec![FailureRecord {
             internal_call_id: "stale-call".to_string(),

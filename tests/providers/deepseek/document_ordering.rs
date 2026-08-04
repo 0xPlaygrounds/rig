@@ -1,7 +1,7 @@
 //! Focused DeepSeek cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
+use rig::completion::{AssistantContent, Document, Message};
 use rig::prelude::*;
 use rig::providers::deepseek;
 use serde::Deserialize;

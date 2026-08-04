@@ -4,288 +4,18 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
-use crate::http_client::HttpClientExt;
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::message::{self, MimeType, Reasoning};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use serde_json::{Map, Value};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 use url::form_urlencoded;
 
-use super::client::InteractionsClient;
-
+pub mod functions;
 /// Streaming helpers for the Interactions API.
 pub mod streaming;
 pub use interactions_api_types::*;
 
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-/// Completion model wrapper for the Gemini Interactions API.
-#[derive(Clone, Debug)]
-pub struct InteractionsCompletionModel<T = reqwest::Client> {
-    pub(crate) client: InteractionsClient<T>,
-    pub model: String,
-}
-
-impl<T> InteractionsCompletionModel<T> {
-    /// Create a new Interactions completion model for the given client and model name.
-    pub fn new(client: InteractionsClient<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-
-    /// Create a new Interactions completion model using a string model name.
-    pub fn with_model(client: InteractionsClient<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-        }
-    }
-
-    /// Use the GenerateContent API instead of Interactions.
-    pub fn generate_content_api(self) -> super::completion::CompletionModel<T> {
-        super::completion::CompletionModel::with_model(
-            self.client.generate_content_api(),
-            &self.model,
-        )
-    }
-
-    pub(crate) fn create_completion_request(
-        &self,
-        completion_request: CompletionRequest,
-        stream_override: Option<bool>,
-    ) -> Result<CreateInteractionRequest, CompletionError> {
-        create_request_body(self.model.clone(), completion_request, stream_override)
-    }
-}
-
-impl<T> InteractionsCompletionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    /// Create an interaction and return the raw response payload.
-    pub async fn create_interaction(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<Interaction, CompletionError> {
-        let request = self.create_completion_request(completion_request, Some(false))?;
-        self.client.create_interaction(request).await
-    }
-
-    /// Fetch an interaction by ID for polling background tasks.
-    pub async fn get_interaction(
-        &self,
-        interaction_id: impl AsRef<str>,
-    ) -> Result<Interaction, CompletionError> {
-        self.client.get_interaction(interaction_id).await
-    }
-
-    /// Start an interaction and stream raw SSE events.
-    pub async fn stream_interaction_events(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::InteractionEventStream, CompletionError> {
-        let request = self.create_completion_request(completion_request, Some(true))?;
-        self.client.stream_interaction_events(request).await
-    }
-
-    /// Resume an interaction stream by ID and optional last event ID.
-    pub async fn stream_interaction_events_by_id(
-        &self,
-        interaction_id: impl AsRef<str>,
-        last_event_id: Option<&str>,
-    ) -> Result<streaming::InteractionEventStream, CompletionError> {
-        self.client
-            .stream_interaction_events_by_id(interaction_id, last_event_id)
-            .await
-    }
-}
-
-impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Interaction;
-    type StreamingResponse = streaming::StreamingCompletionResponse;
-    type Client = InteractionsClient<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
-        let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
-            &self.model,
-            CompletionOperation::Interactions,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let request = self.create_completion_request(completion_request, Some(false))?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Gemini interactions completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let request = self
-            .client
-            .post("/v1beta/interactions")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        async move {
-            let response = self.client.send::<_, Vec<u8>>(request).await?;
-
-            if response.status().is_success() {
-                let response_body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-                let response: Interaction =
-                    serde_json::from_slice(&response_body).map_err(|err| {
-                        tracing::error!(
-                            error = %err,
-                            body = %response_text,
-                            "Failed to deserialize Gemini interactions response"
-                        );
-                        CompletionError::JsonError(err)
-                    })?;
-
-                let span = tracing::Span::current();
-                span.record_response_metadata(&response);
-                span.record_token_usage(&response);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Gemini interactions completion response: {}",
-                        serde_json::to_string_pretty(&response)?
-                    );
-                }
-
-                response.try_into()
-            } else {
-                let status = response.status();
-                let body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        InteractionsCompletionModel::stream(self, request).await
-    }
-}
-
-impl<T> InteractionsClient<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    /// Create a new interaction and return the raw response payload.
-    pub async fn create_interaction(
-        &self,
-        request: CreateInteractionRequest,
-    ) -> Result<Interaction, CompletionError> {
-        if request.stream == Some(true) {
-            return Err(CompletionError::RequestError(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "stream=true requires stream_interaction_events",
-                ),
-            )));
-        }
-
-        let body = serde_json::to_vec(&request)?;
-        let request = self
-            .post("/v1beta/interactions")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        send_interaction_request(self, request).await
-    }
-
-    /// Fetch an interaction by ID (useful for polling background tasks).
-    pub async fn get_interaction(
-        &self,
-        interaction_id: impl AsRef<str>,
-    ) -> Result<Interaction, CompletionError> {
-        let path = format!("/v1beta/interactions/{}", interaction_id.as_ref());
-        let request = self
-            .get(path)?
-            .body(Vec::new())
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        send_interaction_request(self, request).await
-    }
-
-    /// Start an interaction and stream raw SSE events.
-    pub async fn stream_interaction_events(
-        &self,
-        mut request: CreateInteractionRequest,
-    ) -> Result<streaming::InteractionEventStream, CompletionError> {
-        request.stream = Some(true);
-        let body = serde_json::to_vec(&request)?;
-        let request = self
-            .post_sse("/v1beta/interactions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        Ok(streaming::stream_interaction_events(self.clone(), request))
-    }
-
-    /// Resume an interaction stream by ID and optional last event ID.
-    pub async fn stream_interaction_events_by_id(
-        &self,
-        interaction_id: impl AsRef<str>,
-        last_event_id: Option<&str>,
-    ) -> Result<streaming::InteractionEventStream, CompletionError> {
-        let path = build_interaction_stream_path(interaction_id.as_ref(), last_event_id);
-        let request = self
-            .get_sse(path)?
-            .body(Vec::new())
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        Ok(streaming::stream_interaction_events(self.clone(), request))
-    }
-}
-
-pub(crate) fn create_request_body(
+/// Build the typed `CreateInteractionRequest` for `model`. Pure.
+pub fn create_request_body(
     model: String,
     completion_request: CompletionRequest,
     stream_override: Option<bool>,
@@ -304,9 +34,38 @@ pub(crate) fn create_request_body(
 
     let input = InteractionInput::Steps(steps);
 
-    let raw_params = completion_request
-        .additional_params
-        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut raw_params = completion_request.additional_params.unwrap_or(Value::Null);
+
+    let mut reserved_top_level = vec!["model", "input", "system_instruction"];
+    if stream_override.is_some() {
+        reserved_top_level.push("stream");
+    }
+    crate::json_utils::validated_additional_params(
+        Some(&raw_params),
+        &reserved_top_level,
+        "Gemini Interactions request",
+    )?;
+    if raw_params.is_null() {
+        raw_params = Value::Object(Map::new());
+    }
+
+    if let Some(raw_generation_config) = raw_params.get("generation_config") {
+        let mut reserved = Vec::new();
+        if completion_request.temperature.is_some() {
+            reserved.push("temperature");
+        }
+        if completion_request.max_tokens.is_some() {
+            reserved.push("max_output_tokens");
+        }
+        if completion_request.tool_choice.is_some() {
+            reserved.push("tool_choice");
+        }
+        crate::json_utils::validated_additional_params(
+            Some(raw_generation_config),
+            &reserved,
+            "Gemini Interactions generation_config",
+        )?;
+    }
 
     let mut params: AdditionalParameters = serde_json::from_value(raw_params)?;
 
@@ -326,16 +85,14 @@ pub(crate) fn create_request_body(
         Some(generation_config)
     };
 
-    let system_instruction = completion_request
-        .preamble
-        .or_else(|| {
-            if history_system.is_empty() {
-                None
-            } else {
-                Some(history_system.join("\n\n"))
-            }
-        })
-        .or(params.system_instruction.take());
+    // Every canonical system message, joined in order — the only source.
+    // The old `.or_else` preferred a scalar preamble and *discarded* history
+    // system messages; with one representation there is nothing left to
+    // prefer, so that data-loss path is gone by construction. For the same
+    // reason there is deliberately no input-side
+    // `additional_params.system_instruction` channel: a second way to say the
+    // same thing is what the bug grew out of.
+    let system_instruction = (!history_system.is_empty()).then(|| history_system.join("\n\n"));
 
     let mut tools = Vec::new();
     if !completion_request.tools.is_empty() {
@@ -407,48 +164,8 @@ fn split_system_messages_from_history(
     (system, remaining)
 }
 
-async fn send_interaction_request<T>(
-    client: &InteractionsClient<T>,
-    request: crate::http_client::Request<Vec<u8>>,
-) -> Result<Interaction, CompletionError>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    let response = client.send::<_, Vec<u8>>(request).await?;
-
-    if response.status().is_success() {
-        let response_body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
-
-        let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-        let response: Interaction = serde_json::from_slice(&response_body).map_err(|err| {
-            tracing::error!(
-                error = %err,
-                body = %response_text,
-                "Failed to deserialize Gemini interactions response"
-            );
-            CompletionError::JsonError(err)
-        })?;
-
-        Ok(response)
-    } else {
-        let status = response.status();
-        let body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
-
-        Err(CompletionError::from_http_response(
-            status,
-            String::from_utf8_lossy(&body),
-        ))
-    }
-}
-
-fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&str>) -> String {
+/// Path of a resumable interaction stream, relative to the API base URL. Pure.
+pub fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&str>) -> String {
     let mut serializer = form_urlencoded::Serializer::new(String::new());
     serializer.append_pair("stream", "true");
     if let Some(last_event_id) = last_event_id {
@@ -461,7 +178,7 @@ fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&st
     )
 }
 
-impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
+impl TryFrom<Interaction> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
@@ -498,12 +215,15 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
             .map(|usage| usage.token_usage())
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "gemini");
+        if !response.id.is_empty() {
+            converted = converted.with_message_id(response.id.clone());
+        }
+        if let Some(model) = response.model.as_deref() {
+            converted = converted.with_model(model);
+        }
+
+        Ok(converted)
     }
 }
 
@@ -632,7 +352,7 @@ fn split_data_uri(
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
-    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -647,17 +367,27 @@ pub mod interactions_api_types {
     #[derive(Debug, Deserialize, Serialize, Default, Clone)]
     #[serde(rename_all = "snake_case")]
     pub struct AdditionalParameters {
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub agent: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub agent_config: Option<AgentConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub background: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub generation_config: Option<GenerationConfig>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub previous_interaction_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_modalities: Option<Vec<ResponseModality>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_format: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub response_mime_type: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub store: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub stream: Option<bool>,
-        pub system_instruction: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub tools: Option<Vec<Tool>>,
         #[serde(flatten, skip_serializing_if = "Option::is_none")]
         pub additional_params: Option<Value>,
@@ -740,8 +470,9 @@ pub mod interactions_api_types {
         pub input: Option<InteractionInput>,
     }
 
-    impl GetTokenUsage for Interaction {
-        fn token_usage(&self) -> Usage {
+    impl Interaction {
+        /// Normalizes the interaction's usage into Rig's [`Usage`].
+        pub fn token_usage(&self) -> Usage {
             self.usage
                 .as_ref()
                 .map(|usage| usage.token_usage())
@@ -1292,8 +1023,9 @@ pub mod interactions_api_types {
         pub total_tokens: Option<u64>,
     }
 
-    impl GetTokenUsage for InteractionUsage {
-        fn token_usage(&self) -> Usage {
+    impl InteractionUsage {
+        /// Normalizes Interactions API usage into Rig's [`Usage`].
+        pub fn token_usage(&self) -> Usage {
             let mut usage = Usage::new();
             usage.input_tokens = self.total_input_tokens.unwrap_or_default();
             usage.output_tokens = self.total_output_tokens.unwrap_or_default();
@@ -2580,6 +2312,95 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["system_instruction", "input"] {
+            let mut request = CompletionRequest::from_prompt("Hello");
+            request.additional_params = Some(json!({ (key): "override" }));
+
+            let error = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+                .expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({
+            "custom_extension": {"enabled": true}
+        }));
+
+        let request = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["custom_extension"]["enabled"], true);
+    }
+
+    #[test]
+    fn request_treats_null_additional_params_as_no_extensions() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(Value::Null);
+
+        create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("null should mean no extensions");
+    }
+
+    #[test]
+    fn typed_additional_parameter_defaults_do_not_shadow_request_owned_fields() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(
+            serde_json::to_value(AdditionalParameters::default())
+                .expect("typed additional parameters should serialize"),
+        );
+
+        let request = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect("omitted typed parameters should not collide");
+
+        assert_eq!(request.stream, Some(false));
+    }
+
+    #[test]
+    fn provider_native_stream_is_allowed_only_without_a_canonical_override() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.additional_params = Some(json!({ "stream": true }));
+
+        let native = create_request_body("gemini-2.5-flash".to_string(), request.clone(), None)
+            .expect("provider-native stream should be accepted without an override");
+        assert_eq!(native.stream, Some(true));
+
+        let error = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
+            .expect_err("canonical stream override must reject a second owner");
+        assert!(error.to_string().contains("stream"));
+    }
+
+    #[test]
+    fn generation_config_rejects_only_nested_canonical_collisions() {
+        let mut colliding = CompletionRequest::from_prompt("Hello");
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(json!({
+            "generation_config": {"temperature": 0.9, "top_p": 0.8}
+        }));
+
+        let error = create_request_body("gemini-2.5-flash".to_string(), colliding, Some(false))
+            .expect_err("nested canonical field collision must fail");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = CompletionRequest::from_prompt("Hello");
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(json!({
+            "generation_config": {"top_p": 0.8}
+        }));
+        let request = create_request_body("gemini-2.5-flash".to_string(), passthrough, Some(false))
+            .expect("unrelated nested provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+        assert_eq!(value["generation_config"]["temperature"], 0.2);
+        assert_eq!(value["generation_config"]["top_p"], 0.8);
+    }
+
+    #[test]
     fn test_create_request_body_simple() {
         let prompt = Message::User {
             content: OneOrMany::one(message::UserContent::text("Hello")),
@@ -2588,8 +2409,8 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: Some("Be precise.".to_string()),
-            chat_history: OneOrMany::one(prompt),
+            chat_history: OneOrMany::many(vec![Message::system("Be precise.".to_string()), prompt])
+                .expect("non-empty"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2779,7 +2600,6 @@ mod tests {
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::User {
                 content: OneOrMany::one(tool_result),
             }),
@@ -2839,7 +2659,7 @@ mod tests {
             ..Default::default()
         };
 
-        let response: completion::CompletionResponse<Interaction> =
+        let response: completion::CompletionResponse =
             interaction.try_into().expect("conversion should succeed");
 
         let choice = response.choice.first();

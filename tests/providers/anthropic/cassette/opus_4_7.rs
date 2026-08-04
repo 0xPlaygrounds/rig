@@ -1,12 +1,12 @@
 //! Dedicated Claude Opus 4.7 live smoke tests.
 
-use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::message::Image;
-use rig::completion::{Chat, Message, Prompt};
-use rig::message::{DocumentSourceKind, ImageMediaType};
 use rig::prelude::*;
+
+use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::completion::Message;
+use rig::completion::message::Image;
+use rig::message::{DocumentSourceKind, ImageMediaType};
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_7;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig_agent::test_utils::validate_extraction_fields;
 
 use crate::reasoning::{self, ReasoningRoundtripAgent, WeatherTool};
@@ -55,7 +55,7 @@ async fn messages_streaming_prompt_smoke() {
                 .preamble(STREAMING_PREAMBLE)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -103,7 +103,7 @@ async fn messages_streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -142,32 +142,32 @@ async fn messages_extractor_smoke() {
     super::super::support::with_anthropic_cassette(
         "opus_4_7/messages_extractor_smoke",
         |client| async move {
-            let extractor = client.extractor::<SmokePerson>(CLAUDE_OPUS_4_7).build();
-
-            let response = extractor
-                .extract_with_usage(EXTRACTOR_TEXT)
+            let agent = client.agent(CLAUDE_OPUS_4_7).build();
+            let response = agent
+                .extractor(EXTRACTOR_TEXT)
+                .run_with_usage::<SmokePerson>()
                 .await
                 .expect("extractor request should succeed");
 
             validate_extraction_fields(
                 "anthropic_opus_4_7_extractor_smoke",
-                response.data.first_name.as_deref(),
-                response.data.last_name.as_deref(),
-                response.data.job.as_deref(),
+                response.value.first_name.as_deref(),
+                response.value.last_name.as_deref(),
+                response.value.job.as_deref(),
                 response.usage,
             )
             .expect("portable extraction contract should hold");
 
             assert_nonempty_response(
                 response
-                    .data
+                    .value
                     .first_name
                     .as_deref()
                     .expect("first name should be present"),
             );
             assert_nonempty_response(
                 response
-                    .data
+                    .value
                     .last_name
                     .as_deref()
                     .expect("last name should be present"),
@@ -213,7 +213,7 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_nonstreaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
+                client.provider_config(CLAUDE_OPUS_4_7),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;
@@ -228,7 +228,7 @@ async fn messages_adaptive_thinking_streaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_streaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
+                client.provider_config(CLAUDE_OPUS_4_7),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;
@@ -278,9 +278,10 @@ async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
                 .build();
 
             let stream = agent
-                .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+                .runner(reasoning::TOOL_USER_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(3)
-                .await;
+                .stream_run();
 
             let stats = reasoning::collect_stream_stats(stream, "anthropic").await;
             reasoning::assert_universal(&stats, &call_count, "anthropic");

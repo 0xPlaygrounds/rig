@@ -1,3 +1,7 @@
+// The mistralrs cassette suite's async test bodies nest deep enough (provider
+// future + agent driver future + cassette guard) to exceed rustc's default
+// query depth when the whole workspace is checked with unified features.
+#![recursion_limit = "256"]
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,

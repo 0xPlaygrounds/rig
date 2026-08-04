@@ -9,10 +9,9 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
-use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
-use rig::prelude::*;
-use rig::streaming::{StreamingChat, StreamingPrompt};
+use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -136,11 +135,7 @@ impl Tool for PingEmpty {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok("EMPTY-OK".to_string())
     }
@@ -186,11 +181,7 @@ impl Tool for InspectManifest {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!(
             "MANIFEST-OK project={} steps={} retries={}",
@@ -225,11 +216,7 @@ impl Tool for JoinLabels {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("LABELS-OK {}", args.labels.join(&args.separator)))
     }
@@ -255,11 +242,7 @@ impl Tool for EscapeEcho {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         push_invocation(&self.log, Self::NAME, &args);
         Ok(format!("ESCAPE-OK {}", args.text))
     }
@@ -450,9 +433,10 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .build();
 
             let mut stream = agent
-                .stream_chat(COMPLEX_SESSION_PROMPT, Vec::<Message>::new())
+                .runner(COMPLEX_SESSION_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(10)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             anyhow::ensure!(
@@ -557,9 +541,9 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .runner(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -580,20 +564,18 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let cfg = client.config(SESSION_MODEL);
+            let rt = client.http();
             let tool = InspectManifest { log };
-            let request = model
-                .completion_request(
-                    "Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
+            let request = CompletionRequest::builder("Call inspect_manifest exactly once for project rig-openrouter with critical=true, retries=2, \
                      steps [{name: plan, weight: 1}, {name: verify, weight: 2}], and note `streamed nested JSON`. \
-                     Do not write normal text before the tool call.",
-                )
-                .preamble("Use the requested tool call and no prose before it.".to_string())
-                .tool(rig::tool::tool_definition(&tool))
-                .tool_choice(ToolChoice::Required)
-                .build();
+                     Do not write normal text before the tool call.")
+                              .preamble("Use the requested tool call and no prose before it.")
+                              .tools(vec![rig::tool::portable_tool_definition(&tool)])
+                              .tool_choice(ToolChoice::Required)
+                              .build();
 
-            let observation = collect_raw_stream_observation(model.stream(request).await?).await;
+            let observation = collect_raw_stream_observation(openrouter::functions::open_stream(&cfg, &rt, request).await?).await;
 
             assert_raw_stream_tool_call_arguments_are_objects(
                 &observation,
@@ -621,33 +603,34 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
-            let request = model
-                .completion_request(
-                    "Answer in one short sentence: what is my favorite color, which label came from the tool, \
-                     and which release lane did I choose? Do not call any tools.",
-                )
-                .preamble("You are concise and should rely on the provided chat history.".to_string())
-                .message(Message::user("My favorite color is teal. Please remember it."))
-                .message(Message::assistant("Noted: your favorite color is teal."))
-                .message(Message::user("For this release, use the canary lane."))
-                .message(Message::assistant("Understood: the release lane is canary."))
-                .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
+            let cfg = client.config(SESSION_MODEL);
+            let rt = client.http();
+            let history = vec![
+                Message::user("My favorite color is teal. Please remember it."),
+                Message::assistant("Noted: your favorite color is teal."),
+                Message::user("For this release, use the canary lane."),
+                Message::assistant("Understood: the release lane is canary."),
+                Message::user("Look up the harbor label with the tool."),
+                Message::Assistant {
                     id: None,
                     content: OneOrMany::one(AssistantContent::tool_call(
                         "call_REDACTED_1",
                         AlphaSignal::NAME,
                         json!({}),
                     )),
-                })
-                .message(Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT))
-                .message(Message::assistant("The harbor label is crimson-harbor."))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool_choice(ToolChoice::None)
-                .build();
+                },
+                Message::tool_result("call_REDACTED_1", ALPHA_SIGNAL_OUTPUT),
+                Message::assistant("The harbor label is crimson-harbor."),
+            ];
+            let request = CompletionRequest::builder("Answer in one short sentence: what is my favorite color, which label came from the tool, \
+                     and which release lane did I choose? Do not call any tools.")
+                              .preamble("You are concise and should rely on the provided chat history.")
+                              .messages(history)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .tool_choice(ToolChoice::None)
+                              .build();
 
-            let response = model.completion(request).await?;
+            let response = openrouter::functions::complete(&cfg, &rt, request).await?;
             let text = response
                 .choice
                 .iter()
@@ -664,14 +647,36 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                response
-                    .raw_response
-                    .choices
-                    .iter()
-                    .all(|choice| choice.finish_reason.is_some()),
-                "raw response should preserve finish reasons"
+                response.finish_reason.is_some(),
+                "response should preserve the finish reason"
             );
-            assert_nonempty_response(&response.raw_response.model);
+            assert_nonempty_response(
+                response
+                    .model
+                    .as_deref()
+                    .expect("response should carry the provider-reported model"),
+            );
+            // The normalized response only surfaces the first choice's finish
+            // reason; assert every recorded choice against the wire body
+            // (replay only: the cassette file is written after the test body
+            // in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies(
+                    "openrouter",
+                    "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
+                );
+                anyhow::ensure!(bodies.len() == 1, "scenario should record a single interaction");
+                let raw: rig::providers::openrouter::CompletionResponse =
+                    serde_json::from_str(&bodies[0])
+                        .expect("recorded body should deserialize as an OpenRouter response");
+                anyhow::ensure!(
+                    raw.choices
+                        .iter()
+                        .all(|choice| choice.finish_reason.is_some()),
+                    "raw response should preserve finish reasons"
+                );
+                assert_nonempty_response(&raw.model);
+            }
 
             Ok(())
         },
@@ -740,3 +745,4 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
     )
     .await
 }
+use rig::prelude::*;

@@ -2,15 +2,15 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use rig::agent::Agent;
-use rig::completion::{Prompt, PromptError};
+use rig::completion::PromptError;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::openai::GPT_4O;
 use rig::providers::{anthropic, openai};
 
 enum Agents {
-    Anthropic(Agent<anthropic::completion::CompletionModel>),
-    OpenAI(Agent<openai::completion::CompletionModel>),
+    Anthropic(Agent),
+    OpenAI(Agent),
 }
 
 impl Agents {
@@ -32,7 +32,8 @@ struct AgentConfig<'a> {
 struct ProviderRegistry(HashMap<&'static str, fn(AgentConfig<'_>) -> Result<Agents>>);
 
 fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = anthropic::Client::from_env()?
+    let client = anthropic::Client::from_env()?;
+    let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .name(name)
         .preamble(preamble)
@@ -42,12 +43,8 @@ fn anthropic_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Ag
 }
 
 fn openai_agent(AgentConfig { name, preamble }: AgentConfig<'_>) -> Result<Agents> {
-    let agent = openai::Client::from_env()?
-        .completions_api()
-        .agent(GPT_4O)
-        .name(name)
-        .preamble(preamble)
-        .build();
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(GPT_4O).name(name).preamble(preamble).build();
 
     Ok(Agents::OpenAI(agent))
 }

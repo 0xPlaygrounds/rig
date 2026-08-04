@@ -1,9 +1,14 @@
+//! Streams a locally loaded GGUF model with `rig-candle`.
+//!
+//! Candle has no `ProviderConfig` arm (model tensors are not plain
+//! configuration), so this drives the loaded-model handle directly: its
+//! inherent `stream` method replaces the removed `CompletionModel` trait.
+//! The equivalent path-driven entry point is `rig::candle::functions::open_stream`.
+
 use std::io::Write;
 
 use anyhow::Context;
-use futures::StreamExt;
 use rig::candle::{CandleModel, ModelData};
-use rig::completion::CompletionModel;
 use rig::streaming::StreamedAssistantContent;
 
 #[tokio::main]
@@ -25,13 +30,12 @@ async fn main() -> anyhow::Result<()> {
         tokenizer: std::fs::read(model_dir.join("tokenizer.json"))?,
         weights: std::fs::read(model_dir.join("model.gguf"))?,
     })?;
-    let mut response = model
-        .completion_request(prompt)
-        .preamble("You are a concise and helpful assistant.".to_string())
+    let request = rig::completion::CompletionRequest::builder(prompt)
+        .preamble("You are a concise and helpful assistant.")
         .temperature(0.0)
         .max_tokens(64)
-        .stream()
-        .await?;
+        .build();
+    let mut response = model.stream(request).await?;
     let mut final_response = None;
     while let Some(item) = response.next().await {
         match item? {
@@ -39,31 +43,24 @@ async fn main() -> anyhow::Result<()> {
                 print!("{}", fragment.text);
                 std::io::stdout().flush()?;
             }
-            StreamedAssistantContent::Final(raw) => final_response = Some(raw),
+            StreamedAssistantContent::Final(final_metadata) => {
+                final_response = Some(final_metadata)
+            }
             _ => {}
         }
     }
     println!();
-    let raw = final_response.context("Candle stream ended without final metadata")?;
-    let usage = response.usage();
+    let final_response = final_response.context("Candle stream ended without final metadata")?;
+    let usage = final_response.usage;
     println!(
         "tokens: prompt={}, generated={}, total={}",
         usage.input_tokens, usage.output_tokens, usage.total_tokens
     );
-    let throughput = match raw.tokens_per_second {
-        Some(value) => format!("{value:.2} tokens/s"),
-        None => "n/a".to_string(),
-    };
     println!(
-        "finish: {:?}; requested max: {}; effective max: {}; prefill: {} ms; time to first token: {} ms; total: {} ms; throughput: {}",
-        raw.finish_reason,
-        raw.requested_max_tokens,
-        raw.effective_max_tokens,
-        raw.prefill_duration_ms,
-        raw.time_to_first_token_ms
-            .map_or_else(|| "n/a".to_string(), |value| value.to_string()),
-        raw.generation_duration_ms,
-        throughput
+        "finish: {:?}; provider: {}; model: {}",
+        final_response.finish_reason,
+        final_response.provider,
+        final_response.model.as_deref().unwrap_or("n/a"),
     );
     Ok(())
 }

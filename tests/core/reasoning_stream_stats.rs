@@ -1,8 +1,9 @@
 use futures::stream;
 use rig::OneOrMany;
-use rig::agent::MultiTurnStreamItem;
+use rig::agent::PromptResponse;
 use rig::completion::Usage;
-use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use rig::message::{ToolCall, ToolFunction, ToolResult, ToolResultContent};
+use rig::stream::AgentRunItem;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 
 use crate::reasoning::collect_stream_stats;
@@ -24,25 +25,26 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     };
 
     let items = vec![
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::<()>::text("Sure! Let me check the weather right away!"),
-        )),
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
+        Ok(AgentRunItem::Assistant(StreamedAssistantContent::text(
+            "Sure! Let me check the weather right away!",
+        ))),
+        Ok(AgentRunItem::Assistant(
             StreamedAssistantContent::ToolCall {
                 tool_call,
                 internal_call_id: internal_call_id.clone(),
             },
         )),
-        Ok(MultiTurnStreamItem::StreamUserItem(
-            StreamedUserContent::tool_result(tool_result, internal_call_id),
-        )),
-        Ok(MultiTurnStreamItem::StreamAssistantItem(
-            StreamedAssistantContent::<()>::text("It's 72F and sunny in Tokyo."),
-        )),
-        Ok(MultiTurnStreamItem::final_response(
-            OneOrMany::one(AssistantContent::text("It's 72F and sunny in Tokyo.")),
+        Ok(AgentRunItem::User(StreamedUserContent::tool_result(
+            tool_result,
+            internal_call_id,
+        ))),
+        Ok(AgentRunItem::Assistant(StreamedAssistantContent::text(
+            "It's 72F and sunny in Tokyo.",
+        ))),
+        Ok(AgentRunItem::Final(PromptResponse::new(
+            "It's 72F and sunny in Tokyo.",
             Usage::new(),
-        )),
+        ))),
     ];
 
     let stats = collect_stream_stats(stream::iter(items), "test").await;

@@ -1,21 +1,21 @@
-//! Demonstrates manual tool-call handling with a raw `CompletionModel` request.
+//! Demonstrates manual tool-call handling with a raw completion request.
 //! Requires `OPENAI_API_KEY`.
 //!
 //! Unlike `agent.prompt(...)`, this example never lets Rig execute tools automatically.
 //! It:
-//! 1. sends a low-level completion request,
+//! 1. sends a bound completion request (still below the agent loop),
 //! 2. collects one or more `ToolCall`s from the model output,
-//! 3. executes them locally with a `ToolSet`,
+//! 3. executes them locally with a `ToolExecutor` of portable tool records,
 //! 4. feeds the tool results back to the model, and
 //! 5. repeats until the model returns a final text answer.
 
 use anyhow::{Result, bail};
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::executor::ToolExecutor;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolOutput, ToolSet};
+use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -53,11 +53,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -86,11 +82,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -133,16 +125,17 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
 async fn main() -> Result<()> {
     const MAX_ROUNDS: usize = 8;
 
-    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O_MINI);
+    let model = openai::CompletionsClient::from_env()?.completion_model(openai::GPT_4O_MINI);
     let preamble = "You are a calculator. Never do arithmetic from memory. \
                     Use the provided tools for every intermediate step. \
                     You may emit one or multiple tool calls in a single turn. \
                     Once all tool results are available, give a short final answer.";
 
-    let local_tools = ToolSet::builder()
-        .static_tool(Add)
-        .static_tool(Subtract)
-        .build();
+    let local_tools = ToolExecutor::from_tools([
+        PortableDynamicTool::from_portable(Add),
+        PortableDynamicTool::from_portable(Subtract),
+    ]);
+    let tool_definitions = local_tools.catalog().definitions;
 
     let mut history = Vec::new();
     let mut current_prompt = Message::user(
@@ -154,9 +147,9 @@ async fn main() -> Result<()> {
         // model requests have no agent lifecycle or hooks.
         let mut request = model
             .completion_request(current_prompt.clone())
-            .preamble(preamble.to_string())
+            .preamble(preamble)
             .messages(history.clone())
-            .tools(local_tools.get_tool_definitions());
+            .tools(tool_definitions.clone());
         if round == 1 {
             // Force the first turn through the tool path so the example always demonstrates it.
             request = request.tool_choice(ToolChoice::Required);
@@ -183,15 +176,16 @@ async fn main() -> Result<()> {
         );
 
         for tool_call in &tool_calls {
-            let args = serde_json::to_string(&tool_call.function.arguments)?;
-            let result = local_tools
-                .execute(
-                    &tool_call.function.name,
-                    args.clone(),
-                    &mut rig::tool::ToolContext::new(),
-                )
-                .await;
-            let output = result.output().clone();
+            let args = tool_call.function.arguments.clone();
+            // A tool failure stays model-visible: render it as the tool result
+            // instead of aborting the loop.
+            let output = match local_tools.get(&tool_call.function.name) {
+                Some(tool) => tool
+                    .execute(args.clone())
+                    .await
+                    .unwrap_or_else(|error| ToolOutput::text(format!("tool failed: {error}"))),
+                None => ToolOutput::text(format!("unknown tool `{}`", tool_call.function.name)),
+            };
             println!(
                 "  {}({args}) -> {}",
                 tool_call.function.name,

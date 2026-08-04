@@ -10,7 +10,7 @@
 //! `streamGenerateContent` response. Any mid-stream disruption skips that chunk,
 //! so the exact server-side token count is unrecoverable. There is also no
 //! "cancel" flag to send Gemini — killing a stream is purely a client-side
-//! connection close (here, `StreamingCompletionResponse::cancel()` /
+//! connection close (here, `CompletionStream::cancel()` /
 //! `AbortHandle::abort()`).
 //!
 //! ## The approach — one accounting path for every disruption
@@ -49,13 +49,13 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::{CompletionError, CompletionModel, GetTokenUsage, Usage};
+use rig::completion::{CompletionError, Usage};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig,
 };
-use rig::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
+use rig::streaming::{CompletionStream, StreamedAssistantContent};
 
 const MODEL: &str = "gemini-2.5-flash";
 /// Inject the disruption once this many output chars have streamed, so there is
@@ -78,25 +78,19 @@ enum Disruption {
     Stall,
 }
 
-/// Wraps a live `StreamingCompletionResponse` and injects a disruption after
+/// Wraps a live `CompletionStream` and injects a disruption after
 /// `after_chars` of output has been forwarded. This lets us exercise every
 /// disruption shape against a genuine Gemini stream's partial output.
-struct Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    inner: StreamingCompletionResponse<R>,
+struct Disrupt {
+    inner: CompletionStream,
     mode: Disruption,
     after_chars: usize,
     seen_chars: usize,
     fired: bool,
 }
 
-impl<R> Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    fn new(inner: StreamingCompletionResponse<R>, mode: Disruption, after_chars: usize) -> Self {
+impl Disrupt {
+    fn new(inner: CompletionStream, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
         let after_chars = match mode {
             Disruption::None => usize::MAX,
@@ -112,11 +106,8 @@ where
     }
 }
 
-impl<R> Stream for Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    type Item = Result<StreamedAssistantContent<R>, CompletionError>;
+impl Stream for Disrupt {
+    type Item = Result<StreamedAssistantContent, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -163,7 +154,7 @@ where
 }
 
 /// Length of human-visible text in a stream item (text + reasoning deltas).
-fn visible_len<R>(item: &StreamedAssistantContent<R>) -> usize {
+fn visible_len(item: &StreamedAssistantContent) -> usize {
     match item {
         StreamedAssistantContent::Text(t) => t.text.chars().count(),
         StreamedAssistantContent::ReasoningDelta { reasoning, .. } => reasoning.chars().count(),
@@ -192,7 +183,7 @@ struct Report {
 /// each read with a timeout. If the stream ends — by `None`, `Err`, a zeroed
 /// `Final`, or a stall — without authoritative usage, it estimates tokens from
 /// the partial output via `countTokens`.
-async fn drain_with_accounting<S, R>(
+async fn drain_with_accounting<S>(
     label: &'static str,
     mut stream: S,
     http: &reqwest::Client,
@@ -200,8 +191,7 @@ async fn drain_with_accounting<S, R>(
     prompt_text: &str,
 ) -> anyhow::Result<Report>
 where
-    S: Stream<Item = Result<StreamedAssistantContent<R>, CompletionError>> + Unpin,
-    R: Clone + Unpin + GetTokenUsage,
+    S: Stream<Item = Result<StreamedAssistantContent, CompletionError>> + Unpin,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;
@@ -237,7 +227,7 @@ where
                 StreamedAssistantContent::Final(resp) => {
                     // Authoritative usage — but only trust it if non-zero. A
                     // premature clean close yields a zeroed Final (shape #3).
-                    let usage = resp.token_usage();
+                    let usage = resp.usage;
                     if usage.has_values() {
                         authoritative = Some(usage);
                     }
@@ -314,6 +304,7 @@ fn no_thinking_params() -> anyhow::Result<serde_json::Value> {
             }),
             ..Default::default()
         }),
+        safety_settings: None,
         additional_params: None,
     };
     Ok(serde_json::to_value(&params)?)
@@ -327,9 +318,8 @@ async fn run_scenario(
     api_key: &str,
 ) -> anyhow::Result<Report> {
     let client = gemini::Client::from_env()?;
-    let model = client.completion_model(MODEL);
-
-    let stream = model
+    let stream = client
+        .completion_model(MODEL)
         .completion_request(prompt)
         .temperature(0.7)
         .max_tokens(2000)

@@ -1,25 +1,18 @@
-//! DeepSeek API client and Rig integration
+//! DeepSeek API integration.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::deepseek};
+//! use rig_core::providers::deepseek;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = deepseek::Client::new("DEEPSEEK_API_KEY")?;
-//!
-//! let deepseek_chat = client.completion_model(deepseek::DEEPSEEK_V4_FLASH);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = deepseek::functions::Config::from_env(deepseek::DEEPSEEK_V4_FLASH)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = deepseek::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-use serde_json::Value;
-
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::completion::GetTokenUsage;
-use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
@@ -27,162 +20,8 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
-
-// ================================================================
-// Main DeepSeek Client
-// ================================================================
-const DEEPSEEK_API_BASE_URL: &str = "https://api.deepseek.com";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct DeepSeekExtBuilder;
-
-type DeepSeekApiKey = BearerAuth;
-
-impl Provider for DeepSeekExt {
-    type Builder = DeepSeekExtBuilder;
-    const VERIFY_PATH: &'static str = "/user/balance";
-}
-
-impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
-    const PROVIDER_NAME: &'static str = "deepseek";
-
-    type StreamingUsage = Usage;
-
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
-
-    // DeepSeek's API only supports `json_object` response formats (passed via
-    // `additional_params`), not the `json_schema` mapping of `output_schema`.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    type Response = CompletionResponse;
-
-    fn finalize_request_body(&self, body: &mut Value) -> Result<(), CompletionError> {
-        let Some(map) = body.as_object_mut() else {
-            return Ok(());
-        };
-
-        // DeepSeek takes message `content` as a plain string, not an array of
-        // content parts, and echoes tool calls back with an `index` field.
-        if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
-            for message in messages {
-                let Some(message) = message.as_object_mut() else {
-                    continue;
-                };
-                let is_assistant = message.get("role").and_then(Value::as_str) == Some("assistant");
-
-                if let Some(content) = message.get_mut("content") {
-                    let separator = if is_assistant { "" } else { "\n" };
-                    openai::completion::flatten_text_content_parts(content, separator, false);
-                } else if is_assistant && !message.contains_key("content") {
-                    // Tool-call-only assistant turns must still carry an
-                    // (empty) string content field.
-                    message.insert("content".to_string(), Value::String(String::new()));
-                }
-
-                if is_assistant
-                    && let Some(tool_calls) =
-                        message.get_mut("tool_calls").and_then(Value::as_array_mut)
-                {
-                    for tool_call in tool_calls {
-                        if let Some(tool_call) = tool_call.as_object_mut() {
-                            tool_call
-                                .entry("index")
-                                .or_insert_with(|| serde_json::json!(0));
-                        }
-                    }
-                }
-            }
-        }
-
-        // DeepSeek rejects forced tool choices (`required` or a specific
-        // function) unless thinking is explicitly disabled; suppress them to
-        // an explicit `null` otherwise.
-        let thinking_disabled = map
-            .get("thinking")
-            .and_then(|thinking| thinking.get("type"))
-            .and_then(Value::as_str)
-            .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
-        if !thinking_disabled && let Some(tool_choice) = map.get_mut("tool_choice") {
-            let forced = tool_choice.is_object() || tool_choice.as_str() == Some("required");
-            if forced {
-                *tool_choice = Value::Null;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<H> Capabilities<H> for DeepSeekExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<DeepSeekModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for DeepSeekExt {}
-
-impl ProviderBuilder for DeepSeekExtBuilder {
-    type Extension<H>
-        = DeepSeekExt
-    where
-        H: HttpClientExt;
-    type ApiKey = DeepSeekApiKey;
-
-    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(DeepSeekExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<DeepSeekExtBuilder, DeepSeekApiKey, H>;
-
-/// DeepSeek completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<DeepSeekExt, H>;
-
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying DeepSeek's own usage payload (cache hit/miss counters).
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
-
-impl ProviderClient for Client {
-    type Input = DeepSeekApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    // If you prefer the environment variable approach:
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("DEEPSEEK_API_KEY")?;
-        let mut client_builder = Self::builder();
-        client_builder.headers_mut().insert(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/json"),
-        );
-        let client_builder = client_builder.api_key(&api_key);
-        client_builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
 
 /// The response shape from the DeepSeek API
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -245,13 +84,13 @@ pub struct Usage {
     pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
         crate::completion::Usage {
-            input_tokens: self.prompt_tokens as u64,
-            output_tokens: self.completion_tokens as u64,
-            total_tokens: self.total_tokens as u64,
-            cached_input_tokens: self
+            input_tokens: value.prompt_tokens as u64,
+            output_tokens: value.completion_tokens as u64,
+            total_tokens: value.total_tokens as u64,
+            cached_input_tokens: value
                 .prompt_tokens_details
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
@@ -259,7 +98,7 @@ impl GetTokenUsage for Usage {
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: self
+            reasoning_tokens: value
                 .completion_tokens_details
                 .as_ref()
                 .and_then(|details| details.reasoning_tokens)
@@ -347,13 +186,15 @@ pub enum ToolType {
     Function,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = (!choice.finish_reason.is_empty())
+            .then(|| openai::completion::map_finish_reason(&choice.finish_reason));
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -397,14 +238,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        let usage = response.usage.token_usage();
+        let usage = crate::completion::Usage::from(response.usage.clone());
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut normalized =
+            completion::CompletionResponse::new(choice, usage, functions::DESCRIPTOR.name);
+        if let Some(model) = response.model.clone() {
+            normalized = normalized.with_model(model);
+        }
+        if let Some(id) = response.id.clone() {
+            normalized = normalized.with_message_id(id);
+        }
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -427,61 +272,29 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
-#[derive(Clone)]
-pub struct DeepSeekModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/models";
 
-impl<H> ModelLister<H> for DeepSeekModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
+/// Parse a `GET /models` response into a [`ModelList`]. Pure.
+///
+/// Used by [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "DeepSeek",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
     }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "DeepSeek",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "DeepSeek",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("DeepSeek", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 // ================================================================
@@ -501,34 +314,26 @@ pub const DEEPSEEK_CHAT: &str = "deepseek-chat";
 pub const DEEPSEEK_REASONER: &str = "deepseek-reasoner";
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
-
-// Tests
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::ModelListingClient;
-    use crate::completion::{CompletionRequestBuilder, ToolDefinition as RigToolDefinition};
-    use crate::message::ToolChoice as RigToolChoice;
-    use crate::providers::openai::completion::{
-        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+    use crate::completion::{
+        CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDefinition,
     };
-    use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
+    use crate::http_runtime::HttpRuntime;
+    use crate::message::ToolChoice as RigToolChoice;
+    use crate::providers::openai::completion::CompletionModelOptions;
+    use crate::test_utils::RecordingHttpClient;
 
     fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
-        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-            model: "deepseek-v4-flash".to_string(),
-            request,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: DeepSeekExt::SUPPORTS_RESPONSE_FORMAT,
-            supports_tools: true,
-        })
-        .expect("request should convert");
-        let mut body = serde_json::to_value(request).expect("request should serialize");
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
-        body
+        let body = super::functions::build_body(
+            "deepseek-v4-flash",
+            &request,
+            CompletionModelOptions::default(),
+            false,
+        )
+        .expect("build_body should succeed");
+        serde_json::from_slice(&body).expect("body should be JSON")
     }
 
     #[test]
@@ -581,30 +386,33 @@ mod tests {
 
     #[test]
     fn deepseek_request_serializes_specific_tool_choice_as_chat_completions_object() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(RigToolDefinition {
-                name: "alpha".to_string(),
-                description: "Alpha tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool(RigToolDefinition {
-                name: "beta".to_string(),
-                description: "Beta tool".to_string(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
-            })
-            .tool_choice(RigToolChoice::Specific {
+        let request = RigCompletionRequest {
+            tools: vec![
+                RigToolDefinition {
+                    name: "alpha".to_string(),
+                    description: "Alpha tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+                RigToolDefinition {
+                    name: "beta".to_string(),
+                    description: "Beta tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }),
+                },
+            ],
+            tool_choice: Some(RigToolChoice::Specific {
                 function_names: vec!["beta".to_string()],
-            })
-            .additional_params(serde_json::json!({"thinking": {"type": "disabled"}}))
-            .build();
+            }),
+            additional_params: Some(serde_json::json!({"thinking": {"type": "disabled"}})),
+            ..RigCompletionRequest::from_prompt("Use a tool.")
+        };
 
         let body = finalized_body(request);
 
@@ -616,8 +424,8 @@ mod tests {
 
     #[test]
     fn deepseek_request_suppresses_required_tool_choice_when_thinking_is_not_disabled() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
-            .tool(RigToolDefinition {
+        let request = RigCompletionRequest {
+            tools: vec![RigToolDefinition {
                 name: "alpha".to_string(),
                 description: "Alpha tool".to_string(),
                 parameters: serde_json::json!({
@@ -625,9 +433,10 @@ mod tests {
                     "properties": {},
                     "required": []
                 }),
-            })
-            .tool_choice(RigToolChoice::Required)
-            .build();
+            }],
+            tool_choice: Some(RigToolChoice::Required),
+            ..RigCompletionRequest::from_prompt("Use a tool.")
+        };
 
         let body = finalized_body(request);
 
@@ -642,8 +451,9 @@ mod tests {
 
     #[test]
     fn deepseek_request_flattens_message_content_to_strings() {
-        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello!")
-            .preamble("You are helpful.".to_string())
+        let request = RigCompletionRequest::builder("Hello!")
+            .preamble("You are helpful.")
+            .messages(Vec::new())
             .build();
 
         let body = finalized_body(request);
@@ -670,9 +480,7 @@ mod tests {
             ]
         });
 
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["content"], "first part\nsecond part");
         assert_eq!(body["messages"][1]["content"], "Hello world");
@@ -693,9 +501,7 @@ mod tests {
             }]
         });
 
-        DeepSeekExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["tool_calls"][0]["index"], 0);
     }
@@ -835,16 +641,6 @@ mod tests {
     }
 
     #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::deepseek::Client::new("dummy-key").expect("Client::new() failed");
-        let _client_from_builder = crate::providers::deepseek::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder() failed");
-    }
-
-    #[test]
     fn test_deserialize_list_models_response() {
         let data = r#"{
             "object": "list",
@@ -880,14 +676,10 @@ mod tests {
         }"#;
 
         let http_client = RecordingHttpClient::new(response_body);
-        let client = Client::builder()
-            .api_key("dummy-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
+        let rt = HttpRuntime::recording(http_client.clone());
+        let cfg = functions::Config::new("deepseek-v4-flash").with_api_key("dummy-key");
 
-        let models = client
-            .list_models()
+        let models = functions::list_models(&cfg, &rt)
             .await
             .expect("list_models should succeed");
 
@@ -906,14 +698,10 @@ mod tests {
             http::StatusCode::UNAUTHORIZED,
             r#"{"error":{"message":"invalid api key"}}"#,
         );
-        let client = Client::builder()
-            .api_key("dummy-key")
-            .http_client(http_client)
-            .build()
-            .expect("client should build");
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new("deepseek-v4-flash").with_api_key("dummy-key");
 
-        let error = client
-            .list_models()
+        let error = functions::list_models(&cfg, &rt)
             .await
             .expect_err("list_models should fail");
 
@@ -928,6 +716,379 @@ mod tests {
                 assert!(message.contains("invalid api key"));
             }
             other => panic!("expected api error, got {other:?}"),
+        }
+    }
+}
+
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+
+pub mod functions {
+    //! DeepSeek chat completions as config + pure functions.
+    //!
+    //! The data-oriented face of the DeepSeek provider, mirroring
+    //! [`crate::providers::openai::functions`]: a serde [`Config`], a
+    //! [`DESCRIPTOR`] capability sheet, and pure
+    //! [`build_request`]/[`parse_response`] free functions plus the async
+    //! [`complete`]/[`open_stream`] wrappers over
+    //! [`HttpRuntime`]. The request/parse
+    //! mechanics are shared with the other OpenAI-compatible providers via
+    //! `openai::functions`; this module instantiates them with DeepSeek's
+    //! [`DESCRIPTOR`] so DeepSeek's paths, hooks, and provider name apply.
+
+    use serde::{Deserialize, Serialize};
+    use serde_json::Value;
+
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, required_env_var,
+    };
+    use crate::providers::internal::openai_chat_completions_compatible::{
+        ChatCompletionsDialect, ChatCompletionsUsageDialect,
+    };
+    use crate::providers::openai::completion::CompletionModelOptions;
+    use crate::providers::openai::functions as openai_functions;
+
+    /// Default DeepSeek API base URL.
+    pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
+
+    /// DeepSeek's Chat Completions streaming dialect: OpenAI-shaped chunks with
+    /// DeepSeek's own cache hit/miss usage accounting.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR)
+            .with_usage(ChatCompletionsUsageDialect::DeepSeek);
+
+    /// DeepSeek's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "deepseek",
+        supports_tools: true,
+        supports_response_format: false,
+        stream_include_usage: true,
+        emits_complete_single_chunk_tool_calls: true,
+        composes_native_output_with_tools: false,
+        max_embedding_documents: None,
+        verify_path: Some("/user/balance"),
+    };
+
+    /// Plain-data DeepSeek provider configuration.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
+        /// Model identifier requests are built for.
+        pub model: String,
+    }
+
+    crate::providers::client::impl_http_connection_config!(Config);
+
+    impl Config {
+        /// Config for `model` reading `DEEPSEEK_API_KEY` from the environment.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::Env("DEEPSEEK_API_KEY".to_string()),
+                ),
+                model: model.into(),
+            }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `DEEPSEEK_API_KEY` (required) — the same variable the deleted
+        /// `deepseek::Client::from_env` read. The credential is validated eagerly
+        /// but stored as [`ApiKeyLocation::Env`], so the secret is read at
+        /// request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let cfg = Self::new(model);
+            required_env_var("DEEPSEEK_API_KEY")?;
+            Ok(cfg)
+        }
+
+        /// Config for `model` with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the serialized chat-completions request body for `request`. Pure.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// DeepSeek's straight-line chat-completions body assembly.
+    ///
+    /// Three wire-level dialect quirks: message `content` is a plain string
+    /// rather than an array of content parts, assistant tool calls are echoed
+    /// back with an `index` field, and forced tool choices (`required` or a
+    /// specific function) are rejected unless thinking is explicitly disabled,
+    /// so they are suppressed to an explicit `null`. DeepSeek also only supports
+    /// `json_object` response formats (passed via `additional_params`), not the
+    /// `json_schema` mapping of `output_schema` — hence
+    /// `supports_response_format: false` on [`DESCRIPTOR`].
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let mut body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        apply_wire_dialect(&mut body);
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// Rewrite a serialized chat-completions `body` into DeepSeek's wire dialect
+    /// in place: string message `content`, `index`-stamped assistant tool calls,
+    /// and forced tool choices suppressed to an explicit `null`.
+    pub(crate) fn apply_wire_dialect(body: &mut Value) {
+        if let Some(map) = body.as_object_mut() {
+            // DeepSeek takes message `content` as a plain string, not an array of
+            // content parts, and echoes tool calls back with an `index` field.
+            if let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) {
+                for message in messages {
+                    let Some(message) = message.as_object_mut() else {
+                        continue;
+                    };
+                    let is_assistant =
+                        message.get("role").and_then(Value::as_str) == Some("assistant");
+
+                    if let Some(content) = message.get_mut("content") {
+                        let separator = if is_assistant { "" } else { "\n" };
+                        crate::providers::openai::completion::flatten_text_content_parts(
+                            content, separator, false,
+                        );
+                    } else if is_assistant && !message.contains_key("content") {
+                        // Tool-call-only assistant turns must still carry an
+                        // (empty) string content field.
+                        message.insert("content".to_string(), Value::String(String::new()));
+                    }
+
+                    if is_assistant
+                        && let Some(tool_calls) =
+                            message.get_mut("tool_calls").and_then(Value::as_array_mut)
+                    {
+                        for tool_call in tool_calls {
+                            if let Some(tool_call) = tool_call.as_object_mut() {
+                                tool_call
+                                    .entry("index")
+                                    .or_insert_with(|| serde_json::json!(0));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // DeepSeek rejects forced tool choices (`required` or a specific
+            // function) unless thinking is explicitly disabled; suppress them to
+            // an explicit `null` otherwise.
+            let thinking_disabled = map
+                .get("thinking")
+                .and_then(|thinking| thinking.get("type"))
+                .and_then(Value::as_str)
+                .is_some_and(|mode| mode.eq_ignore_ascii_case("disabled"));
+            if !thinking_disabled && let Some(tool_choice) = map.get_mut("tool_choice") {
+                let forced = tool_choice.is_object() || tool_choice.as_str() == Some("required");
+                if forced {
+                    *tool_choice = Value::Null;
+                }
+            }
+        }
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+    /// environment).
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        openai_functions::compatible_http_request(
+            &cfg.base_url,
+            &completion_path(&cfg.model),
+            &cfg.api_key,
+            &cfg.extra_headers,
+            build_request_body(cfg, request, stream)?,
+        )
+    }
+
+    /// Parse a chat-completions response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        openai_functions::compatible_parse_response::<super::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
+    }
+
+    /// Open a streaming completion for `request`.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
+        let req = build_request(cfg, &request, true)?;
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
+    }
+
+    /// Send `request` to DeepSeek and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    /// Build the `GET /models` request for [`list_models`].
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads
+    /// the environment).
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        openai_functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the models available to `cfg`'s credentials.
+    ///
+    /// Parsing goes through the pure `super::parse_list_models_response`.
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
+    }
+
+    // Tests
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/user/balance`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                chat_history: OneOrMany::one(crate::message::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_and_model() {
+            let cfg = Config::new("test-model").with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "https://api.deepseek.com/chat/completions");
+            let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+            assert_eq!(value["model"], "test-model");
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 2,
+                    "prompt_cache_hit_tokens": 0,
+                    "prompt_cache_miss_tokens": 3,
+                    "total_tokens": 5
+                }
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "deepseek");
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
         }
     }
 }

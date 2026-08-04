@@ -1,7 +1,5 @@
 //! Gemini agent completion smoke test.
 
-use rig::completion::Prompt;
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_cassette;
@@ -24,3 +22,4 @@ async fn completion_smoke() {
     })
     .await;
 }
+use rig::prelude::*;

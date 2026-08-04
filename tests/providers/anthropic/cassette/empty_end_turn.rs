@@ -3,15 +3,15 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
+use rig::prelude::*;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 
 use rig::{
-    completion::{CompletionModel, Prompt, ToolDefinition},
+    completion::{CompletionRequest, ToolDefinition},
     message::{AssistantContent, Message, UserContent},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     tool::Tool,
 };
@@ -80,11 +80,7 @@ impl Tool for Notify {
         notify_tool_definition().parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(format!("sent: {}", args.msg))
     }
@@ -143,12 +139,13 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
         |client| async move {
             let model = client.completion_model(CLAUDE_SONNET_4_6);
 
-            let first_turn = model
-                .completion_request(TERMINAL_NOTIFY_PROMPT)
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
+            let first_request = CompletionRequest::builder(TERMINAL_NOTIFY_PROMPT)
+                .preamble(TERMINAL_NOTIFY_PREAMBLE)
                 .max_tokens(1024)
-                .tool(notify_tool_definition())
-                .send()
+                .tools(vec![notify_tool_definition()])
+                .build();
+            let first_turn = model
+                .completion(first_request)
                 .await
                 .expect("first Anthropic turn should succeed");
 
@@ -161,19 +158,20 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 })
                 .expect("first Anthropic turn should emit a notify tool call");
 
+            let followup_request = CompletionRequest::builder(Message::tool_result_with_call_id(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                "sent: deploy finished",
+            ))
+            .preamble(TERMINAL_NOTIFY_PREAMBLE)
+            .messages(vec![Message::Assistant {
+                id: first_turn.message_id.clone(),
+                content: first_turn.choice.clone(),
+            }])
+            .max_tokens(1024)
+            .build();
             let followup = model
-                .completion_request(Message::tool_result_with_call_id(
-                    tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    "sent: deploy finished",
-                ))
-                .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .message(Message::Assistant {
-                    id: first_turn.message_id.clone(),
-                    content: first_turn.choice.clone(),
-                })
-                .send()
+                .completion(followup_request)
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 
@@ -211,9 +209,9 @@ async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
                 .build();
 
             let response = agent
-                .prompt(TERMINAL_NOTIFY_PROMPT)
+                .runner(TERMINAL_NOTIFY_PROMPT)
                 .max_turns(5)
-                .extended_details()
+                .run()
                 .await
                 .expect("agent prompt should not fail on an empty terminal Anthropic turn");
 
@@ -262,9 +260,8 @@ async fn prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty() {
         .build();
 
     let response = agent
-        .prompt(TERMINAL_NOTIFY_PROMPT)
-        .max_turns(5)
-        .extended_details()
+        .runner(TERMINAL_NOTIFY_PROMPT)
+        .max_turns(5).run()
         .await
         .expect("agent prompt should preserve prior-turn text when Anthropic ends empty");
 

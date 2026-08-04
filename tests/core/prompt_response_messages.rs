@@ -1,62 +1,80 @@
-//! Integration tests for `PromptResponse.messages` using mock models.
-//! Exercises the real agent loop code path with mocked LLM responses.
+//! Integration tests for `PromptResponse.messages` using the scripted Mock
+//! provider. Exercises the real agent loop code path with mocked LLM responses.
 
+use rig::OneOrMany;
 use rig::agent::AgentBuilder;
-use rig::completion::{Chat, Message, Prompt, Usage};
+use rig::completion::{CompletionResponse, Message, Usage};
 use rig::message::{AssistantContent, UserContent};
-use rig_agent::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
+use rig::provider::{MockScript, ProviderConfig};
+use rig_agent::test_utils::MockAddTool;
 
 // ---------------------------------------------------------------------------
-// Mock model infrastructure
+// Mock provider infrastructure
 // ---------------------------------------------------------------------------
 
-fn simple_text_turn() -> MockTurn {
-    MockTurn::text("hello from mock")
-        .with_usage(Usage {
-            input_tokens: 10,
-            output_tokens: 5,
-            total_tokens: 15,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        })
-        .with_message_id("msg_mock_1")
+fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
+    Usage {
+        input_tokens,
+        output_tokens,
+        total_tokens: input_tokens + output_tokens,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        tool_use_prompt_tokens: 0,
+        reasoning_tokens: 0,
+    }
 }
 
-fn simple_text_model(turns: usize) -> MockCompletionModel {
-    MockCompletionModel::new((0..turns).map(|_| simple_text_turn()))
+fn text_response(text: &str, usage: Usage, message_id: &str) -> CompletionResponse {
+    CompletionResponse::new(OneOrMany::one(AssistantContent::text(text)), usage, "mock")
+        .with_message_id(message_id)
 }
 
-fn tool_then_text_model() -> MockCompletionModel {
-    MockCompletionModel::new([
-        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
-            .with_usage(Usage {
-                input_tokens: 15,
-                output_tokens: 8,
-                total_tokens: 23,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .with_message_id("msg_tool"),
-        MockTurn::text("The answer is 5")
-            .with_usage(Usage {
-                input_tokens: 20,
-                output_tokens: 4,
-                total_tokens: 24,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .with_message_id("msg_text"),
-    ])
+fn tool_call_response(
+    id: &str,
+    name: &str,
+    args: serde_json::Value,
+    usage: Usage,
+    message_id: &str,
+) -> CompletionResponse {
+    CompletionResponse::new(
+        OneOrMany::one(AssistantContent::tool_call(id, name, args)),
+        usage,
+        "mock",
+    )
+    .with_message_id(message_id)
 }
 
-fn always_tool_call_turn() -> MockTurn {
-    MockTurn::tool_call("tc_loop", "add", serde_json::json!({"x": 1, "y": 1}))
+fn simple_text_turn() -> CompletionResponse {
+    text_response("hello from mock", usage(10, 5), "msg_mock_1")
+}
+
+fn simple_text_model(turns: usize) -> ProviderConfig {
+    ProviderConfig::Mock(MockScript::from_responses(
+        (0..turns).map(|_| simple_text_turn()).collect(),
+    ))
+}
+
+fn tool_then_text_model() -> ProviderConfig {
+    ProviderConfig::Mock(MockScript::from_responses(vec![
+        tool_call_response(
+            "tc_1",
+            "add",
+            serde_json::json!({"x": 2, "y": 3}),
+            usage(15, 8),
+            "msg_tool",
+        ),
+        text_response("The answer is 5", usage(20, 4), "msg_text"),
+    ]))
+}
+
+fn always_tool_call_turn() -> CompletionResponse {
+    tool_call_response(
+        "tc_loop",
+        "add",
+        serde_json::json!({"x": 1, "y": 1}),
+        Usage::new(),
+        "msg_loop",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -73,14 +91,14 @@ async fn standard_prompt_returns_string() {
     assert_eq!(result, "hello from mock");
 }
 
-/// Test 2: `extended_details()` returns a `PromptResponse` with `messages: Some(...)`.
+/// Test 2: `SessionRunner::run()` returns a `PromptResponse` with `messages: Some(...)`.
 #[tokio::test]
-async fn extended_details_populates_messages() {
+async fn runner_run_populates_messages() {
     let agent = AgentBuilder::new(simple_text_model(1)).build();
 
     let resp = agent
-        .prompt("hi")
-        .extended_details()
+        .runner("hi")
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -91,7 +109,7 @@ async fn extended_details_populates_messages() {
     // Messages should be populated
     let messages = resp
         .messages
-        .expect("messages should be Some for extended_details");
+        .expect("messages should be Some for SessionRunner::run");
 
     // Should contain: [User("hi"), Assistant("hello from mock")]
     assert_eq!(messages.len(), 2);
@@ -115,7 +133,7 @@ async fn extended_details_populates_messages() {
     }
 }
 
-/// Test 3: `with_history()` + `extended_details()` — the response messages
+/// Test 3: `history()` + `run()` — the response messages
 /// should contain the full conversation including any provided history.
 #[tokio::test]
 async fn extended_with_history_both_populated() {
@@ -124,9 +142,9 @@ async fn extended_with_history_both_populated() {
     let initial_history: Vec<Message> = Vec::new();
 
     let resp = agent
-        .prompt("hello")
+        .runner("hello")
         .history(&initial_history)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -157,15 +175,16 @@ async fn standard_with_history_works() {
     let history: Vec<Message> = Vec::new();
 
     let result = agent
-        .prompt("test")
+        .runner("test")
         .history(&history)
+        .run()
         .await
         .expect("prompt should succeed");
 
-    assert_eq!(result, "hello from mock");
+    assert_eq!(result.output, "hello from mock");
 
     // Note: The input history is not mutated. To get the updated history,
-    // use `.extended_details()` and access `response.messages`.
+    // read `response.messages` from the same `run()` response.
 }
 
 /// Test 5: Multi-turn agent loop with tool calls — messages should contain the
@@ -177,9 +196,9 @@ async fn multi_turn_messages_include_tool_calls() {
         .build();
 
     let resp = agent
-        .prompt("What is 2 + 3?")
+        .runner("What is 2 + 3?")
         .max_turns(5)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -276,17 +295,13 @@ async fn prompt_response_with_messages_builder() {
 async fn max_turns_error_still_contains_history() {
     use rig::completion::PromptError;
 
-    let agent = AgentBuilder::new(MockCompletionModel::new(
-        (0..10).map(|_| always_tool_call_turn()),
-    ))
+    let agent = AgentBuilder::new(ProviderConfig::Mock(MockScript::from_responses(
+        (0..10).map(|_| always_tool_call_turn()).collect(),
+    )))
     .tool(MockAddTool)
     .build();
 
-    let result = agent
-        .prompt("do something")
-        .max_turns(2)
-        .extended_details()
-        .await;
+    let result = agent.runner("do something").max_turns(2).run().await;
 
     match result {
         Err(PromptError::MaxTurnsError {
@@ -309,16 +324,16 @@ async fn max_turns_error_still_contains_history() {
 /// Test 9: Extended details without `with_history()` — messages should still
 /// be populated (this is the core feature: no need for &mut borrow).
 #[tokio::test]
-async fn extended_details_works_without_with_history() {
+async fn runner_run_works_without_history() {
     let agent = AgentBuilder::new(tool_then_text_model())
         .tool(MockAddTool)
         .build();
 
     // Note: NO .messages() call — this is the new use case
     let resp = agent
-        .prompt("compute 2+3")
+        .runner("compute 2+3")
         .max_turns(5)
-        .extended_details()
+        .run()
         .await
         .expect("prompt should succeed");
 
@@ -331,7 +346,7 @@ async fn extended_details_works_without_with_history() {
     assert_eq!(resp.output, "The answer is 5");
 }
 
-/// Test 10: `Chat::chat` appends the prompt and response messages to the
+/// Test 10: `Agent::chat` appends the prompt and response messages to the
 /// caller-owned history.
 #[tokio::test]
 async fn chat_appends_prompt_and_assistant_to_history() {
@@ -378,7 +393,7 @@ async fn chat_appends_prompt_and_assistant_to_history() {
     );
 }
 
-/// Test 11: `Chat::chat` appends every message produced by a tool roundtrip.
+/// Test 11: `Agent::chat` appends every message produced by a tool roundtrip.
 #[tokio::test]
 async fn chat_appends_tool_roundtrip_to_history() {
     let agent = AgentBuilder::new(tool_then_text_model())
@@ -435,14 +450,14 @@ async fn sequential_prompts_have_independent_histories() {
     let agent = AgentBuilder::new(simple_text_model(2)).build();
 
     let resp1 = agent
-        .prompt("first")
-        .extended_details()
+        .runner("first")
+        .run()
         .await
         .expect("first prompt should succeed");
 
     let resp2 = agent
-        .prompt("second")
-        .extended_details()
+        .runner("second")
+        .run()
         .await
         .expect("second prompt should succeed");
 

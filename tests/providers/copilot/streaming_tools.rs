@@ -1,10 +1,9 @@
 //! Copilot streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message, ToolChoice};
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
+use rig::providers::copilot;
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{
@@ -31,7 +30,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -57,7 +56,7 @@ async fn example_streaming_with_tools() {
             .default_max_turns(2)
             .build();
 
-        let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+        let mut stream =agent.runner("Calculate 2 - 5").stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tools prompt should succeed");
@@ -72,13 +71,16 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(LIVE_MODEL);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            };
+            let stream = copilot::functions::open_stream(&cfg, &rt, request)
+                .await
+                .expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -91,17 +93,18 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_copilot_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(LIVE_MODEL);
-            let request = model
-                .completion_request(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
+            let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
+            let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tools(vec![
+                    rig::tool::portable_tool_definition(&AlphaSignal),
+                    rig::tool::portable_tool_definition(&BetaSignal),
+                ])
                 .build();
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                copilot::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw stream should start"),
             )
@@ -129,9 +132,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .runner(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -147,16 +150,15 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_copilot_cassette("streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls", |client| async move {
-        let model = client.completion_model(LIVE_MODEL);
-        let request = model
-            .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-            .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-            .tool(rig::tool::tool_definition(&AlphaSignal))
-            .build();
+        let cfg = client.config(LIVE_MODEL);
+            let rt = client.http();
+        let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                          .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                          .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                          .build();
 
         let first_turn = collect_raw_stream_observation(
-            model
-                .stream(request)
+            copilot::functions::open_stream(&cfg, &rt, request)
                 .await
                 .expect("raw stream should start"),
         )
@@ -176,18 +178,13 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         };
         let tool_result_message =
             Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-        let followup_request = model
-            .completion_request(
-                "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-            )
-            .preamble("Use the provided tool result and answer directly.".to_string())
-            .message(assistant_message)
-            .message(tool_result_message)
-            .build();
+        let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+.preamble("Use the provided tool result and answer directly.")
+.messages(vec![assistant_message, tool_result_message])
+.build();
 
         let second_turn = collect_raw_stream_observation(
-            model
-                .stream(followup_request)
+            copilot::functions::open_stream(&cfg, &rt, followup_request)
                 .await
                 .expect("raw followup stream should start"),
         )
@@ -205,3 +202,4 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
         assert_raw_stream_text_contains(&second_turn, &[ALPHA_SIGNAL_OUTPUT]);
     }).await;
 }
+use rig::prelude::*;

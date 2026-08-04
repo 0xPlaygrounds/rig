@@ -1,6 +1,5 @@
 //! Mira agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::{mira, openai};
 

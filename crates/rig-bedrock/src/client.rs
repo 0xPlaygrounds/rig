@@ -1,155 +1,178 @@
-use crate::image::ImageGenerationModel;
-use crate::{completion::CompletionModel, embedding::EmbeddingModel};
-use aws_config::{BehaviorVersion, Region};
-use rig_core::client::Nothing;
-use rig_core::prelude::*;
+//! Concrete AWS Bedrock connection client.
+
+use aws_sdk_bedrockruntime::Client as AwsClient;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
+use crate::functions::{Config, ConnectionConfig, EmbeddingConfig, ImageConfig};
+
+/// Default region retained for the explicit builder path.
 pub const DEFAULT_AWS_REGION: &str = "us-east-1";
 
-#[derive(Clone)]
-pub struct ClientBuilder<'a> {
-    region: &'a str,
+/// Reusable Bedrock connection data plus an optional live SDK handle.
+#[derive(Clone, Debug)]
+pub struct Client {
+    connection: ConnectionConfig,
+    aws_client: Arc<OnceCell<AwsClient>>,
 }
 
-impl<'a> ClientBuilder<'a> {
-    /// Make sure to verify model and region [compatibility]
-    ///
-    /// [compatibility]: https://docs.aws.amazon.com/bedrock/latest/userguide/models-regions.html
-    pub fn region(mut self, region: &'a str) -> Self {
-        self.region = region;
+/// Owned, monomorphic Bedrock client builder.
+#[derive(Clone, Debug)]
+pub struct ClientBuilder {
+    connection: ConnectionConfig,
+}
+
+impl Default for ClientBuilder {
+    fn default() -> Self {
+        let mut connection = ConnectionConfig::default();
+        connection.region = Some(DEFAULT_AWS_REGION.to_string());
+        Self { connection }
+    }
+}
+
+impl ClientBuilder {
+    /// Pin the AWS region.
+    pub fn region(mut self, region: impl Into<String>) -> Self {
+        self.connection.region = Some(region.into());
         self
     }
 
-    /// Make sure you have permissions to access [Amazon Bedrock foundation model]
-    ///
-    /// [ Amazon Bedrock foundation model]: <https://docs.aws.amazon.com/bedrock/latest/userguide/model-access-modify.html>
+    /// Use the SDK's default region resolution.
+    pub fn default_region(mut self) -> Self {
+        self.connection.region = None;
+        self
+    }
+
+    /// Load credentials from an AWS profile.
+    pub fn profile(mut self, profile: impl Into<String>) -> Self {
+        self.connection.profile = Some(profile.into());
+        self
+    }
+
+    /// Override the Bedrock endpoint URL.
+    pub fn endpoint_url(mut self, endpoint_url: impl Into<String>) -> Self {
+        self.connection.endpoint_url = Some(endpoint_url.into());
+        self
+    }
+
+    /// Build and retain the live AWS SDK client for runtime reuse.
     pub async fn build(self) -> Client {
-        let sdk_config = aws_config::defaults(BehaviorVersion::latest())
-            .region(Region::new(String::from(self.region)))
-            .load()
-            .await;
-        let client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
+        let aws_client = crate::functions::client_from_connection(&self.connection).await;
         Client {
-            profile_name: None,
-            aws_client: Arc::new(OnceCell::from(client)),
+            connection: self.connection,
+            aws_client: Arc::new(OnceCell::new_with(Some(aws_client))),
         }
     }
 }
 
-impl Default for ClientBuilder<'_> {
-    fn default() -> Self {
+impl From<AwsClient> for Client {
+    fn from(aws_client: AwsClient) -> Self {
         Self {
-            region: DEFAULT_AWS_REGION,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Client {
-    profile_name: Option<String>,
-    pub(crate) aws_client: Arc<OnceCell<aws_sdk_bedrockruntime::Client>>,
-}
-
-impl From<aws_sdk_bedrockruntime::Client> for Client {
-    fn from(aws_client: aws_sdk_bedrockruntime::Client) -> Self {
-        Client {
-            profile_name: None,
-            aws_client: Arc::new(OnceCell::from(aws_client)),
+            connection: ConnectionConfig::default(),
+            aws_client: Arc::new(OnceCell::new_with(Some(aws_client))),
         }
     }
 }
 
 impl Client {
-    fn new() -> Self {
+    /// A lazy client using the AWS SDK's default credential and region chains.
+    pub fn from_env() -> Self {
         Self {
-            profile_name: None,
+            connection: ConnectionConfig::default(),
             aws_client: Arc::new(OnceCell::new()),
         }
     }
 
-    /// Create an AWS Bedrock client using AWS profile name
-    pub fn with_profile_name(profile_name: &str) -> Self {
+    /// Start an owned Bedrock client builder.
+    pub fn builder() -> ClientBuilder {
+        ClientBuilder::default()
+    }
+
+    /// A lazy client using a named AWS profile.
+    pub fn with_profile_name(profile: impl Into<String>) -> Self {
+        let mut connection = ConnectionConfig::default();
+        connection.profile = Some(profile.into());
         Self {
-            profile_name: Some(profile_name.into()),
+            connection,
             aws_client: Arc::new(OnceCell::new()),
         }
     }
 
-    pub async fn get_inner(&self) -> &aws_sdk_bedrockruntime::Client {
+    /// Materialize completion configuration for `model`.
+    pub fn config(&self, model: impl Into<String>) -> Config {
+        let mut config = Config::new(model);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Materialize embedding configuration for `model`.
+    pub fn embedding_config(&self, model: impl Into<String>) -> EmbeddingConfig {
+        let mut config = EmbeddingConfig::new(model);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Materialize image-generation configuration for `model`.
+    pub fn image_config(&self, model: impl Into<String>) -> ImageConfig {
+        let mut config = ImageConfig::new(model);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Canonical AWS connection data.
+    pub fn connection_config(&self) -> &ConnectionConfig {
+        &self.connection
+    }
+
+    /// The already-initialized SDK client, when one is available.
+    pub fn seeded_aws_client(&self) -> Option<AwsClient> {
+        self.aws_client.get().cloned()
+    }
+
+    /// Resolve the live AWS SDK client, reusing a seeded handle when present.
+    pub async fn get_inner(&self) -> AwsClient {
         self.aws_client
-            .get_or_init(|| async {
-                let config = if let Some(profile_name) = &self.profile_name {
-                    aws_config::defaults(BehaviorVersion::latest())
-                        .profile_name(profile_name)
-                        .load()
-                        .await
-                } else {
-                    aws_config::load_from_env().await
-                };
-                aws_sdk_bedrockruntime::Client::new(&config)
-            })
+            .get_or_init(|| crate::functions::client_from_connection(&self.connection))
             .await
+            .clone()
     }
 }
 
-impl ProviderClient for Client {
-    type Input = Nothing;
-    type Error = rig_core::client::ProviderClientError;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aws_sdk_bedrockruntime::config::{BehaviorVersion, Region};
 
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Ok(Client::new())
+    fn test_sdk_client() -> AwsClient {
+        AwsClient::from_conf(
+            aws_sdk_bedrockruntime::config::Builder::new()
+                .behavior_version(BehaviorVersion::latest())
+                .region(Region::new("shared-cache-marker"))
+                .endpoint_url("http://bedrock-cache.invalid")
+                .build(),
+        )
     }
 
-    fn from_val(_: Nothing) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Err(rig_core::client::ProviderClientError::InvalidConfiguration(
-            "use `Client::from_env()` or `Client::with_profile_name(\"aws_profile\")` instead",
-        ))
-    }
-}
+    #[test]
+    fn lazy_client_clones_share_one_uninitialized_cache() {
+        let client = Client::from_env();
+        let clone = client.clone();
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
-
-    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
+        assert!(Arc::ptr_eq(&client.aws_client, &clone.aws_client));
+        assert!(client.seeded_aws_client().is_none());
+        assert!(clone.seeded_aws_client().is_none());
     }
 
-    fn embedding_model_with_ndims(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
-    }
-}
+    #[tokio::test]
+    async fn repeated_direct_access_reuses_the_same_sdk_client() {
+        let client = Client::from(test_sdk_client());
+        let clone = client.clone();
 
-impl ImageGenerationClient for Client {
-    type ImageGenerationModel = ImageGenerationModel;
+        let first = client.get_inner().await;
+        let second = client.get_inner().await;
+        let through_clone = clone.get_inner().await;
 
-    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
-        ImageGenerationModel::new(self.clone(), model)
-    }
-}
-
-impl VerifyClient for Client {
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify the API key
-        Ok(())
+        assert!(std::ptr::eq(first.config(), second.config()));
+        assert!(std::ptr::eq(first.config(), through_clone.config()));
     }
 }

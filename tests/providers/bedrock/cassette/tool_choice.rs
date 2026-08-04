@@ -1,10 +1,10 @@
 //! AWS Bedrock tool-choice cassette coverage ported from Gemini tests.
 
 use rig::bedrock;
-use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
+use rig::completion::{AssistantContent, Message};
+
 use rig::message::ToolChoice;
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use super::super::support::with_bedrock_cassette;
@@ -53,16 +53,14 @@ async fn required_forces_function_call() {
     with_bedrock_cassette(
         "tool_choice/required_forces_function_call",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
+            let model_id = bedrock::completion::AMAZON_NOVA_LITE;
+            let response = client
+                .completion_model(model_id)
                 .completion_request("Use the add tool to calculate 20 + 22.")
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
+                .tool(rig::tool::portable_tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
-                .build();
-
-            let response = model
-                .completion(request)
+                .send()
                 .await
                 .expect("required tool choice completion should succeed");
 
@@ -92,14 +90,17 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
-            let response = model
+            let model_id = bedrock::completion::AMAZON_NOVA_LITE;
+            let response = client
+                .completion_model(model_id)
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tools([
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
                 .tool_choice(specific_add_choice())
                 .send()
                 .await
@@ -144,17 +145,21 @@ async fn specific_add_raw_streaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
-            let request = model
+            let model_id = bedrock::completion::AMAZON_NOVA_LITE;
+            let stream = client
+                .completion_model(model_id)
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
                 )
                 .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tools([
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
                 .tool_choice(specific_add_choice())
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+                .stream()
+                .await
+                .expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -235,8 +240,8 @@ async fn none_streaming_does_not_emit_tool_calls() {
             .build();
 
         let mut stream = agent
-            .stream_prompt("Calculate 20 + 22 directly in text. Do not call tools.")
-            .await;
+            .runner("Calculate 20 + 22 directly in text. Do not call tools.")
+            .stream_run();
         let observation = collect_stream_observation(&mut stream).await;
 
         assert!(

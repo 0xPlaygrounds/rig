@@ -1,8 +1,9 @@
 //! **Durable** human-in-the-loop tool-call approval.
 //!
 //! Unlike `agent_with_human_in_the_loop` (which `.await`s the human *inline*
-//! inside an `AgentHook`, so the approval only lives as long as the running
-//! task), this example pauses the run **across a serialization boundary**: when
+//! inside a `rig::hooks::HookEntry` closure, so the approval only lives as long
+//! as the running task), this example pauses the run **across a serialization
+//! boundary**: when
 //! the model wants to run tools, the entire [`AgentRun`] state machine is written
 //! to a JSON file and then reconstructed from that file before the decision is
 //! taken. Everything between the write and the reload could be a *different
@@ -30,11 +31,11 @@
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::completion::CompletionModel;
+use rig::executor::ToolExecutor;
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{PortableDynamicTool, Tool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -72,11 +73,7 @@ impl Tool for GetBalance {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("   💰 [get_balance] -> {}", args.account);
         Ok(format!("account {} balance: $1000", args.account))
     }
@@ -111,11 +108,7 @@ impl Tool for TransferFunds {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // A real implementation would move money here.
         println!("   🏦 [transfer_funds] -> ${} to {}", args.amount, args.to);
         Ok(format!("transferred ${} to {}", args.amount, args.to))
@@ -143,19 +136,31 @@ async fn ask(prompt: &str) -> Option<String> {
     Some(line.trim().to_ascii_lowercase())
 }
 
+/// Execute an approved call, keeping every failure model-visible as an
+/// ordinary tool result (the automatic loop's semantics).
+async fn execute_tool(tools: &ToolExecutor, name: &str, args: serde_json::Value) -> ToolOutput {
+    match tools.get(name) {
+        Some(tool) => tool
+            .execute(args)
+            .await
+            .unwrap_or_else(|error| ToolOutput::text(format!("tool failed: {error}"))),
+        None => ToolOutput::text(format!("unknown tool `{name}`")),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
-    // configured `Agent` execution instead always goes through `AgentRunner`.
-    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
+    // configured `Agent` execution instead always goes through `SessionRunner`.
+    let model = openai::CompletionsClient::from_env()?.completion_model(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
-    let tools = ToolSet::builder()
-        .static_tool(GetBalance)
-        .static_tool(TransferFunds)
-        .build();
-    let tool_definitions = tools.get_tool_definitions();
+    let tools = ToolExecutor::from_tools([
+        PortableDynamicTool::from_portable(GetBalance),
+        PortableDynamicTool::from_portable(TransferFunds),
+    ]);
+    let tool_definitions = tools.catalog().definitions;
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");
@@ -172,12 +177,13 @@ async fn main() -> Result<()> {
                 prompt,
                 history,
                 turn,
+                attempt_id,
             } => {
                 println!("\n→ model call #{turn}");
                 let response = model
                     .completion_request(prompt)
+                    .preamble(preamble)
                     .messages(history)
-                    .preamble(preamble.to_string())
                     .tools(tool_definitions.clone())
                     .send()
                     .await?;
@@ -186,15 +192,28 @@ async fn main() -> Result<()> {
                     .map(|def| def.name.clone())
                     .collect();
                 let mut outcome = run.model_response(ModelTurn::new(
+                    attempt_id,
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
                     tool_names.clone(),
                     tool_names,
                 ))?;
-                while let ModelTurnOutcome::NeedsResolution(context) = outcome {
-                    eprintln!("model called unknown tool `{}`", context.tool_name);
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                match outcome {
+                    ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                    ModelTurnOutcome::NeedsResolution(context) => {
+                        eprintln!("model called unknown tool `{}`", context.tool_name);
+                        outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                        match outcome {
+                            ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+                            ModelTurnOutcome::NeedsResolution(context) => anyhow::bail!(
+                                "invalid-tool resolution surfaced another unknown tool: {}",
+                                context.tool_name
+                            ),
+                            ModelTurnOutcome::TurnRetried => continue,
+                        }
+                    }
+                    ModelTurnOutcome::TurnRetried => continue,
                 }
             }
 
@@ -223,7 +242,7 @@ async fn main() -> Result<()> {
                     }
                     let id = call.tool_call.id.clone();
                     let name = call.tool_call.function.name.clone();
-                    let args = call.tool_call.function.arguments.to_string();
+                    let args = call.tool_call.function.arguments.clone();
 
                     println!("\n⏸  approval required: {name}({args})");
                     match ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort? ")
@@ -231,13 +250,8 @@ async fn main() -> Result<()> {
                         .as_deref()
                     {
                         Some("a") | Some("approve") => {
-                            let execution = tools
-                                .execute(&name, args, &mut rig::tool::ToolContext::new())
-                                .await;
-                            results.push(UserContent::tool_result(
-                                id,
-                                execution.output().clone().into_content(),
-                            ));
+                            let output = execute_tool(&tools, &name, args).await;
+                            results.push(UserContent::tool_result(id, output.into_content()));
                         }
                         Some("e") | Some("edit") => {
                             let edited = ask("     replacement JSON args (single line): ").await;
@@ -246,17 +260,9 @@ async fn main() -> Result<()> {
                                 .map(serde_json::from_str::<serde_json::Value>)
                             {
                                 Some(Ok(value)) => {
-                                    let execution = tools
-                                        .execute(
-                                            &name,
-                                            value.to_string(),
-                                            &mut rig::tool::ToolContext::new(),
-                                        )
-                                        .await;
-                                    results.push(UserContent::tool_result(
-                                        id,
-                                        execution.output().clone().into_content(),
-                                    ));
+                                    let output = execute_tool(&tools, &name, value).await;
+                                    results
+                                        .push(UserContent::tool_result(id, output.into_content()));
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");

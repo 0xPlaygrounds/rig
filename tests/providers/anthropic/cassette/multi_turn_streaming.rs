@@ -1,11 +1,10 @@
 //! Migrated from `examples/multi_turn_streaming.rs`.
 
+use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -49,11 +48,7 @@ impl Tool for Add {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -83,11 +78,7 @@ impl Tool for Subtract {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -117,11 +108,7 @@ impl Tool for Multiply {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -151,11 +138,7 @@ impl Tool for Divide {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }
@@ -181,9 +164,9 @@ async fn multi_turn_streaming_tools() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
+                .runner(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

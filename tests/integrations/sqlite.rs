@@ -6,23 +6,24 @@
     clippy::unreachable
 )]
 
-use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig::vector_store::request::VectorSearchRequest;
 use serde_json::json;
 
-use rig::client::EmbeddingsClient;
+use rig::http_runtime::HttpRuntime;
 use rig::sqlite::{
     Column, ColumnValue, SqliteSearchFilter, SqliteVectorStore, SqliteVectorStoreTable,
 };
-use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
     Embed, OneOrMany,
-    embeddings::{Embedding, EmbeddingsBuilder},
+    embeddings::{Embedding, embed_documents},
     providers::openai,
 };
 use rusqlite::ffi::{sqlite3, sqlite3_api_routines, sqlite3_auto_extension};
 use sqlite_vec::sqlite3_vec_init;
 use std::os::raw::c_char;
 use tokio_rusqlite::Connection;
+
+const ADA_002_NDIMS: usize = 1536;
 
 #[derive(Embed, Clone, serde::Deserialize, serde::Serialize, Debug)]
 struct Word {
@@ -154,17 +155,15 @@ async fn vector_search_test() {
             ));
     });
 
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
-    let embeddings = create_embeddings(model.clone()).await;
+    let embeddings = create_embeddings(&cfg, &rt).await;
 
     // Initialize SQLite vector store
-    let vector_store = SqliteVectorStore::new(conn, &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn, ADA_002_NDIMS)
         .await
         .expect("Could not initialize SQLite vector store");
 
@@ -174,18 +173,24 @@ async fn vector_search_test() {
         .await
         .expect("Could not add embeddings to vector store");
 
-    // Create a vector index on our vector store
-    let index = vector_store.index(model);
+    // Embed the query, then send the pre-embedded request
     let query = "What is a glarb?";
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .expect("")
+        .embeddings
+        .into_iter()
+        .next()
+        .expect("one embedding");
     let samples = 1;
-    let req = VectorSearchRequest::builder()
-        .samples(samples)
-        .query(query)
-        .filter(SqliteSearchFilter::eq("id", "doc1".into()))
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), samples)
+        .with_filter(SqliteSearchFilter::eq("id", "doc1".into()));
 
-    // Query the index
-    let results = index.top_n::<serde_json::Value>(req).await.expect("");
+    // Query the store
+    let results = vector_store
+        .top_n_as::<serde_json::Value>(req)
+        .await
+        .expect("");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].1, "doc1");
 }
@@ -239,20 +244,23 @@ async fn insert_documents_test() {
         ));
     });
 
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    let embeddings = create_embeddings(model.clone()).await;
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
+    let embeddings = create_embeddings(&cfg, &rt).await;
 
-    let vector_store: SqliteVectorStore<_, Word> = SqliteVectorStore::new(conn.clone(), &model)
+    let vector_store: SqliteVectorStore<Word> = SqliteVectorStore::new(conn.clone(), ADA_002_NDIMS)
         .await
         .expect("Could not initialize SQLite vector store");
 
     vector_store
-        .insert_documents(embeddings)
+        .insert_as(
+            embeddings
+                .into_iter()
+                .map(|(doc, embeddings)| (doc.id.clone(), doc, embeddings))
+                .collect(),
+        )
         .await
         .expect("Could not add embeddings to vector store");
 
@@ -274,7 +282,10 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(
+    cfg: &openai::functions::EmbeddingConfig,
+    rt: &HttpRuntime,
+) -> Vec<(Word, OneOrMany<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),
@@ -290,10 +301,16 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMan
         }
     ];
 
-    EmbeddingsBuilder::new(model)
-        .documents(words)
-        .expect("")
-        .build()
-        .await
-        .expect("")
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+
+    embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(cfg, rt, texts),
+    )
+    .await
+    .expect("")
 }

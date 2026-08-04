@@ -1,11 +1,9 @@
 //! AWS Bedrock completion smoke tests inspired by the OpenAI and Anthropic provider tests.
 
 use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
-use rig::prelude::*;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent,
     support::{
         Adder, BASIC_PREAMBLE, BASIC_PROMPT, CONTEXT_DOCS, CONTEXT_PROMPT,
         STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
@@ -17,8 +15,7 @@ use super::{
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn completion_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build();
 
@@ -33,8 +30,7 @@ async fn completion_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn completion_with_context_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble("Answer the user using only the supplied context.")
         .context(CONTEXT_DOCS[0])
         .context(CONTEXT_DOCS[1])
@@ -52,8 +48,7 @@ async fn completion_with_context_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn tool_roundtrip_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(1024)
         .tool(Adder)
@@ -71,11 +66,11 @@ async fn tool_roundtrip_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn prompt_caching_completion_smoke() {
-    let bedrock_client = client();
-    let model = bedrock_client
-        .completion_model(BEDROCK_COMPLETION_MODEL)
-        .with_prompt_caching();
-    let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
+    let config =
+        rig::bedrock::functions::Config::new(BEDROCK_COMPLETION_MODEL).with_prompt_caching();
+    let agent = AgentBuilder::new(rig::provider::ProviderConfig::Bedrock(config))
+        .preamble(BASIC_PREAMBLE)
+        .build();
 
     let response = agent
         .prompt(BASIC_PROMPT)

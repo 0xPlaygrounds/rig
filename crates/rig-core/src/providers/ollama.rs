@@ -1,36 +1,24 @@
-//! Ollama API client and Rig integration
+//! Ollama API integration.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{
-//!     client::{CompletionClient, EmbeddingsClient, Nothing},
-//!     completion::CompletionModel,
-//!     embeddings::EmbeddingModel,
-//!     providers::ollama,
-//! };
+//! use rig_core::providers::ollama;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a new Ollama client (defaults to http://localhost:11434, no auth)
-//! let client = ollama::Client::new(Nothing)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
 //!
-//! // Or connect to a remote/proxied Ollama instance with authentication
-//! let client = ollama::Client::builder()
-//!     .api_key("my-secret-key")
-//!     .base_url("http://remote-ollama:11434")
-//!     .build()?;
-//!
-//! // Send a completion request with a preamble.
-//! let model = client.completion_model("qwen2.5:14b");
-//! let request = model
-//!     .completion_request("Entertain me!")
-//!     .preamble("You are a comedian here to entertain the user using humour and jokes.".to_string())
+//! // Defaults to http://localhost:11434 with no auth; `with_base_url` /
+//! // `with_api_key` point at a remote or proxied Ollama instead.
+//! let cfg = ollama::functions::Config::from_env("qwen2.5:14b")?;
+//! let request = rig_core::completion::CompletionRequest::builder("Entertain me!")
+//!     .preamble("You are a comedian here to entertain the user using humour and jokes.")
 //!     .build();
-//! let response = model.completion(request).await?;
+//! let response = ollama::functions::complete(&cfg, &rt, request).await?;
 //! println!("{:?}", response.choice);
 //!
-//! // Create an embedding model using the "all-minilm" model
-//! let emb_model = client.embedding_model_with_ndims("all-minilm", 384);
-//! let embeddings = emb_model.embed_texts(vec![
+//! // Embeddings use the sibling `EmbeddingConfig`.
+//! let emb_cfg = ollama::functions::EmbeddingConfig::new(ollama::ALL_MINILM);
+//! let embeddings = ollama::functions::embed(&emb_cfg, &rt, vec![
 //!     "Why is the sky blue?".to_owned(),
 //!     "Why is the grass green?".to_owned()
 //! ]).await?;
@@ -38,154 +26,37 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::completion::{GetTokenUsage, Usage};
-use crate::http_client::{self, HttpClientExt};
+use crate::completion::Usage;
+use crate::http_client;
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::streaming::RawStreamingChoice;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils, message,
     message::{ImageDetail, Text},
-    streaming,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use async_stream::try_stream;
-use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{convert::TryFrom, str::FromStr};
-use tracing_futures::Instrument;
-// ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
-
-/// Optional API key for Ollama. By default Ollama requires no authentication,
-/// but proxied or secured deployments may require a Bearer token.
-#[derive(Debug, Default, Clone)]
-pub struct OllamaApiKey(Option<String>);
-
-impl ApiKey for OllamaApiKey {
-    fn into_header(
-        self,
-    ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
-        self.0.map(http_client::make_auth_header)
-    }
-}
-
-impl From<Nothing> for OllamaApiKey {
-    fn from(_: Nothing) -> Self {
-        Self(None)
-    }
-}
-
-impl From<String> for OllamaApiKey {
-    fn from(key: String) -> Self {
-        if key.is_empty() {
-            Self(None)
-        } else {
-            Self(Some(key))
-        }
-    }
-}
-
-impl From<&str> for OllamaApiKey {
-    fn from(key: &str) -> Self {
-        if key.is_empty() {
-            Self(None)
-        } else {
-            Self(Some(key.to_owned()))
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OllamaExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OllamaBuilder;
-
-impl Provider for OllamaExt {
-    type Builder = OllamaBuilder;
-    const VERIFY_PATH: &'static str = "api/tags";
-}
-
-impl<H> Capabilities<H> for OllamaExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Transcription = Nothing;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type ModelListing = Capable<OllamaModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for OllamaExt {}
-
-impl ProviderBuilder for OllamaBuilder {
-    type Extension<H>
-        = OllamaExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OllamaApiKey;
-
-    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OllamaExt)
-    }
-}
-
-pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OllamaBuilder, OllamaApiKey, H>;
-
-impl ProviderClient for Client {
-    type Input = OllamaApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_base = crate::client::optional_env_var("OLLAMA_API_BASE_URL")?
-            .unwrap_or_else(|| OLLAMA_API_BASE_URL.to_string());
-
-        let api_key = crate::client::optional_env_var("OLLAMA_API_KEY")?
-            .map(OllamaApiKey::from)
-            .unwrap_or_default();
-
-        Self::builder()
-            .api_key(api_key)
-            .base_url(&api_base)
-            .build()
-            .map_err(Into::into)
-    }
-
-    fn from_val(api_key: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(api_key).build().map_err(Into::into)
-    }
-}
 
 // ---------- Embedding API ----------
 
 pub const ALL_MINILM: &str = "all-minilm";
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+/// Known embedding dimensionality for a built-in Ollama embedding model.
+///
+/// Seeds [`functions::EmbeddingConfig::ndims`], and available directly to
+/// callers that need the vector width (index creation, store schemas) without
+/// building a config.
+pub fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         ALL_MINILM => Some(384),
         NOMIC_EMBED_TEXT => Some(768),
@@ -205,93 +76,50 @@ pub struct EmbeddingResponse {
     pub prompt_eval_count: Option<u64>,
 }
 
-// ---------- Embedding Model ----------
-
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
+/// Build the serialized `/api/embed` request body. Pure; used by
+/// [`functions::embed`].
+pub(crate) fn build_embedding_body(
+    model: &str,
+    texts: &[String],
+) -> Result<Vec<u8>, EmbeddingError> {
+    Ok(serde_json::to_vec(&json!({
+        "model": model,
+        "input": texts
+    }))?)
 }
 
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
+/// Parse an `/api/embed` response into the normalized
+/// [`embeddings::EmbeddingResponse`], zipping vectors back onto
+/// `documents`. Pure; used by [`functions::embed`].
+/// Usage is taken from `prompt_eval_count` when present.
+pub(crate) fn parse_embedding_response(
+    status: http::StatusCode,
+    body: &str,
+    documents: Vec<String>,
+) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+    if !status.is_success() {
+        return Err(EmbeddingError::from_http_response(status, body.to_string()));
     }
 
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
+    let api_resp: EmbeddingResponse = serde_json::from_str(body)?;
+
+    if api_resp.embeddings.len() != documents.len() {
+        return Err(EmbeddingError::ResponseError(
+            "Number of returned embeddings does not match input".into(),
+        ));
     }
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        let model = model.into();
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-        Self::new(client.clone(), model, dims)
+    let mut usage = crate::completion::Usage::new();
+    if let Some(prompt_eval_count) = api_resp.prompt_eval_count {
+        usage.input_tokens = prompt_eval_count;
+        usage.total_tokens = prompt_eval_count;
     }
-
-    const MAX_DOCUMENTS: usize = 1024;
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let docs: Vec<String> = documents.into_iter().collect();
-
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": docs
-        }))?;
-
-        let req = self
-            .client
-            .post("api/embed")?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let text = http_client::text(response).await?;
-            return Err(EmbeddingError::from_http_response(status, text));
-        }
-
-        let bytes: Vec<u8> = response.into_body().await?;
-
-        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
-
-        if api_resp.embeddings.len() != docs.len() {
-            return Err(EmbeddingError::ResponseError(
-                "Number of returned embeddings does not match input".into(),
-            ));
-        }
-        Ok(api_resp
-            .embeddings
-            .into_iter()
-            .zip(docs.into_iter())
-            .map(|(vec, document)| embeddings::Embedding { document, vec })
-            .collect())
-    }
+    let embeddings = api_resp
+        .embeddings
+        .into_iter()
+        .zip(documents)
+        .map(|(vec, document)| embeddings::Embedding { document, vec })
+        .collect();
+    Ok(embeddings::EmbeddingResponse { embeddings, usage })
 }
 
 // ---------- Completion API ----------
@@ -321,7 +149,18 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub eval_duration: Option<u64>,
 }
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Maps Ollama's `done_reason` onto the normalized
+/// [`completion::FinishReason`] vocabulary, carrying unmapped values
+/// verbatim in `Other`.
+fn map_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "stop" => completion::FinishReason::Stop,
+        "length" => completion::FinishReason::Length,
+        other => completion::FinishReason::Other(other.to_string()),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
         match resp.message {
@@ -342,9 +181,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     };
                 // Preserve the model's reasoning so it round-trips into agent
                 // history and is echoed back to Ollama on the next turn (issue
-                // #1926). Without this, non-streaming `thinking` is kept only in
-                // `raw_response` and lost from `choice`, unlike the streaming path
-                // (see `RawStreamingChoice::ReasoningDelta` below).
+                // #1926). Without this, non-streaming `thinking` would be lost
+                // from `choice`, unlike the streaming path (see
+                // `RawStreamingChoice::ReasoningDelta` below).
                 if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
                     assistant_contents.push(completion::AssistantContent::reasoning(thinking));
                 }
@@ -371,40 +210,23 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                 let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
                 let completion_tokens = resp.eval_count.unwrap_or(0);
 
-                let raw_response = CompletionResponse {
-                    model: resp.model,
-                    created_at: resp.created_at,
-                    done: resp.done,
-                    done_reason: resp.done_reason,
-                    total_duration: resp.total_duration,
-                    load_duration: resp.load_duration,
-                    prompt_eval_count: resp.prompt_eval_count,
-                    prompt_eval_duration: resp.prompt_eval_duration,
-                    eval_count: resp.eval_count,
-                    eval_duration: resp.eval_duration,
-                    message: Message::Assistant {
-                        content,
-                        thinking,
-                        images: None,
-                        name: None,
-                        tool_calls,
-                    },
+                let usage = Usage {
+                    input_tokens: prompt_tokens,
+                    output_tokens: completion_tokens,
+                    total_tokens: prompt_tokens + completion_tokens,
+                    cached_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                    tool_use_prompt_tokens: 0,
+                    reasoning_tokens: 0,
                 };
 
-                Ok(completion::CompletionResponse {
-                    choice,
-                    usage: Usage {
-                        input_tokens: prompt_tokens,
-                        output_tokens: completion_tokens,
-                        total_tokens: prompt_tokens + completion_tokens,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    },
-                    raw_response,
-                    message_id: None,
-                })
+                let mut converted = completion::CompletionResponse::new(choice, usage, "ollama")
+                    .with_model(resp.model);
+                if let Some(done_reason) = resp.done_reason.as_deref() {
+                    converted = converted.with_finish_reason(map_finish_reason(done_reason));
+                }
+
+                Ok(converted)
             }
             _ => Err(CompletionError::ResponseError(
                 "Chat response does not include an assistant message".into(),
@@ -471,10 +293,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         partial_history.extend(chat_history);
 
         // Add preamble to chat history (if available)
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        let mut full_history: Vec<Message> = Vec::new();
 
         // Convert and extend the rest of the history
         full_history.extend(
@@ -544,7 +363,12 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
                 }
             }
 
-            json_utils::merge(base_options, extra)
+            json_utils::merge_additional_params(
+                base_options,
+                Some(extra),
+                &["temperature", "num_predict"],
+                "Ollama options",
+            )?
         } else {
             base_options
         };
@@ -567,21 +391,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_owned(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum Think {
@@ -598,31 +407,7 @@ enum Level {
     Max,
 }
 
-// ---------- CompletionModel Implementation ----------
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct StreamingCompletionResponse {
-    pub done_reason: Option<String>,
-    pub total_duration: Option<u64>,
-    pub load_duration: Option<u64>,
-    pub prompt_eval_count: Option<u64>,
-    pub prompt_eval_duration: Option<u64>,
-    pub eval_count: Option<u64>,
-    pub eval_duration: Option<u64>,
-}
-
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        let input_tokens = self.prompt_eval_count.unwrap_or_default();
-        let output_tokens = self.eval_count.unwrap_or_default();
-        usage.input_tokens = input_tokens;
-        usage.output_tokens = output_tokens;
-        usage.total_tokens = input_tokens + output_tokens;
-
-        usage
-    }
-}
+// ---------- Native NDJSON stream driver ----------
 
 /// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
 ///
@@ -656,201 +441,91 @@ impl NdjsonBuffer {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+/// Consume a native `/api/chat` streaming response (NDJSON) as a raw
+/// streaming-choice stream. Drives [`functions::open_stream`].
+pub(crate) async fn consume_chat_streaming_response(
+    response: http_client::StreamingResponse,
+) -> Result<impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>, CompletionError>
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
+    let status = response.status();
+    let mut byte_stream = response.into_body();
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into().as_str())
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let span = CompletionSpanBuilder::new("ollama", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Ollama completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("api/chat")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let async_block = async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            let response: CompletionResponse = serde_json::from_slice(&response_body)?;
-            let span = tracing::Span::current();
-            span.record("gen_ai.response.model", &response.model);
-            span.record(
-                "gen_ai.usage.input_tokens",
-                response.prompt_eval_count.unwrap_or_default(),
-            );
-            span.record(
-                "gen_ai.usage.output_tokens",
-                response.eval_count.unwrap_or_default(),
-            );
-
-            if tracing::enabled!(tracing::Level::TRACE) {
-                tracing::trace!(target: "rig::completions",
-                    "Ollama completion response: {}",
-                    serde_json::to_string_pretty(&response)?
-                );
-            }
-
-            let response: completion::CompletionResponse<CompletionResponse> =
-                response.try_into()?;
-
-            Ok(response)
-        };
-
-        tracing::Instrument::instrument(async_block, span).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-    {
-        let system_instructions = request.preamble.clone();
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            "ollama",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-        request.stream = true;
-
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Ollama streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("api/chat")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self
-            .client
-            .send_streaming(req)
-            .instrument(span.clone())
-            .await?;
-        let status = response.status();
-        let mut byte_stream = response.into_body();
-
-        if !status.is_success() {
-            let mut body = Vec::new();
-            while let Some(chunk) = byte_stream.next().await {
-                match chunk {
-                    Ok(bytes) => body.extend_from_slice(&bytes),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
-                        break;
-                    }
+    if !status.is_success() {
+        let mut body = Vec::new();
+        while let Some(chunk) = byte_stream.next().await {
+            match chunk {
+                Ok(bytes) => body.extend_from_slice(&bytes),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
+                    break;
                 }
             }
-            return Err(CompletionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
         }
+        return Err(CompletionError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ));
+    }
 
-        let stream = try_stream! {
-            let span = tracing::Span::current();
-            let mut line_buf = NdjsonBuffer::new();
+    let stream = try_stream! {
+        let span = tracing::Span::current();
+        let mut line_buf = NdjsonBuffer::new();
 
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
+        while let Some(chunk) = byte_stream.next().await {
+            let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
 
-                for line in line_buf.decode(&bytes) {
-                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
+            for line in line_buf.decode(&bytes) {
+                tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    let response: CompletionResponse = serde_json::from_slice(&line)?;
+                let response: CompletionResponse = serde_json::from_slice(&line)?;
 
-                    if response.done {
-                        span.record("gen_ai.response.model", &response.model);
+                if response.done {
+                    span.record("gen_ai.response.model", &response.model);
+                }
+
+                if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
+                    if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
+                        yield RawStreamingChoice::ReasoningDelta {
+                            id: None,
+                            reasoning: thinking_content,
+                        };
                     }
 
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: thinking_content,
-                            };
-                        }
-
-                        if !content.is_empty() {
-                            yield RawStreamingChoice::Message(content);
-                        }
-
-                        for tool_call in tool_calls {
-                            yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
-                            );
-                        }
+                    if !content.is_empty() {
+                        yield RawStreamingChoice::Message(content);
                     }
 
-                    if response.done {
-                        span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-                        span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield RawStreamingChoice::FinalResponse(
-                            StreamingCompletionResponse {
-                                total_duration: response.total_duration,
-                                load_duration: response.load_duration,
-                                prompt_eval_count: response.prompt_eval_count,
-                                prompt_eval_duration: response.prompt_eval_duration,
-                                eval_count: response.eval_count,
-                                eval_duration: response.eval_duration,
-                                done_reason: response.done_reason,
-                            }
+                    for tool_call in tool_calls {
+                        yield RawStreamingChoice::ToolCall(
+                            crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
                         );
-                        break;
                     }
                 }
-            }
-        }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
-    }
+                if response.done {
+                    span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+                    span.record("gen_ai.usage.output_tokens", response.eval_count);
+                    let input_tokens = response.prompt_eval_count.unwrap_or_default();
+                    let output_tokens = response.eval_count.unwrap_or_default();
+                    let usage = Usage {
+                        input_tokens,
+                        output_tokens,
+                        total_tokens: input_tokens + output_tokens,
+                        ..Usage::new()
+                    };
+                    let mut final_response = crate::streaming::StreamFinal::new("ollama", usage)
+                        .with_model(response.model.clone());
+                    if let Some(done_reason) = response.done_reason.as_deref() {
+                        final_response = final_response.with_finish_reason(map_finish_reason(done_reason));
+                    }
+                    yield RawStreamingChoice::FinalResponse(final_response);
+                    break;
+                }
+            }
+        }
+    };
+
+    Ok(stream)
 }
 
 // ---------- Model Listing  ----------
@@ -872,46 +547,29 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).
-#[derive(Clone)]
-pub struct OllamaModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/api/tags";
 
-impl<H> ModelLister<H> for OllamaModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
+/// Parse a `GET /api/tags` response into a [`ModelList`]. Pure.
+///
+/// Used by [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "Ollama",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
     }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/api/tags";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Ollama",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("Ollama", path, &error, &body)
-        })?;
-        let models = api_resp.models.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("Ollama", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.models.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
 
 // ---------- Tool Definition Conversion ----------
@@ -1304,6 +962,546 @@ pub struct ImageUrl {
     pub detail: ImageDetail,
 }
 
+// ---------- Data-oriented face ----------
+
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = false,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
+/// Ollama native `/api/chat` as config + pure functions.
+///
+/// The data-oriented face of the Ollama provider: a serde `Config`, a
+/// [`DESCRIPTOR`](functions::DESCRIPTOR) capability sheet, and free functions
+/// — [`build_request`](functions::build_request) (data → HTTP request, no IO)
+/// and [`parse_response`](functions::parse_response) (bytes → normalized
+/// [`completion::CompletionResponse`], no IO) — plus the async
+/// [`complete`](functions::complete) and [`open_stream`](functions::open_stream)
+/// wrappers over [`HttpRuntime`](crate::http_runtime::HttpRuntime).
+///
+/// The pure functions delegate to the provider's typed conversions
+/// (`OllamaCompletionRequest` / [`CompletionResponse`]`::try_into`), so the
+/// non-streaming and streaming paths share one wire format.
+pub mod functions {
+    use http::header::{AUTHORIZATION, CONTENT_TYPE};
+    use serde::{Deserialize, Serialize};
+
+    use super::{CompletionResponse, OllamaCompletionRequest};
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var,
+    };
+    use crate::telemetry::{CompletionOperation, completion_span};
+
+    /// Default Ollama API base URL (local instance).
+    pub const DEFAULT_BASE_URL: &str = super::OLLAMA_API_BASE_URL;
+
+    /// Ollama's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "ollama",
+        supports_tools: true,
+        // `output_schema` maps to the native `format` field.
+        supports_response_format: true,
+        // The native NDJSON stream always reports counts on the final chunk;
+        // there is no OpenAI-style `stream_options` opt-in.
+        stream_include_usage: false,
+        // Ollama emits whole tool calls in a single NDJSON chunk.
+        emits_complete_single_chunk_tool_calls: true,
+        // Ollama does not compose `format` with `tools`, so agentic
+        // structured-output runs use the output tool instead of native
+        // `format` whenever tools are present. Keep the descriptor faithful
+        // to that recorded behavior.
+        composes_native_output_with_tools: false,
+        max_embedding_documents: Some(1024),
+        verify_path: Some("api/tags"),
+    };
+
+    /// Plain-data Ollama provider configuration.
+    ///
+    /// Ollama requires no authentication by default
+    /// ([`ApiKeyLocation::None`]); proxied or secured deployments may carry a
+    /// Bearer token via `Env`/`Inline`.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
+        /// Model identifier requests are built for.
+        pub model: String,
+    }
+
+    crate::providers::client::impl_http_connection_config!(Config);
+
+    impl Config {
+        /// Config for `model` against a local unauthenticated Ollama.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
+                model: model.into(),
+            }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `OLLAMA_API_BASE_URL` (optional override of
+        /// [`DEFAULT_BASE_URL`]) and `OLLAMA_API_KEY` (**optional** — Ollama
+        /// serves unauthenticated by default; only proxied deployments need a
+        /// Bearer token). These are the same variables the deleted
+        /// `ollama::Client::from_env` read, where an absent key became
+        /// `OllamaApiKey::default()`, i.e. no `Authorization` header at all —
+        /// mirrored here as [`ApiKeyLocation::None`] (an empty value is likewise
+        /// treated as no credential, as `OllamaApiKey::from` did). When the key is
+        /// present and non-empty it is stored as [`ApiKeyLocation::Env`], so the
+        /// secret is read at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a variable holds invalid Unicode.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            if let Some(base_url) = optional_env_var("OLLAMA_API_BASE_URL")? {
+                cfg.base_url = base_url;
+            }
+            cfg.api_key = match optional_env_var("OLLAMA_API_KEY")? {
+                Some(key) if !key.is_empty() => ApiKeyLocation::Env("OLLAMA_API_KEY".to_string()),
+                _ => ApiKeyLocation::None,
+            };
+            Ok(cfg)
+        }
+
+        /// Config for `model` with an explicit Bearer token (proxied
+        /// deployments).
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the serialized native `/api/chat` request body for `request`.
+    ///
+    /// Pure: the exact bytes the wire sees. `stream` sets the body's
+    /// `stream` flag.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let mut typed = OllamaCompletionRequest::try_from((cfg.model.as_str(), request.clone()))?;
+        typed.stream = stream;
+        Ok(serde_json::to_vec(&typed)?)
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads
+    /// the environment). A resolved key becomes a Bearer `Authorization`
+    /// header; [`ApiKeyLocation::None`] sends no credential.
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        let url = format!("{}/api/chat", cfg.base_url.trim_end_matches('/'));
+        let body = build_request_body(cfg, request, stream)?;
+
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| CompletionError::RequestError(Box::new(e)))
+    }
+
+    /// Parse a native `/api/chat` response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        if !status.is_success() {
+            return Err(CompletionError::from_http_response(
+                status,
+                body.to_string(),
+            ));
+        }
+        let response: CompletionResponse = serde_json::from_str(body)?;
+        response.try_into()
+    }
+
+    /// Open a streaming completion for `request` over the native NDJSON
+    /// `/api/chat` stream, reusing the provider's stream machinery.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
+        use tracing_futures::Instrument;
+
+        let model = request.model.clone().unwrap_or_else(|| cfg.model.clone());
+        let span = completion_span(
+            DESCRIPTOR.name,
+            &model,
+            CompletionOperation::ChatStreaming,
+            &request,
+        );
+        let req = build_request(cfg, &request, true)?;
+        // Ollama's native stream is NDJSON, not SSE, so this path takes the
+        // raw byte-stream transport edge rather than `HttpRuntime::sse_events`.
+        // `consume_chat_streaming_response` already consumes the type-erased
+        // `http_client::StreamingResponse`, so no genericity leaks out.
+        let response = rt.send_streaming(req).await?;
+        // `consume_chat_streaming_response` records usage and response
+        // metadata onto `tracing::Span::current()`, so the stream must run
+        // inside the completion span — this is what the deleted
+        // `CompletionModel::stream` did with `.instrument(span)`.
+        let stream = super::consume_chat_streaming_response(response)
+            .instrument(span.clone())
+            .await?;
+        Ok(crate::streaming::CompletionStream::from_stream(
+            stream.instrument(span),
+        ))
+    }
+
+    /// Send `request` to Ollama and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    // ================================================================
+    // Embeddings
+    // ================================================================
+
+    /// Plain-data Ollama embeddings configuration.
+    ///
+    /// A sibling of [`Config`]: embeddings target their own model
+    /// identifier.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct EmbeddingConfig {
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
+        /// Embedding model identifier requests are built for.
+        pub model: String,
+        /// Dimensionality of the vectors this model returns.
+        ///
+        /// The data form of the deleted `EmbeddingModel::ndims()`, which the
+        /// classic model took at construction
+        /// (`Client::embedding_model_with_ndims`) and reported to callers
+        /// sizing a vector-store index. Ollama's `/api/embed` request has no
+        /// dimensionality parameter, so — exactly as before — this never
+        /// reaches the wire; `build_embedding_body`
+        /// sends only `model` and `input`.
+        ///
+        /// [`new`](Self::new) seeds it from
+        /// [`model_dimensions_from_identifier`](super::model_dimensions_from_identifier),
+        /// the same lookup the classic `make` used for a known model.
+        pub ndims: Option<usize>,
+    }
+
+    crate::providers::client::impl_http_connection_config!(EmbeddingConfig);
+
+    impl EmbeddingConfig {
+        /// Config for `model` against a local unauthenticated Ollama.
+        pub fn new(model: impl Into<String>) -> Self {
+            let model = model.into();
+            let ndims = super::model_dimensions_from_identifier(&model);
+            Self {
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::None,
+                ),
+                model,
+                ndims,
+            }
+        }
+
+        /// Declare the dimensionality of the vectors this model returns.
+        ///
+        /// The replacement for `Client::embedding_model_with_ndims`, for
+        /// models the built-in lookup does not know.
+        pub fn with_ndims(mut self, ndims: usize) -> Self {
+            self.ndims = Some(ndims);
+            self
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Same variables as [`Config::from_env`]: `OLLAMA_API_BASE_URL`
+        /// (optional base-URL override) and `OLLAMA_API_KEY` (**optional**; an
+        /// absent or empty value leaves the config credential-less, matching the
+        /// classic client's `OllamaApiKey::default()`, which emitted no
+        /// `Authorization` header).
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a variable holds invalid Unicode.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            if let Some(base_url) = optional_env_var("OLLAMA_API_BASE_URL")? {
+                cfg.base_url = base_url;
+            }
+            cfg.api_key = match optional_env_var("OLLAMA_API_KEY")? {
+                Some(key) if !key.is_empty() => ApiKeyLocation::Env("OLLAMA_API_KEY".to_string()),
+                _ => ApiKeyLocation::None,
+            };
+            Ok(cfg)
+        }
+
+        /// Config for `model` with an explicit Bearer token (proxied
+        /// deployments).
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Build the complete HTTP `/api/embed` request for one chunk of
+    /// `texts`.
+    ///
+    /// Pure except for credential resolution.
+    pub fn build_embedding_request(
+        cfg: &EmbeddingConfig,
+        texts: &[String],
+    ) -> Result<http::Request<Vec<u8>>, crate::embeddings::EmbeddingError> {
+        use crate::embeddings::EmbeddingError;
+
+        let body = super::build_embedding_body(&cfg.model, texts)?;
+        let url = format!("{}/api/embed", cfg.base_url.trim_end_matches('/'));
+        let mut builder = http::Request::post(url).header(CONTENT_TYPE, "application/json");
+        if let Some(key) = cfg
+            .api_key
+            .resolve()
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?
+        {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {key}"));
+        }
+        for (name, value) in &cfg.extra_headers {
+            builder = builder.header(name.as_str(), value.as_str());
+        }
+        builder
+            .body(body)
+            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))
+    }
+
+    /// Parse an `/api/embed` response into the normalized
+    /// [`crate::embeddings::EmbeddingResponse`]. Pure.
+    pub fn parse_embedding_response(
+        status: http::StatusCode,
+        body: &str,
+        documents: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        super::parse_embedding_response(status, body, documents)
+    }
+
+    /// Embed `texts`, chunking to honor [`DESCRIPTOR`]'s
+    /// `max_embedding_documents`; embeddings are returned in input order.
+    pub async fn embed(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<String>,
+    ) -> Result<crate::embeddings::EmbeddingResponse, crate::embeddings::EmbeddingError> {
+        crate::embeddings::batching::embed_chunked(
+            rt,
+            texts,
+            DESCRIPTOR.max_embedding_documents,
+            |chunk| build_embedding_request(cfg, chunk),
+            parse_embedding_response,
+        )
+        .await
+    }
+
+    /// Embed caller-defined batches, returning one order-aligned
+    /// [`OneOrMany`](crate::OneOrMany) group per input batch plus summed
+    /// usage.
+    pub async fn embed_batches(
+        cfg: &EmbeddingConfig,
+        rt: &HttpRuntime,
+        texts: Vec<Vec<String>>,
+    ) -> Result<
+        (
+            Vec<crate::OneOrMany<crate::embeddings::Embedding>>,
+            crate::completion::Usage,
+        ),
+        crate::embeddings::EmbeddingError,
+    > {
+        let (counts, flat) = crate::embeddings::batching::split_batches(texts);
+        let response = embed(cfg, rt, flat).await?;
+        let groups = crate::embeddings::batching::group_batches(&counts, response.embeddings)?;
+        Ok((groups, response.usage))
+    }
+
+    /// Build the `GET /api/tags` request for [`list_models`].
+    ///
+    /// Pure except for credential resolution ([`ApiKeyLocation::None`] by
+    /// default sends no auth header, matching a local Ollama).
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        crate::providers::openai::functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the locally available models.
+    ///
+    /// Parsing goes through the pure `super::parse_list_models_response`.
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
+    }
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`api/tags`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+        use crate::message::Message;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                chat_history: OneOrMany::one(Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_without_auth_by_default() {
+            let cfg = Config::new("llama3.2");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "http://localhost:11434/api/chat");
+            assert!(req.headers().get(http::header::AUTHORIZATION).is_none());
+        }
+
+        #[test]
+        fn build_request_adds_bearer_when_key_configured() {
+            let cfg = Config::new("llama3.2").with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(
+                req.headers()
+                    .get(http::header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok()),
+                Some("Bearer secret")
+            );
+        }
+
+        #[test]
+        fn build_request_body_injects_model_and_stream_flag() {
+            let cfg = Config::new("llama3.2");
+            let body = build_request_body(&cfg, &sample_request(), false).expect("build");
+            let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            assert_eq!(value["model"], "llama3.2");
+            assert_eq!(value["stream"], false);
+            // temperature / max_tokens are model options in the native API.
+            assert_eq!(value["options"]["temperature"], 0.5);
+            assert_eq!(value["options"]["num_predict"], 64);
+
+            let mut request = sample_request();
+            request.model = Some("qwen3:8b".to_string());
+            let body = build_request_body(&cfg, &request, true).expect("build");
+            let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+            assert_eq!(value["model"], "qwen3:8b");
+            assert_eq!(value["stream"], true);
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": {"role": "assistant", "content": "hi"},
+                "done": true,
+                "done_reason": "stop",
+                "prompt_eval_count": 3,
+                "eval_count": 2
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "ollama");
+            assert_eq!(response.model.as_deref(), Some("llama3.2"));
+            assert_eq!(response.finish_reason, Some(completion::FinishReason::Stop));
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
+        }
+
+        #[test]
+        fn parse_response_surfaces_http_errors() {
+            let err = parse_response(http::StatusCode::NOT_FOUND, "model missing")
+                .expect_err("non-success status must error");
+            assert!(matches!(err, CompletionError::HttpError(_)));
+        }
+    }
+}
+
 // =================================================================
 // Tests
 // =================================================================
@@ -1385,8 +1583,7 @@ mod tests {
 
         let chat_resp: CompletionResponse =
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse<CompletionResponse> =
-            chat_resp.try_into().unwrap();
+        let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"
@@ -1677,7 +1874,7 @@ mod tests {
 
         let raw: CompletionResponse =
             serde_json::from_value(sample_response).expect("deserialize ollama response");
-        let completed: completion::CompletionResponse<CompletionResponse> =
+        let completed: completion::CompletionResponse =
             raw.try_into().expect("convert to completion response");
 
         let reasoning = completed.choice.iter().find_map(|c| match c {
@@ -1800,10 +1997,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -1866,10 +2068,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -1932,10 +2139,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -1998,10 +2210,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2064,10 +2281,15 @@ mod tests {
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new(
+                        "What is 2 + 2?".to_string(),
+                    ))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2099,10 +2321,13 @@ mod tests {
         // Create a CompletionRequest WITHOUT "think" in additional_params
         let completion_request = CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                CompletionMessage::User {
+                    content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
+                },
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -2144,18 +2369,17 @@ mod tests {
         assert_eq!(serialized, expected);
     }
 
-    // The native API takes the token limit as `options.num_predict`; an
-    // explicit `num_predict` in `additional_params` wins over
-    // `CompletionRequest::max_tokens`.
+    // The native API takes the token limit as `options.num_predict`. It is
+    // request-owned when `CompletionRequest::max_tokens` supplies it, so an
+    // extension cannot silently replace it.
     #[test]
-    fn test_completion_request_num_predict_from_additional_params_wins() {
+    fn test_completion_request_rejects_num_predict_collision() {
         use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2169,13 +2393,11 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
-            .expect("Failed to create Ollama request");
-        let serialized =
-            serde_json::to_value(&ollama_request).expect("Failed to serialize request");
+        let error = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
+            .expect_err("num_predict must not override the canonical token limit");
 
-        assert_eq!(serialized["options"], json!({ "num_predict": 42 }));
-        assert_eq!(serialized.get("max_tokens"), None);
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("num_predict"));
     }
 
     // The plain path: `max_tokens` with no `additional_params` at all, which
@@ -2190,7 +2412,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2229,7 +2450,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2269,7 +2489,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new(
                     "How old is Ollama?".to_string(),
@@ -2315,7 +2534,6 @@ mod tests {
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
-            preamble: None,
             chat_history: OneOrMany::one(CompletionMessage::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
             }),
@@ -2339,15 +2557,6 @@ mod tests {
             serialized.get("format").is_none(),
             "format field should be absent when output_schema is None"
         );
-    }
-
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::ollama::Client::new(Nothing).expect("Client::new() failed");
-        let _client_from_builder = crate::providers::ollama::Client::builder()
-            .api_key(Nothing)
-            .build()
-            .expect("Client::builder() failed");
     }
 
     #[test]
@@ -2448,23 +2657,18 @@ mod tests {
     // (issue #1931).
     #[tokio::test]
     async fn completion_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":"model not found"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = functions::Config::new(LLAMA3_2).with_api_key("test-key");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("should fail with non-success status");
 
@@ -2481,22 +2685,17 @@ mod tests {
     // (issue #1931).
     #[tokio::test]
     async fn embeddings_non_success_preserves_status_and_body() {
-        use crate::client::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel;
+        use crate::http_runtime::HttpRuntime;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"error":"model not found"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(ALL_MINILM);
+        let rt = HttpRuntime::recording(RecordingHttpClient::with_error_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+        ));
+        let cfg = functions::EmbeddingConfig::new(ALL_MINILM).with_api_key("test-key");
 
-        let error = model
-            .embed_texts(vec!["hello".to_string()])
+        let error = functions::embed(&cfg, &rt, vec!["hello".to_string()])
             .await
             .expect_err("should fail with non-success status");
 
@@ -2506,5 +2705,153 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+}
+
+#[cfg(test)]
+mod telemetry_tests {
+    use super::functions;
+    use crate::OneOrMany;
+    use crate::completion::CompletionRequest;
+    use crate::http_runtime::HttpRuntime;
+    use crate::message::Message;
+    use crate::test_utils::MockStreamingClient;
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl io::Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if let Ok(mut sink) = self.0.lock() {
+                sink.extend_from_slice(buf);
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn sample_request() -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            chat_history: OneOrMany::one(Message::user("hello")),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// The deleted `ollama::CompletionModel::stream` built a
+    /// `CompletionSpanBuilder` span (`ollama`, `ChatStreaming`) and
+    /// instrumented the NDJSON stream with it; `functions::open_stream` had
+    /// lost it, so `record_token_usage` wrote to whatever ambient span
+    /// existed.
+    #[tokio::test]
+    async fn open_stream_emits_the_chat_streaming_completion_span() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .with_ansi(false)
+            .without_time()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW)
+            .with_writer({
+                let captured = captured.clone();
+                move || SharedWriter(captured.clone())
+            })
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // Ollama's native stream is NDJSON, one JSON object per line.
+        let ndjson = format!(
+            "{}\n{}\n",
+            serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": { "role": "assistant", "content": "hi" },
+                "done": false
+            }),
+            serde_json::json!({
+                "model": "llama3.2",
+                "created_at": "2024-01-01T00:00:00Z",
+                "message": { "role": "assistant", "content": "" },
+                "done": true,
+                "done_reason": "stop",
+                "prompt_eval_count": 3,
+                "eval_count": 2
+            })
+        );
+        let rt = HttpRuntime::mock_streaming(MockStreamingClient {
+            sse_bytes: bytes::Bytes::from(ndjson),
+        });
+        let cfg = functions::Config::new("llama3.2");
+
+        let mut stream = functions::open_stream(&cfg, &rt, sample_request())
+            .await
+            .expect("stream opens");
+        while stream.next().await.is_some() {}
+
+        let logs = String::from_utf8(captured.lock().map(|sink| sink.clone()).unwrap_or_default())
+            .expect("utf8 logs");
+        assert!(
+            logs.contains("chat_streaming"),
+            "no chat_streaming span was created: {logs}"
+        );
+        assert!(
+            logs.contains("ollama"),
+            "span did not carry the provider name: {logs}"
+        );
+        assert!(
+            logs.contains("llama3.2"),
+            "span did not carry the request model: {logs}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod ndims_tests {
+    use super::functions::{EmbeddingConfig, build_embedding_request};
+    use super::{ALL_MINILM, NOMIC_EMBED_TEXT, model_dimensions_from_identifier};
+
+    /// The deleted `EmbeddingModel` carried an `ndims` and reported it through
+    /// `EmbeddingModel::ndims()`; `EmbeddingConfig` now carries the same
+    /// value, seeded from the same lookup table the classic `make` used.
+    #[test]
+    fn embedding_config_carries_ndims_for_known_models() {
+        assert_eq!(
+            EmbeddingConfig::new(ALL_MINILM).ndims,
+            model_dimensions_from_identifier(ALL_MINILM)
+        );
+        assert_eq!(EmbeddingConfig::new(ALL_MINILM).ndims, Some(384));
+        assert_eq!(EmbeddingConfig::new(NOMIC_EMBED_TEXT).ndims, Some(768));
+        assert_eq!(EmbeddingConfig::new("custom-local-model").ndims, None);
+        assert_eq!(
+            EmbeddingConfig::new("custom-local-model")
+                .with_ndims(512)
+                .ndims,
+            Some(512)
+        );
+    }
+
+    /// Ollama's `/api/embed` request has no dimensionality parameter, and the
+    /// classic model never sent one either — `ndims` is carried, not
+    /// serialized.
+    #[test]
+    fn ndims_does_not_reach_the_request_body() {
+        let cfg = EmbeddingConfig::new(ALL_MINILM);
+        let req = build_embedding_request(&cfg, &["hello".to_string()]).expect("build");
+        let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+        assert_eq!(value["model"], ALL_MINILM);
+        assert!(value.get("ndims").is_none());
+        assert!(value.get("dimensions").is_none());
     }
 }

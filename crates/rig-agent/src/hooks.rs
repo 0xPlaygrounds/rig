@@ -1,0 +1,1726 @@
+//! Concrete, attach-and-forget hooks for the session drivers.
+//!
+//! [`Hooks`] is an ordered list of named callback records ([`HookEntry`])
+//! dispatched over owned [`HookEvent`] values and folded into the existing
+//! serde decision vocabulary ([`HookDecision`]). Fold semantics are:
+//!
+//! - completion-call patches merge in registration order, the first `Stop`
+//!   short-circuits (and later entries are not invoked);
+//! - model-turn and observation events: the first non-`Continue` wins;
+//! - invalid-call resolutions: the first `Some` wins (`None` everywhere
+//!   preserves fail-fast behavior);
+//! - tool-call argument rewrites and tool-result presentation rewrites
+//!   chain into later entries, with a terminal `Skip`/`Stop` preserving the
+//!   rewrite accumulated before it.
+//!
+//! The folds reuse the shared composition helpers in
+//! [`crate::agent::hook`] ([`fold_completion_actions`],
+//! [`fold_observation_actions`], [`fold_invalid_resolutions`],
+//! [`ToolCallResolution`], [`ToolResultResolution`]) so every driver composes
+//! decisions identically.
+//!
+//! A callback answers with the decision variant matching the event it
+//! received; any other variant (including [`HookDecision::Continue`]) is
+//! treated as "no opinion" for that event. A wrong-lane non-`Continue`
+//! decision emits a content-free diagnostic naming only the hook and the two
+//! protocol kinds.
+//!
+//! Constructors accept ordinary async closures. [`HookEntry`] remains a
+//! concrete record and privately erases only its callback field; callers never
+//! name or pin the boxed future used by runtime dispatch. Stateful callbacks
+//! receive an owned [`Arc`] for each invocation.
+//!
+//! **Stored configuration is shareable; execution may remain worker-local.**
+//! A callback and any [`HookEntry::with_state`] value are `Send + Sync` on every
+//! target. The future they produce uses the target-relaxed
+//! [`WasmCompatSend`] bound, so browser-wasm execution may own `Rc`, `RefCell`,
+//! network futures, Promises, and JavaScript handles. Persistent
+//! JavaScript-affine state belongs in `thread_local!` and is accessed during
+//! invocation; ordinary shared Rust state belongs in `Arc<Mutex<_>>` or
+//! `Arc<RwLock<_>>`. Never use an unsafe `Send` or `Sync` implementation to
+//! make a JavaScript-affine value appear shareable.
+//!
+//! # Delta events
+//!
+//! [`HookEvent::TextDelta`] and [`HookEvent::ToolCallDelta`] fire once per
+//! streamed token, so they are opt-in: an entry receives them only when it
+//! was built with [`HookEntry::observing_deltas`]. Drivers check
+//! [`Hooks::observes_deltas`] once per run and skip building delta events
+//! entirely when no entry opted in — the classic `StepEventKind`
+//! interest hint, expressed as data.
+
+use std::sync::Arc;
+
+use rig_core::OneOrMany;
+use rig_core::completion::CompletionResponse;
+use rig_core::message::{AssistantContent, Message, ToolCall};
+use rig_core::streaming::StreamFinal;
+use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
+
+use crate::agent::InvalidToolCallContext;
+use crate::agent::hook::{
+    CompletionCallAction, InvalidToolCallAction, ModelTurnAction, ObservationAction,
+    ToolCallAction, ToolCallResolution, ToolResultAction, ToolResultResolution,
+    fold_completion_actions, fold_invalid_resolutions, fold_observation_actions,
+};
+use crate::completion::Usage;
+use crate::tool::{ToolOutput, ToolResult};
+
+/// Owned hook events — the superset of decision points both session drivers
+/// surface.
+///
+/// Events carry shared immutable payloads so callbacks can move them across
+/// await points without rebuilding the same history, response, result, or
+/// streamed text snapshot for every registered entry. Cloning an event is
+/// shallow. Payloads that are not serializable (for example [`ToolResult`])
+/// keep the enum itself non-serde by design.
+///
+/// The [`Debug`](std::fmt::Debug) representation intentionally reports only
+/// the event kind; use the typed fields to inspect content deliberately.
+#[derive(Clone)]
+#[non_exhaustive]
+pub enum HookEvent {
+    /// A model call is about to be prepared. Answer with
+    /// [`HookDecision::CompletionCall`].
+    BeforeModelCall {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// This turn's prompt message.
+        prompt: Arc<Message>,
+        /// The history preceding it.
+        history: Arc<[Message]>,
+    },
+    /// An accepted model turn awaits a verdict. Answer with
+    /// [`HookDecision::ModelTurn`].
+    ModelTurnFinished {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// Canonicalized assistant content parked for acceptance.
+        content: Arc<OneOrMany<AssistantContent>>,
+        /// Usage reported for the turn.
+        usage: Usage,
+    },
+    /// The full provider response for a completed turn. Answer with
+    /// [`HookDecision::Observation`].
+    CompletionResponse {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// The prompt sent for this turn.
+        prompt: Arc<Message>,
+        /// The provider response.
+        response: Arc<CompletionResponse>,
+    },
+    /// Pre-execution decision point for one tool call. `call` carries the
+    /// effective arguments, including rewrites from earlier entries. Answer
+    /// with [`HookDecision::ToolCall`].
+    ToolCall {
+        /// The tool call about to execute.
+        call: Arc<ToolCall>,
+        /// Rig correlation id for this call.
+        internal_call_id: Arc<str>,
+    },
+    /// Post-execution decision point for one tool result. `presentation`
+    /// carries the running presentation rewrite from earlier entries;
+    /// `result` always carries the raw execution result. Answer with
+    /// [`HookDecision::ToolResult`].
+    ToolResult {
+        /// The executed tool call (with effective arguments).
+        call: Arc<ToolCall>,
+        /// Rig correlation id for this call.
+        internal_call_id: Arc<str>,
+        /// Immutable raw execution result.
+        result: Arc<ToolResult>,
+        /// Current model-visible presentation, including earlier rewrites.
+        presentation: Arc<ToolOutput>,
+    },
+    /// The model emitted an unknown or disallowed tool call. Answer with
+    /// [`HookDecision::InvalidToolCall`].
+    InvalidToolCall(Arc<InvalidToolCallContext>),
+    /// The provider's terminal streaming record. Answer with
+    /// [`HookDecision::Observation`].
+    StreamFinish {
+        /// The terminal stream record.
+        final_record: Arc<StreamFinal>,
+    },
+    /// A streamed turn's canonical response finished. Answer with
+    /// [`HookDecision::Observation`].
+    StreamResponseFinish {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// The prompt sent for this turn.
+        prompt: Arc<Message>,
+        /// Canonical assistant content aggregated for this turn.
+        content: Arc<OneOrMany<AssistantContent>>,
+        /// Usage reported for this turn.
+        usage: Usage,
+        /// Provider-assigned message id, when available.
+        message_id: Option<Arc<str>>,
+    },
+    /// One streamed text delta. Opt in with
+    /// [`HookEntry::observing_deltas`]. Answer with
+    /// [`HookDecision::Observation`].
+    TextDelta {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// Newly received text.
+        delta: Arc<str>,
+        /// Text accumulated for this provider attempt so far.
+        aggregated: Arc<str>,
+    },
+    /// One streamed tool-call argument delta. Opt in with
+    /// [`HookEntry::observing_deltas`]. Answer with
+    /// [`HookDecision::Observation`].
+    ToolCallDelta {
+        /// One-based logical turn number. Provider-operation reissues retain it.
+        turn: usize,
+        /// Provider tool-call id.
+        tool_call_id: Arc<str>,
+        /// Rig correlation id.
+        internal_call_id: Arc<str>,
+        /// Tool name, on the first delta of a call.
+        tool_name: Option<Arc<str>>,
+        /// Newly received argument fragment.
+        delta: Arc<str>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookEventKind {
+    BeforeModelCall,
+    ModelTurnFinished,
+    CompletionResponse,
+    ToolCall,
+    ToolResult,
+    InvalidToolCall,
+    StreamFinish,
+    StreamResponseFinish,
+    TextDelta,
+    ToolCallDelta,
+}
+
+impl HookEventKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BeforeModelCall => "before_model_call",
+            Self::ModelTurnFinished => "model_turn_finished",
+            Self::CompletionResponse => "completion_response",
+            Self::ToolCall => "tool_call",
+            Self::ToolResult => "tool_result",
+            Self::InvalidToolCall => "invalid_tool_call",
+            Self::StreamFinish => "stream_finish",
+            Self::StreamResponseFinish => "stream_response_finish",
+            Self::TextDelta => "text_delta",
+            Self::ToolCallDelta => "tool_call_delta",
+        }
+    }
+}
+
+impl HookEvent {
+    fn kind(&self) -> HookEventKind {
+        match self {
+            Self::BeforeModelCall { .. } => HookEventKind::BeforeModelCall,
+            Self::ModelTurnFinished { .. } => HookEventKind::ModelTurnFinished,
+            Self::CompletionResponse { .. } => HookEventKind::CompletionResponse,
+            Self::ToolCall { .. } => HookEventKind::ToolCall,
+            Self::ToolResult { .. } => HookEventKind::ToolResult,
+            Self::InvalidToolCall(_) => HookEventKind::InvalidToolCall,
+            Self::StreamFinish { .. } => HookEventKind::StreamFinish,
+            Self::StreamResponseFinish { .. } => HookEventKind::StreamResponseFinish,
+            Self::TextDelta { .. } => HookEventKind::TextDelta,
+            Self::ToolCallDelta { .. } => HookEventKind::ToolCallDelta,
+        }
+    }
+}
+
+impl std::fmt::Debug for HookEvent {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct(self.kind().as_str())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Owned decisions — a thin wrapper over the existing serde decision
+/// vocabulary in [`crate::agent::hook`]. A variant that does not match the
+/// dispatched event is treated as [`HookDecision::Continue`]; a mismatched
+/// non-`Continue` value also emits a content-free protocol diagnostic.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum HookDecision {
+    /// No opinion: defer to later entries / the event's default.
+    Continue,
+    /// Answer for [`HookEvent::BeforeModelCall`].
+    CompletionCall(CompletionCallAction),
+    /// Answer for [`HookEvent::ModelTurnFinished`].
+    ModelTurn(ModelTurnAction),
+    /// Answer for [`HookEvent::ToolCall`].
+    ToolCall(ToolCallAction),
+    /// Answer for [`HookEvent::ToolResult`].
+    ToolResult(ToolResultAction),
+    /// Answer for [`HookEvent::InvalidToolCall`].
+    InvalidToolCall(InvalidToolCallAction),
+    /// Answer for observation events ([`HookEvent::CompletionResponse`],
+    /// [`HookEvent::StreamFinish`]).
+    Observation(ObservationAction),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookDecisionKind {
+    Continue,
+    CompletionCall,
+    ModelTurn,
+    ToolCall,
+    ToolResult,
+    InvalidToolCall,
+    Observation,
+}
+
+impl HookDecisionKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Continue => "continue",
+            Self::CompletionCall => "completion_call",
+            Self::ModelTurn => "model_turn",
+            Self::ToolCall => "tool_call",
+            Self::ToolResult => "tool_result",
+            Self::InvalidToolCall => "invalid_tool_call",
+            Self::Observation => "observation",
+        }
+    }
+}
+
+impl HookDecision {
+    fn kind(&self) -> HookDecisionKind {
+        match self {
+            Self::Continue => HookDecisionKind::Continue,
+            Self::CompletionCall(_) => HookDecisionKind::CompletionCall,
+            Self::ModelTurn(_) => HookDecisionKind::ModelTurn,
+            Self::ToolCall(_) => HookDecisionKind::ToolCall,
+            Self::ToolResult(_) => HookDecisionKind::ToolResult,
+            Self::InvalidToolCall(_) => HookDecisionKind::InvalidToolCall,
+            Self::Observation(_) => HookDecisionKind::Observation,
+        }
+    }
+
+    fn matches_event(&self, event: HookEventKind) -> bool {
+        matches!(self, Self::Continue)
+            || matches!(
+                (event, self),
+                (HookEventKind::BeforeModelCall, Self::CompletionCall(_))
+                    | (HookEventKind::ModelTurnFinished, Self::ModelTurn(_))
+                    | (HookEventKind::ToolCall, Self::ToolCall(_))
+                    | (HookEventKind::ToolResult, Self::ToolResult(_))
+                    | (HookEventKind::InvalidToolCall, Self::InvalidToolCall(_))
+                    | (
+                        HookEventKind::CompletionResponse
+                            | HookEventKind::StreamFinish
+                            | HookEventKind::StreamResponseFinish
+                            | HookEventKind::TextDelta
+                            | HookEventKind::ToolCallDelta,
+                        Self::Observation(_)
+                    )
+            )
+    }
+}
+
+/// One named hook callback record.
+#[derive(Clone)]
+pub struct HookEntry {
+    name: String,
+    /// Whether this entry receives the high-frequency streamed delta events
+    /// ([`HookEvent::TextDelta`], [`HookEvent::ToolCallDelta`]). `false` by
+    /// default: the data form of the classic `observes(StepEventKind)` hint.
+    observes_deltas: bool,
+    callback:
+        Arc<dyn Fn(HookEvent) -> WasmBoxedFuture<'static, HookDecision> + Send + Sync + 'static>,
+}
+
+impl std::fmt::Debug for HookEntry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HookEntry")
+            .field("name", &self.name)
+            .field("observes_deltas", &self.observes_deltas)
+            .finish_non_exhaustive()
+    }
+}
+
+impl HookEntry {
+    /// Create a named hook entry from an owned async callback.
+    ///
+    /// Use [`Self::with_state`] to retain owned state and clone a shared handle
+    /// into each invocation future.
+    ///
+    /// **Stored configuration is shareable; execution may remain worker-local.**
+    /// On browser wasm, create worker-affine values inside the returned future
+    /// or access persistent values through `thread_local!`; do not capture them
+    /// in the stored callback.
+    ///
+    /// On native targets, the returned future must be [`Send`]. This is checked
+    /// by the constructor even though callers never name or box that future:
+    ///
+    /// ```compile_fail
+    /// use std::rc::Rc;
+    /// use rig_agent::hooks::{HookDecision, HookEntry};
+    ///
+    /// let _entry = HookEntry::new("local", |_event| {
+    ///     let local = Rc::new(());
+    ///     async move {
+    ///         drop(local);
+    ///         HookDecision::Continue
+    ///     }
+    /// });
+    /// ```
+    pub fn new<F, Fut>(name: impl Into<String>, callback: F) -> Self
+    where
+        F: Fn(HookEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = HookDecision> + WasmCompatSend + 'static,
+    {
+        Self {
+            name: name.into(),
+            observes_deltas: false,
+            callback: Arc::new(move |event| Box::pin(callback(event))),
+        }
+    }
+
+    /// Create a named async hook with owned shared state.
+    ///
+    /// `state` is retained in an [`Arc`] and a clone of that handle is moved
+    /// into each invocation future. Put every value the callback needs in
+    /// `state` rather than borrowing from the stack that constructs the hook.
+    ///
+    /// Cloning the resulting [`HookEntry`] shares this state. Use internal
+    /// synchronization for mutable shared state, or construct separate entries
+    /// when each agent or run should have an independent copy.
+    ///
+    /// ```
+    /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
+    /// let marker = String::from("loaded at runtime");
+    /// let entry = HookEntry::with_state("marker", marker, |marker, event| async move {
+    ///         match event {
+    ///             HookEvent::ModelTurnFinished { content, .. }
+    ///                 if content.iter().any(|item| format!("{item:?}").contains(marker.as_str())) =>
+    ///             {
+    ///                 HookDecision::Continue
+    ///             }
+    ///             _ => HookDecision::Continue,
+    ///         }
+    /// });
+    /// # let _ = entry;
+    /// ```
+    pub fn with_state<S, F, Fut>(name: impl Into<String>, state: S, callback: F) -> Self
+    where
+        S: Send + Sync + 'static,
+        F: Fn(Arc<S>, HookEvent) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = HookDecision> + WasmCompatSend + 'static,
+    {
+        let state = Arc::new(state);
+        Self::new(name, move |event| callback(Arc::clone(&state), event))
+    }
+
+    /// Create a named hook entry from a **synchronous** callback.
+    ///
+    /// Most hooks inspect the event and answer immediately; they do not await
+    /// anything, so the callback reads as what it is — a function from event
+    /// to decision:
+    ///
+    /// ```
+    /// use rig_agent::hooks::{HookDecision, HookEntry, HookEvent};
+    ///
+    /// let entry = HookEntry::sync("logger", |event| match event {
+    ///     HookEvent::BeforeModelCall { turn, .. } => {
+    ///         tracing::info!(turn, "model call");
+    ///         HookDecision::Continue
+    ///     }
+    ///     _ => HookDecision::Continue,
+    /// });
+    /// # let _ = entry;
+    /// ```
+    ///
+    /// Dispatch, fold semantics, ordering, and the
+    /// [`observing_deltas`](Self::observing_deltas) opt-in are identical to
+    /// [`Self::new`] — this only changes how the callback is written. For a
+    /// genuinely async hook, use [`Self::new`] when its future owns its inputs,
+    /// or [`Self::with_state`] to retain shared state with the hook.
+    pub fn sync<F>(name: impl Into<String>, callback: F) -> Self
+    where
+        F: Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    {
+        Self::new(name, move |event| std::future::ready(callback(event)))
+    }
+
+    /// The entry's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Opt this entry into the high-frequency streamed delta events
+    /// ([`HookEvent::TextDelta`], [`HookEvent::ToolCallDelta`]). Entries that
+    /// do not opt in never receive them, and a [`Hooks`] list where no entry
+    /// opted in skips building them at all.
+    pub fn observing_deltas(mut self) -> Self {
+        self.observes_deltas = true;
+        self
+    }
+
+    /// Whether this entry receives streamed delta events.
+    pub fn observes_deltas(&self) -> bool {
+        self.observes_deltas
+    }
+
+    async fn dispatch(&self, event: HookEvent) -> HookDecision {
+        let event_kind = event.kind();
+        let decision = (self.callback)(event).await;
+        if !decision.matches_event(event_kind) {
+            tracing::warn!(
+                hook_name = %self.name,
+                event_kind = event_kind.as_str(),
+                decision_kind = decision.kind().as_str(),
+                "hook returned a decision for a different event; treating it as no opinion"
+            );
+        }
+        decision
+    }
+}
+
+/// Ordered, attach-and-forget hook list. See the [module docs](self) for
+/// the fold semantics.
+#[derive(Debug, Default, Clone)]
+pub struct Hooks {
+    entries: Vec<HookEntry>,
+}
+
+impl Hooks {
+    /// Creates an empty hook list.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Appends an entry to the end of the registration order.
+    pub fn add(&mut self, entry: HookEntry) {
+        self.entries.push(entry);
+    }
+
+    /// Builder-style [`Hooks::add`].
+    pub fn with(mut self, entry: HookEntry) -> Self {
+        self.add(entry);
+        self
+    }
+
+    /// Whether the list contains no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// The number of registered entries.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether any entry opted into the streamed delta events. Drivers check
+    /// this once per run and skip building delta events entirely when it is
+    /// `false`.
+    pub fn observes_deltas(&self) -> bool {
+        self.entries.iter().any(HookEntry::observes_deltas)
+    }
+
+    /// Dispatch [`HookEvent::BeforeModelCall`]: patches merge in
+    /// registration order, the first `Stop` short-circuits (later entries
+    /// are not invoked), via
+    /// [`fold_completion_actions`].
+    pub async fn dispatch_completion_call<'a>(
+        &'a self,
+        turn: usize,
+        prompt: &'a Message,
+        history: &'a [Message],
+    ) -> CompletionCallAction {
+        if self.entries.is_empty() {
+            return CompletionCallAction::Continue;
+        }
+        let event = HookEvent::BeforeModelCall {
+            turn,
+            prompt: Arc::new(prompt.clone()),
+            history: Arc::from(history.to_vec()),
+        };
+        let mut actions = Vec::new();
+        for entry in &self.entries {
+            let decision = entry.dispatch(event.clone()).await;
+            let action = match decision {
+                HookDecision::CompletionCall(action) => action,
+                _ => CompletionCallAction::Continue,
+            };
+            let stop = matches!(action, CompletionCallAction::Stop(_));
+            actions.push(action);
+            if stop {
+                break;
+            }
+        }
+        fold_completion_actions(actions)
+    }
+
+    /// Dispatch [`HookEvent::ModelTurnFinished`]: the first non-`Continue`
+    /// wins and later entries are not invoked.
+    pub async fn dispatch_model_turn<'a>(
+        &'a self,
+        turn: usize,
+        content: &'a OneOrMany<AssistantContent>,
+        usage: Usage,
+    ) -> ModelTurnAction {
+        if self.entries.is_empty() {
+            return ModelTurnAction::Continue;
+        }
+        let event = HookEvent::ModelTurnFinished {
+            turn,
+            content: Arc::new(content.clone()),
+            usage,
+        };
+        for entry in &self.entries {
+            let decision = entry.dispatch(event.clone()).await;
+            if let HookDecision::ModelTurn(action) = decision
+                && !matches!(action, ModelTurnAction::Continue)
+            {
+                return action;
+            }
+        }
+        ModelTurnAction::Continue
+    }
+
+    /// Dispatch [`HookEvent::CompletionResponse`]: the first non-`Continue`
+    /// observation wins, via
+    /// [`fold_observation_actions`].
+    pub async fn dispatch_completion_response<'a>(
+        &'a self,
+        turn: usize,
+        prompt: &'a Message,
+        response: &'a CompletionResponse,
+    ) -> ObservationAction {
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
+        }
+        let event = HookEvent::CompletionResponse {
+            turn,
+            prompt: Arc::new(prompt.clone()),
+            response: Arc::new(response.clone()),
+        };
+        let mut actions = Vec::new();
+        for entry in &self.entries {
+            let decision = entry.dispatch(event.clone()).await;
+            let action = match decision {
+                HookDecision::Observation(action) => action,
+                _ => ObservationAction::Continue,
+            };
+            let stop = !matches!(action, ObservationAction::Continue);
+            actions.push(action);
+            if stop {
+                break;
+            }
+        }
+        fold_observation_actions(actions)
+    }
+
+    /// Dispatch [`HookEvent::InvalidToolCall`]: the first `Some` resolution
+    /// wins (later entries are not invoked), mirroring
+    /// via [`fold_invalid_resolutions`].
+    pub async fn dispatch_invalid_tool_call<'a>(
+        &'a self,
+        context: &'a InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let event = HookEvent::InvalidToolCall(Arc::new(context.clone()));
+        let mut resolutions = Vec::new();
+        for entry in &self.entries {
+            let decision = entry.dispatch(event.clone()).await;
+            let resolution = match decision {
+                HookDecision::InvalidToolCall(action) => Some(action),
+                _ => None,
+            };
+            let resolved = resolution.is_some();
+            resolutions.push(resolution);
+            if resolved {
+                break;
+            }
+        }
+        fold_invalid_resolutions(resolutions)
+    }
+
+    /// Dispatch [`HookEvent::ToolCall`]: rewrites chain into later entries
+    /// (each sees the current effective arguments), a terminal `Skip`/`Stop`
+    /// short-circuits while preserving the rewrite accumulated before it,
+    /// via [`ToolCallResolution`].
+    ///
+    /// Returns one resolution containing both the effective call and the
+    /// terminal disposition.
+    pub async fn dispatch_tool_call<'a>(
+        &'a self,
+        call: &'a ToolCall,
+        internal_call_id: &'a str,
+    ) -> crate::agent::ResolvedToolCall {
+        if self.entries.is_empty() {
+            return crate::agent::ResolvedToolCall::from_action(call.clone(), ToolCallAction::Run);
+        }
+        let mut resolution = ToolCallResolution::new(call.function.arguments.clone());
+        let internal_call_id: Arc<str> = Arc::from(internal_call_id);
+        let mut effective_call = Arc::new(call.clone());
+        for entry in &self.entries {
+            let decision = entry
+                .dispatch(HookEvent::ToolCall {
+                    call: Arc::clone(&effective_call),
+                    internal_call_id: Arc::clone(&internal_call_id),
+                })
+                .await;
+            let action = match decision {
+                HookDecision::ToolCall(action) => action,
+                _ => ToolCallAction::Run,
+            };
+            let continue_dispatch = resolution.apply(action);
+            // `ToolCallResolution` is the sole accumulator. The event view is
+            // only a shallow projection of its effective arguments for the
+            // next hook, allocating a new call only when that projection
+            // actually changes.
+            if effective_call.function.arguments != *resolution.args() {
+                let mut rewritten = (*effective_call).clone();
+                rewritten.function.arguments = resolution.args().clone();
+                effective_call = Arc::new(rewritten);
+            }
+            if !continue_dispatch {
+                break;
+            }
+        }
+        resolution.finish(call.clone())
+    }
+
+    /// Dispatch [`HookEvent::ToolResult`]: presentation rewrites chain into
+    /// later entries (each sees the current effective presentation; the raw
+    /// result is unchanged), `Stop` short-circuits, mirroring
+    /// via [`ToolResultResolution`].
+    pub async fn dispatch_tool_result<'a>(
+        &'a self,
+        call: &'a ToolCall,
+        internal_call_id: &'a str,
+        result: &'a ToolResult,
+    ) -> ToolResultAction {
+        if self.entries.is_empty() {
+            return ToolResultAction::Keep;
+        }
+        let mut resolution = ToolResultResolution::new();
+        let call = Arc::new(call.clone());
+        let internal_call_id: Arc<str> = Arc::from(internal_call_id);
+        let result = Arc::new(result.clone());
+        let mut presentation = Arc::new(result.output().clone());
+        for entry in &self.entries {
+            let decision = entry
+                .dispatch(HookEvent::ToolResult {
+                    call: Arc::clone(&call),
+                    internal_call_id: Arc::clone(&internal_call_id),
+                    result: Arc::clone(&result),
+                    presentation: Arc::clone(&presentation),
+                })
+                .await;
+            let action = match decision {
+                HookDecision::ToolResult(action) => action,
+                _ => ToolResultAction::Keep,
+            };
+            if let ToolResultAction::Rewrite(output) = &action
+                && presentation.as_ref() != output
+            {
+                presentation = Arc::new(output.clone());
+            }
+            if !resolution.apply(action) {
+                break;
+            }
+        }
+        resolution.finish()
+    }
+
+    /// Dispatch [`HookEvent::StreamFinish`]: the first non-`Continue`
+    /// observation wins, via [`fold_observation_actions`].
+    pub async fn dispatch_stream_finish<'a>(
+        &'a self,
+        final_record: &'a StreamFinal,
+    ) -> ObservationAction {
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
+        }
+        self.fold_observations(HookEvent::StreamFinish {
+            final_record: Arc::new(final_record.clone()),
+        })
+        .await
+    }
+
+    /// Dispatch [`HookEvent::StreamResponseFinish`]: the first non-`Continue`
+    /// observation wins, via [`fold_observation_actions`].
+    pub async fn dispatch_stream_response_finish<'a>(
+        &'a self,
+        turn: usize,
+        prompt: &'a Message,
+        content: &'a OneOrMany<AssistantContent>,
+        usage: Usage,
+        message_id: Option<&'a str>,
+    ) -> ObservationAction {
+        if self.entries.is_empty() {
+            return ObservationAction::Continue;
+        }
+        self.fold_observations(HookEvent::StreamResponseFinish {
+            turn,
+            prompt: Arc::new(prompt.clone()),
+            content: Arc::new(content.clone()),
+            usage,
+            message_id: message_id.map(Arc::from),
+        })
+        .await
+    }
+
+    /// Dispatch [`HookEvent::TextDelta`] to the entries that opted into delta
+    /// observation: the first non-`Continue` observation wins.
+    pub async fn dispatch_text_delta<'a>(
+        &'a self,
+        turn: usize,
+        delta: &'a str,
+        aggregated: &'a str,
+    ) -> ObservationAction {
+        if !self.observes_deltas() {
+            return ObservationAction::Continue;
+        }
+        self.fold_delta_observations(HookEvent::TextDelta {
+            turn,
+            delta: Arc::from(delta),
+            aggregated: Arc::from(aggregated),
+        })
+        .await
+    }
+
+    /// Dispatch [`HookEvent::ToolCallDelta`] to the entries that opted into
+    /// delta observation: the first non-`Continue` observation wins.
+    pub async fn dispatch_tool_call_delta<'a>(
+        &'a self,
+        turn: usize,
+        tool_call_id: &'a str,
+        internal_call_id: &'a str,
+        tool_name: Option<&'a str>,
+        delta: &'a str,
+    ) -> ObservationAction {
+        if !self.observes_deltas() {
+            return ObservationAction::Continue;
+        }
+        self.fold_delta_observations(HookEvent::ToolCallDelta {
+            turn,
+            tool_call_id: Arc::from(tool_call_id),
+            internal_call_id: Arc::from(internal_call_id),
+            tool_name: tool_name.map(Arc::from),
+            delta: Arc::from(delta),
+        })
+        .await
+    }
+
+    /// Shared observation fold: shallow-clone one owned event snapshot for
+    /// each entry and stop after the first non-`Continue`.
+    async fn fold_observations(&self, event: HookEvent) -> ObservationAction {
+        let mut actions = Vec::new();
+        for entry in &self.entries {
+            let decision = entry.dispatch(event.clone()).await;
+            let action = match decision {
+                HookDecision::Observation(action) => action,
+                _ => ObservationAction::Continue,
+            };
+            let stop = !matches!(action, ObservationAction::Continue);
+            actions.push(action);
+            if stop {
+                break;
+            }
+        }
+        fold_observation_actions(actions)
+    }
+
+    /// [`Self::fold_observations`] restricted to delta-observing entries.
+    async fn fold_delta_observations(&self, event: HookEvent) -> ObservationAction {
+        let mut actions = Vec::new();
+        for entry in self.entries.iter().filter(|entry| entry.observes_deltas) {
+            let decision = entry.dispatch(event.clone()).await;
+            let action = match decision {
+                HookDecision::Observation(action) => action,
+                _ => ObservationAction::Continue,
+            };
+            let stop = !matches!(action, ObservationAction::Continue);
+            actions.push(action);
+            if stop {
+                break;
+            }
+        }
+        fold_observation_actions(actions)
+    }
+}
+
+/// The agent data model is plain `Send + Sync` data end to end — the
+/// property every driver future's `Send`-ness rests on. A regression here
+/// (a non-`Send` slot sneaking into a hook record, executor, agent, or
+/// session) fails to compile right here instead of at some distant
+/// `async_trait` call site.
+///
+#[allow(dead_code)]
+fn _assert_agent_model_is_send_and_sync() {
+    fn assert<T: Send + Sync>() {}
+    assert::<Hooks>();
+    assert::<HookEntry>();
+    assert::<crate::executor::ToolExecutor>();
+    assert::<crate::agent::Agent>();
+    assert::<crate::agent::AgentBuilder>();
+    assert::<crate::agent::SessionRunner>();
+    assert::<crate::session::AgentSession>();
+}
+
+// Provider streams are an invocation result rather than retained agent data.
+// They remain local on browser wasm because their JavaScript transport handle
+// cannot cross workers.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[allow(dead_code)]
+fn _assert_agent_stream_is_send() {
+    // `AgentStream` holds a boxed provider stream (a transport-edge `dyn`
+    // that is `Send` but not `Sync`), so only `Send` is asserted for it.
+    fn assert_send<T: Send>() {}
+    assert_send::<crate::stream::AgentStream>();
+}
+
+// The wasm jobs run ordinary `cargo check`, not tests. Keep this probe in
+// module code so CI proves that shareable hook records may still produce a
+// worker-local future containing `Rc` state.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[allow(dead_code)]
+fn _assert_wasm_hooks_can_return_local_futures() {
+    use std::rc::Rc;
+    use std::sync::Mutex;
+
+    let asynchronous = HookEntry::new("wasm-local-future", |_event| {
+        let local = Rc::new(());
+        async move {
+            drop(local);
+            HookDecision::Continue
+        }
+    });
+    let synchronous = HookEntry::sync("sync", |_event| HookDecision::Continue);
+    let stateful = HookEntry::with_state("stateful", Mutex::new(0_u8), |_state, _event| {
+        std::future::ready(HookDecision::Continue)
+    });
+
+    fn assert_send_sync<T: Send + Sync>(_: &T) {}
+    assert_send_sync(&asynchronous);
+    assert_send_sync(&asynchronous.callback);
+    assert_send_sync(&synchronous);
+    assert_send_sync(&stateful);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::RequestPatch;
+    use std::io::Write;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn entry(
+        name: &str,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::sync(name, decide)
+    }
+
+    fn tool_call(args: serde_json::Value) -> ToolCall {
+        ToolCall::new(
+            "call_1".to_string(),
+            rig_core::message::ToolFunction {
+                name: "add".to_string(),
+                arguments: args,
+            },
+        )
+    }
+
+    async fn yield_once() {
+        let mut yielded = false;
+        futures::future::poll_fn(move |context| {
+            if yielded {
+                std::task::Poll::Ready(())
+            } else {
+                yielded = true;
+                context.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+    }
+
+    #[derive(Clone, Default)]
+    struct SharedLog(Arc<Mutex<Vec<u8>>>);
+
+    struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedLogWriter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("log lock").extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for SharedLog {
+        type Writer = SharedLogWriter;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            SharedLogWriter(Arc::clone(&self.0))
+        }
+    }
+
+    #[tokio::test]
+    async fn new_accepts_pin_free_multi_branch_callbacks() {
+        let entry = HookEntry::new("pin-free", |event| async move {
+            if matches!(event, HookEvent::BeforeModelCall { .. }) {
+                return HookDecision::Continue;
+            }
+            HookDecision::Observation(ObservationAction::stop("unexpected event"))
+        });
+
+        assert_eq!(
+            entry
+                .dispatch(HookEvent::BeforeModelCall {
+                    turn: 1,
+                    prompt: Arc::new(Message::user("hello")),
+                    history: Arc::from(Vec::new()),
+                })
+                .await,
+            HookDecision::Continue
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_future_owns_shared_runtime_state_across_await() {
+        struct State {
+            marker: String,
+            calls: AtomicUsize,
+        }
+
+        let marker = ["runtime", " marker"].concat();
+        let entry = HookEntry::with_state(
+            "borrowing-callback",
+            State {
+                marker,
+                calls: AtomicUsize::new(0),
+            },
+            |state, event| async move {
+                yield_once().await;
+                let call = state.calls.fetch_add(1, Ordering::SeqCst) + 1;
+                match event {
+                    HookEvent::ModelTurnFinished { content, .. }
+                        if content.iter().any(|item| {
+                            matches!(item, AssistantContent::Text(text) if text.text.contains(&state.marker))
+                        }) =>
+                    {
+                        HookDecision::ModelTurn(ModelTurnAction::stop(format!(
+                            "{}:{call}", state.marker
+                        )))
+                    }
+                    _ => HookDecision::Continue,
+                }
+            },
+        );
+
+        let cloned = entry.clone();
+        let event = || HookEvent::ModelTurnFinished {
+            turn: 1,
+            content: Arc::new(OneOrMany::one(AssistantContent::text(
+                "contains runtime marker",
+            ))),
+            usage: Usage::new(),
+        };
+        assert_eq!(
+            entry.dispatch(event()).await,
+            HookDecision::ModelTurn(ModelTurnAction::stop("runtime marker:1"))
+        );
+        assert_eq!(
+            cloned.dispatch(event()).await,
+            HookDecision::ModelTurn(ModelTurnAction::stop("runtime marker:2"))
+        );
+    }
+
+    #[tokio::test]
+    async fn completion_call_merges_patches_in_order_and_stops_first() {
+        let mut hooks = Hooks::new();
+        hooks.add(entry("a", |_| {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().temperature(0.1),
+            ))
+        }));
+        hooks.add(entry("b", |_| HookDecision::Continue));
+        hooks.add(entry("c", |_| {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().temperature(0.2).max_tokens(9),
+            ))
+        }));
+        let prompt = Message::from("hi");
+        let folded = hooks.dispatch_completion_call(1, &prompt, &[]).await;
+        assert_eq!(
+            folded,
+            CompletionCallAction::Patch(RequestPatch::new().temperature(0.2).max_tokens(9))
+        );
+
+        // First Stop wins and later entries are not invoked.
+        let invoked = Arc::new(AtomicUsize::new(0));
+        let counter = invoked.clone();
+        let mut hooks = Hooks::new();
+        hooks.add(entry("stop", |_| {
+            HookDecision::CompletionCall(CompletionCallAction::stop("halt"))
+        }));
+        hooks.add(HookEntry::sync("late", move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            HookDecision::Continue
+        }));
+        let stopped = hooks.dispatch_completion_call(1, &prompt, &[]).await;
+        assert_eq!(stopped, CompletionCallAction::stop("halt"));
+        assert_eq!(invoked.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn model_turn_first_non_continue_wins() {
+        let mut hooks = Hooks::new();
+        hooks.add(entry("observer", |_| HookDecision::Continue));
+        hooks.add(entry("stopper", |_| {
+            HookDecision::ModelTurn(ModelTurnAction::stop("done"))
+        }));
+        hooks.add(entry("late", |_| {
+            HookDecision::ModelTurn(ModelTurnAction::repeat())
+        }));
+        let content = OneOrMany::one(AssistantContent::text("hi"));
+        let action = hooks.dispatch_model_turn(1, &content, Usage::new()).await;
+        assert_eq!(action, ModelTurnAction::stop("done"));
+    }
+
+    fn invalid_context() -> InvalidToolCallContext {
+        InvalidToolCallContext {
+            tool_name: "missing".into(),
+            tool_call_id: None,
+            internal_call_id: None,
+            args: None,
+            available_tools: vec![],
+            allowed_tools: vec![],
+            tool_choice: None,
+            chat_history: vec![],
+            is_streaming: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_resolution_first_some_wins() {
+        let context = invalid_context();
+        let hooks = Hooks::new();
+        assert_eq!(hooks.dispatch_invalid_tool_call(&context).await, None);
+
+        let mut hooks = Hooks::new();
+        hooks.add(entry("pass", |_| HookDecision::Continue));
+        hooks.add(entry("skip", |_| {
+            HookDecision::InvalidToolCall(InvalidToolCallAction::skip("nope"))
+        }));
+        hooks.add(entry("late", |_| {
+            HookDecision::InvalidToolCall(InvalidToolCallAction::fail())
+        }));
+        assert_eq!(
+            hooks.dispatch_invalid_tool_call(&context).await,
+            Some(InvalidToolCallAction::skip("nope"))
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_call_rewrites_chain_into_later_entries() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        hooks.add(entry("rewrite", |_| {
+            HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 2})))
+        }));
+        let observed = seen.clone();
+        hooks.add(HookEntry::sync("observer", move |event| {
+            if let HookEvent::ToolCall { call, .. } = &event {
+                observed
+                    .lock()
+                    .expect("lock")
+                    .push(call.function.arguments.clone());
+            }
+            HookDecision::Continue
+        }));
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(serde_json::json!({"a": 1})), "internal-1")
+            .await;
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"a": 2})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Run
+        );
+        // The later entry saw the rewritten arguments.
+        assert_eq!(
+            seen.lock().expect("lock").as_slice(),
+            &[serde_json::json!({"a": 2})]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_call_terminal_skip_retains_accumulated_rewrite() {
+        let mut hooks = Hooks::new();
+        hooks.add(entry("rewrite", |_| {
+            HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 3})))
+        }));
+        hooks.add(entry("skip", |_| {
+            HookDecision::ToolCall(ToolCallAction::skip("blocked"))
+        }));
+        hooks.add(entry("late", |_| {
+            HookDecision::ToolCall(ToolCallAction::rewrite(serde_json::json!({"a": 9})))
+        }));
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(serde_json::json!({"a": 1})), "internal-1")
+            .await;
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({"a": 3})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Skip("blocked".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_result_rewrites_chain_and_stop_short_circuits() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        hooks.add(entry("rewrite", |_| {
+            HookDecision::ToolResult(ToolResultAction::rewrite("redacted"))
+        }));
+        let observed = seen.clone();
+        hooks.add(HookEntry::sync("observer", move |event| {
+            if let HookEvent::ToolResult { presentation, .. } = &event {
+                observed.lock().expect("lock").push(presentation.render());
+            }
+            HookDecision::Continue
+        }));
+        let call = tool_call(serde_json::json!({"a": 1}));
+        let result = ToolResult::success(ToolOutput::text("raw"));
+        let action = hooks
+            .dispatch_tool_result(&call, "internal-1", &result)
+            .await;
+        assert_eq!(action, ToolResultAction::rewrite("redacted"));
+        assert_eq!(seen.lock().expect("lock").as_slice(), &["redacted"]);
+        // The raw result is never mutated by a presentation rewrite.
+        assert_eq!(result.output().as_text(), Some("raw"));
+
+        // A `Stop` short-circuits: the later entry is never invoked.
+        let invoked = Arc::new(AtomicUsize::new(0));
+        let counter = invoked.clone();
+        let mut hooks = Hooks::new();
+        hooks.add(entry("stop", |_| {
+            HookDecision::ToolResult(ToolResultAction::stop("leak"))
+        }));
+        hooks.add(HookEntry::sync("late", move |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            HookDecision::ToolResult(ToolResultAction::rewrite("never"))
+        }));
+        let action = hooks
+            .dispatch_tool_result(&call, "internal-1", &result)
+            .await;
+        assert_eq!(action, ToolResultAction::stop("leak"));
+        assert_eq!(invoked.load(Ordering::SeqCst), 0);
+    }
+
+    /// An entry that appends `label` to `log` and answers `decide`.
+    fn logging_entry(
+        label: u32,
+        log: Arc<Mutex<Vec<u32>>>,
+        decide: impl Fn(HookEvent) -> HookDecision + Send + Sync + 'static,
+    ) -> HookEntry {
+        HookEntry::sync(format!("entry-{label}"), move |event| {
+            log.lock().expect("log").push(label);
+            decide(event)
+        })
+    }
+
+    // ── Migrated from the deleted `HookStack` suite: the ordered-dispatch
+    // invariants, now asserted against `Hooks`. Each keeps the original's
+    // invocation-log assertion, which is what proves the short-circuit
+    // (a folded action alone cannot).
+
+    #[tokio::test]
+    async fn runs_entries_in_registration_order_and_consults_all_on_continue() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        for label in [1, 2] {
+            hooks.add(logging_entry(label, log.clone(), |_| {
+                HookDecision::ToolCall(ToolCallAction::run())
+            }));
+        }
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(serde_json::json!({})), "internal-1")
+            .await;
+        assert_eq!(
+            resolved.effective_call().function.arguments,
+            serde_json::json!({})
+        );
+        assert_eq!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Run
+        );
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn first_stop_short_circuits_on_chained_tool_call() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        hooks.add(logging_entry(1, log.clone(), |_| {
+            HookDecision::ToolCall(ToolCallAction::stop("stop"))
+        }));
+        hooks.add(logging_entry(2, log.clone(), |_| {
+            HookDecision::ToolCall(ToolCallAction::run())
+        }));
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(serde_json::json!({})), "internal-1")
+            .await;
+        assert!(matches!(
+            resolved.into_parts().1,
+            crate::agent::ResolvedToolCallDisposition::Stop(_)
+        ));
+        assert_eq!(*log.lock().expect("log"), vec![1], "entry 2 must not run");
+    }
+
+    #[tokio::test]
+    async fn first_stop_short_circuits_observation() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        hooks.add(
+            logging_entry(1, log.clone(), |_| {
+                HookDecision::Observation(ObservationAction::stop("stop"))
+            })
+            .observing_deltas(),
+        );
+        hooks.add(
+            logging_entry(2, log.clone(), |_| {
+                HookDecision::Observation(ObservationAction::continue_run())
+            })
+            .observing_deltas(),
+        );
+        assert!(matches!(
+            hooks.dispatch_text_delta(1, "hi", "hi").await,
+            ObservationAction::Stop(_)
+        ));
+        assert_eq!(*log.lock().expect("log"), vec![1], "entry 2 must not run");
+    }
+
+    #[tokio::test]
+    async fn explicit_fail_short_circuits_later_invalid_tool_entries() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        hooks.add(logging_entry(1, log.clone(), |_| {
+            HookDecision::InvalidToolCall(InvalidToolCallAction::fail())
+        }));
+        hooks.add(logging_entry(2, log.clone(), |_| {
+            HookDecision::InvalidToolCall(InvalidToolCallAction::retry("try another tool"))
+        }));
+        assert_eq!(
+            hooks.dispatch_invalid_tool_call(&invalid_context()).await,
+            Some(InvalidToolCallAction::fail())
+        );
+        assert_eq!(*log.lock().expect("log"), vec![1], "entry 2 must not run");
+    }
+
+    #[tokio::test]
+    async fn no_invalid_tool_decision_defers_to_later_entries() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut hooks = Hooks::new();
+        // `Continue` is the data form of the classic hook's `None`.
+        hooks.add(logging_entry(1, log.clone(), |_| HookDecision::Continue));
+        hooks.add(logging_entry(2, log.clone(), |_| {
+            HookDecision::InvalidToolCall(InvalidToolCallAction::retry("try another tool"))
+        }));
+        assert_eq!(
+            hooks.dispatch_invalid_tool_call(&invalid_context()).await,
+            Some(InvalidToolCallAction::retry("try another tool"))
+        );
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
+    }
+
+    #[tokio::test]
+    async fn completion_patches_accumulate_and_stop_discards_prior_patch() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let prompt = Message::from("hi");
+
+        let mut hooks = Hooks::new();
+        hooks.add(logging_entry(1, log.clone(), |_| {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().temperature(0.1),
+            ))
+        }));
+        hooks.add(logging_entry(2, log.clone(), |_| {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().max_tokens(256),
+            ))
+        }));
+        match hooks.dispatch_completion_call(1, &prompt, &[]).await {
+            CompletionCallAction::Patch(patch) => {
+                assert_eq!(patch.temperature, Some(0.1));
+                assert_eq!(patch.max_tokens, Some(256));
+            }
+            other => panic!("expected a merged patch, got {other:?}"),
+        }
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
+
+        // A `Stop` wins outright and discards the patch accumulated before it.
+        let mut hooks = Hooks::new();
+        hooks.add(logging_entry(3, log.clone(), |_| {
+            HookDecision::CompletionCall(CompletionCallAction::stop("stop"))
+        }));
+        hooks.add(logging_entry(4, log.clone(), |_| {
+            HookDecision::CompletionCall(CompletionCallAction::patch(RequestPatch::new()))
+        }));
+        assert!(matches!(
+            hooks.dispatch_completion_call(1, &prompt, &[]).await,
+            CompletionCallAction::Stop(_)
+        ));
+        assert_eq!(
+            *log.lock().expect("log"),
+            vec![1, 2, 3],
+            "entry 4 must not run"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_events_reach_only_opted_in_entries() {
+        let plain_seen = Arc::new(AtomicUsize::new(0));
+        let delta_seen = Arc::new(AtomicUsize::new(0));
+
+        let mut hooks = Hooks::new();
+        assert!(!hooks.observes_deltas());
+
+        let plain = plain_seen.clone();
+        hooks.add(HookEntry::sync("plain", move |_| {
+            plain.fetch_add(1, Ordering::SeqCst);
+            HookDecision::Continue
+        }));
+        assert!(!hooks.observes_deltas());
+
+        let observer = delta_seen.clone();
+        hooks.add(
+            HookEntry::sync("observer", move |event| {
+                if matches!(
+                    event,
+                    HookEvent::TextDelta { .. } | HookEvent::ToolCallDelta { .. }
+                ) {
+                    observer.fetch_add(1, Ordering::SeqCst);
+                }
+                HookDecision::Continue
+            })
+            .observing_deltas(),
+        );
+        assert!(hooks.observes_deltas());
+
+        assert_eq!(
+            hooks.dispatch_text_delta(1, "hi", "hi").await,
+            ObservationAction::Continue
+        );
+        assert_eq!(
+            hooks
+                .dispatch_tool_call_delta(1, "call_1", "internal-1", Some("add"), "{")
+                .await,
+            ObservationAction::Continue
+        );
+        // The non-observing entry was never invoked for either delta.
+        assert_eq!(plain_seen.load(Ordering::SeqCst), 0);
+        assert_eq!(delta_seen.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn delta_observation_stop_short_circuits() {
+        let mut hooks = Hooks::new();
+        hooks.add(entry("stop", |_| {
+            HookDecision::Observation(ObservationAction::stop("enough"))
+        }));
+        let late = Arc::new(AtomicUsize::new(0));
+        let counter = late.clone();
+        hooks.add(
+            HookEntry::sync("late", move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                HookDecision::Continue
+            })
+            .observing_deltas(),
+        );
+        // The stopping entry did not opt in, so it never sees the delta and the
+        // opted-in entry does run.
+        assert_eq!(
+            hooks.dispatch_text_delta(1, "hi", "hi").await,
+            ObservationAction::Continue
+        );
+        assert_eq!(late.load(Ordering::SeqCst), 1);
+
+        // With both opted in, registration order plus first-stop-wins holds.
+        let mut hooks = Hooks::new();
+        hooks.add(
+            entry("stop", |_| {
+                HookDecision::Observation(ObservationAction::stop("enough"))
+            })
+            .observing_deltas(),
+        );
+        let counter = Arc::new(AtomicUsize::new(0));
+        let seen = counter.clone();
+        hooks.add(
+            HookEntry::sync("late", move |_| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                HookDecision::Continue
+            })
+            .observing_deltas(),
+        );
+        assert_eq!(
+            hooks.dispatch_text_delta(1, "hi", "hi").await,
+            ObservationAction::stop("enough")
+        );
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn immutable_payloads_are_shared_across_entries() {
+        let histories: Arc<Mutex<Vec<Arc<[Message]>>>> = Arc::new(Mutex::new(Vec::new()));
+        let results: Arc<Mutex<Vec<Arc<ToolResult>>>> = Arc::new(Mutex::new(Vec::new()));
+        let finals: Arc<Mutex<Vec<Arc<StreamFinal>>>> = Arc::new(Mutex::new(Vec::new()));
+        let aggregated: Arc<Mutex<Vec<Arc<str>>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let make_probe = |name: &'static str| {
+            let histories = Arc::clone(&histories);
+            let results = Arc::clone(&results);
+            let finals = Arc::clone(&finals);
+            let aggregated = Arc::clone(&aggregated);
+            HookEntry::sync(name, move |event| {
+                match event {
+                    HookEvent::BeforeModelCall { history, .. } => {
+                        histories.lock().expect("histories").push(history);
+                    }
+                    HookEvent::ToolResult { result, .. } => {
+                        results.lock().expect("results").push(result);
+                    }
+                    HookEvent::StreamFinish { final_record } => {
+                        finals.lock().expect("finals").push(final_record);
+                    }
+                    HookEvent::TextDelta {
+                        aggregated: text, ..
+                    } => {
+                        aggregated.lock().expect("aggregated").push(text);
+                    }
+                    _ => {}
+                }
+                HookDecision::Continue
+            })
+            .observing_deltas()
+        };
+
+        let hooks = Hooks::new()
+            .with(make_probe("first"))
+            .with(make_probe("second"));
+        hooks
+            .dispatch_completion_call(
+                1,
+                &Message::user("prompt secret"),
+                &[Message::assistant("history secret")],
+            )
+            .await;
+        hooks
+            .dispatch_tool_result(
+                &tool_call(serde_json::json!({"secret": true})),
+                "internal-secret",
+                &ToolResult::success(ToolOutput::text("result secret")),
+            )
+            .await;
+        hooks
+            .dispatch_stream_finish(&StreamFinal::new("mock", Usage::new()))
+            .await;
+        hooks
+            .dispatch_text_delta(1, "delta secret", "aggregated secret")
+            .await;
+
+        let histories = histories.lock().expect("histories");
+        assert_eq!(histories.len(), 2);
+        assert!(Arc::ptr_eq(&histories[0], &histories[1]));
+        let results = results.lock().expect("results");
+        assert_eq!(results.len(), 2);
+        assert!(Arc::ptr_eq(&results[0], &results[1]));
+        let finals = finals.lock().expect("finals");
+        assert_eq!(finals.len(), 2);
+        assert!(Arc::ptr_eq(&finals[0], &finals[1]));
+        let aggregated = aggregated.lock().expect("aggregated");
+        assert_eq!(aggregated.len(), 2);
+        assert!(Arc::ptr_eq(&aggregated[0], &aggregated[1]));
+    }
+
+    #[tokio::test]
+    async fn shared_payloads_can_be_retained_across_await_points() {
+        let retained: Arc<Mutex<Option<Arc<[Message]>>>> = Arc::new(Mutex::new(None));
+        let observed: Arc<Mutex<Option<Arc<[Message]>>>> = Arc::new(Mutex::new(None));
+        let retained_sink = Arc::clone(&retained);
+        let observed_sink = Arc::clone(&observed);
+        let hooks = Hooks::new()
+            .with(HookEntry::new("async-retainer", move |event| {
+                let retained_sink = Arc::clone(&retained_sink);
+                async move {
+                    yield_once().await;
+                    if let HookEvent::BeforeModelCall { history, .. } = event {
+                        *retained_sink.lock().expect("retained") = Some(history);
+                    }
+                    HookDecision::Continue
+                }
+            }))
+            .with(HookEntry::sync("observer", move |event| {
+                if let HookEvent::BeforeModelCall { history, .. } = event {
+                    *observed_sink.lock().expect("observed") = Some(history);
+                }
+                HookDecision::Continue
+            }));
+
+        hooks
+            .dispatch_completion_call(
+                1,
+                &Message::user("prompt"),
+                &[Message::assistant("retained history")],
+            )
+            .await;
+
+        let retained = retained.lock().expect("retained").clone().expect("event");
+        let observed = observed.lock().expect("observed").clone().expect("event");
+        assert!(Arc::ptr_eq(&retained, &observed));
+        assert_eq!(retained.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn chained_rewrites_allocate_effective_projections_only_when_changed() {
+        let original_args = serde_json::json!({"a": 1});
+        let rewritten_args = serde_json::json!({"a": 2});
+        let calls: Arc<Mutex<Vec<Arc<ToolCall>>>> = Arc::new(Mutex::new(Vec::new()));
+        let call_probe = |name: &'static str, action: ToolCallAction| {
+            let calls = Arc::clone(&calls);
+            HookEntry::sync(name, move |event| {
+                let HookEvent::ToolCall { call, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                calls.lock().expect("calls").push(call);
+                HookDecision::ToolCall(action.clone())
+            })
+        };
+        let hooks = Hooks::new()
+            .with(call_probe("keep", ToolCallAction::run()))
+            .with(call_probe(
+                "same-rewrite",
+                ToolCallAction::rewrite(original_args.clone()),
+            ))
+            .with(call_probe(
+                "changed-rewrite",
+                ToolCallAction::rewrite(rewritten_args.clone()),
+            ))
+            .with(call_probe("after-rewrite", ToolCallAction::run()));
+
+        let resolved = hooks
+            .dispatch_tool_call(&tool_call(original_args), "internal-1")
+            .await;
+        assert_eq!(resolved.effective_call().function.arguments, rewritten_args);
+        {
+            let calls = calls.lock().expect("calls");
+            assert_eq!(calls.len(), 4);
+            assert!(Arc::ptr_eq(&calls[0], &calls[1]));
+            assert!(Arc::ptr_eq(&calls[1], &calls[2]));
+            assert!(!Arc::ptr_eq(&calls[2], &calls[3]));
+        }
+
+        let presentations: Arc<Mutex<Vec<Arc<ToolOutput>>>> = Arc::new(Mutex::new(Vec::new()));
+        let result_probe = |name: &'static str, action: ToolResultAction| {
+            let presentations = Arc::clone(&presentations);
+            HookEntry::sync(name, move |event| {
+                let HookEvent::ToolResult { presentation, .. } = event else {
+                    return HookDecision::Continue;
+                };
+                presentations
+                    .lock()
+                    .expect("presentations")
+                    .push(presentation);
+                HookDecision::ToolResult(action.clone())
+            })
+        };
+        let hooks = Hooks::new()
+            .with(result_probe("keep", ToolResultAction::keep()))
+            .with(result_probe(
+                "same-rewrite",
+                ToolResultAction::rewrite("raw"),
+            ))
+            .with(result_probe(
+                "changed-rewrite",
+                ToolResultAction::rewrite("redacted"),
+            ))
+            .with(result_probe("after-rewrite", ToolResultAction::keep()));
+        let action = hooks
+            .dispatch_tool_result(
+                &tool_call(serde_json::json!({"a": 1})),
+                "internal-1",
+                &ToolResult::success(ToolOutput::text("raw")),
+            )
+            .await;
+        assert_eq!(action, ToolResultAction::rewrite("redacted"));
+        let presentations = presentations.lock().expect("presentations");
+        assert_eq!(presentations.len(), 4);
+        assert!(Arc::ptr_eq(&presentations[0], &presentations[1]));
+        assert!(Arc::ptr_eq(&presentations[1], &presentations[2]));
+        assert!(!Arc::ptr_eq(&presentations[2], &presentations[3]));
+    }
+
+    #[test]
+    fn hook_event_debug_reports_kind_without_payload_content() {
+        let event = HookEvent::TextDelta {
+            turn: 1,
+            delta: Arc::from("delta secret"),
+            aggregated: Arc::from("aggregated secret"),
+        };
+        let rendered = format!("{event:?}");
+        assert!(rendered.contains("text_delta"));
+        assert!(!rendered.contains("delta secret"));
+        assert!(!rendered.contains("aggregated secret"));
+    }
+
+    #[tokio::test]
+    async fn mismatched_decision_variants_are_ignored_with_a_safe_diagnostic() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let log = SharedLog::default();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(log.clone())
+            .finish();
+        let _default = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+
+        let mut hooks = Hooks::new();
+        // A tool-call answer to a model-turn event is ignored.
+        hooks.add(entry("wrong", |_| {
+            HookDecision::ToolCall(ToolCallAction::stop("wrong lane secret"))
+        }));
+        let content = OneOrMany::one(AssistantContent::text("assistant payload secret"));
+        assert_eq!(
+            hooks.dispatch_model_turn(1, &content, Usage::new()).await,
+            ModelTurnAction::Continue
+        );
+
+        let rendered = String::from_utf8(log.0.lock().expect("log").clone()).expect("utf8 log");
+        assert!(rendered.contains("hook_name=wrong"));
+        assert!(rendered.contains("event_kind=\"model_turn_finished\""));
+        assert!(rendered.contains("decision_kind=\"tool_call\""));
+        assert!(!rendered.contains("assistant payload secret"));
+        assert!(!rendered.contains("wrong lane secret"));
+
+        let prior_len = log.0.lock().expect("log").len();
+        Hooks::new()
+            .with(entry("quiet", |_| HookDecision::Continue))
+            .dispatch_model_turn(1, &content, Usage::new())
+            .await;
+        assert_eq!(log.0.lock().expect("log").len(), prior_len);
+    }
+}

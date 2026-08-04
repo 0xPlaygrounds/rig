@@ -1,20 +1,23 @@
 //! An example of how you can use `rmcp` with Rig to create an MCP friendly agent.
 //!
-//! This example demonstrates two approaches:
-//! - **Basic**: Fetch tools once and build an agent (tools are static).
-//! - **Auto-updating**: Use [`McpClientHandler`] so the agent automatically
-//!   picks up tool changes when the MCP server sends
-//!   `notifications/tools/list_changed`.
+//! It starts an in-process `rmcp` MCP server, connects an `rmcp` client to it,
+//! and wraps the server's tools with the host-owned [`McpToolset`]
+//! (`rig::tool::mcp`). Each MCP tool definition becomes a
+//! [`PortableDynamicTool`] record whose callback closes over the shared
+//! toolset and dispatches the call by name; the records are registered on the
+//! agent with `.dynamic_tools(...)`. The toolset is host-owned: call
+//! [`McpToolset::refresh`] whenever you want to pick up server-side tool-list
+//! changes (the push-based `tools/list_changed` reconciliation of the classic
+//! runtime is gone).
 use std::sync::Arc;
 
 use rig::{
-    completion::Prompt,
     prelude::*,
     providers::openai,
-    tool::{rmcp::McpClientHandler, server::ToolServer},
+    tool::{PortableDynamicTool, ToolExecutionError, mcp::McpToolset},
 };
 use rmcp::{
-    RoleServer, ServerHandler,
+    RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
     schemars,
@@ -245,31 +248,64 @@ async fn main() -> anyhow::Result<()> {
         Implementation::new("rig-core", env!("CARGO_PKG_VERSION")),
     );
 
-    // Create a shared ToolServer so the MCP handler can update tools at runtime.
-    let tool_server_handle = ToolServer::new().run();
-
-    // McpClientHandler connects to the MCP server and auto-refreshes tools
-    // whenever the server sends `notifications/tools/list_changed`.
-    let handler = McpClientHandler::new(client_info, tool_server_handle.clone());
-
     let transport =
         rmcp::transport::StreamableHttpClientTransport::from_uri("http://localhost:8080");
 
-    let mcp_service = handler.connect(transport).await.inspect_err(|e| {
+    // Connect the rmcp client, then snapshot the server's tools into a
+    // host-owned toolset. Call `toolset.refresh()` (behind a lock) whenever
+    // you want to pick up server-side tool-list changes.
+    let mcp_service = client_info.serve(transport).await.inspect_err(|e| {
         tracing::error!("MCP client error: {:?}", e);
     })?;
 
     let server_info = mcp_service.peer_info();
     tracing::info!("Connected to server: {server_info:#?}");
 
-    let openai_client = openai::Client::from_env()?;
-    let agent = openai_client
+    let toolset = Arc::new(McpToolset::from_sink(mcp_service.peer().clone()).await?);
+
+    // Wrap each MCP tool definition as a dynamic tool record whose callback
+    // closes over the shared toolset and dispatches the call by name.
+    let mcp_tools: Vec<PortableDynamicTool> = toolset
+        .definitions()
+        .into_iter()
+        .map(|definition| {
+            let toolset = Arc::clone(&toolset);
+            let tool_name = definition.name.clone();
+            PortableDynamicTool::new(
+                definition.name,
+                definition.description,
+                definition.parameters,
+                move |args| {
+                    let toolset = Arc::clone(&toolset);
+                    let tool_name = tool_name.clone();
+                    async move {
+                        let outcome = toolset
+                            .call(&tool_name, &args, None)
+                            .await
+                            .map_err(ToolExecutionError::from_error)?;
+                        if let Some(error) = outcome.result.error() {
+                            return Err(error.clone());
+                        }
+                        Ok(outcome.result.output().clone())
+                    }
+                },
+            )
+        })
+        .collect();
+
+    let client = openai::Client::from_env()?;
+    let agent = client
         .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant who has access to a number of tools from an MCP server designed to be used for incrementing and decrementing a counter.")
-        .tool_server_handle(tool_server_handle)
+        .dynamic_tools(mcp_tools)
         .build();
 
-    let res = agent.prompt("What is 2+5?").max_turns(2).await?;
+    let res = agent
+        .runner("What is 2+5?")
+        .max_turns(2)
+        .run()
+        .await?
+        .output;
 
     println!("GPT-4o: {res}");
 

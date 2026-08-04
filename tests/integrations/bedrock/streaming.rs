@@ -1,12 +1,11 @@
 //! AWS Bedrock streaming smoke tests inspired by the OpenAI and Anthropic provider tests.
 
+use rig::completion::CompletionRequest;
 use rig::message::ToolChoice;
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use super::{
-    BEDROCK_COMPLETION_MODEL, client,
+    BEDROCK_COMPLETION_MODEL, agent, aws_client,
     support::{
         Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
         STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
@@ -19,12 +18,11 @@ use super::{
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn streaming_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -35,15 +33,14 @@ async fn streaming_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn streaming_tools_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
+    let agent = agent(BEDROCK_COMPLETION_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(1024)
         .tool(Adder)
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -54,19 +51,17 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn raw_streaming_tool_call_smoke() {
-    let model = client().completion_model(BEDROCK_COMPLETION_MODEL);
-    let request = model
-        .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-        .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(rig::tool::tool_definition(&AlphaSignal))
+    let aws = aws_client().await;
+    let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+        .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
         .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
         })
         .build();
 
     let observation = collect_raw_stream_observation(
-        model
-            .stream(request)
+        rig::bedrock::functions::open_stream(&aws, BEDROCK_COMPLETION_MODEL, request)
             .await
             .expect("raw Bedrock stream should start"),
     )

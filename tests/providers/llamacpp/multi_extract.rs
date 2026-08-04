@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,20 @@ use serde::{Deserialize, Serialize};
 use crate::support::assert_nonempty_response;
 
 use super::support;
+
+/// `ExtractorBuilder::preamble(extra)` appended the extra instructions to the
+/// pinned extraction preamble: `append_preamble` joined with a newline and the
+/// appended block itself opened with one, so the separator is two newlines.
+fn classic_options(extra: &str) -> ExtractOptions {
+    let options = ExtractOptions::classic_extractor();
+    let base = options
+        .preamble
+        .clone()
+        .expect("classic_extractor() pins a preamble");
+    options.with_preamble(format!(
+        "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
+    ))
+}
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -29,23 +44,12 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = support::completions_client();
     let model = support::model_name();
-    let names_extractor = client
-        .extractor::<Names>(model.clone())
-        .preamble("Extract names from the given text.")
-        .retries(2)
-        .build();
-    let topics_extractor = client
-        .extractor::<Topics>(model.clone())
-        .preamble("Extract topics from the given text.")
-        .retries(2)
-        .build();
-    let sentiment_extractor = client
-        .extractor::<Sentiment>(model)
-        .preamble("Extract sentiment and confidence from the given text.")
-        .retries(2)
-        .build();
+    let agent = support::client().agent(&model).build();
+    let names_options = classic_options("Extract names from the given text.").with_retries(2);
+    let topics_options = classic_options("Extract topics from the given text.").with_retries(2);
+    let sentiment_options =
+        classic_options("Extract sentiment and confidence from the given text.").with_retries(2);
 
     let inputs = vec![
         "Screw you Putin!",
@@ -54,14 +58,42 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<String> = futures::stream::iter(inputs)
         .map(|text| {
-            let names_extractor = &names_extractor;
-            let topics_extractor = &topics_extractor;
-            let sentiment_extractor = &sentiment_extractor;
+            let agent = &agent;
+            let names_options = &names_options;
+            let topics_options = &topics_options;
+            let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    names_extractor.extract(text),
-                    topics_extractor.extract(text),
-                    sentiment_extractor.extract(text),
+                    agent
+                        .extractor(text)
+                        .retries(names_options.retries)
+                        .preamble(
+                            names_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Names>(),
+                    agent
+                        .extractor(text)
+                        .retries(topics_options.retries)
+                        .preamble(
+                            topics_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist")
+                        )
+                        .run::<Topics>(),
+                    agent
+                        .extractor(text)
+                        .retries(sentiment_options.retries)
+                        .preamble(
+                            sentiment_options
+                                .preamble
+                                .clone()
+                                .expect("preamble should exist"),
+                        )
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",

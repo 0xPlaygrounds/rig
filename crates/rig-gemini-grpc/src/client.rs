@@ -1,4 +1,11 @@
-use rig_core::prelude::*;
+//! The live gRPC handle.
+//!
+//! gRPC is a non-HTTP transport, so a connected tonic [`Channel`] cannot be
+//! plain configuration. [`Client`] is that live handle; build it from data
+//! with [`crate::functions::client_from_config`] (or directly with
+//! [`Client::new`]) and pass it to the free functions in
+//! [`crate::functions`].
+
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
@@ -6,8 +13,6 @@ use tonic::transport::{Channel, Endpoint};
 use tonic::{Request, Status};
 
 use super::GenerativeServiceClient;
-use crate::completion::CompletionModel;
-use crate::embedding::EmbeddingModel;
 
 // ================================================================
 // Google Gemini gRPC Client
@@ -19,6 +24,7 @@ const RIG_GRPC_CLIENT_IDENTIFIER: &str = "rig-grpc/0.1.0";
 
 #[derive(Clone)]
 pub struct Client {
+    connection: crate::functions::ConnectionConfig,
     api_key: String,
     channel: Channel,
 }
@@ -65,7 +71,28 @@ impl Client {
 
         let channel = endpoint.connect().await?;
 
-        Ok(Self { api_key, channel })
+        let connection = crate::functions::Config::new("")
+            .with_api_key(api_key.clone())
+            .connection;
+        Ok(Self {
+            connection,
+            api_key,
+            channel,
+        })
+    }
+
+    /// Assemble a client from an already-resolved API key and connected
+    /// channel (used by [`crate::functions::client_from_config`]).
+    pub(crate) fn from_parts(
+        connection: crate::functions::ConnectionConfig,
+        api_key: String,
+        channel: Channel,
+    ) -> Self {
+        Self {
+            connection,
+            api_key,
+            channel,
+        }
     }
 
     /// Get a gRPC client with API key interceptor
@@ -86,45 +113,32 @@ impl Client {
             interceptor,
         ))
     }
-}
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = Box<dyn std::error::Error + Send + Sync>;
-
-    /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = std::env::var("GEMINI_API_KEY")?;
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(Self::new(api_key))
-        })
+    /// Connect using the `GEMINI_API_KEY` environment variable.
+    ///
+    /// A shortcut for the zero-configuration case; prefer
+    /// [`crate::functions::client_from_config`] when you already hold a
+    /// [`Config`](crate::functions::Config).
+    pub async fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::new(std::env::var("GEMINI_API_KEY")?).await
     }
 
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(Self::new(input)))
-    }
-}
-
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
-
-    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
+    /// Materialize completion configuration for `model`.
+    pub fn config(&self, model: impl Into<String>) -> crate::functions::Config {
+        let mut config = crate::functions::Config::new(model);
+        config.connection = self.connection.clone();
+        config
     }
 
-    fn embedding_model_with_ndims(
-        &self,
-        model: impl Into<String>,
-        ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
+    /// Materialize embedding configuration sharing this channel connection.
+    pub fn embedding_config(&self, model: impl Into<String>) -> crate::functions::EmbeddingConfig {
+        let mut config = crate::functions::EmbeddingConfig::new(model);
+        config.connection = self.connection.clone();
+        config
+    }
+
+    /// Canonical channel-construction data.
+    pub fn connection_config(&self) -> &crate::functions::ConnectionConfig {
+        &self.connection
     }
 }

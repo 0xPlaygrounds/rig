@@ -1,7 +1,7 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, Document, Message, ProviderToolDefinition,
+    AssistantContent, CompletionRequest, Document, Message, ProviderToolDefinition,
 };
 use rig::message::Text;
 use rig::prelude::*;
@@ -24,16 +24,18 @@ async fn web_search_with_dynamic_filtering_succeeds() {
         "opus_4_8/web_search_with_dynamic_filtering_succeeds",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let response = model
-                .completion_request(
+            let request = CompletionRequest {
+                max_tokens: Some(1024),
+                ..CompletionRequest::from_prompt(
                     "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio.",
                 )
-                .provider_tool(
-                    ProviderToolDefinition::new("web_search_20260209")
-                        .with_config("name", json!("web_search")),
-                )
-                .max_tokens(1024)
-                .send()
+            }
+            .with_provider_tool(
+                ProviderToolDefinition::new("web_search_20260209")
+                    .with_config("name", json!("web_search")),
+            );
+            let response = model
+                .completion(request)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
 
@@ -45,7 +47,11 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             );
             assert!(
                 assistant_text_response(&response.choice)
-                    .or_else(|| response.raw_response.get_text_response())
+                    .or_else(|| {
+                        recorded_wire_text_response(
+                            "opus_4_8/web_search_with_dynamic_filtering_succeeds",
+                        )
+                    })
                     .is_some_and(|text| !text.trim().is_empty()),
                 "dynamic web-search response should contain assistant text",
             );
@@ -60,22 +66,27 @@ async fn messages_preserve_mid_conversation_system_role() {
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let request = CompletionRequest::builder(
+                "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
+            )
+            .messages(vec![
+                Message::user("Start a short language compliance check."),
+                Message::system(SYSTEM_ROLE_INSTRUCTION),
+                Message::assistant("Entendido."),
+            ])
+            .max_tokens(64)
+            .build();
             let response = model
-                .completion_request(
-                    "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
-                )
-                .messages([
-                    Message::user("Start a short language compliance check."),
-                    Message::system(SYSTEM_ROLE_INSTRUCTION),
-                    Message::assistant("Entendido."),
-                ])
-                .max_tokens(64)
-                .send()
+                .completion(request)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/messages_preserve_mid_conversation_system_role",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -94,39 +105,44 @@ async fn messages_preserve_system_role_after_server_tool_result() {
         "opus_4_8/messages_preserve_system_role_after_server_tool_result",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let first_response = model
-                .completion_request(
+            let first_request = CompletionRequest {
+                max_tokens: Some(128),
+                ..CompletionRequest::from_prompt(
                     "Use web search to check the color of a clear daytime sky. Keep the final answer under five words.",
                 )
-                .provider_tool(
-                    ProviderToolDefinition::new("web_search_20250305")
-                        .with_config("name", json!("web_search")),
-                )
-                .max_tokens(128)
-                .send()
+            }
+            .with_provider_tool(
+                ProviderToolDefinition::new("web_search_20250305")
+                    .with_config("name", json!("web_search")),
+            );
+            let first_response = model
+                .completion(first_request)
                 .await
                 .expect("Opus 4.8 web-search request should produce a server-tool transcript");
             let server_tool_assistant_message =
                 server_tool_assistant_message_from_response(first_response.choice);
 
+            let request = CompletionRequest::builder("What color is a clear daytime sky? Reply with one lowercase Spanish word.")
+                              .messages(vec![
+                        server_tool_assistant_message,
+                        Message::system(SERVER_TOOL_USE_SYSTEM_INSTRUCTION),
+                        Message::assistant("Entendido."),
+                    ])
+                              .max_tokens(64)
+                              .build();
             let response = model
-                .completion_request(
-                    "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
-                )
-                .messages([
-                    server_tool_assistant_message,
-                    Message::system(SERVER_TOOL_USE_SYSTEM_INSTRUCTION),
-                    Message::assistant("Entendido."),
-                ])
-                .max_tokens(64)
-                .send()
+                .completion(request)
                 .await
                 .expect(
                     "Opus 4.8 request with system role after server tool result should succeed",
                 );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/messages_preserve_system_role_after_server_tool_result",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -145,28 +161,30 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let response = model
-                .completion_request(
-                    "According to the document, what color is the clear daytime sky?",
-                )
-                .messages([
-                    Message::system(DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION),
-                    Message::assistant("Entendido."),
-                ])
-                .document(Document {
-                    id: "sky-note".to_string(),
-                    text: "A clear daytime sky is blue.".to_string(),
-                    additional_props: Default::default(),
-                })
-                .max_tokens(64)
-                .send()
-                .await
-                .expect(
-                    "Opus 4.8 request with documents and a leading system message should succeed",
-                );
+            let request = CompletionRequest::builder(
+                "According to the document, what color is the clear daytime sky?",
+            )
+            .messages(vec![
+                Message::system(DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION),
+                Message::assistant("Entendido."),
+            ])
+            .max_tokens(64)
+            .documents(vec![Document {
+                id: "sky-note".to_string(),
+                text: "A clear daytime sky is blue.".to_string(),
+                additional_props: Default::default(),
+            }])
+            .build();
+            let response = model.completion(request).await.expect(
+                "Opus 4.8 request with documents and a leading system message should succeed",
+            );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or_else(|| {
+                    recorded_wire_text_response(
+                        "opus_4_8/documents_keep_leading_system_message_top_level",
+                    )
+                })
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -230,6 +248,18 @@ fn anthropic_raw_content_type(text: &Text) -> Option<&str> {
         .and_then(|params| params.get("anthropic_content"))
         .and_then(|raw_content| raw_content.get("type"))
         .and_then(Value::as_str)
+}
+
+/// Reads the assistant text straight off the recorded Anthropic wire response
+/// for `scenario` (last interaction), replacing the deleted
+/// `response.raw_response.get_text_response()` fallback without weakening what
+/// the assertion proves.
+fn recorded_wire_text_response(scenario: &str) -> Option<String> {
+    let body = crate::cassettes::recorded_response_bodies("anthropic", scenario).pop()?;
+    let wire: rig::providers::anthropic::completion::CompletionResponse =
+        serde_json::from_str(&body)
+            .expect("recorded Anthropic response body should deserialize as a Messages response");
+    wire.get_text_response()
 }
 
 #[derive(Deserialize)]

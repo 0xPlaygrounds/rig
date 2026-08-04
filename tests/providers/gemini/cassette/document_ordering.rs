@@ -1,8 +1,7 @@
 //! Focused Gemini cassette coverage for request document ordering.
 
 use rig::OneOrMany;
-use rig::completion::{AssistantContent, CompletionModel, Document, Message};
-use rig::prelude::*;
+use rig::completion::{AssistantContent, Document, Message};
 use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;
@@ -157,6 +156,7 @@ fn assert_generate_content_request_order(scenario: &str) {
     );
 }
 
+#[allow(dead_code)]
 fn assert_interactions_request_order(scenario: &str) {
     let body = recorded_request_body(scenario);
     assert_eq!(body["system_instruction"], SYSTEM_INSTRUCTION);
@@ -185,3 +185,4 @@ fn assert_interactions_request_order(scenario: &str) {
         "expected final input turn to remain prompt: {body:#}"
     );
 }
+use rig::prelude::*;

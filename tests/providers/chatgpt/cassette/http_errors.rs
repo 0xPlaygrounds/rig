@@ -1,7 +1,7 @@
 //! ChatGPT cassette coverage for non-success Responses API status handling.
 
 use axum::http;
-use rig::completion::{CompletionError, CompletionModel};
+use rig::completion::{CompletionError, CompletionRequest};
 use rig::prelude::*;
 use rig::providers::chatgpt;
 
@@ -29,7 +29,7 @@ async fn assert_nonstreaming_http_error(
     expected_message: &str,
 ) {
     let model = client.completion_model(chatgpt::GPT_5_4);
-    let request = model.completion_request("hello").build();
+    let request = CompletionRequest::from_prompt("hello");
 
     let error = model
         .completion(request)

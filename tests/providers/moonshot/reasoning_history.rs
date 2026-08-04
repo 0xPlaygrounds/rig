@@ -1,9 +1,9 @@
 //! Moonshot reasoning-history roundtrip smoke test.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, Reasoning};
-use rig::prelude::*;
 use rig::providers::moonshot;
 
 use crate::support::{assert_contains_any_case_insensitive, assert_nonempty_response};
@@ -21,9 +21,9 @@ fn response_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn assistant_reasoning_content_roundtrips_in_history() {
-    let model = moonshot::Client::from_env()
-        .expect("moonshot client should build")
-        .completion_model(moonshot::KIMI_K2_5);
+    let cfg = moonshot::functions::Config::from_env(moonshot::KIMI_K2_5)
+        .expect("moonshot config should build");
+    let rt = HttpRuntime::new();
     let assistant = Message::Assistant {
         id: None,
         content: OneOrMany::many(vec![
@@ -33,16 +33,19 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
         .expect("assistant content"),
     };
 
-    let response = model
-        .completion(
-            model
-                .completion_request("What color was I asked to remember? Reply with one word.")
-                .message(Message::user("Remember the secret color is teal."))
-                .message(assistant)
-                .build(),
-        )
-        .await
-        .expect("reasoning-history completion should succeed");
+    let response = moonshot::functions::complete(
+        &cfg,
+        &rt,
+        CompletionRequest::with_history(
+            vec![
+                Message::user("Remember the secret color is teal."),
+                assistant,
+            ],
+            "What color was I asked to remember? Reply with one word.",
+        ),
+    )
+    .await
+    .expect("reasoning-history completion should succeed");
 
     let text = response_text(&response.choice);
     assert_nonempty_response(&text);

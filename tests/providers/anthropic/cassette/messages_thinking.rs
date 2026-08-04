@@ -8,8 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use futures::StreamExt;
-use rig::completion::{CompletionModel, Message};
+use rig::completion::{CompletionRequest, Message};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -49,11 +48,11 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
 
-            let first_request = model
-                .completion_request(redacted_thinking_prompt())
-                .max_tokens(4096)
-                .additional_params(thinking_params())
-                .build();
+            let first_request = CompletionRequest {
+                max_tokens: Some(4096),
+                additional_params: Some(thinking_params()),
+                ..CompletionRequest::from_prompt(redacted_thinking_prompt())
+            };
             let first_response = model
                 .completion(first_request)
                 .await
@@ -67,16 +66,18 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
 
             // Replay the redacted thinking block back in a follow-up turn; the
             // API must accept the opaque data verbatim.
-            let second_request = model
-                .completion_request("Thanks. Now reply with the single word DONE.")
-                .max_tokens(4096)
-                .additional_params(thinking_params())
-                .message(Message::user(redacted_thinking_prompt()))
-                .message(Message::Assistant {
-                    id: first_response.message_id.clone(),
-                    content: first_response.choice.clone(),
-                })
-                .build();
+            let second_request =
+                CompletionRequest::builder("Thanks. Now reply with the single word DONE.")
+                    .messages(vec![
+                        Message::user(redacted_thinking_prompt()),
+                        Message::Assistant {
+                            id: first_response.message_id.clone(),
+                            content: first_response.choice.clone(),
+                        },
+                    ])
+                    .max_tokens(4096)
+                    .additional_params(thinking_params())
+                    .build();
 
             let second_response = model
                 .completion(second_request)
@@ -106,11 +107,11 @@ async fn redacted_thinking_streaming() {
         "messages_thinking/redacted_thinking_streaming",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(redacted_thinking_prompt())
-                .max_tokens(4096)
-                .additional_params(thinking_params())
-                .build();
+            let request = CompletionRequest {
+                max_tokens: Some(4096),
+                additional_params: Some(thinking_params()),
+                ..CompletionRequest::from_prompt(redacted_thinking_prompt())
+            };
 
             let mut stream = model
                 .stream(request)

@@ -3,7 +3,6 @@
 //! Run it to see a multi-step arithmetic task complete without passing `max_turns` per prompt.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
@@ -43,11 +42,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -73,11 +68,7 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         if args.y == 0 {
             return Err(MathError::DivisionByZero);
         }
@@ -90,7 +81,8 @@ const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = anthropic::Client::from_env()?
+    let client = anthropic::Client::from_env()?;
+    let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \

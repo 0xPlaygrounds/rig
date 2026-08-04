@@ -1,5 +1,5 @@
 use assert_fs::TempDir;
-use rig::providers::chatgpt::{self, ChatGPTAuth};
+use rig::providers::chatgpt;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -13,14 +13,12 @@ async fn chatgpt_cassette_with_default_instructions(
     let cassette =
         ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
     let client = chatgpt::Client::builder()
-        .api_key(ChatGPTAuth::AccessToken {
-            access_token: cassette.api_key("CHATGPT_ACCESS_TOKEN"),
-            account_id: Some(cassette.api_key("CHATGPT_ACCOUNT_ID")),
-        })
+        .access_token(cassette.api_key("CHATGPT_ACCESS_TOKEN"))
+        .account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
         .base_url(cassette.base_url())
         .default_instructions(default_instructions)
         .build()
-        .expect("client should build");
+        .expect("cassette client should build");
 
     (cassette, client)
 }
@@ -49,14 +47,29 @@ async fn chatgpt_noninteractive_oauth_cassette(
     )
     .expect("auth record should be written");
 
-    let client = chatgpt::Client::builder()
-        .oauth()
-        .allow_device_flow(false)
-        .auth_file(&auth_file)
+    // The client's `oauth().allow_device_flow(false).auth_file(..)` path is
+    // now a construction-time credential resolution through `Authenticator`.
+    let authenticator = chatgpt::auth::Authenticator::new(
+        chatgpt::auth::AuthSource::OAuth,
+        Some(auth_file),
+        chatgpt::auth::DeviceCodePrompter::default(),
+        false,
+    );
+    let auth = authenticator
+        .auth_context()
+        .await
+        .expect("cached OAuth auth should not require device flow");
+
+    let mut builder = chatgpt::Client::builder()
+        .access_token(auth.access_token)
         .base_url(cassette.base_url())
-        .default_instructions("")
+        .default_instructions("");
+    if let Some(account_id) = auth.account_id {
+        builder = builder.account_id(account_id);
+    }
+    let client = builder
         .build()
-        .expect("non-interactive ChatGPT OAuth cassette client should build");
+        .expect("non-interactive OAuth cassette client should build");
 
     (cassette, client, temp)
 }
@@ -66,8 +79,8 @@ where
     F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = chatgpt_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, handle) = chatgpt_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(handle)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -79,9 +92,9 @@ pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
     F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) =
+    let (cassette, handle) =
         chatgpt_cassette_with_default_instructions(spec, default_instructions).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(handle)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -92,7 +105,7 @@ pub(super) async fn with_chatgpt_noninteractive_oauth_cassette<F, Fut>(
     F: FnOnce(chatgpt::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, handle, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(handle)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

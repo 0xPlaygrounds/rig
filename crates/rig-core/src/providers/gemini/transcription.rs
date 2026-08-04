@@ -5,138 +5,108 @@ use mime_guess;
 use serde_json::{Map, Value};
 
 use crate::{
-    http_client::HttpClientExt,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
     transcription::{self, TranscriptionError},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use super::{Client, completion::gemini_api_types::GenerateContentResponse};
+use super::completion::gemini_api_types::GenerateContentResponse;
 
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gemini-1.5-flash)
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
+/// Build the serialized `generateContent` transcription request body. Pure.
+pub(crate) fn build_transcription_body(
+    request: transcription::TranscriptionRequest,
+) -> Result<Vec<u8>, TranscriptionError> {
+    // Handle Gemini specific parameters
+    let mut additional_params = request.additional_params.unwrap_or(Value::Null);
+    let reserved = request.temperature.is_some().then_some("temperature");
+    crate::json_utils::validated_additional_params(
+        Some(&additional_params),
+        reserved.as_slice(),
+        "Gemini transcription generationConfig",
+    )?;
+    if additional_params.is_null() {
+        additional_params = Value::Object(Map::new());
     }
-}
+    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    type Response = GenerateContentResponse;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        TranscriptionModel::new(client.clone(), model)
+    // Set temperature from completion_request or additional_params
+    if let Some(temp) = request.temperature {
+        generation_config.temperature = Some(temp);
     }
 
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        // Handle Gemini specific parameters
-        let additional_params = request
-            .additional_params
-            .unwrap_or_else(|| Value::Object(Map::new()));
-        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+    let system_instruction = Some(Content {
+        parts: vec![TRANSCRIPTION_PREAMBLE.into()],
+        role: Some(Role::Model),
+    });
 
-        // Set temperature from completion_request or additional_params
-        if let Some(temp) = request.temperature {
-            generation_config.temperature = Some(temp);
-        }
+    let mime_type = if let Some(mime) = mime_guess::from_path(Path::new(&request.filename)).first()
+    {
+        mime.to_string()
+    } else {
+        "audio/mpeg".to_string()
+    };
 
-        let system_instruction = Some(Content {
-            parts: vec![TRANSCRIPTION_PREAMBLE.into()],
-            role: Some(Role::Model),
-        });
-
-        let mime_type =
-            if let Some(mime) = mime_guess::from_path(Path::new(&request.filename)).first() {
-                mime.to_string()
-            } else {
-                "audio/mpeg".to_string()
-            };
-
-        let request = GenerateContentRequest {
-            contents: vec![Content {
-                parts: vec![Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::InlineData(Blob {
-                        mime_type,
-                        data: BASE64_STANDARD.encode(request.data),
-                    }),
-                    additional_params: None,
-                }],
-                role: Some(Role::User),
+    let request = GenerateContentRequest {
+        contents: vec![Content {
+            parts: vec![Part {
+                thought: Some(false),
+                thought_signature: None,
+                part: PartKind::InlineData(Blob {
+                    mime_type,
+                    data: BASE64_STANDARD.encode(request.data),
+                }),
+                additional_params: None,
             }],
-            generation_config: Some(generation_config),
-            safety_settings: None,
-            tools: None,
-            tool_config: None,
-            system_instruction,
-            additional_params: None,
-        };
+            role: Some(Role::User),
+        }],
+        generation_config: Some(generation_config),
+        safety_settings: None,
+        tools: None,
+        tool_config: None,
+        system_instruction,
+        additional_params: None,
+    };
 
-        tracing::trace!(
-            target: "rig::transcription",
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+    tracing::trace!(
+        target: "rig::transcription",
+        "Sending completion request to Gemini API {}",
+        serde_json::to_string_pretty(&request)?
+    );
 
-        let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post(format!("/v1beta/models/{}:generateContent", self.model))?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
+    Ok(serde_json::to_vec(&request)?)
+}
 
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if response.status().is_success() {
-            let body: GenerateContentResponse =
-                serde_json::from_slice(&response.into_body().await?)?;
-
-            match body.usage_metadata {
-                Some(ref usage) => tracing::info!(target: "rig",
-                "Gemini completion token usage: {}",
-                usage
-                ),
-                None => tracing::info!(target: "rig",
-                    "Gemini completion token usage: n/a",
-                ),
-            }
-
-            tracing::debug!("Received response");
-
-            Ok(transcription::TranscriptionResponse::try_from(body)?)
-        } else {
-            let status = response.status();
-            let body = response.into_body().await?;
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ))
-        }
+/// Parse a `generateContent` transcription response body. Pure.
+pub(crate) fn parse_transcription_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<transcription::TranscriptionResponse<GenerateContentResponse>, TranscriptionError> {
+    if !status.is_success() {
+        return Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(body),
+        ));
     }
+
+    let body: GenerateContentResponse = serde_json::from_slice(body)?;
+
+    match body.usage_metadata {
+        Some(ref usage) => tracing::info!(target: "rig",
+        "Gemini completion token usage: {}",
+        usage
+        ),
+        None => tracing::info!(target: "rig",
+            "Gemini completion token usage: n/a",
+        ),
+    }
+
+    tracing::debug!("Received response");
+
+    transcription::TranscriptionResponse::try_from(body)
 }
 
 impl TryFrom<GenerateContentResponse>
@@ -181,11 +151,10 @@ impl TryFrom<GenerateContentResponse>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::transcription::TranscriptionClient;
-    use crate::providers::gemini::Client;
+    use crate::http_runtime::HttpRuntime;
     use crate::providers::gemini::completion::GEMINI_2_0_FLASH;
+    use crate::providers::gemini::functions;
     use crate::test_utils::RecordingHttpClient;
-    use crate::transcription::TranscriptionModel as _;
 
     fn transcription_request() -> transcription::TranscriptionRequest {
         transcription::TranscriptionRequest {
@@ -198,20 +167,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn transcription_generation_config_rejects_only_temperature_collision() {
+        let mut colliding = transcription_request();
+        colliding.temperature = Some(0.2);
+        colliding.additional_params = Some(serde_json::json!({
+            "temperature": 0.9,
+            "topP": 0.8
+        }));
+        let error =
+            build_transcription_body(colliding).expect_err("temperature collision must fail");
+        assert!(matches!(error, TranscriptionError::RequestError(_)));
+        assert!(error.to_string().contains("temperature"));
+
+        let mut passthrough = transcription_request();
+        passthrough.temperature = Some(0.2);
+        passthrough.additional_params = Some(serde_json::json!({"topP": 0.8}));
+        let body = build_transcription_body(passthrough)
+            .expect("unrelated generation option should be accepted");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(value["generationConfig"]["temperature"], 0.2);
+        assert_eq!(value["generationConfig"]["topP"], 0.8);
+    }
+
+    #[test]
+    fn transcription_treats_null_additional_params_as_no_extensions() {
+        let mut request = transcription_request();
+        request.additional_params = Some(Value::Null);
+
+        build_transcription_body(request).expect("null should mean no extensions");
+    }
+
     #[tokio::test]
     async fn transcription_non_success_preserves_status_and_body() {
         let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.transcription_model(GEMINI_2_0_FLASH);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(GEMINI_2_0_FLASH).with_api_key("test-key");
 
-        let error = model
-            .transcription(transcription_request())
+        let error = functions::transcribe(&cfg, &rt, transcription_request())
             .await
             .err()
             .expect("should fail with non-success status");

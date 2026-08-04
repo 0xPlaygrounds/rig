@@ -1,22 +1,36 @@
 //! Types for constructing vector search queries.
 //!
-//! - [`VectorSearchRequest`]: Query parameters (text, result count, threshold, filters).
-//! - [`SearchFilter`]: Trait for backend-agnostic filter expressions.
-//! - [`Filter`]: Canonical, serializable filter representation.
+//! - [`VectorSearchRequest`]: Query parameters (pre-embedded query, result count, threshold, filters).
+//! - [`Filter`]: The canonical, serializable filter expression. Each backend
+//!   translates it with its own `from_filter` constructor.
 
 use serde::{Deserialize, Serialize};
 
-use super::VectorStoreError;
-use crate::markers::{Missing, Provided};
+use crate::{OneOrMany, embeddings::Embedding};
 
-/// A vector search request for querying a [`super::VectorStoreIndex`].
+/// A pre-embedded vector search request.
 ///
-/// The type parameter `F` specifies the filter type (defaults to [`Filter<serde_json::Value>`]).
-/// Use [`VectorSearchRequest::builder()`] to construct instances.
+/// The query arrives already embedded (as one or more [`Embedding`]s); stores never
+/// embed text themselves. The type parameter `F` specifies the filter type and
+/// defaults to the portable [`Filter`]; backends substitute their own native
+/// filter records for operators the portable language does not model.
+///
+/// Construct with [`VectorSearchRequest::new`] (the two required fields) and refine
+/// with the `with_*` methods:
+///
+/// ```
+/// use rig_core::{OneOrMany, embeddings::Embedding, vector_store::request::{Filter, VectorSearchRequest}};
+///
+/// # fn example(embedding: Embedding) {
+/// let request = VectorSearchRequest::new(OneOrMany::one(embedding), 10)
+///     .with_threshold(0.7)
+///     .with_filter(Filter::eq("category", serde_json::json!("fruit")));
+/// # }
+/// ```
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
-    /// The query text to embed and search with.
-    query: String,
+pub struct VectorSearchRequest<F = Filter> {
+    /// The pre-embedded query to search with.
+    query: OneOrMany<Embedding>,
     /// Maximum number of results to return.
     samples: u64,
     /// Minimum similarity score for results.
@@ -27,14 +41,57 @@ pub struct VectorSearchRequest<F = Filter<serde_json::Value>> {
     filter: Option<F>,
 }
 
-impl<Filter> VectorSearchRequest<Filter> {
-    /// Creates a [`VectorSearchRequestBuilder`] which you can use to instantiate this struct.
-    pub fn builder() -> VectorSearchRequestBuilder<Filter> {
-        VectorSearchRequestBuilder::<Filter>::default()
+impl<F> VectorSearchRequest<F> {
+    /// Creates a request from the two required fields: the pre-embedded query and the
+    /// maximum number of results.
+    pub fn new(query: OneOrMany<Embedding>, samples: u64) -> Self {
+        Self {
+            query,
+            samples,
+            threshold: None,
+            additional_params: None,
+            filter: None,
+        }
     }
 
-    /// The query to be embedded and used in similarity search.
-    pub fn query(&self) -> &str {
+    /// Replaces the query with a single pre-embedded query embedding.
+    pub fn with_query(mut self, query: Embedding) -> Self {
+        self.query = OneOrMany::one(query);
+        self
+    }
+
+    /// Replaces the query with one or more pre-embedded query embeddings.
+    pub fn with_queries(mut self, query: OneOrMany<Embedding>) -> Self {
+        self.query = query;
+        self
+    }
+
+    /// Sets the maximum number of results to return.
+    pub fn with_samples(mut self, samples: u64) -> Self {
+        self.samples = samples;
+        self
+    }
+
+    /// Sets the minimum similarity threshold.
+    pub fn with_threshold(mut self, threshold: f64) -> Self {
+        self.threshold = Some(threshold);
+        self
+    }
+
+    /// Sets backend-specific parameters.
+    pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
+        self.additional_params = Some(params);
+        self
+    }
+
+    /// Sets a filter expression to narrow results by metadata.
+    pub fn with_filter(mut self, filter: F) -> Self {
+        self.filter = Some(filter);
+        self
+    }
+
+    /// The pre-embedded query used in similarity search.
+    pub fn query(&self) -> &OneOrMany<Embedding> {
         &self.query
     }
 
@@ -49,7 +106,7 @@ impl<Filter> VectorSearchRequest<Filter> {
     }
 
     /// Returns a reference to the optional filter expression.
-    pub fn filter(&self) -> &Option<Filter> {
+    pub fn filter(&self) -> &Option<F> {
         &self.filter
     }
 
@@ -57,9 +114,9 @@ impl<Filter> VectorSearchRequest<Filter> {
     ///
     /// This is useful for converting between filter representations, such as
     /// translating the canonical [`super::request::Filter`] to a backend-specific filter type.
-    pub fn map_filter<T, F>(self, f: F) -> VectorSearchRequest<T>
+    pub fn map_filter<T, Func>(self, f: Func) -> VectorSearchRequest<T>
     where
-        F: Fn(Filter) -> T,
+        Func: Fn(F) -> T,
     {
         VectorSearchRequest {
             query: self.query,
@@ -73,9 +130,9 @@ impl<Filter> VectorSearchRequest<Filter> {
     /// Transforms the filter type using a provided function which can additionally return a result.
     ///
     /// Useful for converting between filter representations where the conversion can potentially fail (eg, unrepresentable or invalid values).
-    pub fn try_map_filter<T, F>(self, f: F) -> Result<VectorSearchRequest<T>, FilterError>
+    pub fn try_map_filter<T, Func>(self, f: Func) -> Result<VectorSearchRequest<T>, FilterError>
     where
-        F: Fn(Filter) -> Result<T, FilterError>,
+        Func: Fn(F) -> Result<T, FilterError>,
     {
         let filter = self.filter.map(f).transpose()?;
 
@@ -109,90 +166,55 @@ pub enum FilterError {
     Serialization(String),
 }
 
-/// Trait for constructing filter expressions in vector search queries.
-///
-/// Uses [tagless final](https://nrinaudo.github.io/articles/tagless_final.html) encoding
-/// for backend-agnostic filters. Use `SearchFilter::eq(...)` etc. directly and let
-/// type inference resolve the concrete filter type.
-pub trait SearchFilter {
-    type Value;
-
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self;
-    fn and(self, rhs: Self) -> Self;
-    fn or(self, rhs: Self) -> Self;
-}
-
 /// Canonical, serializable filter representation.
 ///
-/// Use for serialization, runtime inspection, or translating between backends via
-/// [`Filter::interpret`]. Prefer [`SearchFilter`] trait methods for writing queries.
+/// This is the portable filter language every backend understands: build one with
+/// [`Filter::eq`] and friends, and the backend translates it with its own
+/// `from_filter` constructor. Operands are [`serde_json::Value`], the one shape
+/// every backend can translate.
+///
+/// The portable language is deliberately small. Backends additionally expose
+/// native filter types with richer operators (array membership, negation,
+/// backend-native expressions), which [`VectorSearchRequest`] still accepts via
+/// its `F` parameter — reach for those directly when the portable operators are
+/// not enough.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Filter<V>
-where
-    V: std::fmt::Debug + Clone,
-{
-    Eq(String, V),
-    Gt(String, V),
-    Lt(String, V),
+pub enum Filter {
+    Eq(String, serde_json::Value),
+    Gt(String, serde_json::Value),
+    Lt(String, serde_json::Value),
     And(Box<Self>, Box<Self>),
     Or(Box<Self>, Box<Self>),
 }
 
-impl<V> SearchFilter for Filter<V>
-where
-    V: std::fmt::Debug + Clone + Serialize + for<'de> Deserialize<'de>,
-{
-    type Value = V;
-
+impl Filter {
     /// Select values where the entry at `key` is equal to `value`
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self::Eq(key.as_ref().to_owned(), value)
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Eq(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry at `key` is greater than `value`
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self::Gt(key.as_ref().to_owned(), value)
+    pub fn gt(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Gt(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry at `key` is less than `value`
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self::Lt(key.as_ref().to_owned(), value)
+    pub fn lt(key: impl AsRef<str>, value: impl Into<serde_json::Value>) -> Self {
+        Self::Lt(key.as_ref().to_owned(), value.into())
     }
 
     /// Select values where the entry satisfies `self` *and* `rhs`
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         Self::And(self.into(), rhs.into())
     }
 
     /// Select values where the entry satisfies `self` *or* `rhs`
-    fn or(self, rhs: Self) -> Self {
+    pub fn or(self, rhs: Self) -> Self {
         Self::Or(self.into(), rhs.into())
     }
-}
 
-impl<V> Filter<V>
-where
-    V: std::fmt::Debug + Clone,
-{
-    /// Converts this filter into a backend-specific filter type.
-    pub fn interpret<F>(self) -> F
-    where
-        F: SearchFilter<Value = V>,
-    {
-        match self {
-            Self::Eq(key, val) => F::eq(key, val),
-            Self::Gt(key, val) => F::gt(key, val),
-            Self::Lt(key, val) => F::lt(key, val),
-            Self::And(lhs, rhs) => F::and(lhs.interpret(), rhs.interpret()),
-            Self::Or(lhs, rhs) => F::or(lhs.interpret(), rhs.interpret()),
-        }
-    }
-}
-
-impl Filter<serde_json::Value> {
     /// Tests whether a JSON document satisfies this filter.
     ///
     /// Leaf filters (`Eq`/`Gt`/`Lt`) look their key up in `value` (expected to be
@@ -248,99 +270,12 @@ impl Filter<serde_json::Value> {
     }
 }
 
-/// Builder for [`VectorSearchRequest`]. Requires `query` and `samples`.
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct VectorSearchRequestBuilder<F = Filter<serde_json::Value>, Q = Missing, S = Missing> {
-    query: Q,
-    samples: S,
-    threshold: Option<f64>,
-    additional_params: Option<serde_json::Value>,
-    filter: Option<F>,
-}
-
-impl<F> Default for VectorSearchRequestBuilder<F, Missing, Missing> {
-    fn default() -> Self {
-        Self {
-            query: Missing,
-            samples: Missing,
-            threshold: None,
-            additional_params: None,
-            filter: None,
-        }
-    }
-}
-
-impl<F, Q, S> VectorSearchRequestBuilder<F, Q, S>
-where
-    F: SearchFilter,
-{
-    /// Sets the query text. Required.
-    pub fn query<T>(self, query: T) -> VectorSearchRequestBuilder<F, Provided<String>, S>
-    where
-        T: Into<String>,
-    {
-        VectorSearchRequestBuilder {
-            query: Provided(query.into()),
-            samples: self.samples,
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
-        }
-    }
-
-    /// Sets the maximum number of results. Required.
-    pub fn samples(self, samples: u64) -> VectorSearchRequestBuilder<F, Q, Provided<u64>> {
-        VectorSearchRequestBuilder {
-            query: self.query,
-            samples: Provided(samples),
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
-        }
-    }
-
-    /// Sets the minimum similarity threshold.
-    pub fn threshold(mut self, threshold: f64) -> Self {
-        self.threshold = Some(threshold);
-        self
-    }
-
-    /// Sets backend-specific parameters.
-    pub fn additional_params(
-        mut self,
-        params: serde_json::Value,
-    ) -> Result<Self, VectorStoreError> {
-        self.additional_params = Some(params);
-        Ok(self)
-    }
-
-    /// Sets a filter expression.
-    pub fn filter(mut self, filter: F) -> Self {
-        self.filter = Some(filter);
-        self
-    }
-}
-
-/// Only implement `build()` when both `query` and `samples` have been provided.
-impl<F> VectorSearchRequestBuilder<F, Provided<String>, Provided<u64>> {
-    /// Builds the request
-    pub fn build(self) -> VectorSearchRequest<F> {
-        VectorSearchRequest {
-            query: self.query.0,
-            samples: self.samples.0,
-            threshold: self.threshold,
-            additional_params: self.additional_params,
-            filter: self.filter,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Filter, SearchFilter};
+    use super::Filter;
     use serde_json::json;
 
-    type F = Filter<serde_json::Value>;
+    type F = Filter;
 
     #[test]
     fn eq_matches_field_within_multi_field_document() {
@@ -383,6 +318,39 @@ mod tests {
         assert!(F::gt("id", json!(9007199254740992_u64)).satisfies(&doc)); // > 2^53
         assert!(!F::gt("id", json!(9007199254740993_u64)).satisfies(&doc));
         assert!(F::lt("id", json!(9007199254740994_u64)).satisfies(&doc));
+    }
+
+    #[test]
+    fn serde_representation_is_stable() {
+        // `Filter` is serializable and may be persisted, so dropping the operand
+        // type parameter must not move the wire format. Variants stay lowercase
+        // and newtype-shaped, with the operand as raw JSON.
+        let filter = F::eq("category", json!("fruit")).and(F::gt("price", json!(5)));
+        let encoded = serde_json::to_value(&filter).expect("filter serializes");
+        assert_eq!(
+            encoded,
+            json!({
+                "and": [
+                    { "eq": ["category", "fruit"] },
+                    { "gt": ["price", 5] },
+                ]
+            })
+        );
+
+        let decoded: Filter = serde_json::from_value(encoded).expect("filter round-trips");
+        let doc = json!({ "category": "fruit", "price": 10 });
+        assert!(decoded.satisfies(&doc));
+    }
+
+    #[test]
+    fn operands_accept_any_json_convertible_value() {
+        // Operands are `impl Into<serde_json::Value>`, so plain Rust values work
+        // without a `json!` wrapper. `Value` itself still converts.
+        let doc = json!({ "category": "fruit", "price": 10, "fresh": true });
+        assert!(F::eq("category", "fruit").satisfies(&doc));
+        assert!(F::gt("price", 5).satisfies(&doc));
+        assert!(F::eq("fresh", true).satisfies(&doc));
+        assert!(F::eq("category", json!("fruit")).satisfies(&doc));
     }
 
     #[test]

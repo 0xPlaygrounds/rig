@@ -1,7 +1,6 @@
 //! Anthropic structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
 use rig::test_utils::RecordingHttpClient;
@@ -85,7 +84,7 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
     let client = anthropic::Client::builder()
         .api_key("test-key")
-        .http_client(http.clone())
+        .http_runtime(rig::http_runtime::HttpRuntime::recording(http.clone()))
         .build()
         .expect("Anthropic test client should build");
     let agent = client
@@ -117,7 +116,7 @@ async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(text_response(&output.to_string()));
     let client = anthropic::Client::builder()
         .api_key("test-key")
-        .http_client(http.clone())
+        .http_runtime(rig::http_runtime::HttpRuntime::recording(http.clone()))
         .build()
         .expect("Anthropic test client should build");
     let agent = client

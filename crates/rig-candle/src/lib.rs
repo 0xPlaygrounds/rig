@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod artifacts;
+pub mod functions;
 mod generation;
 mod loader;
 mod model;

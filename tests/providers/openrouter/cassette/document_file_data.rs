@@ -2,14 +2,11 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::prelude::*;
 use rig::providers::openrouter::Message as OpenRouterMessage;
-use rig::streaming::StreamingPrompt;
 use serde_json::Value;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -255,7 +252,7 @@ async fn streaming_document_file_data_roundtrip_live() {
             assert_no_verifier_leaked_into_prompt(&stream_prompt);
             assert_openrouter_wire_file_data(stream_prompt.clone());
 
-            let mut stream = agent.stream_prompt(stream_prompt).await;
+            let mut stream = agent.runner(stream_prompt).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("OpenRouter streaming should read PDF file_data document");
@@ -264,3 +261,4 @@ async fn streaming_document_file_data_roundtrip_live() {
     )
     .await;
 }
+use rig::prelude::*;

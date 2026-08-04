@@ -104,14 +104,29 @@ impl<T: Loadable> Loadable for Result<T, EpubLoaderError> {
 /// [EpubFileLoader] uses strict typing between the iterator methods to ensure that transitions
 ///  between different implementations of the loaders and it's methods are handled properly by
 ///  the compiler.
-pub struct EpubFileLoader<'a, T, P = RawTextProcessor> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
+///
+/// # Evaluation is eager
+///
+/// Each stage ([`load`](Self::load), [`by_chapter`](Self::by_chapter), …) runs
+/// to completion and materialises a `Vec` before the next one starts. The
+/// loader previously held a `Box<dyn Iterator>`, which let stages compose
+/// lazily; de-erasing that field costs the laziness, because the closure types
+/// the stages produce cannot be named. Loading a large corpus therefore holds
+/// every parsed document in memory at once — chunk the glob if that matters.
+pub struct EpubFileLoader<T, P = RawTextProcessor> {
+    iterator: std::vec::IntoIter<T>,
     _processor: PhantomData<P>,
+}
+
+/// Collects a pipeline stage into a nameable iterator. See the laziness note
+/// on [`EpubFileLoader`].
+fn eager<T>(iterator: impl Iterator<Item = T>) -> std::vec::IntoIter<T> {
+    iterator.collect::<Vec<_>>().into_iter()
 }
 
 type EpubLoaded = Result<(PathBuf, EpubDoc<BufReader<File>>), EpubLoaderError>;
 
-impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
+impl<P> EpubFileLoader<Result<PathBuf, EpubLoaderError>, P> {
     /// Loads the contents of the epub files within the iterator returned by [EpubFileLoader::with_glob]
     ///  or [EpubFileLoader::with_dir]. Loaded EPUB documents are raw EPUB instances that can be
     ///  further processed (by chapter, etc).
@@ -133,9 +148,9 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn load(self) -> EpubFileLoader<'a, Result<EpubDoc<BufReader<File>>, EpubLoaderError>, P> {
+    pub fn load(self) -> EpubFileLoader<Result<EpubDoc<BufReader<File>>, EpubLoaderError>, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load())),
+            iterator: eager(self.iterator.map(|res| res.load())),
             _processor: PhantomData,
         }
     }
@@ -161,15 +176,15 @@ impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn load_with_path(self) -> EpubFileLoader<'a, EpubLoaded, P> {
+    pub fn load_with_path(self) -> EpubFileLoader<EpubLoaded, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load_with_path())),
+            iterator: eager(self.iterator.map(|res| res.load_with_path())),
             _processor: PhantomData,
         }
     }
 }
 
-impl<'a, P> EpubFileLoader<'a, Result<PathBuf, EpubLoaderError>, P>
+impl<P> EpubFileLoader<Result<PathBuf, EpubLoaderError>, P>
 where
     P: TextProcessor,
 {
@@ -192,9 +207,9 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read(self) -> EpubFileLoader<'a, Result<String, EpubLoaderError>, P> {
+    pub fn read(self) -> EpubFileLoader<Result<String, EpubLoaderError>, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| {
+            iterator: eager(self.iterator.map(|res| {
                 let doc = res.load().map(EpubChapterIterator::<P>::from)?;
 
                 Ok(doc
@@ -227,11 +242,9 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_with_path(
-        self,
-    ) -> EpubFileLoader<'a, Result<(PathBuf, String), EpubLoaderError>, P> {
+    pub fn read_with_path(self) -> EpubFileLoader<Result<(PathBuf, String), EpubLoaderError>, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|res| {
+            iterator: eager(self.iterator.map(|res| {
                 let (path, doc) = res.load_with_path()?;
 
                 let content = EpubChapterIterator::<P>::from(doc)
@@ -245,9 +258,9 @@ where
     }
 }
 
-impl<'a, P> EpubFileLoader<'a, EpubDoc<BufReader<File>>, P>
+impl<P> EpubFileLoader<EpubDoc<BufReader<File>>, P>
 where
-    P: TextProcessor + 'a,
+    P: TextProcessor,
 {
     /// Chunks the chapters of a loaded document by chapter, flattened as a single vector.
     ///
@@ -271,16 +284,16 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn by_chapter(self) -> EpubFileLoader<'a, Result<String, EpubLoaderError>, P> {
+    pub fn by_chapter(self) -> EpubFileLoader<Result<String, EpubLoaderError>, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.flat_map(EpubChapterIterator::<P>::from)),
+            iterator: eager(self.iterator.flat_map(EpubChapterIterator::<P>::from)),
             _processor: PhantomData,
         }
     }
 }
 
 type ByChapter = (PathBuf, Vec<(usize, Result<String, EpubLoaderError>)>);
-impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>), P> {
+impl<P: TextProcessor> EpubFileLoader<(PathBuf, EpubDoc<BufReader<File>>), P> {
     /// Chunks the chapters of a loaded document by chapter, processed as a vector of documents by path
     ///  which each document container an inner vector of chapters by chapter number.
     ///
@@ -303,9 +316,9 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     /// # Ok(())
     /// # }
     /// ```
-    pub fn by_chapter(self) -> EpubFileLoader<'a, ByChapter, P> {
+    pub fn by_chapter(self) -> EpubFileLoader<ByChapter, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|doc| {
+            iterator: eager(self.iterator.map(|doc| {
                 let (path, doc) = doc;
 
                 (
@@ -320,7 +333,7 @@ impl<'a, P: TextProcessor> EpubFileLoader<'a, (PathBuf, EpubDoc<BufReader<File>>
     }
 }
 
-impl<'a, P> EpubFileLoader<'a, ByChapter, P>
+impl<P> EpubFileLoader<ByChapter, P>
 where
     P: TextProcessor,
 {
@@ -344,9 +357,9 @@ where
     /// # Ok(())
     /// # }
     /// ```
-    pub fn ignore_errors(self) -> EpubFileLoader<'a, (PathBuf, Vec<(usize, String)>), P> {
+    pub fn ignore_errors(self) -> EpubFileLoader<(PathBuf, Vec<(usize, String)>), P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.map(|(path, chapters)| {
+            iterator: eager(self.iterator.map(|(path, chapters)| {
                 let chapters = chapters
                     .into_iter()
                     .filter_map(|(idx, res)| res.ok().map(|content| (idx, content)))
@@ -358,7 +371,7 @@ where
     }
 }
 
-impl<'a, P, T: 'a> EpubFileLoader<'a, Result<T, EpubLoaderError>, P> {
+impl<P, T> EpubFileLoader<Result<T, EpubLoaderError>, P> {
     /// Ignores errors in the iterator, returning only successful results. This can be used on any
     ///  [EpubFileLoader] state of iterator whose items are results.
     ///
@@ -375,15 +388,15 @@ impl<'a, P, T: 'a> EpubFileLoader<'a, Result<T, EpubLoaderError>, P> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn ignore_errors(self) -> EpubFileLoader<'a, T, P> {
+    pub fn ignore_errors(self) -> EpubFileLoader<T, P> {
         EpubFileLoader {
-            iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
+            iterator: eager(self.iterator.filter_map(|res| res.ok())),
             _processor: PhantomData,
         }
     }
 }
 
-impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
+impl<P> EpubFileLoader<Result<PathBuf, FileLoaderError>, P> {
     /// Creates a new [EpubFileLoader] using a glob pattern to match files.
     ///
     /// # Example
@@ -398,11 +411,11 @@ impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
     /// ```
     pub fn with_glob(
         pattern: &str,
-    ) -> Result<EpubFileLoader<'_, Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
+    ) -> Result<EpubFileLoader<Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
         let paths = glob::glob(pattern).map_err(FileLoaderError::PatternError)?;
 
         Ok(EpubFileLoader {
-            iterator: Box::new(paths.into_iter().map(|path| {
+            iterator: eager(paths.into_iter().map(|path| {
                 path.map_err(FileLoaderError::GlobError)
                     .map_err(EpubLoaderError::FileLoaderError)
             })),
@@ -424,11 +437,11 @@ impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
     /// ```
     pub fn with_dir(
         directory: &str,
-    ) -> Result<EpubFileLoader<'_, Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
+    ) -> Result<EpubFileLoader<Result<PathBuf, EpubLoaderError>, P>, EpubLoaderError> {
         let paths = std::fs::read_dir(directory).map_err(FileLoaderError::IoError)?;
 
         Ok(EpubFileLoader {
-            iterator: Box::new(
+            iterator: eager(
                 paths
                     .into_iter()
                     .map(|entry| Ok(entry.map_err(FileLoaderError::IoError)?.path())),
@@ -441,26 +454,13 @@ impl<P> EpubFileLoader<'_, Result<PathBuf, FileLoaderError>, P> {
 // ================================================================
 // EpubFileLoader iterator implementations
 // ================================================================
-pub struct IntoIter<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
-}
 
-impl<'a, T, P> IntoIterator for EpubFileLoader<'a, T, P> {
+impl<T, P> IntoIterator for EpubFileLoader<T, P> {
     type Item = T;
-    type IntoIter = IntoIter<'a, T>;
+    type IntoIter = std::vec::IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            iterator: self.iterator,
-        }
-    }
-}
-
-impl<T> Iterator for IntoIter<'_, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
+        self.iterator
     }
 }
 

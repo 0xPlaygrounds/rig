@@ -13,7 +13,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_anthropic_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.provider_config(CLAUDE_SONNET_4_6),
             Some(serde_json::json!({
                 "thinking": { "type": "adaptive" }
             })),
@@ -27,7 +27,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_anthropic_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.provider_config(CLAUDE_SONNET_4_6),
             Some(serde_json::json!({
                 "thinking": { "type": "adaptive" }
             })),

@@ -1,7 +1,11 @@
+//! Fan one statement out to three structured "scorers" concurrently.
+//!
+//! Requires `OPENAI_API_KEY`.
+use rig::agent::Agent;
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
@@ -10,37 +14,45 @@ struct DocumentScore {
     /// The score of the document
     score: f32,
 }
+
+/// One scorer: the classic extraction protocol with the role instructions
+/// appended to the extraction preamble (what `ExtractorBuilder::preamble` did).
+fn scorer(role: &str) -> String {
+    let classic = ExtractOptions::classic_extractor();
+    let preamble = classic.preamble.clone().unwrap_or_default();
+    format!("{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{role}")
+}
+
+async fn score(
+    agent: &Agent,
+    preamble: String,
+    statement: &str,
+) -> Result<DocumentScore, anyhow::Error> {
+    Ok(agent.extractor(statement).preamble(preamble).run().await?)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    let client = openai::Client::from_env()?;
+    let agent = client.agent(openai::GPT_4).build();
 
-    let manipulation_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
-            "
+    let manipulation_scorer = scorer(
+        "
             Your role is to score a user's statement on how manipulative it sounds between 0 and 1.
         ",
-        )
-        .build();
+    );
 
-    let depression_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
-            "
+    let depression_scorer = scorer(
+        "
             Your role is to score a user's statement on how depressive it sounds between 0 and 1.
         ",
-        )
-        .build();
+    );
 
-    let intelligent_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
-            "
+    let intelligent_scorer = scorer(
+        "
             Your role is to score a user's statement on how intelligent it sounds between 0 and 1.
         ",
-        )
-        .build();
+    );
 
     // Score the statement on three dimensions concurrently. `join!` (unlike
     // `try_join!`) awaits all three and keeps each `Result`, so one failed
@@ -48,9 +60,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // `parallel!` op provided.
     let statement = "I hate swimming. The water always gets in my eyes.";
     let (manip_score, dep_score, int_score) = futures::join!(
-        manipulation_agent.extract(statement),
-        depression_agent.extract(statement),
-        intelligent_agent.extract(statement),
+        score(&agent, manipulation_scorer, statement),
+        score(&agent, depression_scorer, statement),
+        score(&agent, intelligent_scorer, statement),
     );
 
     let response = match (manip_score, dep_score, int_score) {

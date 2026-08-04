@@ -12,7 +12,7 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use rig::prelude::*;
-use rig::{completion::Prompt, providers, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::Level;
@@ -58,11 +58,7 @@ impl Tool for Adder {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Adding {} and {}", args.x, args.y);
         let result = args.x + args.y;
         Ok(result)
@@ -99,11 +95,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("[tool-call] Subtracting {} from {}", args.y, args.x);
         let result = args.x - args.y;
         // Sleep for 1 microsecond to allow simulating a more compute-heavy tool
@@ -143,11 +135,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create OpenAI client
-    let openai_client = providers::openai::Client::from_env()?;
+    let client = providers::openai::Client::from_env()?;
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = openai_client
+    let calculator_agent = client
         .agent(providers::openai::GPT_4O)
         .preamble("You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.")
         .max_tokens(1024)

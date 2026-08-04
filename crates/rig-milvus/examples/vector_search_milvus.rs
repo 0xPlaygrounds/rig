@@ -1,9 +1,9 @@
-use rig_core::client::ProviderClient;
-use rig_core::vector_store::InsertDocuments;
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
+use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed, client::EmbeddingsClient, embeddings::EmbeddingsBuilder, vector_store::VectorStoreIndex,
-};
+use rig_core::{Embed, vector_store::StoreRecord};
 use serde::{Deserialize, Serialize};
 
 // A vector search needs to be performed on the `definitions` field, so we derive the `Embed` trait for `WordDefinition`
@@ -25,9 +25,9 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = rig_core::providers::openai::Client::from_env()?;
-    let model = openai_client.embedding_model(rig_core::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_3_SMALL)?;
+    let rt = HttpRuntime::new();
 
     let base_url = std::env::var("MILVUS_BASE_URL")?;
     let collection_name = std::env::var("MILVUS_COLLECTION_NAME")?;
@@ -35,9 +35,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let milvus_user = std::env::var("MILVUS_USERNAME")?;
     let milvus_password = std::env::var("MILVUS_PASSWORD")?;
 
-    let vector_store =
-        rig_milvus::MilvusVectorStore::new(model.clone(), base_url, database_name, collection_name)
-            .auth(milvus_user, milvus_password);
+    // The store holds no embedding model: embedding happens outside the store,
+    // and both records and queries arrive pre-embedded.
+    let vector_store = rig_milvus::MilvusVectorStore::new(base_url, database_name, collection_name)
+        .auth(milvus_user, milvus_password);
 
     // create test documents with mocked embeddings
     let words = vec![
@@ -54,22 +55,32 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
+    let documents = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
-    vector_store.insert_documents(documents).await?;
+    let records = documents
+        .into_iter()
+        .enumerate()
+        .map(|(i, (doc, embeddings))| StoreRecord::new(format!("doc{i}"), &doc, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    vector_store.insert(records).await?;
 
     // query vector
     let query = "What does \"glarb-glarb\" mean?";
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
 
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(2)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 2);
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("#{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {

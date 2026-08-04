@@ -3,11 +3,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::StreamExt;
-use rig::agent::MultiTurnStreamItem;
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
+use rig::stream::AgentRunItem;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -37,12 +34,12 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
+                .runner(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
-                .await;
+                .stream_run();
             let mut response = None;
             while let Some(item) = stream.next().await {
-                if let MultiTurnStreamItem::FinalResponse(final_response) =
+                if let AgentRunItem::Final(final_response) =
                     item.expect("runner-driven multi-turn streaming should succeed")
                 {
                     response = Some(final_response.output);
@@ -112,11 +109,7 @@ impl Tool for Add {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x + args.y)
     }
@@ -146,11 +139,7 @@ impl Tool for Subtract {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x - args.y)
     }
@@ -180,11 +169,7 @@ impl Tool for Multiply {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x * args.y)
     }
@@ -214,12 +199,9 @@ impl Tool for Divide {
         serde_json::to_value(schema_for!(OperationArgs)).expect("schema should serialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.call_count.fetch_add(1, Ordering::SeqCst);
         Ok(args.x / args.y)
     }
 }
+use rig::prelude::*;

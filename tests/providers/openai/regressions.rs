@@ -1,6 +1,5 @@
 //! OpenAI-compatible response regressions that use an in-memory HTTP backend.
 
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_core::test_utils::RecordingHttpClient;
 use schemars::JsonSchema;
@@ -57,19 +56,25 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         }]
     });
     let http_client = RecordingHttpClient::new(response.to_string());
-    let client = openai::Client::builder()
-        .api_key("test-key")
-        .base_url("http://localhost:8000/v1")
-        .http_client(http_client.clone())
-        .build()
-        .expect("OpenAI-compatible client should build");
+    let provider = rig::provider::ProviderConfig::OpenAiResponses(
+        openai::responses_api::functions::Config::new("gpt-oss-120b")
+            .with_api_key("test-key")
+            .with_base_url("http://localhost:8000/v1"),
+    );
+    let rt = std::sync::Arc::new(rig::provider::Runtime::with_http(
+        rig::http_runtime::HttpRuntime::recording(http_client.clone()),
+    ));
 
-    let extracted = client
-        .extractor::<KeywordPayload>("gpt-oss-120b")
-        .build()
-        .extract("What fruit is mentioned in the database?")
-        .await
-        .expect("nullable strict should not prevent extraction");
+    let extracted = rig::extract::extract_with_options::<KeywordPayload>(
+        rig::agent::AgentConfig::new(),
+        provider,
+        rt,
+        "What fruit is mentioned in the database?",
+        rig::extract::ExtractOptions::classic_extractor(),
+    )
+    .await
+    .expect("nullable strict should not prevent extraction")
+    .value;
 
     assert_eq!(
         extracted,

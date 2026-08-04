@@ -1,11 +1,8 @@
-//! Doubleword completion models.
+//! Doubleword completion models and shared API envelope types.
 //!
-//! Completions run through the shared OpenAI-compatible
-//! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
-//! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`DoublewordExt`](super::client::DoublewordExt) in `client.rs`.
-
-use crate::providers::openai;
+//! Completions run through [`super::functions`]; this module holds the model
+//! name constants and the provider's error/response envelope
+//! ([`doubleword_api_types`], moved here from the deleted `client.rs`).
 
 // ================================================================
 // Doubleword Completion Models
@@ -24,8 +21,37 @@ pub const GLM_5_2: &str = "zai-org/GLM-5.2-FP8";
 pub const QWEN3_VL_30B: &str = "Qwen/Qwen3-VL-30B-A3B-Instruct-FP8";
 pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 
-/// Doubleword completion model — the shared OpenAI-compatible
-/// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
-/// specialized to Doubleword.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<super::client::DoublewordExt, H>;
+/// Doubleword's API envelope types.
+///
+/// Moved verbatim from the deleted `doubleword::client` module; the wire
+/// shapes are unchanged.
+pub mod doubleword_api_types {
+    use serde::Deserialize;
+
+    impl ApiErrorResponse {
+        pub fn message(&self) -> String {
+            self.error.message.clone()
+        }
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct ApiErrorResponse {
+        pub error: ApiError,
+    }
+
+    #[derive(Debug, Deserialize)]
+    pub struct ApiError {
+        pub message: String,
+        #[serde(default)]
+        pub r#type: Option<String>,
+        #[serde(default)]
+        pub code: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(untagged)]
+    pub enum ApiResponse<T> {
+        Ok(T),
+        Error(ApiErrorResponse),
+    }
+}

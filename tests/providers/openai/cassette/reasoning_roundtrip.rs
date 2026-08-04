@@ -12,7 +12,7 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 async fn streaming() {
     with_openai_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion_model("gpt-5.2"),
+            client.provider_config("gpt-5.2"),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),
@@ -26,7 +26,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_openai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model("gpt-5.2"),
+            client.provider_config("gpt-5.2"),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),

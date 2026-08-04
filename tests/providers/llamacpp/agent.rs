@@ -1,6 +1,5 @@
 //! llama.cpp agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
@@ -10,9 +9,8 @@ use super::support;
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn completion_smoke() {
-    let client = support::completions_client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(BASIC_PREAMBLE)
         .build();
 

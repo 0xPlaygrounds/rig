@@ -1,148 +1,128 @@
-//! Demonstrates the composing hook model with `AgentHook`. Several hooks are
-//! stacked via `.add_hook(…).add_hook(…)` and, crucially, **all of them run** —
-//! a request patch from one hook no longer short-circuits the others:
+//! Demonstrates the composing hook model. A hook is now a plain
+//! **attach-and-forget record** — a [`HookEntry`] pairing a name with a closure
+//! over owned [`HookEvent`] values — and several of them are stacked via
+//! `.add_hook(…).add_hook(…)`. Crucially, **all of them run**: a request patch
+//! from one entry no longer short-circuits the others.
 //!
-//! - `LoggingHook` — observe-only. Registered first so a later terminate could
-//!   never hide events from it. Reads the run-scoped [`HookContext`] (run id,
-//!   turn, streaming flag).
-//! - `ContextHook` — injects an extra context document for the turn via
-//!   `RequestPatch::extra_context` (passive RAG).
-//! - `SamplingHook` — lowers the sampling temperature for the turn via
+//! - `logging_entry` — observe-only. Registered first so a later terminate could
+//!   never hide events from it. Run-scoped identity is no longer handed to the
+//!   hook by the runtime: the host mints a [`RunId`] and the closure simply
+//!   captures it, and the turn index arrives on the event itself.
+//! - `context_entry` — injects an extra context document for the turn via
+//!   `RequestPatch::context` (passive RAG).
+//! - `sampling_entry` — lowers the sampling temperature for the turn via
 //!   `RequestPatch::temperature`.
-//! - `TurnCounterHook` — counts completion calls using the run-scoped
-//!   `HookContext` scratchpad instead of its own interior mutability.
+//! - `turn_counter_entry` — counts completion calls with host-owned state (an
+//!   `Arc<AtomicUsize>` captured by the closure), which is what replaced the old
+//!   run-scoped scratchpad.
 //!
-//! On each `CompletionCall`, the patches from `ContextHook` and `SamplingHook`
-//! are **merged in registration order** into one effective patch (see the
-//! per-field merge rules on `RequestPatch`), so both take effect on the same
-//! turn — and `TurnCounterHook` still runs afterwards. A typed stop action
-//! short-circuits the stack.
+//! On each `BeforeModelCall`, the patches from `context_entry` and
+//! `sampling_entry` are **merged in registration order** into one effective
+//! patch (see the per-field merge rules on `RequestPatch`), so both take effect
+//! on the same turn — and `turn_counter_entry` still runs afterwards. A typed
+//! stop action short-circuits the stack.
+//!
+//! Note that each entry sees only the events it cares about and returns
+//! [`HookDecision::Continue`] for the rest. Streaming `TextDelta` /
+//! `ToolCallDelta` events are gated: an entry must be built with
+//! [`HookEntry::observing_deltas`] to receive them at all. None of the entries
+//! below observe deltas, so none opts in.
 //!
 //! Requires `OPENAI_API_KEY`.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use anyhow::Result;
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
-    ObservationAction, RequestPatch,
-};
-use rig::completion::{Document, Message, Prompt};
+use rig::agent::{CompletionCallAction, ObservationAction, RequestPatch, RunId};
+use rig::completion::{Document, Message};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
 
 // ---------------------------------------------------------------------------
-// Hook 1: LoggingHook — observe-only. Reads run-scoped identity from the context.
+// Entry 1: observe-only. Captures the host-owned run id; reads the turn from
+// the event.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-struct LoggingHook;
-
-impl AgentHook for LoggingHook {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if let Message::User { content } = event.prompt {
-            let prompt_text = content
-                .iter()
-                .filter_map(|c| match c {
-                    UserContent::Text(text) => Some(text.text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            if !prompt_text.is_empty() {
-                println!(
-                    "[run {} · turn {}] sending prompt: {}",
-                    ctx.run_id(),
-                    ctx.turn(),
-                    prompt_text
-                );
+fn logging_entry(run_id: RunId) -> HookEntry {
+    HookEntry::sync("logging", move |event| match event {
+        HookEvent::BeforeModelCall { turn, prompt, .. } => {
+            if let Message::User { content } = prompt.as_ref() {
+                let prompt_text = content
+                    .iter()
+                    .filter_map(|c| match c {
+                        UserContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if !prompt_text.is_empty() {
+                    println!("[run {run_id} · turn {turn}] sending prompt: {prompt_text}");
+                }
             }
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
         }
-        CompletionCallAction::continue_run()
-    }
-
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        println!(
-            "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
-            ctx.run_id(),
-            event.usage,
-            event.message_id,
-            event.content
-        );
-        ObservationAction::continue_run()
-    }
+        HookEvent::CompletionResponse { response, .. } => {
+            println!(
+                "[run {run_id}] received response (usage: {:?}, message_id: {:?}): {:?}",
+                response.usage, response.message_id, response.choice
+            );
+            HookDecision::Observation(ObservationAction::continue_run())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 // ---------------------------------------------------------------------------
-// Hook 2: ContextHook — injects an extra context document for the turn.
+// Entry 2: injects an extra context document for the turn.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-struct ContextHook;
-
-impl AgentHook for ContextHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let doc = Document {
-            id: "style-guide".to_string(),
-            text: "House style: keep jokes short and family-friendly.".to_string(),
-            additional_props: Default::default(),
-        };
-        CompletionCallAction::patch(RequestPatch::new().context(doc))
-    }
+fn context_entry() -> HookEntry {
+    HookEntry::sync("context", |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            let doc = Document {
+                id: "style-guide".to_string(),
+                text: "House style: keep jokes short and family-friendly.".to_string(),
+                additional_props: Default::default(),
+            };
+            HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().context(doc),
+            ))
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 // ---------------------------------------------------------------------------
-// Hook 3: SamplingHook — lowers the temperature for the turn. Its patch MERGES
-// with ContextHook's rather than replacing it.
+// Entry 3: lowers the temperature for the turn. Its patch MERGES with
+// `context_entry`'s rather than replacing it.
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
-struct SamplingHook;
-
-impl AgentHook for SamplingHook {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        CompletionCallAction::patch(RequestPatch::new().temperature(0.2))
-    }
+fn sampling_entry() -> HookEntry {
+    HookEntry::sync("sampling", |event| match event {
+        HookEvent::BeforeModelCall { .. } => HookDecision::CompletionCall(
+            CompletionCallAction::patch(RequestPatch::new().temperature(0.2)),
+        ),
+        _ => HookDecision::Continue,
+    })
 }
 
 // ---------------------------------------------------------------------------
-// Hook 4: TurnCounterHook — counts completion calls via the shared scratchpad.
+// Entry 4: counts completion calls using host-owned state captured by the
+// closure (the replacement for the old run-scoped scratchpad).
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Default)]
-struct TurnCount(usize);
-
-#[derive(Clone)]
-struct TurnCounterHook;
-
-impl AgentHook for TurnCounterHook {
-    async fn on_completion_call(
-        &self,
-        ctx: &HookContext,
-        _event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let n = ctx.scratchpad().update(|c: &mut TurnCount| {
-            c.0 += 1;
-            c.0
-        });
-        println!("[turn-counter] completion call #{n} this run");
-        CompletionCallAction::continue_run()
-    }
+fn turn_counter_entry(count: Arc<AtomicUsize>) -> HookEntry {
+    HookEntry::sync("turn-counter", move |event| match event {
+        HookEvent::BeforeModelCall { .. } => {
+            let n = count.fetch_add(1, Ordering::SeqCst) + 1;
+            println!("[turn-counter] completion call #{n} this run");
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -151,24 +131,36 @@ impl AgentHook for TurnCounterHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
+    let client = openai::Client::from_env()?;
+    let agent = client
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();
 
-    // Attach four hooks. They run in registration order on every event; the two
-    // request-patch hooks (ContextHook, SamplingHook) both contribute to the
-    // same turn because CompletionCall patches accumulate and merge — neither
-    // short-circuits the other, and TurnCounterHook still runs after them.
+    // Run-scoped identity and state are the host's to own now — mint them here
+    // and let the closures capture them.
+    let run_id = RunId::generate();
+    let turn_count = Arc::new(AtomicUsize::new(0));
+
+    // Attach four hook records. They run in registration order on every event;
+    // the two request-patch entries (context, sampling) both contribute to the
+    // same turn because `BeforeModelCall` patches accumulate and merge — neither
+    // short-circuits the other, and the turn counter still runs after them.
     let response = agent
-        .prompt("Entertain me!")
-        .add_hook(LoggingHook)
-        .add_hook(ContextHook)
-        .add_hook(SamplingHook)
-        .add_hook(TurnCounterHook)
-        .await?;
+        .runner("Entertain me!")
+        .add_hook(logging_entry(run_id))
+        .add_hook(context_entry())
+        .add_hook(sampling_entry())
+        .add_hook(turn_counter_entry(turn_count.clone()))
+        .run()
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
+    println!(
+        "(observed {} completion calls)",
+        turn_count.load(Ordering::SeqCst)
+    );
 
     Ok(())
 }

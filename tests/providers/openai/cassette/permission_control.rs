@@ -1,12 +1,8 @@
 use anyhow::Result;
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-    stream_to_stdout,
-};
-use rig::completion::Prompt;
+use rig::agent::{ToolCallAction, ToolResultAction};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::prelude::*;
 use rig::providers;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,7 +12,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::super::support::with_openai_cassette_result;
-use crate::support::assert_nonempty_response;
+use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 const TEST_CONTENT: &str = "hello world\n";
 
@@ -74,11 +70,7 @@ impl Tool for ReadFileHead {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("head")
             .arg("-1")
             .arg(&self.path)
@@ -114,11 +106,7 @@ impl Tool for ReadFileTail {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let output = std::process::Command::new("tail")
             .arg("-1")
             .arg(&self.path)
@@ -138,31 +126,34 @@ struct PermissionHook {
     last_result: Arc<Mutex<Option<String>>>,
 }
 
-impl AgentHook for PermissionHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
-        if count == 0 {
-            ToolCallAction::skip(format!(
-                "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
-                event.tool_name
-            ))
-        } else {
-            ToolCallAction::run()
-        }
+impl PermissionHook {
+    /// The hook record: vetoes the first tool call with a redirect reason, then
+    /// records every tool result's normalized presentation.
+    fn entry(&self) -> HookEntry {
+        let hook = self.clone();
+        HookEntry::sync("permission-control", move |event| hook.decide(event))
     }
 
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let normalized = event.presentation.render();
-        *self.last_result.lock().expect("lock last_result") = Some(normalized);
-        ToolResultAction::keep()
+    fn decide(&self, event: HookEvent) -> HookDecision {
+        match event {
+            HookEvent::ToolCall { call, .. } => {
+                let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+                if count == 0 {
+                    HookDecision::ToolCall(ToolCallAction::skip(format!(
+                        "Tool '{}' is currently unavailable. Please use 'read_file_tail' instead to read the file.",
+                        call.function.name
+                    )))
+                } else {
+                    HookDecision::ToolCall(ToolCallAction::run())
+                }
+            }
+            HookEvent::ToolResult { presentation, .. } => {
+                let normalized = presentation.render();
+                *self.last_result.lock().expect("lock last_result") = Some(normalized);
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
+        }
     }
 }
 
@@ -194,13 +185,15 @@ async fn permission_control_prompt_example() -> Result<()> {
             };
 
             let _response = agent
-                .prompt(
+                .runner(
                     "Use the available tools to read test.txt now. \
                  Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
-                .add_hook(hook)
-                .await?;
+                .add_hook(hook.entry())
+                .run()
+                .await
+                .map(|response| response.output)?;
 
             let last = last_result.lock().expect("lock last_result").clone();
             anyhow::ensure!(last.as_deref() == Some("hello world"));
@@ -239,24 +232,21 @@ async fn permission_control_streaming_example() -> Result<()> {
             };
 
             let mut stream = agent
-                .stream_prompt(
+                .runner(
                     "Use the available tools to read test.txt now. \
                  Do not ask any follow-up questions; just read the file and report its content.",
                 )
                 .max_turns(5)
-                .add_hook(hook)
-                .await;
+                .add_hook(hook.entry())
+                .stream_run();
 
-            let final_response = stream_to_stdout(&mut stream).await?;
+            let final_response = collect_stream_final_response(&mut stream).await?;
             let last = last_result.lock().expect("lock last_result").clone();
-            assert_nonempty_response(final_response.output());
+            assert_nonempty_response(&final_response);
             anyhow::ensure!(
-                final_response
-                    .output()
-                    .to_ascii_lowercase()
-                    .contains("hello world"),
+                final_response.to_ascii_lowercase().contains("hello world"),
                 "expected the streamed final response to mention the file content, got {:?}",
-                final_response.output()
+                final_response
             );
             anyhow::ensure!(last.as_deref() == Some("hello world"));
             anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);

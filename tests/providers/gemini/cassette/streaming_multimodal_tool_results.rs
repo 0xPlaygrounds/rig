@@ -1,17 +1,14 @@
 //! Gemini streaming regression for multimodal tool results in chat history.
 
-use futures::StreamExt;
 use rig::OneOrMany;
-use rig::agent::MultiTurnStreamItem;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
 };
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::streaming::StreamingPrompt;
+use rig::stream::AgentRunItem;
 use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
@@ -50,11 +47,7 @@ impl Tool for HybridImageTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         let mut content = OneOrMany::one(ToolResultContent::json(json!({
             "instruction": "Use the image part to answer the user's question."
         })));
@@ -82,26 +75,26 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         .build();
 
     let empty_history: &[Message] = &[];
-    let mut stream = agent
-        .stream_prompt(
+    let mut stream =agent
+        .runner(
             "Use the tool once, then answer with the dominant color in the returned image.",
         )
         .history(empty_history)
         .max_turns(4)
-        .await;
+        .stream_run();
 
     let mut final_response = None;
     let mut final_history = None;
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming prompt should succeed") {
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response.output().to_owned());
                 final_history = response.messages().map(|history| history.to_vec());
                 break;
             }
-            MultiTurnStreamItem::StreamAssistantItem(_)
-            | MultiTurnStreamItem::StreamUserItem(_) => {}
+            AgentRunItem::Assistant(_)
+            | AgentRunItem::User(_) => {}
             _ => {}
         }
     }
@@ -181,3 +174,4 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
     })
     .await;
 }
+use rig::prelude::*;

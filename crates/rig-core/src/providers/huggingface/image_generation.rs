@@ -1,5 +1,3 @@
-use super::client::Client;
-use crate::http_client::HttpClientExt;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use serde_json::json;
@@ -30,83 +28,40 @@ impl TryFrom<ImageGenerationResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> ImageGenerationModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        ImageGenerationModel {
-            client,
-            model: model.into(),
+/// Build the serialized image-generation request body. Pure.
+pub(crate) fn build_image_generation_body(
+    request: &ImageGenerationRequest,
+) -> Result<Vec<u8>, ImageGenerationError> {
+    Ok(serde_json::to_vec(&json!({
+        "inputs": request.prompt,
+        "parameters": {
+            "width": request.width,
+            "height": request.height
         }
-    }
+    }))?)
 }
 
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Send + Clone + 'static,
+/// Parse an image-generation response: success bodies are raw image bytes.
+/// Pure.
+pub(crate) fn parse_image_generation_response(
+    status: http::StatusCode,
+    body: Vec<u8>,
+) -> Result<image_generation::ImageGenerationResponse<ImageGenerationResponse>, ImageGenerationError>
 {
-    type Response = ImageGenerationResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
+    if !status.is_success() {
+        return Err(ImageGenerationError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ));
     }
-
-    async fn image_generation(
-        &self,
-        request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let request = json!({
-            "inputs": request.prompt,
-            "parameters": {
-                "width": request.width,
-                "height": request.height
-            }
-        });
-
-        let route = self
-            .client
-            .subprovider()
-            .image_generation_endpoint(&self.model)?;
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post(&route)?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text: Vec<u8> = response.into_body().await?;
-
-            return Err(ImageGenerationError::from_http_response(
-                status,
-                String::from_utf8_lossy(&text),
-            ));
-        }
-
-        let data: Vec<u8> = response.into_body().await?;
-
-        ImageGenerationResponse { data }.try_into()
-    }
+    ImageGenerationResponse { data: body }.try_into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::huggingface::functions;
     use crate::test_utils::RecordingHttpClient;
 
     #[tokio::test]
@@ -114,24 +69,13 @@ mod tests {
         let body = r#"{"error":{"message":"boom"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(Flux1);
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(Flux1).with_api_key("test-key");
 
-        let request = model
-            .image_generation_request()
-            .prompt("draw a cat")
-            .build();
-
-        let error = model
-            .image_generation(request)
+        let error = functions::generate_image(&cfg, &rt, ImageGenerationRequest::new("draw a cat"))
             .await
             .expect_err("should fail with non-success status");
 
-        assert!(matches!(error, ImageGenerationError::HttpError(_)));
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::SERVICE_UNAVAILABLE)

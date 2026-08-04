@@ -1,11 +1,9 @@
-use rig_core::client::{EmbeddingsClient, ProviderClient};
+use rig_core::Embed;
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
-use rig_core::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
-};
 use rig_surrealdb::{Mem, SurrealVectorStore};
 use serde::{Deserialize, Serialize};
 use surrealdb::Surreal;
@@ -29,9 +27,9 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
 
     let surreal = Surreal::new::<Mem>(()).await?;
 
@@ -52,26 +50,38 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)?
-        .build()
+    let documents = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
-    // init vector store
-    let vector_store = SurrealVectorStore::with_defaults(model, surreal);
+    // init vector store; embedding happens *outside* the store
+    let vector_store = SurrealVectorStore::with_defaults(surreal);
 
-    vector_store.insert_documents(documents).await?;
+    vector_store
+        .insert_as(
+            documents
+                .into_iter()
+                .enumerate()
+                .map(|(i, (doc, embeddings))| (format!("doc{i}"), doc, embeddings))
+                .collect(),
+        )
+        .await?;
 
-    // query vector
+    // query vector: embed the query, then send the pre-embedded request
     let query = "What does \"glarb-glarb\" mean?";
     println!("Attempting vector search with query: {query}");
 
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(2)
-        .build();
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding.clone()), 2);
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     for (distance, _id, doc) in results.iter() {
@@ -90,13 +100,9 @@ async fn main() -> Result<(), anyhow::Error> {
     println!(
         "Attempting vector search with cosine similarity threshold of {midpoint} and query: {query}"
     );
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .threshold(midpoint)
-        .build();
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1).with_threshold(midpoint);
 
-    let results = vector_store.top_n::<WordDefinition>(req).await?;
+    let results = vector_store.top_n_as::<WordDefinition>(req).await?;
 
     println!("{} results for query: {}", results.len(), query);
     anyhow::ensure!(

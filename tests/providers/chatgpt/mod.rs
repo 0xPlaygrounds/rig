@@ -23,7 +23,10 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::providers::chatgpt::{self, ChatGPTAuth};
+use rig::AgentBuilder;
+use rig::client::AgentClientExt;
+use rig::provider::ProviderConfig;
+use rig::providers::chatgpt;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -37,30 +40,49 @@ struct CachedAuthRecord {
     expires_at: Option<i64>,
 }
 
-pub(crate) fn live_builder() -> chatgpt::ClientBuilder {
-    let mut builder = chatgpt::Client::builder();
-
-    if let Ok(base_url) =
-        std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
-    {
-        builder = builder.base_url(base_url);
-    }
-
-    if has_usable_oauth_cache() {
-        builder.oauth()
+/// The credential source the deleted `live_builder()` selected.
+pub(crate) fn live_authenticator() -> chatgpt::auth::Authenticator {
+    let source = if has_usable_oauth_cache() {
+        chatgpt::auth::AuthSource::OAuth
     } else if let Ok(access_token) = std::env::var("CHATGPT_ACCESS_TOKEN") {
-        let account_id = std::env::var("CHATGPT_ACCOUNT_ID").ok();
-        builder.api_key(ChatGPTAuth::AccessToken {
+        chatgpt::auth::AuthSource::AccessToken {
             access_token,
-            account_id,
-        })
+            account_id: std::env::var("CHATGPT_ACCOUNT_ID").ok(),
+        }
     } else {
-        builder.oauth()
-    }
+        chatgpt::auth::AuthSource::OAuth
+    };
+
+    chatgpt::auth::Authenticator::new(
+        source,
+        default_auth_file(),
+        chatgpt::auth::DeviceCodePrompter::default(),
+        true,
+    )
 }
 
-pub(crate) fn live_client() -> chatgpt::Client {
-    live_builder().build().expect("ChatGPT client should build")
+/// A live ChatGPT config for `model`.
+///
+/// `config_from_auth` applies the `CHATGPT_API_BASE` /
+/// `OPENAI_CHATGPT_API_BASE` override the old builder honored.
+pub(crate) async fn live_config(model: impl Into<String>) -> chatgpt::functions::Config {
+    chatgpt::functions::config_from_auth(model, &live_authenticator())
+        .await
+        .expect("ChatGPT credentials should resolve")
+}
+
+pub(crate) async fn live_provider(model: impl Into<String>) -> ProviderConfig {
+    ProviderConfig::ChatGpt(live_config(model).await)
+}
+
+pub(crate) async fn live_client() -> chatgpt::Client {
+    chatgpt::Client::from_env_with_oauth()
+        .await
+        .expect("ChatGPT credentials should resolve")
+}
+
+pub(crate) async fn live_agent(model: &str) -> AgentBuilder {
+    live_client().await.agent(model)
 }
 
 fn has_usable_oauth_cache() -> bool {

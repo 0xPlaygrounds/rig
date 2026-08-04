@@ -1,28 +1,51 @@
 # rig-candle
 
-`rig-candle` runs validated local checkpoints through Rig's `CompletionModel`
-and agent APIs. The crate receives byte buffers and performs no filesystem or
+`rig-candle` runs validated local checkpoints through Rig's completion
+protocol and the sans-IO agent machinery. The crate receives byte buffers and performs no filesystem or
 network access itself.
 
 ```rust,no_run
-use rig_agent::{agent::AgentBuilder, completion::Prompt};
+use rig_agent::agent::{AgentConfig, ToolCatalog, prepare_request};
 use rig_candle::{CandleModel, ModelData};
+use rig_core::completion::Message;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let model = CandleModel::from_safetensors_async(ModelData {
         config: std::fs::read("./model/config.json")?,
         tokenizer: std::fs::read("./model/tokenizer.json")?,
         weights: std::fs::read("./model/model.safetensors")?,
     })
     .await?;
-    let agent = AgentBuilder::new(model)
-        .preamble("You are a concise assistant.")
-        .build();
-    println!("{}", agent.prompt("Explain ownership briefly.").await?);
+    // A loaded model is not plain configuration, so candle drives the agent
+    // protocol's sans-IO half directly instead of the classic Agent.
+    let config = AgentConfig::new().with_preamble("You are a concise assistant.");
+    let prepared = prepare_request(
+        &config,
+        &ToolCatalog::default(),
+        false,
+        Message::user("Explain ownership briefly."),
+        &[],
+        None,
+        None,
+        None,
+        None,
+    )?;
+    let response = rig_candle::functions::complete(&model, prepared.request).await?;
+    println!("{:?}", response.choice.first());
     Ok(())
 }
 ```
+
+## Public shape
+
+`rig_candle::functions` is the crate's only face: `Config` (plain-data load and
+generation settings), `model_from_config` / `model_from_config_async`, and the
+free `complete` / `open_stream` functions. `CandleModel` is a *loaded handle*
+rather than configuration — tensors are materialized at construction — so it is
+an ordinary inherent type with inherent `complete` / `stream` methods that the
+free functions delegate to. It implements no model trait; the deleted
+`CompletionModel` impl (and the `make`-shaped "unsupported" placeholder state it
+required) are gone, so a `CandleModel` value is now always a ready model.
 
 ## Validated model profiles
 

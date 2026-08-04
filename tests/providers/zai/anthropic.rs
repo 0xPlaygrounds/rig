@@ -1,17 +1,15 @@
 //! Z.AI Anthropic-compatible completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::zai;
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use crate::zai::anthropic_client;
+use crate::zai::anthropic_config;
 
 #[tokio::test]
 #[ignore = "requires ZAI_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
-    let response = anthropic_client()
-        .agent(zai::GLM_4_6)
+    let response = AgentBuilder::new(anthropic_config(zai::GLM_4_6))
         .preamble(BASIC_PREAMBLE)
         .build()
         .prompt(BASIC_PROMPT)

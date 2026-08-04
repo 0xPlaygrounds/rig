@@ -1,16 +1,83 @@
+//! A calculator RAG chatbot: every tool is registered on the agent, and a
+//! retrieval hook re-selects which ones to advertise on each turn.
+//!
+//! Embedding is plain data plus a free function: an
+//! `openai::functions::EmbeddingConfig` names the model, an
+//! `HttpRuntime` carries the transport, and
+//! `rig::embeddings::embed_documents` replaced `EmbeddingsBuilder`.
+
 use anyhow::Result;
+use rig::OneOrMany;
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
+use rig::http_runtime::HttpRuntime;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
-    embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
-    tool::{Tool, ToolEmbedding, ToolSet},
+    embeddings::{EmbeddingJob, ToolSchema},
+    tool::Tool,
+    vector_store::VectorSearchRequest,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+/// Selects which registered tools the model sees on each turn by similarity
+/// between the turn's query and the tools' embedded documentation
+/// (`RequestPatch::active_tools` is the successor of index-backed dynamic
+/// tool retrieval).
+///
+/// A hook is an attach-and-forget record: a named [`HookEntry`] whose closure
+/// owns everything it needs — here the embedding config, the HTTP runtime, and
+/// the tool store — while each inline invocation future borrows that state.
+fn tool_retrieval_hook(
+    embedding_config: openai::functions::EmbeddingConfig,
+    rt: HttpRuntime,
+    store: InMemoryVectorStore,
+    samples: u64,
+) -> HookEntry {
+    let state = (embedding_config, rt, store, samples);
+    HookEntry::with_state("tool-retrieval", state, |state, event| async move {
+        let HookEvent::BeforeModelCall {
+            prompt, history, ..
+        } = event
+        else {
+            return HookDecision::Continue;
+        };
+        let (embedding_config, rt, store, samples) = state.as_ref();
+        let query = prompt
+            .rag_text()
+            .or_else(|| history.iter().rev().find_map(|message| message.rag_text()));
+        let Some(query) = query else {
+            return HookDecision::CompletionCall(CompletionCallAction::continue_run());
+        };
+
+        let embedded = match openai::functions::embed(embedding_config, rt, vec![query]).await {
+            Ok(response) => match response.embeddings.into_iter().next() {
+                Some(embedding) => embedding,
+                None => {
+                    return HookDecision::CompletionCall(CompletionCallAction::stop(
+                        "embedding response was empty",
+                    ));
+                }
+            },
+            Err(error) => {
+                return HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()));
+            }
+        };
+        let request = VectorSearchRequest::new(OneOrMany::one(embedded), *samples);
+        match store.top_n_ids(request).await {
+            Ok(hits) => HookDecision::CompletionCall(CompletionCallAction::patch(
+                RequestPatch::new().active_tools(hits.into_iter().map(|(_score, name)| name)),
+            )),
+            Err(error) => {
+                HookDecision::CompletionCall(CompletionCallAction::stop(error.to_string()))
+            }
+        }
+    })
+}
 
 #[derive(Deserialize)]
 struct OperationArgs {
@@ -21,10 +88,6 @@ struct OperationArgs {
 #[derive(Debug, thiserror::Error)]
 #[error("Math error")]
 struct MathError;
-
-#[derive(Debug, thiserror::Error)]
-#[error("Init error")]
-struct InitError;
 
 #[derive(Deserialize, Serialize)]
 struct Add;
@@ -56,30 +119,10 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
-}
-
-impl ToolEmbedding for Add {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Add)
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Add x and y together".into()]
-    }
-
-    fn context(&self) -> Self::Context {}
 }
 
 #[derive(Deserialize, Serialize)]
@@ -112,30 +155,10 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
-}
-
-impl ToolEmbedding for Subtract {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Subtract)
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Subtract y from x (i.e.: x - y)".into()]
-    }
-
-    fn context(&self) -> Self::Context {}
 }
 
 struct Multiply;
@@ -167,27 +190,10 @@ impl Tool for Multiply {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
         Ok(result)
     }
-}
-
-impl ToolEmbedding for Multiply {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Multiply)
-    }
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Compute the product of x and y (i.e.: x * y)".into()]
-    }
-    fn context(&self) -> Self::Context {}
 }
 
 struct Divide;
@@ -217,58 +223,46 @@ impl Tool for Divide {
             "required": [ "x", "y" ]
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
         Ok(result)
     }
 }
 
-impl ToolEmbedding for Divide {
-    type InitError = InitError;
-    type Context = ();
-    type State = ();
-
-    fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-        Ok(Divide)
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        vec!["Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".into()]
-    }
-
-    fn context(&self) -> Self::Context {}
-}
-
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    let client = openai::Client::from_env()?;
+    let rt = client.http();
+    let embedding_config = client.embedding_config(openai::TEXT_EMBEDDING_ADA_002);
 
-    // Create dynamic tools embeddings
-    let toolset = ToolSet::builder()
-        .retrieved_tool(Add)
-        .retrieved_tool(Subtract)
-        .retrieved_tool(Multiply)
-        .retrieved_tool(Divide)
-        .build();
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(toolset.schemas()?)?
-        .build()
+    // Embed the tools' documentation and index it by tool name.
+    let schemas = vec![
+        ToolSchema::new(Add::NAME, vec!["Add x and y together".into()]),
+        ToolSchema::new(
+            Subtract::NAME,
+            vec!["Subtract y from x (i.e.: x - y)".into()],
+        ),
+        ToolSchema::new(
+            Multiply::NAME,
+            vec!["Compute the product of x and y (i.e.: x * y)".into()],
+        ),
+        ToolSchema::new(
+            Divide::NAME,
+            vec!["Compute the Quotient of x and y (i.e.: x / y). Useful for ratios.".into()],
+        ),
+    ];
+    let embeddings = EmbeddingJob::new()
+        .documents(schemas)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embedding_config, &rt, texts))
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone());
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |tool| tool.name.clone())?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let calculator_rag = openai_client
-        .agent(openai::GPT_4)
-        .preamble(
+    // Create a RAG agent that carries every calculator tool and re-selects
+    // which ones to advertise on each turn through the retrieval hook.
+    let calculator_rag = client.agent(openai::GPT_4).preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
             Follow these instructions closely.
             1. Consider the user's request carefully and identify the core elements of the request.
@@ -280,16 +274,21 @@ async fn main() -> Result<(), anyhow::Error> {
             Inputs: <list of inputs>
             "
         )
-        // Add a dynamic tool source with a sample rate of 1 (i.e.: only
-        // 1 additional tool will be added to prompts)
-        .retrieved_tools(4, index, toolset)
+        .tool(Add)
+        .tool(Subtract)
+        .tool(Multiply)
+        .tool(Divide)
+        // Advertise up to 4 retrieved tools per turn.
+        .add_hook(tool_retrieval_hook(
+            embedding_config,
+            rt,
+            vector_store,
+            4,
+        ))
         .build();
 
     // Create a CLI chatbot from the agent
-    let chatbot = ChatBotBuilder::new()
-        .agent(calculator_rag)
-        .max_turns(2)
-        .build();
+    let chatbot = ChatBotBuilder::new(calculator_rag).max_turns(2).build();
 
     chatbot.run().await?;
 

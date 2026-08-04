@@ -5,6 +5,167 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 
+/// Invalid provider extension parameters at a request-owned serialization
+/// boundary.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum RequestOverlayError {
+    /// Extension parameters must be a JSON object (or `null`).
+    #[error("{context} additional parameters must be a JSON object, got {kind}")]
+    NonObject {
+        /// Provider/request surface being built.
+        context: &'static str,
+        /// JSON value kind supplied by the caller.
+        kind: &'static str,
+    },
+    /// An extension key tried to replace a request-owned field.
+    #[error("{context} additional parameter `{key}` collides with a request-owned field")]
+    Collision {
+        /// Provider/request surface being built.
+        context: &'static str,
+        /// Rejected field name.
+        key: String,
+    },
+    /// The canonical request builder did not produce an object.
+    #[error("{context} canonical request must serialize as a JSON object")]
+    CanonicalNotObject {
+        /// Provider/request surface being built.
+        context: &'static str,
+    },
+}
+
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+/// Validate and borrow provider extension parameters as an object.
+///
+/// `reserved` lists request-owned fields that may be absent from the concrete
+/// serialized value because of `skip_serializing_if`. `null` is treated as no
+/// extension parameters. Any collision is rejected rather than silently
+/// choosing caller or canonical precedence.
+pub fn validated_additional_params<'a>(
+    params: Option<&'a serde_json::Value>,
+    reserved: &[&str],
+    context: &'static str,
+) -> Result<Option<&'a serde_json::Map<String, serde_json::Value>>, RequestOverlayError> {
+    let Some(params) = params else {
+        return Ok(None);
+    };
+    if params.is_null() {
+        return Ok(None);
+    }
+    let serde_json::Value::Object(params) = params else {
+        return Err(RequestOverlayError::NonObject {
+            context,
+            kind: json_kind(params),
+        });
+    };
+    if let Some(key) = params
+        .keys()
+        .find(|key| reserved.iter().any(|reserved| key == reserved))
+    {
+        return Err(RequestOverlayError::Collision {
+            context,
+            key: key.clone(),
+        });
+    }
+    Ok(Some(params))
+}
+
+/// Merge validated provider extension parameters into a canonical JSON object.
+///
+/// Present canonical keys are always protected in addition to the explicit
+/// `reserved` list, so callers only need to list request-owned fields that can
+/// be omitted from the concrete value.
+pub fn merge_additional_params(
+    canonical: serde_json::Value,
+    params: Option<serde_json::Value>,
+    reserved: &[&str],
+    context: &'static str,
+) -> Result<serde_json::Value, RequestOverlayError> {
+    let serde_json::Value::Object(mut canonical) = canonical else {
+        return Err(RequestOverlayError::CanonicalNotObject { context });
+    };
+    let Some(validated_params) = validated_additional_params(params.as_ref(), reserved, context)?
+    else {
+        return Ok(serde_json::Value::Object(canonical));
+    };
+    if let Some(key) = validated_params
+        .keys()
+        .find(|key| canonical.contains_key(*key))
+    {
+        return Err(RequestOverlayError::Collision {
+            context,
+            key: key.clone(),
+        });
+    }
+    // Re-match the owner after borrowed validation so the object map can move.
+    if let Some(serde_json::Value::Object(params)) = params {
+        canonical.extend(params);
+    }
+    Ok(serde_json::Value::Object(canonical))
+}
+
+/// Deeply merge validated provider extensions into a canonical JSON object.
+///
+/// Object-valued fields are merged recursively, which lets a provider-native
+/// nested field coexist with different request-owned leaves in the same
+/// object. A collision is reported only at the first leaf both inputs own.
+/// Explicit `reserved` fields still protect omitted top-level fields.
+pub fn merge_additional_params_deep(
+    canonical: serde_json::Value,
+    params: Option<serde_json::Value>,
+    reserved: &[&str],
+    context: &'static str,
+) -> Result<serde_json::Value, RequestOverlayError> {
+    let serde_json::Value::Object(mut canonical) = canonical else {
+        return Err(RequestOverlayError::CanonicalNotObject { context });
+    };
+    let Some(params) = validated_additional_params(params.as_ref(), reserved, context)? else {
+        return Ok(serde_json::Value::Object(canonical));
+    };
+
+    merge_objects_deep(&mut canonical, params, context, None)?;
+    Ok(serde_json::Value::Object(canonical))
+}
+
+fn merge_objects_deep(
+    canonical: &mut serde_json::Map<String, serde_json::Value>,
+    params: &serde_json::Map<String, serde_json::Value>,
+    context: &'static str,
+    parent_path: Option<&str>,
+) -> Result<(), RequestOverlayError> {
+    for (key, value) in params {
+        let path = match parent_path {
+            Some(parent) => format!("{parent}.{key}"),
+            None => key.clone(),
+        };
+
+        match canonical.get_mut(key) {
+            Some(serde_json::Value::Object(canonical_object)) => {
+                let serde_json::Value::Object(params_object) = value else {
+                    return Err(RequestOverlayError::Collision { context, key: path });
+                };
+                merge_objects_deep(canonical_object, params_object, context, Some(&path))?;
+            }
+            Some(_) => return Err(RequestOverlayError::Collision { context, key: path }),
+            None => {
+                canonical.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     match (a, b) {
         (serde_json::Value::Object(mut a_map), serde_json::Value::Object(b_map)) => {
@@ -17,10 +178,11 @@ pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {
     }
 }
 
-// Only the feature-gated `image` / `audio` provider request builders call this
-// now; the default feature set has no caller, so allow it to be unused there
-// rather than warning on an otherwise-live utility.
-#[cfg_attr(not(any(feature = "image", feature = "audio")), allow(dead_code))]
+/// Extend one JSON object with another using last-writer-wins semantics.
+///
+/// This is a generic JSON utility, not a provider request boundary. Provider
+/// extensions must use [`merge_additional_params`] so request-owned fields
+/// cannot be replaced silently.
 pub fn merge_inplace(a: &mut serde_json::Value, b: serde_json::Value) {
     if let (serde_json::Value::Object(a_map), serde_json::Value::Object(b_map)) = (a, b) {
         b_map.into_iter().for_each(|(key, value)| {
@@ -318,6 +480,139 @@ mod tests {
         merge_inplace(&mut a, b);
         let expected = serde_json::json!({"key1": "value1", "key2": "value2"});
         assert_eq!(a, expected);
+    }
+
+    #[test]
+    fn additional_params_reject_present_and_omitted_canonical_keys() {
+        let canonical = serde_json::json!({"model": "m"});
+        let present = merge_additional_params(
+            canonical.clone(),
+            Some(serde_json::json!({"model": "override"})),
+            &["temperature"],
+            "test request",
+        )
+        .expect_err("present canonical key must collide");
+        assert!(matches!(
+            present,
+            RequestOverlayError::Collision { key, .. } if key == "model"
+        ));
+
+        let omitted = merge_additional_params(
+            canonical,
+            Some(serde_json::json!({"temperature": 1.0})),
+            &["temperature"],
+            "test request",
+        )
+        .expect_err("omitted canonical key must remain reserved");
+        assert!(matches!(
+            omitted,
+            RequestOverlayError::Collision { key, .. } if key == "temperature"
+        ));
+    }
+
+    #[test]
+    fn additional_params_preserve_unrelated_provider_fields() {
+        let merged = merge_additional_params(
+            serde_json::json!({"model": "m"}),
+            Some(serde_json::json!({"vendor_option": {"enabled": true}})),
+            &["temperature"],
+            "test request",
+        )
+        .expect("unrelated extension should merge");
+        assert_eq!(merged["model"], "m");
+        assert_eq!(merged["vendor_option"]["enabled"], true);
+    }
+
+    #[test]
+    fn deep_additional_params_merge_distinct_nested_leaves() {
+        let merged = merge_additional_params_deep(
+            serde_json::json!({
+                "generationConfig": {
+                    "imageConfig": {"aspectRatio": "1:1"},
+                    "responseModalities": ["IMAGE"]
+                }
+            }),
+            Some(serde_json::json!({
+                "generationConfig": {
+                    "imageConfig": {"imageSize": "2K"},
+                    "temperature": 0.4
+                }
+            })),
+            &[],
+            "test request",
+        )
+        .expect("distinct nested leaves should merge");
+
+        assert_eq!(
+            merged["generationConfig"]["imageConfig"]["aspectRatio"],
+            "1:1"
+        );
+        assert_eq!(merged["generationConfig"]["imageConfig"]["imageSize"], "2K");
+        assert_eq!(merged["generationConfig"]["temperature"], 0.4);
+    }
+
+    #[test]
+    fn deep_additional_params_reject_exact_nested_leaf_collisions() {
+        let error = merge_additional_params_deep(
+            serde_json::json!({
+                "generationConfig": {
+                    "imageConfig": {"aspectRatio": "1:1"}
+                }
+            }),
+            Some(serde_json::json!({
+                "generationConfig": {
+                    "imageConfig": {"aspectRatio": "16:9"}
+                }
+            })),
+            &[],
+            "test request",
+        )
+        .expect_err("the same nested leaf must collide");
+
+        assert!(matches!(
+            error,
+            RequestOverlayError::Collision { key, .. }
+                if key == "generationConfig.imageConfig.aspectRatio"
+        ));
+    }
+
+    #[test]
+    fn additional_params_require_an_object_or_null() {
+        let error = validated_additional_params(
+            Some(&serde_json::json!(["not", "an", "object"])),
+            &[],
+            "test request",
+        )
+        .expect_err("array must fail");
+        assert!(matches!(
+            error,
+            RequestOverlayError::NonObject { kind: "array", .. }
+        ));
+        assert!(
+            validated_additional_params(Some(&serde_json::Value::Null), &[], "test request")
+                .expect("null means no extensions")
+                .is_none()
+        );
+
+        let canonical = serde_json::json!({"model": "m"});
+        let merge_error = merge_additional_params(
+            canonical.clone(),
+            Some(serde_json::json!(["not", "an", "object"])),
+            &[],
+            "test request",
+        )
+        .expect_err("merge must preserve non-object validation");
+        assert_eq!(merge_error, error);
+        assert_eq!(
+            merge_additional_params(
+                canonical.clone(),
+                Some(serde_json::Value::Null),
+                &[],
+                "test request",
+            )
+            .expect("null means no extensions"),
+            canonical,
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::{completion::Prompt, providers::anthropic, tool::Tool};
+use rig::{providers::anthropic, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -10,11 +10,10 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = anthropic::Client::from_env()?;
+    let client = anthropic::Client::from_env()?;
 
-    // Create RAG agent with a single context prompt and a dynamic tool source
-    let agent = openai_client
+    // Create a tool-using agent over that config
+    let agent = client
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an assistant here to help the user select which tool is most appropriate to perform arithmetic operations.
@@ -32,18 +31,18 @@ async fn main() -> anyhow::Result<()> {
 
     // Prompt the agent and print the response
     let result = agent
-        .prompt("Calculate 5 - 2 = ?. Describe the result to me.")
+        .runner("Calculate 5 - 2 = ?. Describe the result to me.")
         .max_turns(20)
-        .extended_details()
+        .run()
         .await?;
 
     println!("\n\nOpenAI Calculator Agent: {result:?}");
 
     // Prompt the agent again and print the response
     let result = agent
-        .prompt("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
+        .runner("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
         .max_turns(20)
-        .extended_details()
+        .run()
         .await?;
 
     println!("\n\nOpenAI Calculator Agent: {result:?}");
@@ -90,11 +89,7 @@ impl Tool for Add {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x + args.y;
         Ok(result)
     }
@@ -129,11 +124,7 @@ impl Tool for Subtract {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x - args.y;
         Ok(result)
     }
@@ -168,11 +159,7 @@ impl Tool for Multiply {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x * args.y;
         Ok(result)
     }
@@ -207,11 +194,7 @@ impl Tool for Divide {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let result = args.x / args.y;
         Ok(result)
     }

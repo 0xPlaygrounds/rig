@@ -1,5 +1,10 @@
 // ================================================================
-//! Google Gemini gRPC Completion Integration
+//! Google Gemini gRPC completion wire conversions.
+//!
+//! Model identifiers plus the pure `CompletionRequest` -> proto and proto ->
+//! `CompletionResponse` conversions used by [`crate::functions::complete`]
+//! and [`crate::functions::open_stream`]. Drive completions through
+//! [`crate::functions`], not this module.
 // ================================================================
 
 /// `gemini-2.5-flash` completion model
@@ -19,67 +24,7 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
-use super::Client;
 use super::proto::{self, GenerateContentRequest, GenerateContentResponse};
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-#[derive(Clone, Debug)]
-pub struct CompletionModel {
-    pub(crate) client: Client,
-    pub model: String,
-}
-
-impl CompletionModel {
-    pub fn new(client: Client, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl completion::CompletionModel for CompletionModel {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = super::streaming::StreamingCompletionResponse;
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
-        let request = create_grpc_request(self.model.clone(), completion_request)?;
-
-        let mut grpc_client = self
-            .client
-            .grpc_client()
-            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-
-        let response = grpc_client
-            .generate_content(request)
-            .await
-            .map_err(rpc_error)?
-            .into_inner();
-
-        response.try_into()
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        super::streaming::stream(self.client.clone(), self.model.clone(), request).await
-    }
-}
 
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no
@@ -99,7 +44,6 @@ pub(crate) fn create_grpc_request(
 ) -> Result<GenerateContentRequest, CompletionError> {
     let CompletionRequest {
         model: _,
-        preamble,
         chat_history,
         documents: _,
         tools,
@@ -119,18 +63,8 @@ pub(crate) fn create_grpc_request(
         contents.push(rig_message_to_grpc_content(msg)?);
     }
 
-    // Handle system instruction (preamble)
+    // System instructions come from canonical `Message::System` entries.
     let mut system_parts = Vec::new();
-    if let Some(preamble) = preamble
-        && !preamble.is_empty()
-    {
-        system_parts.push(proto::Part {
-            data: Some(proto::part::Data::Text(preamble)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        });
-    }
     for content in history_system {
         if !content.is_empty() {
             system_parts.push(proto::Part {
@@ -391,8 +325,31 @@ fn rig_assistant_content_to_grpc_part(
     }
 }
 
+/// Map a Gemini proto finish reason code onto rig's normalized finish reason.
+/// `FINISH_REASON_UNSPECIFIED` (0) means the provider reported nothing.
+pub(crate) fn map_finish_reason(code: i32) -> Option<completion::FinishReason> {
+    let reason = proto::candidate::FinishReason::try_from(code)
+        .unwrap_or(proto::candidate::FinishReason::Unspecified);
+    match reason {
+        proto::candidate::FinishReason::Unspecified => None,
+        proto::candidate::FinishReason::Stop => Some(completion::FinishReason::Stop),
+        proto::candidate::FinishReason::MaxTokens => Some(completion::FinishReason::Length),
+        proto::candidate::FinishReason::Safety
+        | proto::candidate::FinishReason::Blocklist
+        | proto::candidate::FinishReason::ProhibitedContent
+        | proto::candidate::FinishReason::Spii
+        | proto::candidate::FinishReason::ImageSafety
+        | proto::candidate::FinishReason::ImageProhibitedContent => {
+            Some(completion::FinishReason::ContentFilter)
+        }
+        other => Some(completion::FinishReason::Other(
+            other.as_str_name().to_owned(),
+        )),
+    }
+}
+
 // Convert gRPC GenerateContentResponse to Rig CompletionResponse
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
@@ -495,12 +452,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut completion_response =
+            completion::CompletionResponse::new(choice, usage, "gemini-grpc");
+        if let Some(finish_reason) = map_finish_reason(candidate.finish_reason) {
+            completion_response = completion_response.with_finish_reason(finish_reason);
+        }
+        if !response.response_id.is_empty() {
+            completion_response = completion_response.with_message_id(response.response_id.clone());
+        }
+        if !response.model_version.is_empty() {
+            completion_response = completion_response.with_model(response.model_version.clone());
+        }
+
+        Ok(completion_response)
     }
 }
 
@@ -974,7 +938,6 @@ mod tests {
             "gemini-2.5-flash".to_string(),
             CompletionRequest {
                 model: None,
-                preamble: None,
                 chat_history: OneOrMany::one(message::Message::user("forecast in Berlin?")),
                 documents: Vec::new(),
                 tools: vec![tool],
@@ -1001,5 +964,41 @@ mod tests {
         assert_eq!(params.r#type, proto::Type::Object as i32);
         assert_eq!(params.required, vec!["city".to_string()]);
         assert!(params.properties.contains_key("city"));
+    }
+
+    /// Gemini gRPC carries system instructions in a dedicated
+    /// `system_instruction` Content, and `rig_message_to_grpc_content`
+    /// deliberately *errors* on a system message — so they must be split out of
+    /// the history before conversion. This pins both halves: ordered placement
+    /// in `system_instruction`, and no system content among `contents`.
+    #[test]
+    fn system_messages_land_in_system_instruction_not_contents() {
+        let request = rig_core::completion::CompletionRequest::builder("now")
+            .preamble("first")
+            .message(rig_core::message::Message::system("second"))
+            .message(rig_core::message::Message::user("earlier"))
+            .build();
+
+        let converted =
+            create_grpc_request("gemini-2.5-flash".to_string(), request).expect("request builds");
+
+        let instruction = converted
+            .system_instruction
+            .expect("system instruction present");
+        let texts: Vec<String> = instruction
+            .parts
+            .iter()
+            .filter_map(|part| match &part.data {
+                Some(proto::part::Data::Text(text)) => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["first", "second"], "order must be preserved");
+
+        let rendered = format!("{:?}", converted.contents);
+        assert!(
+            !rendered.contains("first") && !rendered.contains("second"),
+            "system text must not leak into contents: {rendered}"
+        );
     }
 }

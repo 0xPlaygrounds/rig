@@ -1,6 +1,5 @@
 //! Perplexity context/document cassette coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::perplexity;
 
@@ -10,11 +9,11 @@ use super::super::support::with_perplexity_cassette;
 
 #[tokio::test]
 async fn context_smoke() {
-    with_perplexity_cassette("context/context_smoke", |client| async move {
+    with_perplexity_cassette("context/context_smoke", |env| async move {
         let agent = CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(perplexity::SONAR), |builder, doc| {
+            .fold(env.agent(perplexity::SONAR), |builder, doc| {
                 builder.context(doc)
             })
             .preamble(

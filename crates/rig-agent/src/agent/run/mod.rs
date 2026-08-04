@@ -29,25 +29,42 @@
 //! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
-//! [`crate::completion::Prompt::prompt`] and
+//! [`crate::Agent::prompt`] and
 //! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow:
 //!
 //! ```rust,no_run
+//! use std::collections::BTreeSet;
 //! use rig_agent::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+//! use rig_core::{OneOrMany, completion::{AssistantContent, Usage}};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut run = AgentRun::new("What is 2+2?").max_turns(3);
 //! loop {
 //!     match run.next_step()? {
-//!         AgentRunStep::CallModel { prompt, history, .. } => {
-//!             // Send `prompt` + `history` to a model, then:
-//!             // run.model_response(ModelTurn { ... })?;
+//!         AgentRunStep::CallModel { prompt, history, attempt_id, .. } => {
+//!             // Send `prompt` + `history` to a model. This example response
+//!             // stands in for the provider result.
 //!             # let _ = (prompt, history);
-//!             # break;
+//!             let turn = ModelTurn::new(
+//!                 attempt_id,
+//!                 None,
+//!                 OneOrMany::one(AssistantContent::text("4")),
+//!                 Usage::new(),
+//!                 BTreeSet::new(),
+//!                 BTreeSet::new(),
+//!             );
+//!             match run.model_response(turn)? {
+//!                 ModelTurnOutcome::Continue(_) => run.continue_model_turn()?,
+//!                 ModelTurnOutcome::NeedsResolution(context) => {
+//!                     return Err(format!("model called unavailable tool: {}", context.tool_name).into());
+//!                 }
+//!                 ModelTurnOutcome::TurnRetried => continue,
+//!             }
 //!         }
 //!         AgentRunStep::CallTools { calls } => {
-//!             // Execute `calls`, then: run.tool_results(results)?;
+//!             // Execute each call, then submit its result with the call's
+//!             // `internal_call_id` via `run.tool_result_submissions(...)`.
 //!             # let _ = calls;
 //!         }
 //!         AgentRunStep::Done(response) => {
@@ -72,11 +89,12 @@ use serde::{Deserialize, Serialize};
 use rig_core::{
     OneOrMany,
     message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
+    schemars::Schema,
 };
 
 use crate::{
     agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
-    agent::prompt_request::{
+    agent::response::{
         CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
@@ -89,6 +107,60 @@ pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
+
+/// Effective Tool-mode structured-output contract for one model attempt.
+///
+/// This is intentionally separate from `CompletionRequest::output_schema`:
+/// Tool mode advertises the schema as a synthetic tool and leaves the
+/// provider-native structured-output field unset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolOutputContract {
+    /// Synthetic output tool advertised for this attempt.
+    pub output_tool_name: String,
+    /// Schema advertised as that tool's parameters.
+    pub effective_schema: Schema,
+}
+
+/// Opaque identity for one model-operation authorization issued by an
+/// [`AgentRun`].
+///
+/// Pass this value back through
+/// [`prepare_request`](super::prepare::prepare_request) so the resulting
+/// response receipt can be committed only to the operation that authorized
+/// it. A retry or reissue receives a different identity even when it keeps the
+/// same logical [`AgentRunStep::CallModel::turn`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModelAttemptId(String);
+
+impl ModelAttemptId {
+    /// Generate an identity for standalone request preparation. When driving
+    /// an [`AgentRun`], use the identity carried by its `CallModel` step
+    /// instead.
+    pub fn new() -> Self {
+        Self(rig_core::id::generate())
+    }
+
+    /// Borrow the generated identity as text for correlation and telemetry.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ModelAttemptId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Attempt-specific state promoted into a model turn only after provider IO
+/// commits successfully.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ModelAttemptContext {
+    pub(crate) attempt_id: ModelAttemptId,
+    pub(crate) prompt: Message,
+    pub(crate) output_contract: Option<ToolOutputContract>,
+}
 
 /// Build the canonical "the model called a tool that isn't available" error.
 /// The identical shape is raised from every recovery-rejection path
@@ -112,7 +184,7 @@ fn unknown_tool_call_error(
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
-pub(crate) const DEFAULT_OUTPUT_RETRIES: usize = 1;
+pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
 
 /// What a driver must do next to advance an [`AgentRun`].
 ///
@@ -128,8 +200,12 @@ pub enum AgentRunStep {
         /// The chat history preceding `prompt`: the caller-provided input
         /// history followed by messages accumulated by earlier turns.
         history: Vec<Message>,
-        /// One-based index of this model call within the run.
+        /// One-based logical turn number. A failed or cancelled operation can
+        /// be reissued with the same turn number and a fresh `attempt_id`.
         turn: usize,
+        /// Identity of this authorized provider operation. Bind it into the
+        /// prepared request so stale or replayed responses are rejected.
+        attempt_id: ModelAttemptId,
     },
     /// Execute these tool calls and feed the results back via
     /// [`AgentRun::tool_results`].
@@ -139,6 +215,49 @@ pub enum AgentRunStep {
     },
     /// The run is complete.
     Done(PromptResponse),
+}
+
+/// Authoritative provenance for whether a tool invocation actually executed.
+///
+/// This is carried independently from the model-visible result because a tool
+/// body may itself return a skipped-classified [`crate::tool::ToolResult`],
+/// while a policy skip produces a durable result without invoking the body.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ToolInvocationDisposition {
+    /// Rig invoked the registered tool body.
+    Executed,
+    /// A host supplied the result for execution performed outside Rig.
+    #[default]
+    ExternallyExecuted,
+    /// No tool body ran; the result was resolved before or instead of
+    /// execution.
+    NotExecuted {
+        /// Policy or recovery reason, when one is available.
+        reason: Option<String>,
+    },
+}
+
+impl ToolInvocationDisposition {
+    /// Whether this invocation represents actual local or external execution
+    /// and should therefore emit an execution observation.
+    pub fn execution_committed(&self) -> bool {
+        matches!(self, Self::Executed | Self::ExternallyExecuted)
+    }
+
+    pub(crate) fn not_executed(reason: impl Into<Option<String>>) -> Self {
+        Self::NotExecuted {
+            reason: reason.into(),
+        }
+    }
+}
+
+/// One result resolved before tool execution, positionally aligned with its
+/// assistant content item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PreresolvedToolResult {
+    result: UserContent,
+    disposition: ToolInvocationDisposition,
 }
 
 /// One tool call awaiting execution by the driver.
@@ -157,12 +276,100 @@ pub struct PendingToolCall {
     /// tool-call deltas. Drivers generate a fresh ID when absent.
     #[serde(default)]
     pub internal_call_id: Option<String>,
+    /// Original model-emitted call retained while hook rewrites change
+    /// [`Self::tool_call`]. Serialized so forwarded/replayed inboxes keep the
+    /// original/effective distinction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) original_tool_call: Option<Box<ToolCall>>,
+    /// Data-only disposition for a pre-resolved decision. The visible result
+    /// carries presentation; this field preserves execution semantics through
+    /// serialization and every later result gate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invocation_disposition: Option<ToolInvocationDisposition>,
+}
+
+impl PendingToolCall {
+    /// A pending call for `tool_call` with no preresolved result and no
+    /// streamed internal call ID.
+    pub fn new(tool_call: ToolCall) -> Self {
+        Self {
+            tool_call,
+            preresolved_result: None,
+            internal_call_id: None,
+            original_tool_call: None,
+            invocation_disposition: None,
+        }
+    }
+
+    /// Attach a preresolved result the driver must return as this call's tool
+    /// result without executing the tool.
+    pub fn with_preresolved_result(mut self, result: UserContent) -> Self {
+        self.preresolved_result = Some(result);
+        self.invocation_disposition = Some(ToolInvocationDisposition::not_executed(None));
+        self
+    }
+
+    /// Return the stable Rig identity for this invocation, generating it once
+    /// when a non-streamed call first reaches a driver.
+    pub fn ensure_internal_call_id(&mut self) -> &str {
+        self.internal_call_id
+            .get_or_insert_with(rig_core::id::generate)
+    }
+}
+
+/// One host-supplied result tied to Rig's unique invocation identity.
+///
+/// Provider tool-call IDs are payload and may repeat within a batch. Drivers
+/// therefore accept results through this record instead of reconstructing an
+/// invocation from [`rig_core::message::ToolResult::id`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ToolResultSubmission {
+    /// The [`PendingToolCall::internal_call_id`] being answered.
+    pub internal_call_id: String,
+    /// The model-visible tool result for that invocation.
+    pub result: UserContent,
+    /// Whether producing this result involved an actual tool execution.
+    #[serde(default)]
+    pub disposition: ToolInvocationDisposition,
+}
+
+impl ToolResultSubmission {
+    /// Associate an externally executed `result` with one pending Rig
+    /// invocation.
+    ///
+    /// The host is asserting that execution occurred outside Rig, so streaming
+    /// drivers emit the same execution observation as for a locally executed
+    /// tool body. Results already resolved by Rig policy carry their
+    /// [`ToolInvocationDisposition::NotExecuted`] disposition internally.
+    pub fn new(internal_call_id: impl Into<String>, result: UserContent) -> Self {
+        Self {
+            internal_call_id: internal_call_id.into(),
+            result,
+            disposition: ToolInvocationDisposition::ExternallyExecuted,
+        }
+    }
+
+    pub(crate) fn with_disposition(
+        internal_call_id: impl Into<String>,
+        result: UserContent,
+        disposition: ToolInvocationDisposition,
+    ) -> Self {
+        Self {
+            internal_call_id: internal_call_id.into(),
+            result,
+            disposition,
+        }
+    }
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ModelTurn {
+    /// Identity of the [`AgentRunStep::CallModel`] operation that produced
+    /// this response.
+    attempt_id: ModelAttemptId,
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,
     /// The assistant content returned by the model.
@@ -173,12 +380,22 @@ pub struct ModelTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
+    /// Driver-owned attempt context. Hand-driven callers use the context
+    /// derived from the pending run step when this is absent.
+    #[serde(default)]
+    attempt_context: Option<ModelAttemptContext>,
 }
 
 impl ModelTurn {
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
+    ///
+    /// When the request came from [`prepare_request`](super::prepare::prepare_request),
+    /// use [`PreparedModelAttempt::into_model_turn`](super::prepare::PreparedModelAttempt::into_model_turn)
+    /// instead so per-turn patches and attempt identity commit with the
+    /// response.
     pub fn new(
+        attempt_id: ModelAttemptId,
         message_id: Option<String>,
         choice: OneOrMany<AssistantContent>,
         usage: Usage,
@@ -186,12 +403,75 @@ impl ModelTurn {
         allowed_tool_names: BTreeSet<String>,
     ) -> Self {
         Self {
+            attempt_id,
             message_id,
             choice,
             usage,
             executable_tool_names,
             allowed_tool_names,
+            attempt_context: None,
         }
+    }
+
+    pub(crate) fn with_attempt_context(mut self, context: ModelAttemptContext) -> Self {
+        self.attempt_id = context.attempt_id.clone();
+        self.attempt_context = Some(context);
+        self
+    }
+
+    pub(crate) fn unbound(
+        message_id: Option<String>,
+        choice: OneOrMany<AssistantContent>,
+        usage: Usage,
+        executable_tool_names: BTreeSet<String>,
+        allowed_tool_names: BTreeSet<String>,
+    ) -> Self {
+        Self::new(
+            ModelAttemptId::new(),
+            message_id,
+            choice,
+            usage,
+            executable_tool_names,
+            allowed_tool_names,
+        )
+    }
+}
+
+/// Canonical accepted model turn owned by the shared run state.
+///
+/// Unary and streaming drivers surface their normalized turn policy from this
+/// record instead of reconstructing the boundary from provider-local state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct AcceptedModelTurn {
+    /// One-based logical turn number. Provider-operation reissues retain it.
+    pub turn: usize,
+    /// Provider-assigned assistant message ID, when available.
+    pub message_id: Option<String>,
+    /// Canonical content after invalid-call repair and validation.
+    pub content: OneOrMany<AssistantContent>,
+    /// Usage reported for this provider call.
+    pub usage: Usage,
+    /// Whether this medium's provider-response observation is suppressed.
+    pub response_hook_suppressed: bool,
+    /// The provider-operation contract that produced this accepted turn.
+    attempt_context: Box<ModelAttemptContext>,
+}
+
+impl AcceptedModelTurn {
+    /// Real prompt sent by the accepted provider attempt.
+    pub fn prompt(&self) -> &Message {
+        &self.attempt_context.prompt
+    }
+
+    /// Identity unique to the provider operation that produced this turn.
+    pub fn attempt_id(&self) -> &str {
+        self.attempt_context.attempt_id.as_str()
+    }
+
+    /// Effective Tool-mode contract for this turn, when Tool mode was used.
+    pub fn output_contract(&self) -> Option<&ToolOutputContract> {
+        self.attempt_context.output_contract.as_ref()
     }
 }
 
@@ -200,19 +480,18 @@ impl ModelTurn {
 ///
 /// Deliberately exhaustive: a driver must handle every outcome, so adding a
 /// variant is a breaking change by design.
+#[must_use = "the model-turn outcome must be resolved before advancing the run"]
 #[derive(Debug)]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
-    /// driver should run its completion-response hook now, then call
-    /// [`AgentRun::next_step`].
+    /// driver should run its completion-response hook now. It must then apply
+    /// its verdict with [`AgentRun::continue_model_turn`] (or
+    /// [`AgentRun::retry_model_turn`]) before calling [`AgentRun::next_step`].
     ///
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
     /// of not invoking `on_completion_response` for recovered turns.
-    Continue {
-        /// Whether the driver should suppress its completion-response hook.
-        response_hook_suppressed: bool,
-    },
+    Continue(AcceptedModelTurn),
     /// The model emitted a tool call that is unknown or disallowed for this
     /// turn. The driver must decide how to recover (typically by asking its
     /// invalid tool-call hook) and answer via
@@ -226,18 +505,24 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
+    attempt_context: ModelAttemptContext,
     message_id: Option<String>,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: OneOrMany<AssistantContent>,
+    usage: Usage,
     /// Working copy of the assistant content; repairs rename tool calls here.
     items: Vec<AssistantContent>,
+    /// Original calls aligned with `items`; populated only where repair makes
+    /// the effective call differ from provider output.
+    original_calls: Vec<Option<ToolCall>>,
     /// Index of the next item to validate.
     next_index: usize,
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
-    /// Synthetic tool results for skipped tool calls, keyed by tool call ID.
-    skipped: BTreeMap<String, UserContent>,
+    /// Synthetic results positionally aligned with `items`. Provider IDs are
+    /// payload and may duplicate.
+    skipped: Vec<Option<PreresolvedToolResult>>,
     recovered: bool,
     any_skipped: bool,
     has_tool_calls: bool,
@@ -245,28 +530,46 @@ struct ResolvingState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
-    message_id: Option<String>,
-    items: Vec<AssistantContent>,
+    accepted: AcceptedModelTurn,
     has_tool_calls: bool,
-    skipped: BTreeMap<String, UserContent>,
-    /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
-    /// emission order; empty for non-streamed turns.
+    /// Synthetic results positionally aligned with `items`.
+    skipped: Vec<Option<PreresolvedToolResult>>,
+    /// Original provider calls aligned with the tool-call subsequence.
+    original_tool_calls: Vec<Option<ToolCall>>,
+    /// Rig identities positionally aligned with the streamed tool-call
+    /// subsequence; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, String)>,
+    internal_call_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum RunState {
     /// Ready to emit [`AgentRunStep::CallModel`].
-    PreparingRequest,
+    PreparingRequest {
+        /// Contract inherited only by a corrective retry.
+        inherited_output_contract: Option<ToolOutputContract>,
+        /// Abandoned streamed operation whose final usage may still be
+        /// recorded before this request is issued.
+        #[serde(default)]
+        completion_record_attempt_id: Option<ModelAttemptId>,
+    },
     /// Waiting for [`AgentRun::model_response`].
-    AwaitingModel,
+    AwaitingModel {
+        /// Identity of the provider operation currently authorized to commit
+        /// a response to this run.
+        attempt_id: ModelAttemptId,
+        /// Contract inherited by this request before its effective request is
+        /// prepared. A committed driver attempt may replace it.
+        inherited_output_contract: Option<ToolOutputContract>,
+    },
     /// Scanning the model turn's tool calls for validity; may be waiting for
     /// [`AgentRun::resolve_invalid_tool_call`].
     ResolvingToolCalls(Box<ResolvingState>),
-    /// The turn was accepted; ready to emit [`AgentRunStep::CallTools`] or
-    /// [`AgentRunStep::Done`].
-    AwaitingAdvance(Box<TurnState>),
+    /// The turn was accepted and still requires a normalized host verdict.
+    AwaitingTurnVerdict(Box<TurnState>),
+    /// The host accepted the turn; ready to emit [`AgentRunStep::CallTools`]
+    /// or [`AgentRunStep::Done`].
+    ReadyToAdvance(Box<TurnState>),
     /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
     /// Carrying the calls in the state keeps a serialized run self-contained:
     /// a resumed process re-obtains them from [`AgentRun::next_step`].
@@ -292,7 +595,7 @@ pub struct AgentRun {
     /// JSON schema the Tool-mode output must satisfy, used to re-prompt on
     /// missing required fields before finalizing best-effort (#1928).
     #[serde(default)]
-    output_schema: Option<serde_json::Value>,
+    output_schema: Option<Schema>,
     /// Budget for re-prompting the model in Tool output mode when it finalizes
     /// without calling the output tool, or calls it with arguments missing
     /// required fields. Exhausting it finalizes best-effort.
@@ -302,15 +605,16 @@ pub struct AgentRun {
     output_retries: usize,
     chat_history: Option<Vec<Message>>,
     new_messages: Vec<Message>,
+    /// Logical turn index. Provider-operation reissues roll this back so the
+    /// replacement keeps the same turn number.
     current_turn: usize,
+    /// Number of model-call authorizations emitted. Unlike `current_turn`,
+    /// this never rolls back and is the counter bounded by `max_turns`.
+    model_call_attempts: usize,
     usage: Usage,
     completion_calls: Vec<CompletionCall>,
     completion_call_index: usize,
     invalid_tool_call_retries: usize,
-    /// Set while a streamed turn rollback awaits its completion-call record;
-    /// see [`AgentRun::record_streamed_completion_call`].
-    #[serde(default)]
-    rollback_pending: bool,
     /// Set once the current streamed model turn's completion call has been
     /// recorded, rejecting duplicate records; reset when the next
     /// [`AgentRunStep::CallModel`] is emitted.
@@ -334,25 +638,34 @@ impl AgentRun {
             chat_history: None,
             new_messages: vec![prompt.into()],
             current_turn: 0,
+            model_call_attempts: 0,
             usage: Usage::new(),
             completion_calls: Vec::new(),
             completion_call_index: 0,
             invalid_tool_call_retries: 0,
-            rollback_pending: false,
             streamed_completion_call_recorded: false,
-            state: RunState::PreparingRequest,
+            state: RunState::PreparingRequest {
+                inherited_output_contract: None,
+                completion_record_attempt_id: None,
+            },
         }
     }
 
     /// Set the input chat history preceding the prompt.
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
-        self.chat_history = Some(history);
+        self.set_history(history);
         self
     }
 
-    /// Set the total model-call budget, including the initial call and every
-    /// retry or continuation. A budget of zero emits no model calls. Exceeding
-    /// the budget makes [`AgentRun::next_step`] return
+    /// Replace the input chat history preceding the prompt.
+    pub fn set_history(&mut self, history: Vec<Message>) {
+        self.chat_history = Some(history);
+    }
+
+    /// Set the total model-call attempt budget, including the initial call,
+    /// continuations, corrective turns, and provider-operation reissues after
+    /// failure or cancellation. A budget of zero emits no model calls.
+    /// Exceeding the budget makes [`AgentRun::next_step`] return
     /// [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
@@ -365,7 +678,7 @@ impl AgentRun {
     /// with arguments missing required fields — before finalizing best-effort.
     pub fn with_output_validation(
         mut self,
-        output_schema: Option<serde_json::Value>,
+        output_schema: Option<Schema>,
         max_output_retries: usize,
     ) -> Self {
         self.output_schema = output_schema;
@@ -378,11 +691,14 @@ impl AgentRun {
     /// when there is no schema, no `required` array, or every required field is
     /// present. Non-object arguments (e.g. `null`) count every required field as
     /// missing.
-    fn missing_required_output_fields(&self, args: &serde_json::Value) -> Vec<String> {
-        let Some(required) = self
-            .output_schema
-            .as_ref()
-            .and_then(|schema| schema.get("required"))
+    fn missing_required_output_fields(
+        contract: &ToolOutputContract,
+        args: &serde_json::Value,
+    ) -> Vec<String> {
+        let Some(required) = contract
+            .effective_schema
+            .as_value()
+            .get("required")
             .and_then(|required| required.as_array())
         else {
             return Vec::new();
@@ -399,26 +715,32 @@ impl AgentRun {
     /// Whether `text` already parses as a JSON object satisfying the output
     /// schema's required fields — i.e. it is acceptable structured output even
     /// though the model returned it as plain text instead of an output-tool call.
-    fn text_satisfies_output_schema(&self, text: &str) -> bool {
+    fn text_satisfies_output_schema(contract: &ToolOutputContract, text: &str) -> bool {
         serde_json::from_str::<serde_json::Value>(text.trim())
             .ok()
-            .is_some_and(|value| self.missing_required_output_fields(&value).is_empty())
+            .is_some_and(|value| Self::missing_required_output_fields(contract, &value).is_empty())
     }
 
     /// Whether the run may re-prompt for valid Tool-mode output: both the
     /// output-retry budget and the total model-call budget must remain.
     /// Otherwise, finalize best-effort rather than surface a max-turns error.
     fn can_reprompt_for_output(&self) -> bool {
-        self.output_retries < self.max_output_retries && self.current_turn < self.max_turns
+        self.output_retries < self.max_output_retries && self.model_call_attempts < self.max_turns
     }
 
     /// Roll the run back to re-prompt for valid output (#1928). The caller must
     /// have already appended the assistant turn and the corrective feedback
     /// message to the history. Consumes one output-retry, then emits the retry
     /// [`AgentRunStep::CallModel`].
-    fn reprompt_for_output(&mut self) -> Result<AgentRunStep, PromptError> {
+    fn reprompt_for_output(
+        &mut self,
+        output_contract: Option<ToolOutputContract>,
+    ) -> Result<AgentRunStep, PromptError> {
         self.output_retries += 1;
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract: output_contract,
+            completion_record_attempt_id: None,
+        };
         self.next_step()
     }
 
@@ -449,7 +771,7 @@ impl AgentRun {
     /// Set (or clear) the output-tool name in place. The driver resolves the
     /// name from the prepared request inside the run loop, where the agent's
     /// tool set (and thus the resolved output mode) is known.
-    pub(crate) fn set_output_tool_name(&mut self, name: Option<String>) {
+    pub fn set_output_tool_name(&mut self, name: Option<String>) {
         // The name is committed once and pinned for the whole run, so the
         // request the driver builds each turn stays consistent with the
         // intercept (and a tool set that shifts mid-run cannot flip the mode).
@@ -461,8 +783,24 @@ impl AgentRun {
     /// The synthetic output-tool name committed for this run, if any. The driver
     /// passes this back when preparing later turns so Tool output mode stays
     /// pinned even if the per-turn tool set changes (see #1928).
-    pub(crate) fn output_tool_name(&self) -> Option<&str> {
+    pub fn output_tool_name(&self) -> Option<&str> {
         self.output_tool_name.as_deref()
+    }
+
+    /// Tool-mode contract inherited by the pending request, when it is a
+    /// corrective retry of a specific violated attempt contract.
+    pub fn inherited_output_contract(&self) -> Option<&ToolOutputContract> {
+        match &self.state {
+            RunState::PreparingRequest {
+                inherited_output_contract,
+                ..
+            }
+            | RunState::AwaitingModel {
+                inherited_output_contract,
+                ..
+            } => inherited_output_contract.as_ref(),
+            _ => None,
+        }
     }
 
     /// Aggregated token usage across all completed model calls so far.
@@ -470,9 +808,16 @@ impl AgentRun {
         self.usage
     }
 
-    /// Number of model calls emitted so far (including retries).
+    /// Current logical model-turn number. A failed provider operation can be
+    /// reissued under the same turn number while consuming another attempt.
     pub fn turn(&self) -> usize {
         self.current_turn
+    }
+
+    /// Number of model-call attempts authorized so far, including failed,
+    /// cancelled, and reissued provider operations.
+    pub fn model_call_attempts(&self) -> usize {
+        self.model_call_attempts
     }
 
     /// Details for each completed model call so far.
@@ -486,13 +831,62 @@ impl AgentRun {
         &self.new_messages
     }
 
-    /// Canonical content for the accepted model turn awaiting advancement.
-    pub(crate) fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
-        let RunState::AwaitingAdvance(turn) = &self.state else {
-            return None;
-        };
+    /// Canonical accepted model turn awaiting advancement.
+    ///
+    /// `Some` only between [`AgentRun::model_response`] accepting a turn and
+    /// the next [`AgentRun::next_step`] — the window where a driver surfaces
+    /// its model-turn-finished decision point.
+    pub fn accepted_turn(&self) -> Option<&AcceptedModelTurn> {
+        match &self.state {
+            RunState::AwaitingTurnVerdict(turn) | RunState::ReadyToAdvance(turn) => {
+                Some(&turn.accepted)
+            }
+            _ => None,
+        }
+    }
 
-        OneOrMany::from_iter_optional(turn.items.clone())
+    /// Accepted turn whose normalized Continue verdict has not yet been
+    /// applied by a driver.
+    ///
+    /// Unlike [`Self::accepted_turn`], this becomes `None` after
+    /// [`Self::continue_model_turn`] even if the run has not yet emitted its
+    /// next step. That distinction makes the steering boundary resume-durable.
+    pub fn pending_accepted_turn(&self) -> Option<&AcceptedModelTurn> {
+        match &self.state {
+            RunState::AwaitingTurnVerdict(turn) => Some(&turn.accepted),
+            _ => None,
+        }
+    }
+
+    /// Persist the driver's Continue verdict without advancing the run.
+    ///
+    /// Drivers call this after accepting `ModelTurnFinished`. The separate
+    /// transition allows a serialized run to distinguish an unanswered turn
+    /// from one answered immediately before a process restart.
+    pub fn continue_model_turn(&mut self) -> Result<(), PromptError> {
+        match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingTurnVerdict(turn) => {
+                self.state = RunState::ReadyToAdvance(turn);
+                Ok(())
+            }
+            state @ RunState::ReadyToAdvance(_) => {
+                self.state = state;
+                Err(self.protocol_violation(
+                    "continue_model_turn called after the turn verdict was already applied",
+                ))
+            }
+            other => {
+                self.state = other;
+                Err(self.protocol_violation(
+                    "continue_model_turn called without an accepted turn awaiting advancement",
+                ))
+            }
+        }
+    }
+
+    /// Canonical content for the accepted model turn awaiting advancement.
+    pub fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+        self.accepted_turn().map(|turn| turn.content.clone())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.
@@ -510,7 +904,7 @@ impl AgentRun {
     /// provider-visible history. Use tool-call hooks to steer those turns.
     pub fn retry_model_turn(&mut self, request: RetryRequest) -> Result<(), PromptError> {
         let turn = match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::AwaitingAdvance(turn) => turn,
+            RunState::AwaitingTurnVerdict(turn) => turn,
             other => {
                 self.state = other;
                 return Err(self.protocol_violation(
@@ -526,18 +920,14 @@ impl AgentRun {
             ));
         }
 
+        let inherited_output_contract = turn.accepted.output_contract().cloned();
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
-                let Some(content) = OneOrMany::from_iter_optional(turn.items) else {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model-turn retry lost the rejected assistant content",
-                    ));
-                };
+                let content = turn.accepted.content;
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
-                        id: turn.message_id,
+                        id: turn.accepted.message_id,
                         content,
                     });
                 }
@@ -545,8 +935,38 @@ impl AgentRun {
             }
         }
 
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract,
+            completion_record_attempt_id: None,
+        };
         Ok(())
+    }
+
+    /// Recover from a failed provider call: transition a pending
+    /// [`AgentRunStep::CallModel`] back to the pre-call state so the next
+    /// [`AgentRun::next_step`] re-issues the call instead of returning a
+    /// protocol violation. The logical turn index rolls back so the replacement
+    /// keeps its turn number; the model-call attempt budget never rolls back.
+    ///
+    /// Returns `false` (and changes nothing) when no model call is pending.
+    pub fn abandon_pending_model_call(&mut self) -> bool {
+        let inherited_output_contract = match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::AwaitingModel {
+                inherited_output_contract,
+                ..
+            } => inherited_output_contract,
+            other => {
+                self.state = other;
+                return false;
+            }
+        };
+        self.current_turn = self.current_turn.saturating_sub(1);
+        self.streamed_completion_call_recorded = false;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract,
+            completion_record_attempt_id: None,
+        };
+        true
     }
 
     /// The full conversation: input history followed by [`Self::messages`].
@@ -618,7 +1038,10 @@ impl AgentRun {
     ///   pending).
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::PreparingRequest => {
+            RunState::PreparingRequest {
+                inherited_output_contract,
+                completion_record_attempt_id: _,
+            } => {
                 let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
                     return Err(PromptError::prompt_cancelled(
                         self.full_history(),
@@ -627,7 +1050,7 @@ impl AgentRun {
                 };
                 let prompt = prompt_ref.clone();
 
-                if self.current_turn >= self.max_turns {
+                if self.model_call_attempts >= self.max_turns {
                     return Err(PromptError::MaxTurnsError {
                         max_turns: self.max_turns,
                         chat_history: self.full_history().into(),
@@ -638,50 +1061,65 @@ impl AgentRun {
                 let history =
                     build_history_for_request(self.chat_history.as_deref(), history_for_turn);
                 self.current_turn += 1;
-                self.rollback_pending = false;
+                self.model_call_attempts += 1;
                 self.streamed_completion_call_recorded = false;
-                self.state = RunState::AwaitingModel;
+                let attempt_id = ModelAttemptId::new();
+                self.state = RunState::AwaitingModel {
+                    attempt_id: attempt_id.clone(),
+                    inherited_output_contract,
+                };
                 Ok(AgentRunStep::CallModel {
                     prompt,
                     history,
                     turn: self.current_turn,
+                    attempt_id,
                 })
             }
-            RunState::AwaitingAdvance(turn_state) => {
+            RunState::AwaitingTurnVerdict(turn_state) => {
+                self.state = RunState::AwaitingTurnVerdict(turn_state);
+                Err(self.protocol_violation(
+                    "next_step called while an accepted model turn awaits continue_model_turn",
+                ))
+            }
+            RunState::ReadyToAdvance(turn_state) => {
                 let TurnState {
-                    message_id,
-                    items,
+                    accepted,
                     has_tool_calls,
                     skipped,
-                    mut internal_call_ids,
+                    original_tool_calls,
+                    internal_call_ids,
                 } = *turn_state;
-                let Some(choice) = OneOrMany::from_iter_optional(items.clone()) else {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model turn lost its assistant content",
-                    ));
-                };
+                let output_contract = accepted.output_contract().cloned();
+                let AcceptedModelTurn {
+                    message_id,
+                    content: choice,
+                    ..
+                } = accepted;
+                let items: Vec<AssistantContent> = choice.iter().cloned().collect();
 
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
                 // instead of executing it as a tool. First match wins; any
                 // sibling tool calls in the same turn are dropped.
                 if has_tool_calls
-                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(tool_contract) = output_contract.as_ref()
                     && let Some(tool_call) = items.iter().find_map(|item| match item {
-                        AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
+                        AssistantContent::ToolCall(tc)
+                            if tc.function.name == tool_contract.output_tool_name =>
+                        {
                             Some(tc)
                         }
                         _ => None,
                     })
                 {
+                    let output_tool_name = &tool_contract.output_tool_name;
                     let output_tool_calls = items
                         .iter()
                         .filter(|item| {
                             matches!(
                                 item,
                                 AssistantContent::ToolCall(tc)
-                                    if tc.function.name == output_tool_name
+                                    if tc.function.name == tool_contract.output_tool_name
                             )
                         })
                         .count();
@@ -692,7 +1130,10 @@ impl AgentRun {
                     // Validate the output against the schema's required fields and
                     // re-prompt while budget remains, so a model that omits fields
                     // gets a chance to fix it before we finalize best-effort.
-                    let missing = self.missing_required_output_fields(&args);
+                    let missing = output_contract
+                        .as_ref()
+                        .map(|contract| Self::missing_required_output_fields(contract, &args))
+                        .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
                             id: message_id,
@@ -708,7 +1149,7 @@ impl AgentRun {
                         {
                             self.new_messages.push(user_message);
                         }
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(output_contract);
                     }
 
                     // Finalize. The turn is persisted as the assistant's final
@@ -754,21 +1195,40 @@ impl AgentRun {
                     // single per-run allowance an early stray turn could burn
                     // before the model genuinely needs to produce output (#1928).
                     self.output_retries = 0;
+                    let mut internal_call_ids = internal_call_ids.into_iter();
+                    let mut original_tool_calls = original_tool_calls.into_iter();
+                    let mut claimed_internal_ids = BTreeSet::new();
                     let calls: Vec<PendingToolCall> = items
                         .iter()
-                        .filter_map(|item| match item {
+                        .enumerate()
+                        .filter_map(|(item_index, item)| match item {
                             AssistantContent::ToolCall(tool_call) => {
-                                // Consume pairs positionally so duplicate
-                                // provider IDs within one turn stay
-                                // distinguishable.
-                                let internal_call_id = internal_call_ids
-                                    .iter()
-                                    .position(|(id, _)| *id == tool_call.id)
-                                    .map(|index| internal_call_ids.remove(index).1);
+                                let original_tool_call = original_tool_calls.next().flatten();
+                                // Identity is aligned by batch position;
+                                // provider IDs are payload and may duplicate.
+                                // Generate missing or duplicate Rig IDs before
+                                // storing ExecutingTools so serialization and
+                                // every resumed driver observe the same value.
+                                let internal_call_id = match internal_call_ids.next() {
+                                    Some(id) if claimed_internal_ids.insert(id.clone()) => id,
+                                    Some(_) | None => loop {
+                                        let id = rig_core::id::generate();
+                                        if claimed_internal_ids.insert(id.clone()) {
+                                            break id;
+                                        }
+                                    },
+                                };
+                                let preresolved =
+                                    skipped.get(item_index).and_then(|result| result.clone());
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
-                                    preresolved_result: skipped.get(&tool_call.id).cloned(),
-                                    internal_call_id,
+                                    preresolved_result: preresolved
+                                        .as_ref()
+                                        .map(|result| result.result.clone()),
+                                    internal_call_id: Some(internal_call_id),
+                                    original_tool_call: original_tool_call.map(Box::new),
+                                    invocation_disposition: preresolved
+                                        .map(|result| result.disposition),
                                 })
                             }
                             _ => None,
@@ -787,17 +1247,21 @@ impl AgentRun {
                     // with every required field), accept it rather than wasting a
                     // turn — the model answered correctly, just via the wrong
                     // channel.
-                    if let Some(output_tool_name) = self.output_tool_name.clone()
+                    if let Some(output_contract) = output_contract
                         && !is_empty_assistant_turn(&choice)
                         && self.can_reprompt_for_output()
-                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&choice))
+                        && !Self::text_satisfies_output_schema(
+                            &output_contract,
+                            &assistant_text_from_choice(&choice),
+                        )
                     {
+                        let output_tool_name = &output_contract.output_tool_name;
                         let feedback = format!(
                             "Provide your final answer by calling the `{output_tool_name}` tool \
                              with the structured result as its arguments, not as plain text."
                         );
                         self.new_messages.push(Message::user(feedback));
-                        return self.reprompt_for_output();
+                        return self.reprompt_for_output(Some(output_contract));
                     }
 
                     let response =
@@ -812,6 +1276,25 @@ impl AgentRun {
             RunState::ExecutingTools(calls) => {
                 // Idempotent, like Done: a process resuming a serialized run
                 // re-obtains the pending tool calls from the state itself.
+                // Repair legacy or manually constructed state before cloning
+                // it so every public result boundary has durable Rig identity.
+                let mut calls = calls;
+                let mut claimed = BTreeSet::new();
+                for call in &mut calls {
+                    let keep = call
+                        .internal_call_id
+                        .as_ref()
+                        .is_some_and(|id| claimed.insert(id.clone()));
+                    if !keep {
+                        loop {
+                            let id = rig_core::id::generate();
+                            if claimed.insert(id.clone()) {
+                                call.internal_call_id = Some(id);
+                                break;
+                            }
+                        }
+                    }
+                }
                 let step = AgentRunStep::CallTools {
                     calls: calls.clone(),
                 };
@@ -823,9 +1306,9 @@ impl AgentRun {
                 self.state = RunState::Done(response);
                 Ok(step)
             }
-            state @ (RunState::AwaitingModel | RunState::ResolvingToolCalls(_)) => {
+            state @ (RunState::AwaitingModel { .. } | RunState::ResolvingToolCalls(_)) => {
                 let reason = match &state {
-                    RunState::AwaitingModel => {
+                    RunState::AwaitingModel { .. } => {
                         "next_step called while a model response is pending; feed it via model_response first"
                     }
                     _ => {
@@ -847,16 +1330,32 @@ impl AgentRun {
     /// turn's tool calls against the advertised tool names. See
     /// [`ModelTurnOutcome`] for what the driver must do next.
     pub fn model_response(&mut self, turn: ModelTurn) -> Result<ModelTurnOutcome, PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return Err(
-                self.protocol_violation("model_response called without a pending CallModel step")
-            );
-        }
+        let (expected_attempt_id, inherited_output_contract) = match &self.state {
+            RunState::AwaitingModel {
+                attempt_id,
+                inherited_output_contract,
+            } => (attempt_id.clone(), inherited_output_contract.clone()),
+            _ => {
+                return Err(self
+                    .protocol_violation("model_response called without a pending CallModel step"));
+            }
+        };
         if self.streamed_completion_call_recorded {
             return Err(self.protocol_violation(
                 "model_response called after record_streamed_completion_call for the same turn; feed streamed turns via streamed_turn",
             ));
         }
+
+        let attempt_context = self.bind_attempt_context(
+            &turn.attempt_id,
+            turn.attempt_context,
+            &expected_attempt_id,
+            inherited_output_contract,
+        )?;
+        let prepared_output_tool_name = attempt_context
+            .output_contract
+            .as_ref()
+            .map(|contract| contract.output_tool_name.clone());
 
         self.record_completion_call(turn.usage);
 
@@ -865,20 +1364,27 @@ impl AgentRun {
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
 
+        let skipped = vec![None; items.len()];
+        let original_calls = vec![None; items.len()];
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
+            attempt_context,
             message_id: turn.message_id,
             original_choice: turn.choice,
+            usage: turn.usage,
             items,
+            original_calls,
             next_index: 0,
             executable_tool_names: turn.executable_tool_names,
             allowed_tool_names: turn.allowed_tool_names,
-            skipped: BTreeMap::new(),
+            skipped,
             recovered: false,
             any_skipped: false,
             has_tool_calls,
         }));
 
-        self.advance_resolution()
+        let outcome = self.advance_resolution()?;
+        self.set_output_tool_name(prepared_output_tool_name);
+        Ok(outcome)
     }
 
     /// Record one provider completion call: assign it the next call index,
@@ -895,23 +1401,23 @@ impl AgentRun {
         call
     }
 
-    /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
+    /// Park an accepted model turn in [`RunState::AwaitingTurnVerdict`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
-    /// ingestion paths converge here, differing only in the `skipped` map and
-    /// the streamed `internal_call_ids`.
+    /// ingestion paths converge here, differing only in the positional
+    /// `skipped` results and the streamed `internal_call_ids`.
     fn finalize_turn(
         &mut self,
-        message_id: Option<String>,
-        items: Vec<AssistantContent>,
+        accepted: AcceptedModelTurn,
         has_tool_calls: bool,
-        skipped: BTreeMap<String, UserContent>,
-        internal_call_ids: Vec<(String, String)>,
+        skipped: Vec<Option<PreresolvedToolResult>>,
+        original_tool_calls: Vec<Option<ToolCall>>,
+        internal_call_ids: Vec<String>,
     ) {
-        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
-            message_id,
-            items,
+        self.state = RunState::AwaitingTurnVerdict(Box::new(TurnState {
+            accepted,
             has_tool_calls,
             skipped,
+            original_tool_calls,
             internal_call_ids,
         }));
     }
@@ -931,10 +1437,16 @@ impl AgentRun {
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
     ///   under [`ToolChoice::None`].
+    /// - [`InvalidToolCallAction::Ignore`] drops the call from the turn with
+    ///   no model-visible feedback, letting a sibling output-tool call still
+    ///   finalize the turn (the extraction protocol's policy).
     pub fn resolve_invalid_tool_call(
         &mut self,
         action: InvalidToolCallAction,
     ) -> Result<ModelTurnOutcome, PromptError> {
+        if matches!(action, InvalidToolCallAction::Ignore) {
+            return self.ignore_invalid_tool_call();
+        }
         // Take the resolving state; rejection paths below restore it so an
         // out-of-protocol call does not corrupt a drivable run.
         let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
@@ -969,6 +1481,12 @@ impl AgentRun {
             resolving.allowed_tool_names.iter().cloned().collect();
 
         match action {
+            // Handled by the early return above; the state has already been
+            // taken here, so restore it and delegate.
+            InvalidToolCallAction::Ignore => {
+                self.state = RunState::ResolvingToolCalls(resolving);
+                self.ignore_invalid_tool_call()
+            }
             InvalidToolCallAction::Fail => Err(unknown_tool_call_error(
                 tool_call.function.name,
                 executable_tool_names,
@@ -1001,7 +1519,10 @@ impl AgentRun {
                     ));
                 };
                 self.new_messages.push(user_message);
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: resolving.attempt_context.output_contract.clone(),
+                    completion_record_attempt_id: None,
+                };
                 Ok(ModelTurnOutcome::TurnRetried)
             }
             InvalidToolCallAction::Repair { tool_name } => {
@@ -1016,6 +1537,15 @@ impl AgentRun {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
                 {
+                    let Some(original_slot) =
+                        resolving.original_calls.get_mut(resolving.next_index)
+                    else {
+                        self.state = RunState::ResolvingToolCalls(resolving);
+                        return Err(self.protocol_violation(
+                            "internal: repaired call lost its original positional slot",
+                        ));
+                    };
+                    *original_slot = Some(tool_call.clone());
                     tool_call.function.name = tool_name;
                 }
                 resolving.recovered = true;
@@ -1039,12 +1569,24 @@ impl AgentRun {
                     UserContent::tool_result_with_call_id(
                         tool_call.id.clone(),
                         call_id,
-                        OneOrMany::one(reason.into()),
+                        OneOrMany::one(reason.clone().into()),
                     )
                 } else {
-                    UserContent::tool_result(tool_call.id.clone(), OneOrMany::one(reason.into()))
+                    UserContent::tool_result(
+                        tool_call.id.clone(),
+                        OneOrMany::one(reason.clone().into()),
+                    )
                 };
-                resolving.skipped.insert(tool_call.id.clone(), user_content);
+                let Some(slot) = resolving.skipped.get_mut(resolving.next_index) else {
+                    self.state = RunState::ResolvingToolCalls(resolving);
+                    return Err(self.protocol_violation(
+                        "internal: invalid-call result lost its positional slot",
+                    ));
+                };
+                *slot = Some(PreresolvedToolResult {
+                    result: user_content,
+                    disposition: ToolInvocationDisposition::not_executed(reason),
+                });
                 resolving.recovered = true;
                 resolving.any_skipped = true;
                 resolving.next_index += 1;
@@ -1057,11 +1599,11 @@ impl AgentRun {
     /// Discard the pending invalid tool call without marking the turn as
     /// recovered.
     ///
-    /// This is the extractor driver's fallback after every invalid-tool hook
-    /// has declined to act. Keeping it distinct from [`InvalidToolCallAction::Skip`]
-    /// preserves the extractor's legacy response semantics: unrelated calls
-    /// disappear, a sibling output call can still finalize the turn, and
-    /// response observers still receive the canonical response fields.
+    /// Reached through [`InvalidToolCallAction::Ignore`]. Keeping it distinct
+    /// from [`InvalidToolCallAction::Skip`] preserves the extraction
+    /// protocol's response semantics: unrelated calls disappear, a sibling
+    /// output call can still finalize the turn, and response observers still
+    /// receive the canonical response fields.
     pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::ResolvingToolCalls(resolving) => resolving,
@@ -1087,65 +1629,159 @@ impl AgentRun {
         }
 
         resolving.items.remove(resolving.next_index);
+        resolving.skipped.remove(resolving.next_index);
+        resolving.original_calls.remove(resolving.next_index);
         resolving.has_tool_calls = resolving
             .items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
         if resolving.items.is_empty() {
             resolving.items.push(AssistantContent::text(""));
+            resolving.skipped.push(None);
+            resolving.original_calls.push(None);
         }
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }
 
-    /// Feed the tool results for the pending [`AgentRunStep::CallTools`].
+    /// Feed unambiguous provider-ID-keyed tool results for the pending
+    /// [`AgentRunStep::CallTools`].
     ///
-    /// Results may be in any order; they are appended as a single user
-    /// message, matching what providers expect for parallel tool calls. Each
-    /// result must be a tool result answering one of the pending calls, and
-    /// every pending call must be answered — exactly what providers require
-    /// to accept the next request.
+    /// This convenience path is available only when provider call IDs are
+    /// unique within the batch. For duplicate provider IDs, use
+    /// [`Self::tool_result_submissions`] so each result carries Rig's unique
+    /// invocation identity.
     pub fn tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
         let RunState::ExecutingTools(pending) = &self.state else {
             return Err(
                 self.protocol_violation("tool_results called without a pending CallTools step")
             );
         };
-        // Match results against pending calls by tool call ID as a multiset,
-        // so duplicate provider IDs within one turn stay answerable.
-        let mut unanswered: Vec<String> = pending
+        let mut provider_ids = BTreeSet::new();
+        if pending
             .iter()
-            .map(|call| call.tool_call.id.clone())
-            .collect();
+            .any(|call| !provider_ids.insert(call.tool_call.id.clone()))
+        {
+            return Err(self.protocol_violation(
+                "tool_results cannot associate duplicate provider call IDs; use \
+                 tool_result_submissions with each PendingToolCall internal_call_id",
+            ));
+        }
+        let mut submissions = Vec::with_capacity(results.len());
+        for result in results {
+            let UserContent::ToolResult(tool_result) = result else {
+                return Err(self.protocol_violation(
+                    "tool_results received content that is not a tool result",
+                ));
+            };
+            let Some(call) = pending
+                .iter()
+                .find(|call| call.tool_call.id == tool_result.id)
+            else {
+                return Err(self.protocol_violation(&format!(
+                    "tool_results received a result for unknown tool call id `{}`",
+                    tool_result.id
+                )));
+            };
+            let Some(internal_call_id) = call.internal_call_id.clone() else {
+                return Err(self.protocol_violation(
+                    "pending tool call has no Rig internal identity; call next_step before submitting results",
+                ));
+            };
+            submissions.push(ToolResultSubmission::new(
+                internal_call_id,
+                UserContent::ToolResult(tool_result),
+            ));
+        }
+        self.tool_result_submissions(submissions)
+    }
 
-        if results.is_empty() {
+    /// Feed results keyed by Rig's unique invocation identity.
+    ///
+    /// Submissions may be in any order. They are validated and joined by
+    /// identity, then committed in the pending calls' assistant source order
+    /// as one provider-compatible user message.
+    /// Every pending invocation must be answered exactly once, and the
+    /// embedded provider result `id` and `call_id` must still match that
+    /// invocation's provider correlation fields.
+    pub fn tool_result_submissions(
+        &mut self,
+        submissions: Vec<ToolResultSubmission>,
+    ) -> Result<(), PromptError> {
+        let RunState::ExecutingTools(pending) = &self.state else {
+            return Err(self.protocol_violation(
+                "tool_result_submissions called without a pending CallTools step",
+            ));
+        };
+        if submissions.is_empty() {
             self.state = RunState::Failed;
             return Err(PromptError::prompt_cancelled(
                 self.full_history(),
                 "tool execution produced no tool results",
             ));
         }
-        for result in &results {
-            let UserContent::ToolResult(tool_result) = result else {
+
+        let mut answered = BTreeSet::new();
+        let mut results_by_id = BTreeMap::new();
+        for submission in submissions {
+            let UserContent::ToolResult(tool_result) = &submission.result else {
                 return Err(self.protocol_violation(
-                    "tool_results received content that is not a tool result",
+                    "tool_result_submissions received content that is not a tool result",
                 ));
             };
-            let Some(index) = unanswered.iter().position(|id| *id == tool_result.id) else {
+            let Some(call) = pending.iter().find(|call| {
+                call.internal_call_id.as_deref() == Some(submission.internal_call_id.as_str())
+            }) else {
                 return Err(self.protocol_violation(&format!(
-                    "tool_results received a result for unknown or already-answered tool call id `{}`",
-                    tool_result.id
+                    "tool_result_submissions received unknown Rig internal call id `{}`",
+                    submission.internal_call_id
                 )));
             };
-            unanswered.swap_remove(index);
+            if tool_result.id != call.tool_call.id {
+                return Err(self.protocol_violation(&format!(
+                    "tool result for Rig internal call id `{}` carries provider id `{}` instead of `{}`",
+                    submission.internal_call_id, tool_result.id, call.tool_call.id
+                )));
+            }
+            if tool_result.call_id != call.tool_call.call_id {
+                return Err(self.protocol_violation(&format!(
+                    "tool result for Rig internal call id `{}` carries provider call_id {:?} instead of {:?}",
+                    submission.internal_call_id, tool_result.call_id, call.tool_call.call_id
+                )));
+            }
+            if !answered.insert(submission.internal_call_id.clone()) {
+                return Err(self.protocol_violation(&format!(
+                    "tool_result_submissions answered Rig internal call id `{}` more than once",
+                    submission.internal_call_id
+                )));
+            }
+            results_by_id.insert(submission.internal_call_id, submission.result);
+        }
+
+        let mut unanswered = Vec::new();
+        let mut results = Vec::with_capacity(pending.len());
+        for call in pending {
+            let Some(internal_call_id) = &call.internal_call_id else {
+                return Err(self.protocol_violation(
+                    "pending tool call has no Rig internal identity; call next_step before submitting results",
+                ));
+            };
+            if !answered.contains(internal_call_id) {
+                unanswered.push(internal_call_id.clone());
+            } else if let Some(result) = results_by_id.remove(internal_call_id) {
+                results.push(result);
+            } else {
+                return Err(self.protocol_violation(
+                    "internal: validated tool result lost its Rig invocation identity",
+                ));
+            }
         }
         if !unanswered.is_empty() {
             return Err(self.protocol_violation(&format!(
-                "tool_results left pending tool call id(s) unanswered: {unanswered:?}"
+                "tool_result_submissions left Rig internal call id(s) unanswered: {unanswered:?}"
             )));
         }
 
-        // `results` is non-empty (checked above), so construction succeeds.
         let Some(content) = OneOrMany::from_iter_optional(results) else {
             return Err(
                 self.protocol_violation("internal: tool results vanished during validation")
@@ -1153,7 +1789,10 @@ impl AgentRun {
         };
 
         self.new_messages.push(Message::User { content });
-        self.state = RunState::PreparingRequest;
+        self.state = RunState::PreparingRequest {
+            inherited_output_contract: None,
+            completion_record_attempt_id: None,
+        };
         Ok(())
     }
 
@@ -1193,8 +1832,11 @@ impl AgentRun {
         }
 
         let ResolvingState {
+            attempt_context,
             message_id,
             items,
+            usage,
+            original_calls,
             mut skipped,
             recovered,
             any_skipped,
@@ -1205,23 +1847,48 @@ impl AgentRun {
         // When any tool call was skipped, none of the turn's tool calls
         // execute: peers get a synthetic "not executed" result.
         if any_skipped {
-            for item in &items {
-                if let AssistantContent::ToolCall(tool_call) = item {
-                    skipped.entry(tool_call.id.clone()).or_insert_with(|| {
-                        tool_result_message(
+            for (item, slot) in items.iter().zip(&mut skipped) {
+                if let AssistantContent::ToolCall(tool_call) = item
+                    && slot.is_none()
+                {
+                    let reason = TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string();
+                    *slot = Some(PreresolvedToolResult {
+                        result: tool_result_message(
                             tool_call.id.clone(),
                             tool_call.call_id.clone(),
-                            TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
-                        )
+                            reason.clone(),
+                        ),
+                        disposition: ToolInvocationDisposition::not_executed(reason),
                     });
                 }
             }
         }
 
-        self.finalize_turn(message_id, items, has_tool_calls, skipped, Vec::new());
-        Ok(ModelTurnOutcome::Continue {
+        let original_tool_calls = items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| matches!(item, AssistantContent::ToolCall(_)))
+            .map(|(index, _)| original_calls.get(index).cloned().flatten())
+            .collect();
+        let content = OneOrMany::from_iter_optional(items).ok_or_else(|| {
+            self.protocol_violation("internal: accepted model turn lost its assistant content")
+        })?;
+        let accepted = AcceptedModelTurn {
+            turn: self.current_turn,
+            message_id,
+            content,
+            usage,
             response_hook_suppressed: recovered,
-        })
+            attempt_context: Box::new(attempt_context),
+        };
+        self.finalize_turn(
+            accepted.clone(),
+            has_tool_calls,
+            skipped,
+            original_tool_calls,
+            Vec::new(),
+        );
+        Ok(ModelTurnOutcome::Continue(accepted))
     }
 
     // ── Streamed-turn entry points ──────────────────────────────────────
@@ -1239,13 +1906,25 @@ impl AgentRun {
     /// provider reported no usage metrics.
     pub fn record_streamed_completion_call(
         &mut self,
+        attempt_id: &ModelAttemptId,
         usage: Usage,
     ) -> Result<CompletionCall, PromptError> {
-        let recordable = matches!(self.state, RunState::AwaitingModel)
-            || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
-        if !recordable {
+        let expected_attempt_id = match &self.state {
+            RunState::AwaitingModel { attempt_id, .. } => Some(attempt_id),
+            RunState::PreparingRequest {
+                completion_record_attempt_id,
+                ..
+            } => completion_record_attempt_id.as_ref(),
+            _ => None,
+        };
+        let Some(expected_attempt_id) = expected_attempt_id else {
             return Err(self.protocol_violation(
                 "record_streamed_completion_call called without a pending or rolled-back CallModel step",
+            ));
+        };
+        if attempt_id != expected_attempt_id {
+            return Err(self.protocol_violation(
+                "streamed completion record belongs to a stale or different provider operation",
             ));
         }
         if self.streamed_completion_call_recorded {
@@ -1292,11 +1971,24 @@ impl AgentRun {
         invalid: &StreamedInvalidToolCall,
         action: InvalidToolCallAction,
     ) -> Result<StreamedResolution, PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return Err(self.protocol_violation(
-                "resolve_streamed_invalid_tool_call called without a pending CallModel step",
-            ));
-        }
+        let (expected_attempt_id, inherited_output_contract) = match &self.state {
+            RunState::AwaitingModel {
+                attempt_id,
+                inherited_output_contract,
+            } => (attempt_id.clone(), inherited_output_contract.clone()),
+            _ => {
+                return Err(self.protocol_violation(
+                    "resolve_streamed_invalid_tool_call called without a pending CallModel step",
+                ));
+            }
+        };
+        let attempt_context = self.bind_attempt_context(
+            &partial.attempt_id,
+            partial.attempt_context.clone(),
+            &expected_attempt_id,
+            inherited_output_contract,
+        )?;
+        let recovery_output_contract = attempt_context.output_contract;
 
         let diagnostic_history =
             self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone()));
@@ -1312,6 +2004,16 @@ impl AgentRun {
                     executable_tool_names,
                     allowed_tool_names,
                     diagnostic_history,
+                ))
+            }
+            // The streamed path has already emitted the call downstream, so a
+            // silent drop is not expressible; `Skip` is the streaming
+            // equivalent (it records synthetic feedback instead).
+            InvalidToolCallAction::Ignore => {
+                self.state = RunState::Failed;
+                Err(PromptError::prompt_cancelled(
+                    diagnostic_history,
+                    "InvalidToolCallAction::Ignore is not supported while streaming; use Skip",
                 ))
             }
             InvalidToolCallAction::Retry { feedback } => {
@@ -1337,8 +2039,15 @@ impl AgentRun {
                 };
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
-                self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: recovery_output_contract.clone(),
+                    completion_record_attempt_id: Some(expected_attempt_id.clone()),
+                };
+                self.set_output_tool_name(
+                    recovery_output_contract
+                        .as_ref()
+                        .map(|contract| contract.output_tool_name.clone()),
+                );
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: None,
                 })
@@ -1389,8 +2098,15 @@ impl AgentRun {
                 };
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
-                self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.state = RunState::PreparingRequest {
+                    inherited_output_contract: recovery_output_contract.clone(),
+                    completion_record_attempt_id: Some(expected_attempt_id.clone()),
+                };
+                self.set_output_tool_name(
+                    recovery_output_contract
+                        .as_ref()
+                        .map(|contract| contract.output_tool_name.clone()),
+                );
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: Some(skipped_tool_result),
                 })
@@ -1404,23 +2120,28 @@ impl AgentRun {
     /// Remaining tool calls are validated fail-fast — mid-stream resolution
     /// already had recovery-hook access — and the turn then advances through
     /// [`AgentRun::next_step`] exactly like a non-streamed one.
-    pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
-        if !matches!(self.state, RunState::AwaitingModel) {
-            return Err(
-                self.protocol_violation("streamed_turn called without a pending CallModel step")
-            );
-        }
+    pub fn streamed_turn(&mut self, turn: StreamedTurn) -> Result<AcceptedModelTurn, PromptError> {
+        let (expected_attempt_id, inherited_output_contract) = match &self.state {
+            RunState::AwaitingModel {
+                attempt_id,
+                inherited_output_contract,
+            } => (attempt_id.clone(), inherited_output_contract.clone()),
+            _ => {
+                return Err(self
+                    .protocol_violation("streamed_turn called without a pending CallModel step"));
+            }
+        };
 
-        // Guarantee exactly one CompletionCall per model call: drivers that
-        // never learned usage (no record before the turn completed) still get
-        // the call recorded, with no reported usage.
-        if !self.streamed_completion_call_recorded {
-            // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
-            // so routing the no-usage fallback through `record_completion_call`
-            // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new());
-            self.streamed_completion_call_recorded = true;
-        }
+        let attempt_context = self.bind_attempt_context(
+            &turn.attempt_id,
+            turn.attempt_context,
+            &expected_attempt_id,
+            inherited_output_contract,
+        )?;
+        let prepared_output_tool_name = attempt_context
+            .output_contract
+            .as_ref()
+            .map(|contract| contract.output_tool_name.clone());
 
         let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
         let has_tool_calls = items
@@ -1441,7 +2162,6 @@ impl AgentRun {
                 }
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
-                self.state = RunState::Failed;
                 return Err(unknown_tool_call_error(
                     tool_call.function.name.clone(),
                     turn.executable_tool_names.iter().cloned().collect(),
@@ -1451,14 +2171,32 @@ impl AgentRun {
             }
         }
 
+        // Commit usage only after the assembled turn validates. Older manual
+        // drivers may already have recorded the provider-final usage; the
+        // transactional driver carries it on `StreamedTurn` and records here.
+        if !self.streamed_completion_call_recorded {
+            self.record_completion_call(turn.usage);
+            self.streamed_completion_call_recorded = true;
+        }
+
+        let skipped = vec![None; items.len()];
+        let accepted = AcceptedModelTurn {
+            turn: self.current_turn,
+            message_id: turn.message_id,
+            content: turn.choice,
+            usage: turn.usage,
+            response_hook_suppressed: false,
+            attempt_context: Box::new(attempt_context),
+        };
         self.finalize_turn(
-            turn.message_id,
-            items,
+            accepted.clone(),
             has_tool_calls,
-            BTreeMap::new(),
+            skipped,
+            turn.original_tool_calls,
             turn.internal_call_ids,
         );
-        Ok(())
+        self.set_output_tool_name(prepared_output_tool_name);
+        Ok(accepted)
     }
 
     /// Diagnostic history for a streamed turn: the run's messages plus the
@@ -1484,6 +2222,45 @@ impl AgentRun {
             content: resolving.original_choice.clone(),
         });
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)
+    }
+
+    fn bind_attempt_context(
+        &self,
+        response_attempt_id: &ModelAttemptId,
+        provided: Option<ModelAttemptContext>,
+        expected_attempt_id: &ModelAttemptId,
+        inherited_output_contract: Option<ToolOutputContract>,
+    ) -> Result<ModelAttemptContext, PromptError> {
+        if response_attempt_id != expected_attempt_id {
+            return Err(self.protocol_violation(
+                "model response belongs to a stale or different provider operation",
+            ));
+        }
+        if let Some(context) = provided {
+            if context.attempt_id != *expected_attempt_id {
+                return Err(self.protocol_violation(
+                    "model response belongs to a stale or different provider operation",
+                ));
+            }
+            return Ok(context);
+        }
+
+        let prompt = self.new_messages.last().cloned().ok_or_else(|| {
+            self.protocol_violation("pending model response lost its real prompt")
+        })?;
+        let output_contract = inherited_output_contract.or_else(|| {
+            let output_tool_name = self.output_tool_name.clone()?;
+            let effective_schema = self.output_schema.clone().unwrap_or_default();
+            Some(ToolOutputContract {
+                output_tool_name,
+                effective_schema,
+            })
+        });
+        Ok(ModelAttemptContext {
+            attempt_id: expected_attempt_id.clone(),
+            prompt,
+            output_contract,
+        })
     }
 
     fn protocol_violation(&self, reason: &str) -> PromptError {
@@ -1514,7 +2291,7 @@ mod tests {
     }
 
     fn text_turn(text: &str) -> ModelTurn {
-        ModelTurn::new(
+        ModelTurn::unbound(
             None,
             OneOrMany::one(AssistantContent::text(text)),
             Usage::new(),
@@ -1530,14 +2307,37 @@ mod tests {
         ))
     }
 
+    fn tool_call_with_call_id(id: &str, call_id: &str, name: &str) -> AssistantContent {
+        AssistantContent::ToolCall(
+            ToolCall::new(
+                id.to_string(),
+                ToolFunction::new(name.to_string(), json!({"x": 1})),
+            )
+            .with_call_id(call_id.to_string()),
+        )
+    }
+
     fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
-        ModelTurn::new(
+        ModelTurn::unbound(
             None,
             OneOrMany::one(tool_call(id, name)),
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
         )
+    }
+
+    fn model_response(
+        run: &mut AgentRun,
+        mut turn: ModelTurn,
+    ) -> Result<ModelTurnOutcome, PromptError> {
+        if turn.attempt_context.is_none() {
+            let RunState::AwaitingModel { attempt_id, .. } = &run.state else {
+                return run.model_response(turn);
+            };
+            turn.attempt_id = attempt_id.clone();
+        }
+        run.model_response(turn)
     }
 
     fn tool_result(id: &str, output: &str) -> UserContent {
@@ -1547,18 +2347,29 @@ mod tests {
         )
     }
 
+    fn tool_result_with_call_id(id: &str, call_id: &str, output: &str) -> UserContent {
+        UserContent::tool_result_with_call_id(
+            id.to_string(),
+            call_id.to_string(),
+            OneOrMany::one(ToolResultContent::text(output)),
+        )
+    }
+
     fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::CallModel {
                 prompt,
                 history,
                 turn,
+                ..
             } => (prompt, history, turn),
             step => panic!("expected CallModel, got {step:?}"),
         }
     }
 
     fn expect_call_tools(run: &mut AgentRun) -> Vec<PendingToolCall> {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::CallTools { calls } => calls,
             step => panic!("expected CallTools, got {step:?}"),
@@ -1566,6 +2377,7 @@ mod tests {
     }
 
     fn expect_done(run: &mut AgentRun) -> PromptResponse {
+        continue_pending_turn(run);
         match run.next_step().expect("next_step should succeed") {
             AgentRunStep::Done(response) => response,
             step => panic!("expected Done, got {step:?}"),
@@ -1574,10 +2386,15 @@ mod tests {
 
     fn expect_continue(outcome: ModelTurnOutcome) -> bool {
         match outcome {
-            ModelTurnOutcome::Continue {
-                response_hook_suppressed,
-            } => response_hook_suppressed,
+            ModelTurnOutcome::Continue(accepted) => accepted.response_hook_suppressed,
             outcome => panic!("expected Continue, got {outcome:?}"),
+        }
+    }
+
+    fn continue_pending_turn(run: &mut AgentRun) {
+        if run.pending_accepted_turn().is_some() {
+            run.continue_model_turn()
+                .expect("test driver should accept the pending model turn");
         }
     }
 
@@ -1598,8 +2415,7 @@ mod tests {
         assert_eq!(turn, 1);
 
         let suppressed = expect_continue(
-            run.model_response(text_turn("hi there"))
-                .expect("model_response should succeed"),
+            model_response(&mut run, text_turn("hi there")).expect("model_response should succeed"),
         );
         assert!(!suppressed);
 
@@ -1622,8 +2438,7 @@ mod tests {
         );
 
         expect_continue(
-            run.model_response(text_turn("answer"))
-                .expect("model_response should succeed"),
+            model_response(&mut run, text_turn("answer")).expect("model_response should succeed"),
         );
         let response = expect_done(&mut run);
         // Returned messages exclude the input history.
@@ -1647,8 +2462,11 @@ mod tests {
         assert!(first_history.is_empty());
         assert_eq!(first_turn, 1);
         expect_continue(
-            run.model_response(text_turn("rejected").with_usage_for_test(first_usage))
-                .expect("first response"),
+            model_response(
+                &mut run,
+                text_turn("rejected").with_usage_for_test(first_usage),
+            )
+            .expect("first response"),
         );
 
         run.retry_model_turn(RetryRequest::Repeat)
@@ -1660,8 +2478,11 @@ mod tests {
         assert_eq!(run.messages(), &[Message::user("question")]);
 
         expect_continue(
-            run.model_response(text_turn("accepted").with_usage_for_test(second_usage))
-                .expect("second response"),
+            model_response(
+                &mut run,
+                text_turn("accepted").with_usage_for_test(second_usage),
+            )
+            .expect("second response"),
         );
         let response = expect_done(&mut run);
         assert_eq!(response.output, "accepted");
@@ -1677,10 +2498,7 @@ mod tests {
         let mut run = AgentRun::new("question").max_turns(2);
 
         expect_call_model(&mut run);
-        expect_continue(
-            run.model_response(text_turn("rejected"))
-                .expect("first response"),
-        );
+        expect_continue(model_response(&mut run, text_turn("rejected")).expect("first response"));
         run.retry_model_turn(RetryRequest::Feedback("try another approach".to_string()))
             .expect("feedback retry should be accepted");
 
@@ -1698,10 +2516,7 @@ mod tests {
         let mut run = AgentRun::new("question");
 
         expect_call_model(&mut run);
-        expect_continue(
-            run.model_response(text_turn("rejected"))
-                .expect("first response"),
-        );
+        expect_continue(model_response(&mut run, text_turn("rejected")).expect("first response"));
         run.retry_model_turn(RetryRequest::Repeat)
             .expect("state transition itself should succeed");
 
@@ -1719,8 +2534,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
-                .expect("tool response"),
+            model_response(&mut run, tool_call_turn("call_1", "add")).expect("tool response"),
         );
         let err = run
             .retry_model_turn(RetryRequest::Feedback("do not call tools".to_string()))
@@ -1745,8 +2559,11 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add").with_usage_for_test(usage(10, 5)))
-                .expect("model_response should succeed"),
+            model_response(
+                &mut run,
+                tool_call_turn("call_1", "add").with_usage_for_test(usage(10, 5)),
+            )
+            .expect("model_response should succeed"),
         );
 
         let calls = expect_call_tools(&mut run);
@@ -1765,8 +2582,11 @@ mod tests {
         assert_eq!(history.len(), 2);
 
         expect_continue(
-            run.model_response(text_turn("the answer is 2").with_usage_for_test(usage(20, 7)))
-                .expect("model_response should succeed"),
+            model_response(
+                &mut run,
+                text_turn("the answer is 2").with_usage_for_test(usage(20, 7)),
+            )
+            .expect("model_response should succeed"),
         );
 
         let response = expect_done(&mut run);
@@ -1791,7 +2611,7 @@ mod tests {
         let mut run = AgentRun::new("do both").max_turns(2);
 
         expect_call_model(&mut run);
-        let turn = ModelTurn::new(
+        let turn = ModelTurn::unbound(
             None,
             OneOrMany::many(vec![tool_call("call_1", "add"), tool_call("call_2", "add")])
                 .expect("two items"),
@@ -1799,10 +2619,7 @@ mod tests {
             tool_names(&["add"]),
             tool_names(&["add"]),
         );
-        expect_continue(
-            run.model_response(turn)
-                .expect("model_response should succeed"),
-        );
+        expect_continue(model_response(&mut run, turn).expect("model_response should succeed"));
 
         let calls = expect_call_tools(&mut run);
         assert_eq!(calls.len(), 2);
@@ -1840,7 +2657,7 @@ mod tests {
         let (_, _, turn) = expect_call_model(&mut run);
         assert_eq!(turn, 1);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
+            model_response(&mut run, tool_call_turn("call_1", "add"))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -1865,7 +2682,7 @@ mod tests {
             let (_, _, turn) = expect_call_model(&mut run);
             assert_eq!(turn, expected_turn);
             expect_continue(
-                run.model_response(tool_call_turn(call_id, "add"))
+                model_response(&mut run, tool_call_turn(call_id, "add"))
                     .expect("model_response should succeed"),
             );
             expect_call_tools(&mut run);
@@ -1889,7 +2706,7 @@ mod tests {
 
         expect_call_model(&mut run);
         let context = expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
         assert_eq!(context.tool_name, "unknown");
@@ -1913,7 +2730,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
         let err = run
@@ -1942,7 +2759,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
         let outcome = run
@@ -1962,7 +2779,7 @@ mod tests {
 
         // Budget of one: a second retry fails with UnknownToolCall.
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_2", "unknown"))
+            model_response(&mut run, tool_call_turn("call_2", "unknown"))
                 .expect("model_response should succeed"),
         );
         let err = run
@@ -1979,7 +2796,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
         let outcome = run
@@ -1998,13 +2815,13 @@ mod tests {
         assert_eq!(run.turn(), 1);
     }
 
-    #[test]
-    fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
+    #[tokio::test]
+    async fn invalid_tool_call_repair_renames_and_suppresses_response_hook() {
         let mut run = AgentRun::new("call something").max_turns(2);
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "default_api"))
+            model_response(&mut run, tool_call_turn("call_1", "default_api"))
                 .expect("model_response should succeed"),
         );
         let suppressed = expect_continue(
@@ -2015,7 +2832,28 @@ mod tests {
 
         let calls = expect_call_tools(&mut run);
         assert_eq!(calls[0].tool_call.function.name, "add");
+        assert_eq!(
+            calls[0]
+                .original_tool_call
+                .as_deref()
+                .map(|call| call.function.name.as_str()),
+            Some("default_api")
+        );
         assert!(calls[0].preresolved_result.is_none());
+
+        let executor =
+            crate::executor::ToolExecutor::new().register(crate::tool::PortableDynamicTool::new(
+                "add",
+                "test repair audit",
+                json!({"type": "object"}),
+                |args| async move {
+                    Ok::<_, crate::tool::ToolExecutionError>(crate::tool::ToolOutput::json(args))
+                },
+            ));
+        let batch = executor.execute_batch(&calls).await;
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].original_call.function.name, "default_api");
+        assert_eq!(batch.records[0].effective_call.function.name, "add");
     }
 
     #[test]
@@ -2024,7 +2862,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
         let err = run
@@ -2041,7 +2879,7 @@ mod tests {
         let mut run = AgentRun::new("call things").max_turns(2);
 
         expect_call_model(&mut run);
-        let turn = ModelTurn::new(
+        let turn = ModelTurn::unbound(
             None,
             OneOrMany::many(vec![
                 tool_call("call_1", "unknown"),
@@ -2053,8 +2891,7 @@ mod tests {
             tool_names(&["add"]),
         );
         expect_needs_resolution(
-            run.model_response(turn)
-                .expect("model_response should succeed"),
+            model_response(&mut run, turn).expect("model_response should succeed"),
         );
         let suppressed = expect_continue(
             run.resolve_invalid_tool_call(InvalidToolCallAction::skip("not available"))
@@ -2069,18 +2906,80 @@ mod tests {
     }
 
     #[test]
+    fn invalid_skip_keeps_duplicate_provider_ids_positionally_correlated() {
+        let mut run = AgentRun::new("call things").max_turns(2);
+
+        expect_call_model(&mut run);
+        let turn = ModelTurn::unbound(
+            None,
+            OneOrMany::many(vec![
+                tool_call_with_call_id("duplicate", "valid-call", "add"),
+                tool_call_with_call_id("duplicate", "invalid-call", "unknown"),
+            ])
+            .expect("two items"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add"]),
+        );
+        expect_needs_resolution(model_response(&mut run, turn).expect("model response"));
+        expect_continue(
+            run.resolve_invalid_tool_call(InvalidToolCallAction::skip("invalid reason"))
+                .expect("skip should be accepted"),
+        );
+
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].tool_call.id, "duplicate");
+        assert_eq!(calls[1].tool_call.id, "duplicate");
+        assert_eq!(calls[0].tool_call.call_id.as_deref(), Some("valid-call"));
+        assert_eq!(calls[1].tool_call.call_id.as_deref(), Some("invalid-call"));
+
+        let Some(UserContent::ToolResult(valid_peer_result)) = &calls[0].preresolved_result else {
+            panic!("valid peer should have a positional synthetic result");
+        };
+        let Some(UserContent::ToolResult(invalid_result)) = &calls[1].preresolved_result else {
+            panic!("invalid call should retain its own synthetic result");
+        };
+        assert_eq!(valid_peer_result.call_id.as_deref(), Some("valid-call"));
+        assert_eq!(invalid_result.call_id.as_deref(), Some("invalid-call"));
+        assert!(
+            serde_json::to_string(valid_peer_result)
+                .expect("result serializes")
+                .contains(TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER)
+        );
+        assert!(
+            serde_json::to_string(invalid_result)
+                .expect("result serializes")
+                .contains("invalid reason")
+        );
+        assert!(matches!(
+            &calls[0].invocation_disposition,
+            Some(ToolInvocationDisposition::NotExecuted { reason: Some(reason) })
+                if reason == TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+        ));
+        assert!(matches!(
+            &calls[1].invocation_disposition,
+            Some(ToolInvocationDisposition::NotExecuted { reason: Some(reason) })
+                if reason == "invalid reason"
+        ));
+    }
+
+    #[test]
     fn skip_under_tool_choice_none_fails() {
         let mut run = AgentRun::new("call something").with_tool_choice(ToolChoice::None);
 
         expect_call_model(&mut run);
         expect_needs_resolution(
-            run.model_response(ModelTurn::new(
-                None,
-                OneOrMany::one(tool_call("call_1", "add")),
-                Usage::new(),
-                tool_names(&["add"]),
-                BTreeSet::new(),
-            ))
+            model_response(
+                &mut run,
+                ModelTurn::unbound(
+                    None,
+                    OneOrMany::one(tool_call("call_1", "add")),
+                    Usage::new(),
+                    tool_names(&["add"]),
+                    BTreeSet::new(),
+                ),
+            )
             .expect("model_response should succeed"),
         );
         let err = run
@@ -2095,7 +2994,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
+            model_response(&mut run, tool_call_turn("call_1", "add"))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -2126,21 +3025,113 @@ mod tests {
             .expect_err("model response is pending, next_step must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         expect_continue(
-            run.model_response(text_turn("hi"))
-                .expect("model_response should still succeed"),
+            model_response(&mut run, text_turn("hi")).expect("model_response should still succeed"),
         );
         assert_eq!(expect_done(&mut run).output, "hi");
+    }
+
+    #[test]
+    fn accepted_turn_requires_a_durable_verdict_transition_before_advancing() {
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        let accepted = match model_response(&mut run, text_turn("hi")).expect("model response") {
+            ModelTurnOutcome::Continue(accepted) => accepted,
+            other => panic!("expected accepted turn, got {other:?}"),
+        };
+        assert_eq!(run.pending_accepted_turn().map(|turn| turn.turn), Some(1));
+
+        let error = run
+            .next_step()
+            .expect_err("a pending verdict must not be consumed implicitly");
+        assert!(error.to_string().contains("continue_model_turn"));
+        assert_eq!(run.pending_accepted_turn().map(|turn| turn.turn), Some(1));
+
+        let before_verdict = serde_json::to_string(&run).expect("pending verdict serializes");
+        let mut resumed: AgentRun =
+            serde_json::from_str(&before_verdict).expect("pending verdict deserializes");
+        assert_eq!(
+            resumed
+                .pending_accepted_turn()
+                .map(AcceptedModelTurn::attempt_id),
+            Some(accepted.attempt_id())
+        );
+        let error = resumed
+            .next_step()
+            .expect_err("a restored pending verdict must remain blocked");
+        assert!(error.to_string().contains("continue_model_turn"));
+        resumed
+            .continue_model_turn()
+            .expect("continue is the sole verdict transition");
+        assert!(resumed.pending_accepted_turn().is_none());
+        assert!(resumed.accepted_turn().is_some());
+        let error = resumed
+            .continue_model_turn()
+            .expect_err("the same verdict cannot be applied twice");
+        assert!(error.to_string().contains("already applied"));
+        assert!(resumed.accepted_turn().is_some());
+
+        let after_verdict = serde_json::to_string(&resumed).expect("accepted verdict serializes");
+        let mut resumed: AgentRun =
+            serde_json::from_str(&after_verdict).expect("accepted verdict deserializes");
+        assert!(resumed.pending_accepted_turn().is_none());
+        assert_eq!(expect_done(&mut resumed).output, "hi");
+    }
+
+    #[test]
+    fn accepted_attempt_output_contract_survives_checkpoint() {
+        let mut run = AgentRun::new("structured prompt").max_turns(2);
+        expect_call_model(&mut run);
+        let RunState::AwaitingModel { attempt_id, .. } = &run.state else {
+            panic!("model call must be pending");
+        };
+        let attempt_id = attempt_id.clone();
+        let effective_schema = serde_json::from_value(serde_json::json!({
+            "type": "object",
+            "properties": {"patched": {"type": "string"}},
+            "required": ["patched"],
+        }))
+        .expect("schema");
+        let turn = text_turn("{}").with_attempt_context(ModelAttemptContext {
+            attempt_id: attempt_id.clone(),
+            prompt: Message::user("structured prompt"),
+            output_contract: Some(ToolOutputContract {
+                output_tool_name: "final_result".to_string(),
+                effective_schema,
+            }),
+        });
+        expect_continue(model_response(&mut run, turn).expect("model response"));
+
+        let serialized = serde_json::to_string(&run).expect("accepted turn serializes");
+        let restored: AgentRun =
+            serde_json::from_str(&serialized).expect("accepted turn deserializes");
+        let accepted = restored
+            .pending_accepted_turn()
+            .expect("verdict remains pending");
+        assert_eq!(accepted.attempt_id(), attempt_id.as_str());
+        assert_eq!(accepted.prompt(), &Message::user("structured prompt"));
+        assert_eq!(
+            accepted
+                .output_contract()
+                .expect("Tool-mode contract")
+                .effective_schema
+                .as_value()
+                .get("required"),
+            Some(&serde_json::json!(["patched"]))
+        );
     }
 
     #[test]
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new())
+        let RunState::AwaitingModel { attempt_id, .. } = &run.state else {
+            panic!("model call must be pending");
+        };
+        let attempt_id = attempt_id.clone();
+        run.record_streamed_completion_call(&attempt_id, Usage::new())
             .expect("record should succeed");
 
-        let err = run
-            .model_response(text_turn("hi"))
+        let err = model_response(&mut run, text_turn("hi"))
             .expect_err("mixed streamed/non-streamed ingestion must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         // No duplicate completion call was appended.
@@ -2152,8 +3143,7 @@ mod tests {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(text_turn("hi"))
-                .expect("model_response should succeed"),
+            model_response(&mut run, text_turn("hi")).expect("model_response should succeed"),
         );
         assert_eq!(expect_done(&mut run).output, "hi");
         assert_eq!(expect_done(&mut run).output, "hi");
@@ -2164,7 +3154,7 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(2);
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
+            model_response(&mut run, tool_call_turn("call_1", "add"))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -2193,11 +3183,99 @@ mod tests {
             .expect("tool_results should succeed");
         expect_call_model(&mut resumed);
         expect_continue(
-            resumed
-                .model_response(text_turn("done"))
-                .expect("model_response should succeed"),
+            model_response(&mut resumed, text_turn("done")).expect("model_response should succeed"),
         );
         assert_eq!(expect_done(&mut resumed).output, "done");
+    }
+
+    #[test]
+    fn unary_duplicate_provider_ids_keep_internal_ids_across_serde_resume() {
+        let mut run = AgentRun::new("add twice").max_turns(2);
+        expect_call_model(&mut run);
+        let turn = ModelTurn::unbound(
+            None,
+            OneOrMany::many(vec![
+                tool_call_with_call_id("duplicate", "provider-call-a", "add"),
+                tool_call_with_call_id("duplicate", "provider-call-b", "add"),
+            ])
+            .expect("two calls"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add"]),
+        );
+        expect_continue(model_response(&mut run, turn).expect("model response"));
+
+        let before = expect_call_tools(&mut run);
+        let before_ids = before
+            .iter()
+            .map(|call| call.internal_call_id.clone().expect("internal id"))
+            .collect::<Vec<_>>();
+        assert_ne!(before_ids[0], before_ids[1]);
+
+        let serialized = serde_json::to_string(&run).expect("pending run serializes");
+        let mut restored: AgentRun =
+            serde_json::from_str(&serialized).expect("pending run deserializes");
+        let after = expect_call_tools(&mut restored);
+        let after_ids = after
+            .iter()
+            .map(|call| call.internal_call_id.clone().expect("internal id"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(after_ids, before_ids);
+        assert_eq!(after[0].tool_call.id, "duplicate");
+        assert_eq!(after[1].tool_call.id, "duplicate");
+        assert_eq!(
+            after[0].tool_call.call_id.as_deref(),
+            Some("provider-call-a")
+        );
+        assert_eq!(
+            after[1].tool_call.call_id.as_deref(),
+            Some("provider-call-b")
+        );
+
+        let legacy_error = restored
+            .tool_results(vec![
+                tool_result_with_call_id("duplicate", "provider-call-a", "3"),
+                tool_result_with_call_id("duplicate", "provider-call-b", "7"),
+            ])
+            .expect_err("legacy provider-ID joining must reject duplicate IDs");
+        assert!(matches!(legacy_error, PromptError::PromptCancelled { .. }));
+
+        let mismatch = restored
+            .tool_result_submissions(vec![
+                ToolResultSubmission::new(
+                    after_ids[1].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-a", "7"),
+                ),
+                ToolResultSubmission::new(
+                    after_ids[0].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-b", "3"),
+                ),
+            ])
+            .expect_err("swapped provider call_id values must be rejected");
+        assert!(matches!(mismatch, PromptError::PromptCancelled { .. }));
+
+        restored
+            .tool_result_submissions(vec![
+                ToolResultSubmission::new(
+                    after_ids[1].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-b", "7"),
+                ),
+                ToolResultSubmission::new(
+                    after_ids[0].clone(),
+                    tool_result_with_call_id("duplicate", "provider-call-a", "3"),
+                ),
+            ])
+            .expect("Rig identities make reverse-ordered duplicate-ID results unambiguous");
+        let Some(Message::User { content }) = restored.messages().last() else {
+            panic!("tool results should commit as one user message");
+        };
+        let rendered = content
+            .iter()
+            .map(|item| serde_json::to_string(item).expect("result serializes"))
+            .collect::<Vec<_>>();
+        assert!(rendered[0].contains('3'));
+        assert!(rendered[1].contains('7'));
     }
 
     #[test]
@@ -2206,7 +3284,7 @@ mod tests {
             let mut run = AgentRun::new("add things").max_turns(2);
             expect_call_model(&mut run);
             expect_continue(
-                run.model_response(tool_call_turn("call_1", "add"))
+                model_response(&mut run, tool_call_turn("call_1", "add"))
                     .expect("model_response should succeed"),
             );
             expect_call_tools(&mut run);
@@ -2242,7 +3320,7 @@ mod tests {
         // Fixture captured from rig before CompletionCall.usage dropped its
         // Option encoding, suspended at ExecutingTools with a null-usage
         // completion call. It must deserialize and resume.
-        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"model_call_attempts":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","call_id":null,"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
 
         let mut restored: AgentRun =
             serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
@@ -2261,7 +3339,7 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(1);
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
+            model_response(&mut run, tool_call_turn("call_1", "add"))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -2288,7 +3366,8 @@ mod tests {
             let mut run = AgentRun::new("add things").max_turns(2);
             expect_call_model(&mut run);
             expect_continue(
-                run.model_response(
+                model_response(
+                    &mut run,
                     tool_call_turn("call_1", "add").with_usage_for_test(usage(10, 5)),
                 )
                 .expect("model_response should succeed"),
@@ -2302,7 +3381,7 @@ mod tests {
                 .expect("tool_results should succeed");
             expect_call_model(&mut run);
             expect_continue(
-                run.model_response(text_turn("done").with_usage_for_test(usage(3, 4)))
+                model_response(&mut run, text_turn("done").with_usage_for_test(usage(3, 4)))
                     .expect("model_response should succeed"),
             );
             expect_done(&mut run)
@@ -2333,7 +3412,7 @@ mod tests {
         let mut run = AgentRun::new("call something");
         expect_call_model(&mut run);
         let context = expect_needs_resolution(
-            run.model_response(tool_call_turn("call_1", "unknown"))
+            model_response(&mut run, tool_call_turn("call_1", "unknown"))
                 .expect("model_response should succeed"),
         );
 
@@ -2353,7 +3432,7 @@ mod tests {
     /// A turn calling `name`, advertising it as an allowed-but-not-executable
     /// tool (the shape Tool output mode produces — see #1928).
     fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
-        ModelTurn::new(
+        ModelTurn::unbound(
             None,
             OneOrMany::one(tool_call(id, name)),
             Usage::new(),
@@ -2363,7 +3442,7 @@ mod tests {
     }
 
     fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
-        ModelTurn::new(
+        ModelTurn::unbound(
             None,
             OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
                 id.to_string(),
@@ -2408,10 +3487,21 @@ mod tests {
         let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
 
         expect_call_model(&mut run);
-        expect_continue(
-            run.model_response(output_tool_turn("call_1", "final_result"))
-                .expect("model_response should succeed"),
+        let ModelTurnOutcome::Continue(accepted) =
+            model_response(&mut run, output_tool_turn("call_1", "final_result"))
+                .expect("model_response should succeed")
+        else {
+            panic!("output tool turn should be accepted");
+        };
+        assert_eq!(
+            accepted
+                .output_contract()
+                .expect("configured output name establishes Tool mode")
+                .effective_schema,
+            Schema::default(),
+            "an omitted schema must become an explicit empty object schema"
         );
+        run.continue_model_turn().expect("continue accepted turn");
 
         // The output tool is not executed; its arguments become the run output.
         let response = expect_done(&mut run);
@@ -2435,11 +3525,10 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(output_tool_turn_with_args(
-                "call_1",
-                "final_result",
-                json!("complete"),
-            ))
+            model_response(
+                &mut run,
+                output_tool_turn_with_args("call_1", "final_result", json!("complete")),
+            )
             .expect("model_response should succeed"),
         );
 
@@ -2469,7 +3558,7 @@ mod tests {
         expect_call_model(&mut run);
         // The model emits a real tool call *and* the output tool in one turn;
         // the output-tool intercept wins and the real call is never executed.
-        let turn = ModelTurn::new(
+        let turn = ModelTurn::unbound(
             None,
             OneOrMany::many(vec![
                 tool_call("call_1", "add"),
@@ -2480,10 +3569,7 @@ mod tests {
             tool_names(&["add"]),
             tool_names(&["add", "final_result"]),
         );
-        expect_continue(
-            run.model_response(turn)
-                .expect("model_response should succeed"),
-        );
+        expect_continue(model_response(&mut run, turn).expect("model_response should succeed"));
 
         let response = expect_done(&mut run);
         assert_eq!(response.output, r#"{"x":1}"#);
@@ -2514,7 +3600,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add"))
+            model_response(&mut run, tool_call_turn("call_1", "add"))
                 .expect("model_response should succeed"),
         );
 
@@ -2523,12 +3609,27 @@ mod tests {
         assert_eq!(calls[0].tool_call.function.name, "add");
     }
 
-    fn required_field_schema(field: &str) -> serde_json::Value {
-        json!({
+    fn required_field_schema(field: &str) -> Schema {
+        serde_json::from_value(json!({
             "type": "object",
             "required": [field],
             "properties": { field: { "type": "string" } },
-        })
+        }))
+        .expect("test schema is an object")
+    }
+
+    #[test]
+    fn deserialization_rejects_non_schema_output_validation_values() {
+        let mut serialized =
+            serde_json::to_value(AgentRun::new("summarize")).expect("serialize run");
+        serialized["output_schema"] = json!("not a JSON schema");
+
+        let error = serde_json::from_value::<AgentRun>(serialized)
+            .expect_err("typed output schema must reject scalar configuration");
+        assert!(
+            error.to_string().contains("expected object or boolean"),
+            "got {error}"
+        );
     }
 
     #[test]
@@ -2542,7 +3643,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(text_turn("here is the answer"))
+            model_response(&mut run, text_turn("here is the answer"))
                 .expect("model_response should succeed"),
         );
 
@@ -2570,7 +3671,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(output_tool_turn("call_1", "final_result"))
+            model_response(&mut run, output_tool_turn("call_1", "final_result"))
                 .expect("model_response should succeed"),
         );
 
@@ -2590,7 +3691,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(text_turn(r#"{"summary":"all good"}"#))
+            model_response(&mut run, text_turn(r#"{"summary":"all good"}"#))
                 .expect("model_response should succeed"),
         );
 
@@ -2608,7 +3709,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(text_turn("invalid output"))
+            model_response(&mut run, text_turn("invalid output"))
                 .expect("model_response should succeed"),
         );
 
@@ -2629,7 +3730,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(output_tool_turn("call_1", "final_result"))
+            model_response(&mut run, output_tool_turn("call_1", "final_result"))
                 .expect("model_response should succeed"),
         );
 
@@ -2678,15 +3779,17 @@ mod tests {
         // Turn 1: the model emits two tool calls.
         let two_calls =
             OneOrMany::many([tool_call("c1", "add"), tool_call("c2", "add")]).expect("two calls");
-        let outcome = run
-            .model_response(ModelTurn::new(
+        let outcome = model_response(
+            &mut run,
+            ModelTurn::unbound(
                 None,
                 two_calls,
                 Usage::new(),
                 tool_names(&["add"]),
                 tool_names(&["add"]),
-            ))
-            .expect("model_response");
+            ),
+        )
+        .expect("model_response");
         expect_continue(outcome);
 
         // CallTools is now pending. Serialize the run (a durable checkpoint) and
@@ -2723,12 +3826,53 @@ mod tests {
         // Turn 2: the model wraps up; the run completes from the resumed state.
         let (_, _, turn2) = expect_call_model(&mut resumed);
         assert_eq!(turn2, 2);
-        expect_continue(
-            resumed
-                .model_response(text_turn("done"))
-                .expect("model_response 2"),
-        );
+        expect_continue(model_response(&mut resumed, text_turn("done")).expect("model_response 2"));
         let response = expect_done(&mut resumed);
         assert_eq!(response.output, "done");
+    }
+
+    #[test]
+    fn abandon_pending_model_call_reuses_logical_turn_but_consumes_attempt_budget() {
+        let mut run = AgentRun::new("hello").max_turns(2);
+
+        // No model call pending yet: a no-op.
+        assert!(!run.abandon_pending_model_call());
+
+        let (_, _, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 1);
+        assert_eq!(run.model_call_attempts(), 1);
+
+        // The provider call failed: recover instead of wedging in
+        // AwaitingModel forever.
+        assert!(run.abandon_pending_model_call());
+
+        // The replacement keeps logical turn 1 but consumes the second and
+        // final model-call attempt.
+        let (prompt, _, turn) = expect_call_model(&mut run);
+        assert_eq!(prompt, Message::user("hello"));
+        assert_eq!(turn, 1);
+        assert_eq!(run.model_call_attempts(), 2);
+
+        expect_continue(model_response(&mut run, text_turn("hi")).expect("model_response"));
+        assert_eq!(expect_done(&mut run).output, "hi");
+        assert_eq!(run.completion_calls().len(), 1);
+    }
+
+    #[test]
+    fn abandoned_model_call_cannot_reissue_past_attempt_budget() {
+        let mut run = AgentRun::new("hello").max_turns(1);
+
+        expect_call_model(&mut run);
+        assert!(run.abandon_pending_model_call());
+
+        let error = run
+            .next_step()
+            .expect_err("the failed operation consumed the only attempt");
+        assert!(matches!(
+            error,
+            PromptError::MaxTurnsError { max_turns: 1, .. }
+        ));
+        assert_eq!(run.turn(), 0);
+        assert_eq!(run.model_call_attempts(), 1);
     }
 }

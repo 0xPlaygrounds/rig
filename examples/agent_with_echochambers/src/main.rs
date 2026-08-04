@@ -1,11 +1,7 @@
 use anyhow::Result;
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
-use rig::{
-    integrations::cli_chatbot::ChatBotBuilder,
-    providers::openai::{self, Client},
-    tool::Tool,
-};
+use rig::{integrations::cli_chatbot::ChatBotBuilder, providers::openai, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -84,11 +80,7 @@ impl Tool for SendMessage {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -161,11 +153,7 @@ impl Tool for GetHistory {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let mut url = format!("https://echochambers.ai/api/rooms/{}/history", args.room_id);
         if let Some(limit) = args.limit {
@@ -210,11 +198,7 @@ impl Tool for GetRoomMetrics {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -254,11 +238,7 @@ impl Tool for GetAgentMetrics {
             }
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -298,11 +278,7 @@ impl Tool for GetMetricsHistory {
             }
         })
     }
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -324,11 +300,10 @@ async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
     let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    let client = openai::Client::from_env()?;
 
     // Create agent with all tools
-    let echochambers_agent = openai_client
+    let echochambers_agent = client
         .agent(openai::GPT_4O)
         .preamble(
             "You are an assistant designed to help users interact with EchoChambers rooms.
@@ -379,8 +354,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Build a CLI chatbot from the agent, with multi-turn enabled
-    let chatbot = ChatBotBuilder::new()
-        .agent(echochambers_agent)
+    let chatbot = ChatBotBuilder::new(echochambers_agent)
         .max_turns(10)
         .build();
 

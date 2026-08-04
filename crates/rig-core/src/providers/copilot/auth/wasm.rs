@@ -1,4 +1,4 @@
-use super::{AuthContext, AuthError, DeviceCodeHandler};
+use super::{AuthContext, AuthError, DeviceCodePrompter};
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -22,7 +22,7 @@ impl PlatformAuthenticator {
     pub(super) fn new(
         _access_token_file: Option<PathBuf>,
         _api_key_file: Option<PathBuf>,
-        _device_code_handler: DeviceCodeHandler,
+        _device_code_prompter: DeviceCodePrompter,
         _allow_device_flow: bool,
     ) -> Self {
         Self
@@ -32,6 +32,14 @@ impl PlatformAuthenticator {
         Err(AuthError::Message(
             "GitHub Copilot OAuth is not supported on wasm targets".into(),
         ))
+    }
+
+    /// There is no token cache on wasm targets.
+    pub(super) fn cached_auth_context(
+        &self,
+        _bootstrap_token: Option<&str>,
+    ) -> Option<AuthContext> {
+        None
     }
 
     pub(super) async fn auth_context_with_github_access_token(

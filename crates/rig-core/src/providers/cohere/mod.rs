@@ -1,25 +1,31 @@
-//! Cohere API client and Rig integration
+//! Cohere API integration.
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::cohere};
+//! use rig_core::providers::cohere;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = cohere::Client::new("YOUR_API_KEY")?;
-//!
-//! let command_r = client.completion_model(cohere::COMMAND_R);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # let request = rig_core::completion::CompletionRequest::from_prompt("hello");
+//! let cfg = cohere::functions::Config::from_env(cohere::COMMAND_R)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let response = cohere::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
 
-pub mod client;
 pub mod completion;
 pub mod embeddings;
+pub mod functions;
 pub mod streaming;
 
-pub use client::{ApiErrorResponse, ApiResponse, Client};
-pub use completion::CompletionModel;
-pub use embeddings::EmbeddingModel;
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+crate::providers::client::impl_http_embedding_config_factory!(Client, functions::EmbeddingConfig);
+
+pub use embeddings::{ApiErrorResponse, ApiResponse};
 
 // ================================================================
 // Cohere Completion Models
@@ -51,7 +57,11 @@ pub const EMBED_MULTILINGUAL_V3: &str = "embed-multilingual-v3.0";
 /// `embed-multilingual-light-v3.0` embedding model
 pub const EMBED_MULTILINGUAL_LIGHT_V3: &str = "embed-multilingual-light-v3.0";
 
-pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+/// Embedding width for a known Cohere embedding model.
+///
+/// Retained from the deleted classic `EmbeddingModel::ndims()` so callers
+/// sizing a vector-store index can still resolve a model's dimensions.
+pub fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         EMBED_ENGLISH_V3 | EMBED_MULTILINGUAL_V3 => Some(1_024),
         EMBED_ENGLISH_LIGHT_V3 | EMBED_MULTILINGUAL_LIGHT_V3 => Some(384),

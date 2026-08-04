@@ -14,13 +14,11 @@ use super::Client;
 use super::GenerateContentResponse;
 use super::proto;
 
-pub type StreamingCompletionResponse = GenerateContentResponse;
-
 pub(crate) async fn stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
+) -> Result<streaming::CompletionStream, CompletionError> {
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
@@ -34,8 +32,8 @@ pub(crate) async fn stream(
         .into_inner();
 
     let stream = stream! {
-        let mut last_resp: Option<StreamingCompletionResponse> = None;
-        let mut final_resp: Option<StreamingCompletionResponse> = None;
+        let mut last_resp: Option<GenerateContentResponse> = None;
+        let mut final_resp: Option<GenerateContentResponse> = None;
 
         while let Some(item) = response_stream.next().await {
             match item {
@@ -108,12 +106,24 @@ pub(crate) async fn stream(
         }
 
         let resp = final_resp.or(last_resp).unwrap_or_default();
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        let mut final_response = streaming::StreamFinal::new("gemini-grpc", resp.token_usage());
+        if let Some(finish_reason) = resp
+            .candidates
+            .first()
+            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason))
+        {
+            final_response = final_response.with_finish_reason(finish_reason);
+        }
+        if !resp.response_id.is_empty() {
+            final_response = final_response.with_message_id(resp.response_id.clone());
+        }
+        if !resp.model_version.is_empty() {
+            final_response = final_response.with_model(resp.model_version.clone());
+        }
+        yield Ok(streaming::RawStreamingChoice::FinalResponse(final_response));
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(streaming::CompletionStream::from_stream(stream))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

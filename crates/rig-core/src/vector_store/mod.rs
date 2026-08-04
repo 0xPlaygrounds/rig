@@ -1,26 +1,23 @@
-//! Vector store abstractions for semantic search and retrieval.
+//! Vector store data vocabulary for semantic search and retrieval.
 //!
-//! # Core Traits
+//! This module defines the shared *data* types that vector store backends speak:
 //!
-//! - [`VectorStoreIndex`]: Query a vector store for similar documents.
-//! - [`InsertDocuments`]: Insert documents and their embeddings.
-//! - [`VectorStoreIndexDyn`]: Type-erased vector queries for runtime-defined retrieval policies.
+//! - [`VectorSearchRequest`]: A pre-embedded similarity query (see [`request`] for filtering).
+//! - [`SearchHit`]: One search result: id, score, and JSON payload.
+//! - [`StoreRecord`]: One record to insert: id, JSON payload, and embeddings.
 //!
-//! Use [`VectorSearchRequest`] to build queries. See [`request`] for filtering.
-//!
-//! Types implementing [`VectorStoreIndex`] automatically implement [`PortableTool`].
+//! There is no shared store trait. Each store crate exposes concrete inherent
+//! async methods (`top_n`, `top_n_ids`, `top_n_as`, `insert`, `insert_as`) over
+//! these types, with backend-specific filter types kept per store.
 
 pub use request::VectorSearchRequest;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    Embed, OneOrMany,
+    OneOrMany,
     embeddings::{Embedding, EmbeddingError},
-    tool::PortableTool,
-    vector_store::request::{Filter, FilterError, SearchFilter},
-    wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
+    vector_store::request::FilterError,
 };
 
 pub mod builder;
@@ -71,177 +68,60 @@ pub enum VectorStoreError {
     BuilderError(String),
 }
 
-/// Trait for inserting documents and embeddings into a vector store.
-pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
-    /// Insert precomputed embeddings for each document.
-    fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
-        &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
-    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + WasmCompatSend;
-}
-
-/// Trait for querying a vector store by similarity.
-pub trait VectorStoreIndex: WasmCompatSend + WasmCompatSync {
-    /// The filter type for this backend.
-    type Filter: SearchFilter + WasmCompatSend + WasmCompatSync;
-
-    /// Returns the top N most similar documents as `(score, id, document)` tuples.
-    fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-        &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String, T)>, VectorStoreError>>
-    + WasmCompatSend;
-
-    /// Returns the top N most similar document IDs as `(score, id)` tuples.
-    fn top_n_ids(
-        &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> impl std::future::Future<Output = Result<Vec<(f64, String)>, VectorStoreError>> + WasmCompatSend;
-}
-
-/// Type-erased `top_n` result: `(score, id, document)` tuples as JSON values.
-pub type TopNResults = Result<Vec<(f64, String, Value)>, VectorStoreError>;
-
-/// Type-erased [`VectorStoreIndex`] for dynamic dispatch.
-pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
-    /// Returns the top N documents for a JSON-serializable request.
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults>;
-
-    /// Returns only the top N document IDs for a JSON-serializable request.
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
-}
-
-impl<I: VectorStoreIndex<Filter = F>, F> VectorStoreIndexDyn for I
-where
-    F: std::fmt::Debug
-        + Clone
-        + SearchFilter<Value = serde_json::Value>
-        + WasmCompatSend
-        + WasmCompatSync
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + 'static,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        let req = req.map_filter(Filter::interpret);
-
-        Box::pin(async move {
-            Ok(self
-                .top_n::<serde_json::Value>(req)
-                .await?
-                .into_iter()
-                .map(|(score, id, doc)| (score, id, prune_document(doc).unwrap_or_default()))
-                .collect::<Vec<_>>())
-        })
-    }
-
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        let req = req.map_filter(Filter::interpret);
-
-        Box::pin(self.top_n_ids(req))
-    }
-}
-
-fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
-    match document {
-        Value::Object(mut map) => {
-            let new_map = map
-                .iter_mut()
-                .filter_map(|(key, value)| {
-                    prune_document(value.take()).map(|value| (key.clone(), value))
-                })
-                .collect::<serde_json::Map<_, _>>();
-
-            Some(Value::Object(new_map))
-        }
-        Value::Array(vec) if vec.len() > 400 => None,
-        Value::Array(vec) => Some(Value::Array(
-            vec.into_iter().filter_map(prune_document).collect(),
-        )),
-        Value::Number(num) => Some(Value::Number(num)),
-        Value::String(s) => Some(Value::String(s)),
-        Value::Bool(b) => Some(Value::Bool(b)),
-        Value::Null => Some(Value::Null),
-    }
-}
-
-/// The output of vector store queries invoked via [`PortableTool`]
-#[derive(Serialize, Deserialize, Debug)]
-pub struct VectorStoreOutput {
-    /// Similarity score returned by the vector store.
+/// One vector search result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SearchHit {
+    /// Document ID as stored in the backend.
+    pub id: String,
+    /// Score for this hit. The metric *and* direction are store-defined: some
+    /// stores return a raw distance where lower is better (e.g. `rig-postgres`,
+    /// `rig-lancedb`), others a similarity where higher is better (e.g.
+    /// `rig-sqlite`, `rig-qdrant`, `rig-mongodb`, the in-memory store). See
+    /// each store's `top_n` docs.
     pub score: f64,
-    /// Document ID returned by the vector store.
+    /// Serialized document payload.
+    pub payload: serde_json::Value,
+}
+
+impl SearchHit {
+    /// Deserializes the payload into `T`.
+    pub fn payload_as<T: DeserializeOwned>(&self) -> Result<T, VectorStoreError> {
+        Ok(serde_json::from_value(self.payload.clone())?)
+    }
+}
+
+/// One record to insert into a vector store.
+///
+/// How the `id` is handled is store-defined: some backends require a specific
+/// shape (e.g. a UUID string for `rig-postgres`, UUID- or u64-shaped for
+/// `rig-qdrant`), and some ignore or replace it (e.g. `rig-sqlite` uses the
+/// payload row's own `id` column). See each store's `insert` docs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StoreRecord {
+    /// Document ID. Interpretation is store-defined; see the struct docs.
     pub id: String,
     /// Serialized document payload.
-    pub document: Value,
+    pub payload: serde_json::Value,
+    /// Precomputed embeddings for the document.
+    pub embeddings: OneOrMany<Embedding>,
 }
 
-impl<T, F> PortableTool for T
-where
-    F: SearchFilter<Value = serde_json::Value>
-        + WasmCompatSend
-        + WasmCompatSync
-        + for<'de> Deserialize<'de>,
-    T: VectorStoreIndex<Filter = F>,
-{
-    const NAME: &'static str = "search_vector_store";
-    type Error = VectorStoreError;
-    type Args = VectorSearchRequest<F>;
-    type Output = Vec<VectorStoreOutput>;
-
-    fn description(&self) -> String {
-        "Retrieves the most relevant documents from a vector store based on a query.".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The query string to search for relevant documents in the vector store."
-                },
-                "samples": {
-                    "type": "integer",
-                    "description": "The maximum number of samples / documents to retrieve.",
-                    "default": 5,
-                    "minimum": 1
-                },
-                "threshold": {
-                    "type": "number",
-                    "description": "Similarity search threshold. If present, any result with a distance less than this may be omitted from the final result."
-                }
-            },
-            "required": ["query", "samples"]
+impl StoreRecord {
+    /// Builds a record from an id, a serializable payload, and its embeddings.
+    pub fn new<T: Serialize>(
+        id: impl Into<String>,
+        payload: &T,
+        embeddings: OneOrMany<Embedding>,
+    ) -> Result<Self, VectorStoreError> {
+        Ok(Self {
+            id: id.into(),
+            payload: serde_json::to_value(payload)?,
+            embeddings,
         })
     }
-
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        let results = self.top_n(args).await?;
-        Ok(results
-            .into_iter()
-            .map(|(score, id, document)| VectorStoreOutput {
-                score,
-                id,
-                document,
-            })
-            .collect())
-    }
 }
 
-/// Index strategy for the super::InMemoryVectorStore
+/// Index strategy for the [`in_memory_store::InMemoryVectorStore`].
 #[derive(Clone, Debug, Default)]
 pub enum IndexStrategy {
     /// Checks all documents in the vector store to find the most relevant documents.
@@ -255,65 +135,4 @@ pub enum IndexStrategy {
         /// Number of hyperplanes to use for LSH.
         num_hyperplanes: usize,
     },
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::{Arc, Mutex};
-
-    use super::*;
-    use crate::vector_store::request::Filter;
-
-    struct TestIndex {
-        queries: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl VectorStoreIndex for TestIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
-            &self,
-            req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            self.queries
-                .lock()
-                .expect("query recorder lock")
-                .push(req.query().to_string());
-            let document = serde_json::from_value(json!({ "answer": 42 }))?;
-            Ok(vec![(0.9, "doc-1".to_string(), document)])
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(vec![(0.9, "doc-1".to_string())])
-        }
-    }
-
-    #[tokio::test]
-    async fn vector_store_index_remains_a_tool() {
-        let queries = Arc::new(Mutex::new(Vec::new()));
-        let index = TestIndex {
-            queries: queries.clone(),
-        };
-        let request = VectorSearchRequest::builder()
-            .query("answer")
-            .samples(1)
-            .build();
-        let output = <TestIndex as PortableTool>::call(&index, request)
-            .await
-            .expect("vector tool call should succeed");
-
-        assert_eq!(<TestIndex as PortableTool>::NAME, "search_vector_store");
-        assert_eq!(
-            *queries.lock().expect("query recorder lock"),
-            vec!["answer"]
-        );
-        assert_eq!(output.len(), 1);
-        let result = output.first().expect("one vector result");
-        assert_eq!(result.score, 0.9);
-        assert_eq!(result.id, "doc-1");
-        assert_eq!(result.document, json!({ "answer": 42 }));
-    }
 }

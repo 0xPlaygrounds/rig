@@ -25,8 +25,12 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
+rig-bedrock = { path = "../rig-bedrock", version = "0.41.0", optional = true, default-features = false }
 rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+rig-gemini-grpc = { path = "../rig-gemini-grpc", version = "0.41.0", optional = true, default-features = false }
 rig-derive = { path = "../rig-derive", version = "0.41.0", optional = true }
+rig-memory = { path = "../rig-memory", version = "0.41.0", optional = true, default-features = false, features = ["test-utils"] }
+aws-sdk-bedrockruntime = { workspace = true, optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -36,17 +40,10 @@ tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
-# MCP is native-only. rmcp's `ClientHandler` requires `Send + Sync`
-# unconditionally (its `local` feature relaxes only the future bounds), which
-# rig's tool registry cannot satisfy on wasm, where `WasmCompatSend`/
-# `WasmCompatSync` are no-op markers. Scoping the dependency out of the wasm
-# graph keeps the wasm dependency tree honest; `tool/mod.rs` raises a targeted
-# `compile_error!` if the feature is requested there anyway.
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-rmcp = { workspace = true, optional = true, features = ["client"] }
-
 [dev-dependencies]
 anyhow = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = ["test-utils"] }
+rig-memory = { path = "../rig-memory", version = "0.41.0", default-features = false, features = ["test-utils"] }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -56,6 +53,7 @@ default = ["derive"]
 audio = ["rig-core/audio"]
 image = ["rig-core/image"]
 derive = ["dep:rig-derive", "rig-core/derive"]
-test-utils = ["rig-core/test-utils"]
+test-utils = ["rig-core/test-utils", "dep:rig-memory"]
 discord-bot = ["dep:serenity"]
-rmcp = ["dep:rmcp"]
+bedrock = ["dep:rig-bedrock", "dep:aws-sdk-bedrockruntime"]
+gemini-grpc = ["dep:rig-gemini-grpc"]

@@ -14,9 +14,9 @@ fn thinking_params() -> serde_json::Value {
 
 #[tokio::test]
 async fn streaming() {
-    with_deepseek_cassette("reasoning_roundtrip/streaming", |client| async move {
+    with_deepseek_cassette("reasoning_roundtrip/streaming", |env| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            env.provider_config(deepseek::DEEPSEEK_V4_FLASH),
             Some(thinking_params()),
         ))
         .await;
@@ -26,9 +26,9 @@ async fn streaming() {
 
 #[tokio::test]
 async fn nonstreaming() {
-    with_deepseek_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
+    with_deepseek_cassette("reasoning_roundtrip/nonstreaming", |env| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            env.provider_config(deepseek::DEEPSEEK_V4_FLASH),
             Some(thinking_params()),
         ))
         .await;

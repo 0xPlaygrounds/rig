@@ -5,32 +5,33 @@
 //!
 //! # OpenAI-compatible example
 //! ```no_run
-//! use rig_core::client::CompletionClient;
 //! use rig_core::providers::xiaomimimo;
 //!
-//! let client = xiaomimimo::Client::new("YOUR_API_KEY").expect("Failed to build client");
-//! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = xiaomimimo::functions::Config::from_env(xiaomimimo::MIMO_V2_5_PRO)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = xiaomimimo::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Anthropic-compatible example
 //! ```no_run
-//! use rig_core::client::CompletionClient;
-//! use rig_core::providers::xiaomimimo;
+//! use rig_core::providers::{anthropic, xiaomimimo};
 //!
-//! let client = xiaomimimo::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
-//! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // Resolves `XIAOMI_MIMO_ANTHROPIC_API_BASE`, then a normalized
+//! // `XIAOMI_MIMO_API_BASE`, then `xiaomimimo::ANTHROPIC_API_BASE_URL`.
+//! let cfg = xiaomimimo::functions::anthropic_config_from_env(xiaomimimo::MIMO_V2_5_PRO)?;
+//! let rt = rig_core::http_runtime::HttpRuntime::new();
+//! let request = rig_core::completion::CompletionRequest::from_prompt("Hello!");
+//! let response = anthropic::functions::complete(&cfg, &rt, request).await?;
+//! # Ok(())
+//! # }
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
-};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// OpenAI-compatible base URL.
 pub const API_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
@@ -48,179 +49,22 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct XiaomiMimoAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoAnthropicExt;
-
-type XiaomiMimoApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<XiaomiMimoExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<XiaomiMimoBuilder, XiaomiMimoApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<XiaomiMimoAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<XiaomiMimoAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for XiaomiMimoExt {
-    type Builder = XiaomiMimoBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for XiaomiMimoAnthropicExt {
-    type Builder = XiaomiMimoAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl<H> Capabilities<H> for XiaomiMimoExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<XiaomiMimoModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for XiaomiMimoAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<XiaomiMimoAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for XiaomiMimoExt {}
-impl DebugExt for XiaomiMimoAnthropicExt {}
-
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
-    const PROVIDER_NAME: &'static str = "xiaomimimo";
-
-    type StreamingUsage = super::openai::Usage;
-
-    type Response = super::openai::CompletionResponse;
-}
-
-impl ProviderBuilder for XiaomiMimoBuilder {
-    type Extension<H>
-        = XiaomiMimoExt
-    where
-        H: HttpClientExt;
-    type ApiKey = XiaomiMimoApiKey;
-
-    const BASE_URL: &'static str = API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(XiaomiMimoExt)
-    }
-}
-
-impl ProviderBuilder for XiaomiMimoAnthropicBuilder {
-    type Extension<H>
-        = XiaomiMimoAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(XiaomiMimoAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for XiaomiMimoAnthropicExt {
-    const PROVIDER_NAME: &'static str = "xiaomimimo";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = XiaomiMimoApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("XIAOMI_MIMO_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = crate::client::optional_env_var("XIAOMI_MIMO_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("XIAOMI_MIMO_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) =
-            anthropic_base_override("XIAOMI_MIMO_ANTHROPIC_API_BASE", "XIAOMI_MIMO_API_BASE")?
-        {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-fn anthropic_base_override(
+/// The Anthropic base-URL override, resolved from the process environment.
+///
+/// `primary_env` wins; otherwise `fallback_env` (an OpenAI-compatible base URL)
+/// is mapped onto the Anthropic entrypoint by
+/// [`normalize_anthropic_base_url`]. Pure logic lives in
+/// [`resolve_anthropic_base_override`].
+///
+/// # Errors
+/// [`ConfigError`](crate::providers::descriptor::ConfigError) when a variable
+/// is set but invalid.
+fn anthropic_base_override_from_env(
     primary_env: &'static str,
     fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
+) -> Result<Option<String>, crate::providers::descriptor::ConfigError> {
+    let primary = crate::providers::descriptor::optional_env_var(primary_env)?;
+    let fallback = crate::providers::descriptor::optional_env_var(fallback_env)?;
 
     Ok(resolve_anthropic_base_override(
         primary.as_deref(),
@@ -254,31 +98,6 @@ fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
     Some(url.to_string())
 }
 
-impl<H> AnthropicClientBuilder<H> {
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
-}
-
 #[derive(Debug, serde::Deserialize)]
 struct ListModelsResponse {
     data: Vec<ListModelEntry>,
@@ -298,86 +117,36 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the Xiaomi MiMo API (`GET /models`).
-#[derive(Clone)]
-pub struct XiaomiMimoModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
+/// Path of the model-listing endpoint, relative to the API base URL.
+pub(crate) const LIST_MODELS_PATH: &str = "/models";
 
-impl<H> ModelLister<H> for XiaomiMimoModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
+/// Parse a `GET /models` response into a [`ModelList`]. Pure.
+///
+/// The wire-shape half of [`functions::list_models`].
+pub(crate) fn parse_list_models_response(
+    status: http::StatusCode,
+    body: &[u8],
+) -> Result<ModelList, ModelListingError> {
+    if !status.is_success() {
+        return Err(ModelListingError::api_error_with_context(
+            "Xiaomi MiMo",
+            LIST_MODELS_PATH,
+            status.as_u16(),
+            body,
+        ));
     }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "Xiaomi MiMo",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Xiaomi MiMo",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("Xiaomi MiMo", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
+    let api_resp: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("Xiaomi MiMo", LIST_MODELS_PATH, &error, body)
+    })?;
+    let models = api_resp.data.into_iter().map(Model::from).collect();
+    Ok(ModelList::new(models))
 }
-
 #[cfg(test)]
 mod tests {
     use super::{
         ANTHROPIC_API_BASE_URL, API_BASE_URL, normalize_anthropic_base_url,
         resolve_anthropic_base_override,
     };
-
-    #[test]
-    fn test_client_initialization() {
-        let _client =
-            crate::providers::xiaomimimo::Client::new("dummy-key").expect("Client::new()");
-        let _client_from_builder = crate::providers::xiaomimimo::Client::builder()
-            .api_key("dummy-key")
-            .build()
-            .expect("Client::builder()");
-        let _anthropic_client = crate::providers::xiaomimimo::AnthropicClient::new("dummy-key")
-            .expect("AnthropicClient::new()");
-        let _anthropic_client_from_builder =
-            crate::providers::xiaomimimo::AnthropicClient::builder()
-                .api_key("dummy-key")
-                .build()
-                .expect("AnthropicClient::builder()");
-    }
 
     #[test]
     fn normalize_openai_bases_to_anthropic_bases() {
@@ -410,5 +179,342 @@ mod tests {
             override_url.as_deref(),
             Some("https://primary.example.com/anthropic/v1")
         );
+    }
+}
+
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+
+pub mod functions {
+    //! Xiaomi MiMo chat completions as config + pure functions.
+    //!
+    //! The data-oriented face of the Xiaomi MiMo provider, mirroring
+    //! [`crate::providers::openai::functions`]: a serde [`Config`], a
+    //! [`DESCRIPTOR`] capability sheet, and pure
+    //! [`build_request`]/[`parse_response`] free functions plus the async
+    //! [`complete`]/[`open_stream`] wrappers over
+    //! [`HttpRuntime`]. The request/parse
+    //! mechanics are shared with the other OpenAI-compatible providers via
+    //! `openai::functions`' stage functions; this module is the source of truth
+    //! for Xiaomi MiMo's path, body assembly, and streaming dialect.
+
+    use serde::{Deserialize, Serialize};
+
+    use crate::completion::{self, CompletionError, CompletionRequest};
+    use crate::http_runtime::HttpRuntime;
+    use crate::providers::anthropic::functions as anthropic_functions;
+    use crate::providers::descriptor::ChatCompletionsDialect;
+    use crate::providers::descriptor::{
+        ApiKeyLocation, ConfigError, ProviderDescriptor, optional_env_var, required_env_var,
+    };
+    use crate::providers::openai::completion::CompletionModelOptions;
+    use crate::providers::openai::functions as openai_functions;
+
+    /// Default Xiaomi MiMo API base URL.
+    pub const DEFAULT_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
+
+    /// Xiaomi MiMo's Chat Completions streaming dialect.
+    pub(crate) const STREAM_DIALECT: ChatCompletionsDialect =
+        ChatCompletionsDialect::from_descriptor(&DESCRIPTOR);
+
+    /// Xiaomi MiMo's capability sheet.
+    pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor {
+        name: "xiaomimimo",
+        supports_tools: true,
+        supports_response_format: true,
+        stream_include_usage: true,
+        emits_complete_single_chunk_tool_calls: false,
+        composes_native_output_with_tools: true,
+        max_embedding_documents: None,
+        verify_path: Some("/models"),
+    };
+
+    /// Plain-data Xiaomi MiMo provider configuration.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+    #[non_exhaustive]
+    pub struct Config {
+        /// Reusable HTTP connection data.
+        #[serde(flatten)]
+        pub connection: crate::providers::HttpConnectionConfig,
+        /// Model identifier requests are built for.
+        pub model: String,
+    }
+
+    crate::providers::client::impl_http_connection_config!(Config);
+
+    impl Config {
+        /// Config for `model` reading `XIAOMI_MIMO_API_KEY` from the environment.
+        pub fn new(model: impl Into<String>) -> Self {
+            Self {
+                connection: crate::providers::HttpConnectionConfig::new(
+                    DEFAULT_BASE_URL.to_string(),
+                    ApiKeyLocation::Env("XIAOMI_MIMO_API_KEY".to_string()),
+                ),
+                model: model.into(),
+            }
+        }
+
+        /// Config for `model` built from the process environment.
+        ///
+        /// Reads `XIAOMI_MIMO_API_KEY` (required) and `XIAOMI_MIMO_API_BASE` (optional
+        /// override of [`DEFAULT_BASE_URL`]) — the same variables the deleted
+        /// `xiaomimimo::Client::from_env` read. The credential is validated
+        /// eagerly but stored as [`ApiKeyLocation::Env`], so the secret is read
+        /// at request time rather than held inside the config.
+        ///
+        /// # Errors
+        /// [`ConfigError`] when a required variable is missing or invalid.
+        pub fn from_env(model: impl Into<String>) -> Result<Self, ConfigError> {
+            let mut cfg = Self::new(model);
+            required_env_var("XIAOMI_MIMO_API_KEY")?;
+            if let Some(base_url) = optional_env_var("XIAOMI_MIMO_API_BASE")? {
+                cfg.base_url = base_url;
+            }
+            Ok(cfg)
+        }
+
+        /// Config for `model` with an explicit API key.
+        pub fn with_api_key(mut self, key: impl Into<String>) -> Self {
+            self.api_key = ApiKeyLocation::Inline(key.into());
+            self
+        }
+
+        /// Override the API base URL.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.base_url = base_url.into();
+            self
+        }
+    }
+
+    /// Anthropic-Messages surface configuration for `model`, built from the
+    /// process environment.
+    ///
+    /// The replacement for the deleted classic `AnthropicClient`:
+    /// Xiaomi MiMo's Anthropic endpoint is reached through
+    /// [`anthropic::functions`](crate::providers::anthropic::functions) with a
+    /// Xiaomi MiMo base URL and credential. Reads `XIAOMI_MIMO_API_KEY` (required) and
+    /// resolves the base URL from `XIAOMI_MIMO_ANTHROPIC_API_BASE`, falling back to a
+    /// normalized `XIAOMI_MIMO_API_BASE`, then to
+    /// [`ANTHROPIC_API_BASE_URL`](super::ANTHROPIC_API_BASE_URL) — the same precedence and default
+    /// the classic client used.
+    ///
+    /// `default_max_tokens` is forced to `4096` for every model, mirroring
+    /// Xiaomi MiMo's `AnthropicDialect`; `anthropic_version`/`anthropic_betas` keep
+    /// the Anthropic defaults, which is what the classic builder used too.
+    ///
+    /// # Errors
+    /// [`ConfigError`] when a required variable is missing or invalid.
+    pub fn anthropic_config_from_env(
+        model: impl Into<String>,
+    ) -> Result<anthropic_functions::Config, ConfigError> {
+        let mut cfg = anthropic_functions::Config::new(model);
+        required_env_var("XIAOMI_MIMO_API_KEY")?;
+        cfg.api_key = ApiKeyLocation::Env("XIAOMI_MIMO_API_KEY".to_string());
+        cfg.base_url = anthropic_functions::normalize_base_url(super::ANTHROPIC_API_BASE_URL);
+        cfg.default_max_tokens = Some(4096);
+        if let Some(base_url) = super::anthropic_base_override_from_env(
+            "XIAOMI_MIMO_ANTHROPIC_API_BASE",
+            "XIAOMI_MIMO_API_BASE",
+        )? {
+            cfg.base_url = anthropic_functions::normalize_base_url(&base_url);
+        }
+        Ok(cfg)
+    }
+
+    /// Build the serialized chat-completions request body for `request`. Pure.
+    pub fn build_request_body(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        build_body(
+            &cfg.model,
+            request,
+            CompletionModelOptions::default(),
+            stream,
+        )
+    }
+
+    /// Xiaomi MiMo's straight-line chat-completions body assembly.
+    ///
+    /// Xiaomi MiMo speaks the reference dialect: no wire-level quirks, so the
+    /// body is the shared typed conversion serialized as-is.
+    pub(crate) fn build_body(
+        model: &str,
+        request: &CompletionRequest,
+        options: CompletionModelOptions,
+        stream: bool,
+    ) -> Result<Vec<u8>, CompletionError> {
+        let typed =
+            openai_functions::compatible_typed_request(model, request, &DESCRIPTOR, options)?;
+        let body = openai_functions::compatible_body_value(&typed, &DESCRIPTOR, stream)?;
+        Ok(serde_json::to_vec(&body)?)
+    }
+
+    /// The chat-completions request path for `model`.
+    pub(crate) fn completion_path(_model: &str) -> String {
+        "/chat/completions".to_string()
+    }
+
+    /// Build the complete HTTP request (URL, headers, body) for `request`.
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads the
+    /// environment).
+    pub fn build_request(
+        cfg: &Config,
+        request: &CompletionRequest,
+        stream: bool,
+    ) -> Result<http::Request<Vec<u8>>, CompletionError> {
+        openai_functions::compatible_http_request(
+            &cfg.base_url,
+            &completion_path(&cfg.model),
+            &cfg.api_key,
+            &cfg.extra_headers,
+            build_request_body(cfg, request, stream)?,
+        )
+    }
+
+    /// Parse a chat-completions response body into the normalized
+    /// [`completion::CompletionResponse`]. Pure.
+    pub fn parse_response(
+        status: http::StatusCode,
+        body: &str,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        openai_functions::compatible_parse_response::<crate::providers::openai::CompletionResponse>(
+            status,
+            body,
+            DESCRIPTOR.name,
+        )
+    }
+
+    /// Open a streaming completion for `request`.
+    pub async fn open_stream(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::CompletionStream, CompletionError> {
+        let req = build_request(cfg, &request, true)?;
+        Ok(openai_functions::compatible_open_stream(
+            rt,
+            req,
+            STREAM_DIALECT,
+        ))
+    }
+
+    /// Send `request` to Xiaomi MiMo and return the normalized response.
+    pub async fn complete(
+        cfg: &Config,
+        rt: &HttpRuntime,
+        request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let req = build_request(cfg, &request, false)?;
+        let (status, body) = rt.send(req).await?;
+        parse_response(status, &body)
+    }
+
+    /// Build the `GET /models` request for [`list_models`].
+    ///
+    /// Pure except for credential resolution (`ApiKeyLocation::Env` reads
+    /// the environment).
+    pub fn build_list_models_request(
+        cfg: &Config,
+    ) -> Result<http::Request<Vec<u8>>, crate::model::ModelListingError> {
+        let url = format!(
+            "{}{}",
+            cfg.base_url.trim_end_matches('/'),
+            super::LIST_MODELS_PATH
+        );
+        openai_functions::bearer_get(url, &cfg.api_key, &cfg.extra_headers)
+    }
+
+    /// List the models available to `cfg`'s credentials.
+    ///
+    /// The classic `ModelListingClient` path parses through the same pure
+    /// parser (`super::parse_list_models_response`).
+    pub async fn list_models(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<crate::model::ModelList, crate::model::ModelListingError> {
+        let req = build_list_models_request(cfg)?;
+        let (status, body) = rt.send_bytes(req).await?;
+        super::parse_list_models_response(status, &body)
+    }
+
+    /// Verify that `cfg`'s credential is accepted by the provider.
+    ///
+    /// The data-oriented replacement for the deleted `VerifyClient::verify`: the
+    /// endpoint is [`DESCRIPTOR`]'s `verify_path` (`/models`, the value the
+    /// deleted `Provider::VERIFY_PATH` carried) and the status mapping is the
+    /// classic one — see [`crate::providers::verify`].
+    ///
+    /// # Errors
+    /// [`VerifyError`](crate::providers::verify::VerifyError): invalid
+    /// authentication on `401`/`403`, otherwise the preserved provider response
+    /// or a transport failure.
+    pub async fn verify(
+        cfg: &Config,
+        rt: &HttpRuntime,
+    ) -> Result<(), crate::providers::verify::VerifyError> {
+        crate::providers::verify::verify_bearer(
+            &DESCRIPTOR,
+            &cfg.base_url,
+            &cfg.api_key,
+            &cfg.extra_headers,
+            rt,
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::OneOrMany;
+
+        fn sample_request() -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                chat_history: OneOrMany::one(crate::message::Message::user("hello")),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: Some(0.5),
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn build_request_sets_url_and_model() {
+            let cfg = Config::new("test-model").with_api_key("secret");
+            let req = build_request(&cfg, &sample_request(), false).expect("build");
+            assert_eq!(req.uri(), "https://api.xiaomimimo.com/v1/chat/completions");
+            let value: serde_json::Value = serde_json::from_slice(req.body()).expect("json");
+            assert_eq!(value["model"], "test-model");
+        }
+
+        #[test]
+        fn parse_response_normalizes() {
+            let body = serde_json::json!({
+                "id": "chatcmpl-1",
+                "model": "test-model",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hi"},
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5}
+            })
+            .to_string();
+            let response = parse_response(http::StatusCode::OK, &body).expect("parse");
+            assert_eq!(response.provider, "xiaomimimo");
+            assert_eq!(response.usage.input_tokens, 3);
+            assert_eq!(response.usage.total_tokens, 5);
+        }
     }
 }

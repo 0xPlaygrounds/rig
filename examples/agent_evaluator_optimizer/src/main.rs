@@ -1,9 +1,10 @@
+//! Generator/evaluator loop. The generator is an [`Agent`], and the evaluator
+//! uses the same agent's non-generic fluent extraction runner.
+//! Requires `OPENAI_API_KEY`.
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 
-use rig::completion::Prompt;
-
 use rig::providers::openai;
-use rig::providers::openai::client::Client;
 
 use schemars::JsonSchema;
 
@@ -26,10 +27,8 @@ All operations should be O(1).
 ";
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-
-    let generator_agent = openai_client
+    let client = openai::Client::from_env()?;
+    let generator_agent = client
         .agent(openai::GPT_4)
         .preamble(
             "
@@ -47,8 +46,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let evaluator_agent = openai_client.extractor::<Evaluation>(openai::GPT_4)
-        .preamble("
+    const EVALUATOR_ROLE: &str = "
             Evaluate this following code implementation for:
             1. code correctness
             2. time complexity
@@ -61,16 +59,23 @@ async fn main() -> Result<(), anyhow::Error> {
             Provide detailed feedback if there are areas that need improvement. You should specify what needs improvement and why.
 
             Only output JSON.
-        ")
-        .build();
+        ";
+    let classic = ExtractOptions::classic_extractor();
+    let extraction_preamble = classic.preamble.clone().unwrap_or_default();
+    let evaluator_preamble = format!(
+        "{extraction_preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{EVALUATOR_ROLE}"
+    );
+    let evaluator_agent = client.agent(openai::GPT_4).build();
 
     let mut memories: Vec<String> = Vec::new();
     let mut response = generator_agent.prompt(TASK).await?;
     memories.push(response.clone());
 
     loop {
-        let eval_result = evaluator_agent
-            .extract(&format!("{TASK}\n\n{response}"))
+        let eval_result: Evaluation = evaluator_agent
+            .extractor(format!("{TASK}\n\n{response}"))
+            .preamble(evaluator_preamble.clone())
+            .run()
             .await?;
         if eval_result.evaluation_status == EvalStatus::Pass {
             break;

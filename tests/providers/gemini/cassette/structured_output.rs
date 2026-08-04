@@ -1,7 +1,6 @@
 //! Gemini structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -93,7 +92,7 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
     ]);
     let client = gemini::Client::builder()
         .api_key("test-key")
-        .http_client(http.clone())
+        .http_runtime(rig::http_runtime::HttpRuntime::sequenced(http.clone()))
         .build()
         .expect("Gemini test client should build");
     let agent = client

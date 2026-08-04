@@ -5,7 +5,6 @@
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
 use crate::support::{
@@ -15,27 +14,24 @@ use crate::support::{
 
 #[tokio::test]
 async fn streaming_tools_smoke() {
-    with_llamafile_cassette(
-        "streaming_tools/streaming_tools_smoke",
-        |client| async move {
-            let agent = client
-                .agent(CASSETTE_CHAT_MODEL)
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .build();
+    with_llamafile_cassette("streaming_tools/streaming_tools_smoke", |env| async move {
+        let agent = env
+            .agent(CASSETTE_CHAT_MODEL)
+            .preamble(STREAMING_TOOLS_PREAMBLE)
+            .tool(Adder)
+            .tool(Subtract)
+            .build();
 
-            let mut stream = agent
-                .stream_prompt(STREAMING_TOOLS_PROMPT)
-                .max_turns(4)
-                .await;
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming tool prompt should succeed");
+        let mut stream = agent
+            .runner(STREAMING_TOOLS_PROMPT)
+            .max_turns(4)
+            .stream_run();
+        let response = collect_stream_final_response(&mut stream)
+            .await
+            .expect("streaming tool prompt should succeed");
 
-            // STREAMING_TOOLS_PROMPT is "Calculate 2 - 5." => -3.
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
+        // STREAMING_TOOLS_PROMPT is "Calculate 2 - 5." => -3.
+        assert_mentions_expected_number(&response, -3);
+    })
     .await;
 }

@@ -3,10 +3,6 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
-use crate::providers::openai;
-
-use super::client::TogetherExt;
-
 // ================================================================
 // Together Completion Models
 // ================================================================
@@ -120,37 +116,27 @@ pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
 // Rig Implementation Types
 // =================================================================
 
-/// Together AI completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<TogetherExt, H>;
-
 #[cfg(test)]
 mod tests {
-    use crate::client::CompletionClient;
-    use crate::completion::{CompletionError, CompletionModel};
+    use crate::completion::CompletionError;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
     };
+    use crate::providers::together::functions;
     use crate::test_utils::RecordingHttpClient;
     use crate::{OneOrMany, message};
-
-    use super::super::client::Client;
 
     #[tokio::test]
     async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
         let body = r#"{"error":"model unavailable","code":"model_overloaded"}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model("meta-llama/Meta-Llama-3-70B-Instruct-Turbo");
-        let request = model.completion_request("hello").build();
+        let rt = crate::http_runtime::HttpRuntime::recording(
+            RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body),
+        );
+        let cfg = functions::Config::new("meta-llama/Meta-Llama-3-70B-Instruct-Turbo")
+            .with_api_key("test-key");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with provider error envelope");
 
@@ -177,7 +163,6 @@ mod tests {
     #[test]
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
         let request = crate::completion::CompletionRequest {
-            preamble: None,
             chat_history: OneOrMany::one(message::Message::Assistant {
                 id: None,
                 content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),

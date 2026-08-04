@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::ProviderClient;
+use rig::agent::Agent;
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 use rig::providers::openai;
 use schemars::JsonSchema;
@@ -37,35 +38,29 @@ fn sample_inputs() -> Vec<&'static str> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = openai::Client::from_env()?;
-    let names_extractor = client
-        .extractor::<Names>(openai::GPT_4O_MINI)
-        .preamble("Extract names from the given text.")
-        .retries(2)
-        .build();
-    let topics_extractor = client
-        .extractor::<Topics>(openai::GPT_4O_MINI)
-        .preamble("Extract topics from the given text.")
-        .retries(2)
-        .build();
-    let sentiment_extractor = client
-        .extractor::<Sentiment>(openai::GPT_4O_MINI)
-        .preamble("Extract sentiment and confidence from the given text.")
-        .retries(2)
-        .build();
+    let agent = client.agent(openai::GPT_4O_MINI).build();
+
+    // `.preamble(extra)` on the old builder appended to the extractor preamble;
+    // spelling that out keeps the extraction protocol intact.
+    let names_options = extractor_options("Extract names from the given text.");
+    let topics_options = extractor_options("Extract topics from the given text.");
+    let sentiment_options =
+        extractor_options("Extract sentiment and confidence from the given text.");
 
     // Fan each input out to the three extractors concurrently (`try_join!`),
     // running up to four inputs at a time (`buffered`) — the same shape the
     // old `try_parallel!` + `try_batch_call(4, ..)` pipeline provided.
     let responses: Vec<String> = futures::stream::iter(sample_inputs())
         .map(|text| {
-            let names_extractor = &names_extractor;
-            let topics_extractor = &topics_extractor;
-            let sentiment_extractor = &sentiment_extractor;
+            let agent = &agent;
+            let names_options = &names_options;
+            let topics_options = &topics_options;
+            let sentiment_options = &sentiment_options;
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    names_extractor.extract(text),
-                    topics_extractor.extract(text),
-                    sentiment_extractor.extract(text),
+                    extract::<Names>(agent, text, names_options),
+                    extract::<Topics>(agent, text, topics_options),
+                    extract::<Sentiment>(agent, text, sentiment_options),
                 )?;
                 anyhow::Ok(format!(
                     "Extracted names: {}\nExtracted topics: {}\nExtracted sentiment: {} ({})",
@@ -85,4 +80,27 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// The classic extractor's exchange, with `retries(2)` and its extra
+/// instructions appended to the extraction preamble the way the deleted
+/// `ExtractorBuilder::preamble` did.
+fn extractor_options(extra_instructions: &str) -> ExtractOptions {
+    let classic = ExtractOptions::classic_extractor();
+    let preamble = classic.preamble.clone().unwrap_or_default();
+    classic.with_retries(2).with_preamble(format!(
+        "{preamble}\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra_instructions}"
+    ))
+}
+
+async fn extract<T>(agent: &Agent, text: &str, options: &ExtractOptions) -> Result<T>
+where
+    T: schemars::JsonSchema + serde::de::DeserializeOwned,
+{
+    Ok(agent
+        .extractor(text)
+        .retries(options.retries)
+        .preamble(options.preamble.clone().unwrap_or_default())
+        .run::<T>()
+        .await?)
 }

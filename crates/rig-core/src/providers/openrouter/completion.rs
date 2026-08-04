@@ -1,4 +1,3 @@
-use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -8,6 +7,64 @@ use crate::{
     providers::openai,
 };
 use serde::{Deserialize, Serialize};
+
+/// Token usage reported by OpenRouter's chat-completions endpoint.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Usage {
+    pub prompt_tokens: usize,
+    #[serde(default)]
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
+    #[serde(default)]
+    pub cost: f64,
+    /// OpenAI-compatible prompt-token details, returned by OpenRouter when a
+    /// provider reports cache activity (Anthropic with cache_control, OpenAI
+    /// with server-side automatic caching).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+/// Prompt-token breakdown reported by OpenRouter for cached requests.
+// `usize` matches the parent `Usage` struct in this module; the streaming counterpart
+// uses `u32` to match its own parent.
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+pub struct PromptTokensDetails {
+    /// Tokens served from cache (cache hit).
+    #[serde(default)]
+    pub cached_tokens: usize,
+    /// Tokens written to cache on this call (cache miss that populated the cache).
+    #[serde(default)]
+    pub cache_write_tokens: usize,
+}
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {} Total tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        let (cached_input, cache_creation) = value
+            .prompt_tokens_details
+            .as_ref()
+            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
+            .unwrap_or((0, 0));
+        crate::completion::Usage {
+            input_tokens: value.prompt_tokens as u64,
+            output_tokens: value.completion_tokens as u64,
+            total_tokens: value.total_tokens as u64,
+            cached_input_tokens: cached_input,
+            cache_creation_input_tokens: cache_creation,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        }
+    }
+}
 use std::collections::HashMap;
 
 // ================================================================
@@ -575,13 +632,18 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = choice
+            .finish_reason
+            .as_deref()
+            .filter(|reason| !reason.is_empty())
+            .map(crate::providers::openai::completion::map_finish_reason);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -728,12 +790,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "openrouter")
+            .with_model(response.model.clone());
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
@@ -1357,11 +1417,12 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
+        openai::completion::validate_additional_params(
+            req.additional_params.as_ref(),
+            req.output_schema.is_some(),
+        )?;
 
-        let mut full_history: Vec<Message> = match &req.preamble {
-            Some(preamble) => vec![Message::system(preamble)],
-            None => vec![],
-        };
+        let mut full_history: Vec<Message> = Vec::new();
 
         let chat_history: Vec<Message> = chat_history
             .into_iter()
@@ -1420,7 +1481,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
-            max_tokens: None,
+            max_tokens: req.max_tokens,
             tools,
             tool_choice,
             additional_params,
@@ -1441,80 +1502,30 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     }
 }
 
-impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
-    const PROVIDER_NAME: &'static str = "openrouter";
+/// Decorate accumulated streaming tool calls from OpenRouter's
+/// `reasoning_details` payloads: an encrypted-reasoning detail carries the
+/// signature belonging to the tool call with the matching id.
+pub(crate) fn decorate_streaming_tool_call(
+    detail: &serde_json::Value,
+    tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
+) {
+    let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
+        serde_json::from_value::<ReasoningDetails>(detail.clone())
+    else {
+        return;
+    };
+    let Some(id) = id else {
+        return;
+    };
+    let Some(tool_call) = tool_calls
+        .values_mut()
+        .find(|tool_call| tool_call.id.eq(&id))
+    else {
+        return;
+    };
 
-    type StreamingUsage = Usage;
-    type Response = CompletionResponse;
-
-    const STREAM_INCLUDE_USAGE: bool = false;
-
-    fn build_completion_request(
-        &self,
-        model: String,
-        request: CompletionRequest,
-        options: openai::completion::CompletionModelOptions,
-    ) -> Result<openai::completion::CompletionRequest, CompletionError> {
-        OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
-            model: &model,
-            request,
-            strict_tools: options.strict_tools,
-        })
-    }
-
-    fn finalize_request_body_with_options(
-        &self,
-        body: &mut serde_json::Value,
-        options: openai::completion::CompletionModelOptions,
-    ) -> Result<(), CompletionError> {
-        finalize_openrouter_request_body(body, options.prompt_caching);
-        Ok(())
-    }
-
-    fn decorate_streaming_tool_call(
-        &self,
-        detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
-            serde_json::from_value::<ReasoningDetails>(detail.clone())
-        else {
-            return;
-        };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
-        };
-
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
-    }
-}
-
-/// OpenRouter completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<OpenRouterExt, H>;
-
-/// Final streaming response, shared with the OpenAI Chat Completions path.
-pub type StreamingCompletionResponse =
-    openai::completion::streaming::StreamingCompletionResponse<Usage>;
-
-impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
-    /// Enable explicit prompt caching for supported OpenRouter models.
-    ///
-    /// Adds `cache_control: {"type": "ephemeral"}` to the system-prompt
-    /// block so subsequent turns that share the same system prefix can be
-    /// billed at the cache-hit rate when the selected model/provider supports
-    /// explicit cache breakpoints.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
+    tool_call.signature = Some(data);
+    tool_call.additional_params = Some(detail.clone());
 }
 
 #[cfg(test)]
@@ -1554,7 +1565,6 @@ mod tests {
     fn test_openrouter_request_uses_request_model_override() {
         let request = CompletionRequest {
             model: Some("google/gemini-2.5-flash".to_string()),
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1576,10 +1586,21 @@ mod tests {
     }
 
     #[test]
+    fn openrouter_request_serializes_generic_max_tokens() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+
+        let request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
+            .expect("request conversion should succeed");
+        let serialized = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(serialized["max_tokens"], 64);
+    }
+
+    #[test]
     fn openrouter_params_include_direct_request_documents() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one(crate::message::Message::user(
                 "What is glarb-glarb?",
             )),
@@ -1615,7 +1636,6 @@ mod tests {
     fn test_openrouter_request_uses_default_model_when_override_unset() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1686,7 +1706,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1738,7 +1757,6 @@ mod tests {
 
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: crate::OneOrMany::one("Hello".into()),
             documents: vec![],
             tools: vec![],
@@ -1875,8 +1893,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(converted.usage.input_tokens, 500);
         assert_eq!(converted.usage.output_tokens, 10);
@@ -1907,8 +1924,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
         assert_eq!(converted.usage.cache_creation_input_tokens, 0);
@@ -1942,12 +1958,11 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
 
         assert_eq!(
-            converted.raw_response.model,
-            "google/gemini-2.5-pro-exp-03-25:free"
+            converted.model.as_deref(),
+            Some("google/gemini-2.5-pro-exp-03-25:free")
         );
         assert!(matches!(
             converted.choice.first(),
@@ -2833,8 +2848,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
         assert!(items.iter().any(|item| matches!(
@@ -3015,8 +3029,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3343,8 +3356,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3529,8 +3541,11 @@ mod tests {
     fn prompt_caching_completion_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            chat_history: crate::OneOrMany::many(vec![
+                crate::message::Message::system("You are a helpful assistant.".to_string()),
+                crate::message::Message::user("Hello"),
+            ])
+            .expect("non-empty history"),
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3704,8 +3719,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 
@@ -3753,8 +3767,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 

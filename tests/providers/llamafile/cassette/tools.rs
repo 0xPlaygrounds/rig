@@ -3,7 +3,7 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
@@ -11,8 +11,8 @@ use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_
 
 #[tokio::test]
 async fn tools_roundtrip() {
-    with_llamafile_cassette("tools/tools_roundtrip", |client| async move {
-        let agent = client
+    with_llamafile_cassette("tools/tools_roundtrip", |env| async move {
+        let agent = env
             .agent(CASSETTE_CHAT_MODEL)
             .preamble(STREAMING_TOOLS_PREAMBLE)
             .tool(Adder)

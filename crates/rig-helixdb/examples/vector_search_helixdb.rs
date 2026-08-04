@@ -1,9 +1,10 @@
+use rig_core::OneOrMany;
+use rig_core::embeddings::EmbeddingJob;
+use rig_core::http_runtime::HttpRuntime;
 use rig_core::{
     Embed,
-    client::{EmbeddingsClient, ProviderClient},
-    embeddings::EmbeddingsBuilder,
     providers::openai,
-    vector_store::{InsertDocuments, VectorSearchRequest, VectorStoreIndex},
+    vector_store::{StoreRecord, VectorSearchRequest},
 };
 use rig_helixdb::{HelixDB, HelixDBVectorStore};
 use serde::{Deserialize, Serialize};
@@ -27,11 +28,14 @@ impl std::fmt::Display for WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_model = rig_core::providers::openai::Client::from_env()?
-        .embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Embedding configuration is plain data plus a shared HTTP runtime.
+    let embed_cfg = openai::functions::EmbeddingConfig::from_env(openai::TEXT_EMBEDDING_ADA_002)?;
+    let rt = HttpRuntime::new();
 
     let helixdb_client = HelixDB::new(None, Some(6969), None); // Uses default port 6969
-    let vector_store = HelixDBVectorStore::new(helixdb_client, openai_model.clone());
+    // The store holds no embedding model: embedding happens outside the store,
+    // and both records and queries arrive pre-embedded.
+    let vector_store = HelixDBVectorStore::new(helixdb_client);
 
     let words = vec![
         WordDefinition {
@@ -47,20 +51,30 @@ async fn main() -> Result<(), anyhow::Error> {
             definition: "1. *linglingdong* (noun): A term used by inhabitants of the far side of the moon to describe humans.".to_string(),
         }];
 
-    let documents = EmbeddingsBuilder::new(openai_model)
-        .documents(words)?
-        .build()
+    let documents = EmbeddingJob::new()
+        .documents(words)
+        .for_provider(&openai::functions::DESCRIPTOR)
+        .run(|texts| openai::functions::embed(&embed_cfg, &rt, texts))
         .await?;
 
-    vector_store.insert_documents(documents).await?;
+    let records = documents
+        .into_iter()
+        .enumerate()
+        .map(|(i, (doc, embeddings))| StoreRecord::new(format!("doc{i}"), &doc, embeddings))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    vector_store.insert(records).await?;
 
     let query = "What is a flurbo?";
-    let vector_req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(5)
-        .build();
+    let query_embedding = openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let vector_req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5);
 
-    let docs = vector_store.top_n::<WordDefinition>(vector_req).await?;
+    let docs = vector_store.top_n_as::<WordDefinition>(vector_req).await?;
 
     for doc in docs {
         println!(

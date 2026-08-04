@@ -2,12 +2,27 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
+use rig::extract::ExtractOptions;
 use rig::prelude::*;
 use rig::providers::mistral;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::DEFAULT_MODEL;
+
+/// Reproduce the deleted `ExtractorBuilder::preamble` byte-for-byte: the
+/// classic extraction preamble with the additional instructions appended
+/// through the old `append_preamble` separator.
+fn classic_extractor_with_extra_preamble(extra: &str) -> ExtractOptions {
+    let options = ExtractOptions::classic_extractor();
+    let base = options
+        .preamble
+        .clone()
+        .expect("classic extractor pins a preamble");
+    options.with_preamble(format!(
+        "{base}\n\n=============== ADDITIONAL INSTRUCTIONS ===============\n{extra}"
+    ))
+}
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct Names {
@@ -73,25 +88,17 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
-    let names_extractor = client
-        .extractor::<Names>(DEFAULT_MODEL)
-        .preamble("Extract names from the given text.")
-        .retries(2)
-        .build();
-    let topics_extractor = client
-        .extractor::<Topics>(DEFAULT_MODEL)
-        .preamble("Extract topics from the given text.")
-        .retries(2)
-        .build();
-    let sentiment_extractor = client
-        .extractor::<Sentiment>(DEFAULT_MODEL)
-        .preamble(
-            "Extract sentiment and confidence from the given text. \
-             Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
-        )
-        .retries(2)
-        .build();
+    let agent = mistral::Client::from_env()?.agent(DEFAULT_MODEL).build();
+    let names_options =
+        classic_extractor_with_extra_preamble("Extract names from the given text.").with_retries(2);
+    let topics_options =
+        classic_extractor_with_extra_preamble("Extract topics from the given text.")
+            .with_retries(2);
+    let sentiment_options = classic_extractor_with_extra_preamble(
+        "Extract sentiment and confidence from the given text. \
+         Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
+    )
+    .with_retries(2);
 
     let inputs = vec![
         "Ada Lovelace discussed analytical engines and early programming with Charles Babbage.",
@@ -100,14 +107,27 @@ async fn batch_multi_extract_chain() -> Result<()> {
     ];
     let responses: Vec<CombinedExtract> = futures::stream::iter(inputs)
         .map(|text| {
-            let names_extractor = &names_extractor;
-            let topics_extractor = &topics_extractor;
-            let sentiment_extractor = &sentiment_extractor;
+            let agent = agent.clone();
+            let names_options = names_options.clone();
+            let topics_options = topics_options.clone();
+            let sentiment_options = sentiment_options.clone();
             async move {
                 let (names, topics, sentiment) = futures::try_join!(
-                    names_extractor.extract(text),
-                    topics_extractor.extract(text),
-                    sentiment_extractor.extract(text),
+                    agent
+                        .extractor(text)
+                        .retries(names_options.retries)
+                        .preamble(names_options.preamble.expect("preamble should exist"))
+                        .run::<Names>(),
+                    agent
+                        .extractor(text)
+                        .retries(topics_options.retries)
+                        .preamble(topics_options.preamble.expect("preamble should exist"))
+                        .run::<Topics>(),
+                    agent
+                        .extractor(text)
+                        .retries(sentiment_options.retries)
+                        .preamble(sentiment_options.preamble.expect("preamble should exist"))
+                        .run::<Sentiment>(),
                 )?;
                 anyhow::Ok(CombinedExtract {
                     names: names.names,

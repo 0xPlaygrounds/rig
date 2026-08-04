@@ -3,12 +3,11 @@
 
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use rig::providers::{self, openai};
+use rig::providers::openai;
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -42,11 +41,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create OpenAI client
-    let agent = providers::openai::Client::from_env()?
-        .completion_model(openai::GPT_4O)
-        .completions_api()
-        .into_agent_builder()
+    // Select the Chat Completions surface explicitly. `openai::Client` uses
+    // the Responses API; `CompletionsClient` uses `/chat/completions`.
+    let agent = openai::CompletionsClient::from_env()?
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant")
         .build();
 

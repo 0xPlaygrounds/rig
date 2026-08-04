@@ -1,6 +1,6 @@
 //! Filter implementation for Cloudflare Vectorize.
 
-use rig_core::vector_store::request::SearchFilter;
+use rig_core::vector_store::request::Filter as CoreFilter;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -36,22 +36,32 @@ impl VectorizeFilter {
     }
 }
 
-impl SearchFilter for VectorizeFilter {
-    type Value = Value;
+impl VectorizeFilter {
+    /// Translates the canonical [`CoreFilter`] into this backend's filter type.
+    pub fn from_filter(filter: CoreFilter) -> Self {
+        match filter {
+            CoreFilter::Eq(key, value) => Self::eq(key, value),
+            CoreFilter::Gt(key, value) => Self::gt(key, value),
+            CoreFilter::Lt(key, value) => Self::lt(key, value),
+            CoreFilter::And(lhs, rhs) => Self::from_filter(*lhs).and(Self::from_filter(*rhs)),
+            CoreFilter::Or(lhs, rhs) => Self::from_filter(*lhs).or(Self::from_filter(*rhs)),
+        }
+    }
 
-    fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn eq(key: impl AsRef<str>, value: Value) -> Self {
         Self(json!({ key.as_ref(): { "$eq": value } }))
     }
 
-    fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn gt(key: impl AsRef<str>, value: Value) -> Self {
         Self(json!({ key.as_ref(): { "$gt": value } }))
     }
 
-    fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
+    pub fn lt(key: impl AsRef<str>, value: Value) -> Self {
         Self(json!({ key.as_ref(): { "$lt": value } }))
     }
 
-    fn and(self, rhs: Self) -> Self {
+    pub fn and(self, rhs: Self) -> Self {
         // Vectorize uses implicit AND by merging filter objects
         let mut merged = match self.0 {
             Value::Object(obj) => obj,
@@ -120,7 +130,6 @@ impl VectorizeFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::vector_store::request::SearchFilter;
     use serde_json::json;
 
     #[test]

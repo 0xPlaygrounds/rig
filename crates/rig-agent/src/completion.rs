@@ -1,12 +1,12 @@
-//! High-level prompting traits and runtime errors for the classic agent runtime.
+//! Runtime errors for the classic agent runtime, plus the portable completion
+//! contracts re-exported for convenience.
+//!
+//! The prompting *traits* (`Prompt`/`Chat`/`TypedPrompt`) are gone: the
+//! prompting surface is [`Agent`](crate::Agent)'s inherent
+//! `prompt`/`chat`/`run`/`prompt_typed` methods over
+//! [`SessionRunner`](crate::SessionRunner).
 
-use serde::de::DeserializeOwned;
 use thiserror::Error;
-
-use rig_core::{
-    memory::MemoryError,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
 
 pub use rig_core::completion::*;
 
@@ -18,14 +18,10 @@ pub enum PromptError {
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
-    /// Conversation memory failed to load or persist history.
-    #[error("MemoryError: {0}")]
-    MemoryError(#[from] MemoryError),
-
-    /// The run exhausted its total model-call budget.
+    /// The run exhausted its total model-call attempt budget.
     #[error("MaxTurnsError: reached max turns limit: {max_turns}")]
     MaxTurnsError {
-        /// Configured total model-call budget.
+        /// Configured total model-call attempt budget.
         max_turns: usize,
         /// Canonical history available when the budget was exhausted.
         chat_history: Box<Vec<Message>>,
@@ -41,6 +37,10 @@ pub enum PromptError {
         /// Human-readable cancellation reason.
         reason: String,
     },
+
+    /// A fully driven stream ended without yielding its committed response.
+    #[error("AgentRunStream ended without a final response")]
+    StreamEndedWithoutFinalResponse,
 
     /// The model attempted to call a tool unavailable for the current turn.
     #[error(
@@ -133,38 +133,6 @@ impl StructuredOutputError {
             _ => None,
         }
     }
-}
-
-/// High-level one-shot prompting for the classic runtime.
-pub trait Prompt: WasmCompatSend + WasmCompatSync {
-    /// Send a prompt and return accepted assistant text after runtime orchestration.
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> impl std::future::IntoFuture<Output = Result<String, PromptError>, IntoFuture: WasmCompatSend>;
-}
-
-/// High-level prompting with caller-owned canonical chat history.
-pub trait Chat: WasmCompatSend + WasmCompatSync {
-    /// Execute one turn and append only committed messages to `chat_history`.
-    fn chat(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: &mut Vec<Message>,
-    ) -> impl std::future::Future<Output = Result<String, PromptError>> + WasmCompatSend;
-}
-
-/// High-level typed structured prompting for the classic runtime.
-pub trait TypedPrompt: WasmCompatSend + WasmCompatSync {
-    /// Request type returned for one target output type.
-    type TypedRequest<T>: std::future::IntoFuture<Output = Result<T, StructuredOutputError>>
-    where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    /// Send a prompt and deserialize the accepted structured response as `T`.
-    fn prompt_typed<T>(&self, prompt: impl Into<Message> + WasmCompatSend) -> Self::TypedRequest<T>
-    where
-        T: schemars::JsonSchema + DeserializeOwned + WasmCompatSend;
 }
 
 #[cfg(test)]

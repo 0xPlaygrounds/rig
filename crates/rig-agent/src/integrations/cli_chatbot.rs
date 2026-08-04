@@ -1,73 +1,78 @@
-use rig_core::{
-    markers::{Missing, Provided},
-    message::Message,
-    wasm_compat::WasmCompatSend,
-};
+//! A minimal terminal chat loop over an [`Agent`]'s streaming driver.
+//!
+//! The private `CliChat` trait and the `Missing`/`Provided` builder typestate
+//! are gone: [`ChatBot`] is one concrete struct built by one concrete
+//! [`ChatBotBuilder`], and it always streams through
+//! the session-layer streaming driver.
+
+use rig_core::message::Message;
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem, Text},
-    completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
-    streaming::{StreamedAssistantContent, StreamingPrompt},
+    agent::{Agent, Text},
+    completion::{CompletionError, PromptError, Usage},
+    stream::AgentRunItem,
+    streaming::StreamedAssistantContent,
 };
-use futures::StreamExt;
 use std::io::{self, Write};
 
-pub struct ChatImpl<T>(T)
-where
-    T: Chat;
+/// Builder for a [`ChatBot`].
+pub struct ChatBotBuilder {
+    agent: Agent,
+    max_turns: usize,
+    show_usage: bool,
+}
 
-pub struct AgentImpl<M>
-where
-    M: CompletionModel + 'static,
-{
-    agent: Agent<M>,
+impl ChatBotBuilder {
+    /// Start a builder for `agent`.
+    pub fn new(agent: Agent) -> Self {
+        Self {
+            agent,
+            max_turns: 1,
+            show_usage: false,
+        }
+    }
+
+    /// Set the total model-call attempt budget for each prompt, including the
+    /// initial call, retries, continuations, and provider-operation reissues.
+    /// Zero emits no model calls.
+    pub fn max_turns(mut self, max_turns: usize) -> Self {
+        self.max_turns = max_turns;
+        self
+    }
+
+    /// Print per-prompt token usage after each response.
+    pub fn show_usage(mut self) -> Self {
+        self.show_usage = true;
+        self
+    }
+
+    /// Build the chat bot.
+    pub fn build(self) -> ChatBot {
+        ChatBot {
+            agent: self.agent,
+            max_turns: self.max_turns,
+            show_usage: self.show_usage,
+            usage: Usage::default(),
+        }
+    }
+}
+
+/// A terminal chat loop over one [`Agent`].
+pub struct ChatBot {
+    agent: Agent,
     max_turns: usize,
     show_usage: bool,
     usage: Usage,
 }
 
-pub struct ChatBotBuilder<T = Missing>(T);
-
-pub struct ChatBot<T>(T);
-
-/// Trait to abstract message behavior away from cli_chat/`run` loop
-#[allow(private_interfaces)]
-trait CliChat {
-    async fn request(
-        &mut self,
-        prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError>;
-
-    fn show_usage(&self) -> bool {
-        false
+impl ChatBot {
+    /// Start a builder for `agent`.
+    pub fn builder(agent: Agent) -> ChatBotBuilder {
+        ChatBotBuilder::new(agent)
     }
 
-    fn usage(&self) -> Option<Usage> {
-        None
-    }
-}
-
-impl<T> CliChat for ChatImpl<T>
-where
-    T: Chat,
-{
-    async fn request(
-        &mut self,
-        prompt: &str,
-        history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let res = self.0.chat(prompt, history).await?;
-        println!("{res}");
-
-        Ok(res)
-    }
-}
-
-impl<M> CliChat for AgentImpl<M>
-where
-    M: CompletionModel + WasmCompatSend + 'static,
-{
+    /// Stream one prompt to stdout, appending the committed transcript to
+    /// `history`.
     async fn request(
         &mut self,
         prompt: &str,
@@ -75,10 +80,10 @@ where
     ) -> Result<String, PromptError> {
         let mut response_stream = self
             .agent
-            .stream_prompt(prompt)
+            .runner(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
-            .await;
+            .stream_run();
 
         let mut acc = String::new();
         let mut messages = None;
@@ -90,21 +95,17 @@ where
             };
 
             match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text, .. },
-                ))) => {
+                Ok(AgentRunItem::Assistant(StreamedAssistantContent::Text(Text {
+                    text, ..
+                }))) => {
                     print!("{}", text);
                     acc.push_str(&text);
                 }
-                Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
+                Ok(AgentRunItem::Final(final_response)) => {
                     self.usage = final_response.usage();
                     messages = final_response.messages().map(|history| history.to_vec());
                 }
-                Err(e) => {
-                    break Err(PromptError::CompletionError(
-                        CompletionError::ResponseError(e.to_string()),
-                    ));
-                }
+                Err(error) => break Err(error),
                 _ => continue,
             }
         };
@@ -121,82 +122,7 @@ where
         result
     }
 
-    fn show_usage(&self) -> bool {
-        self.show_usage
-    }
-
-    fn usage(&self) -> Option<Usage> {
-        Some(self.usage)
-    }
-}
-
-impl Default for ChatBotBuilder<Missing> {
-    fn default() -> Self {
-        Self(Missing)
-    }
-}
-
-impl ChatBotBuilder<Missing> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn agent<M: CompletionModel + 'static>(
-        self,
-        agent: Agent<M>,
-    ) -> ChatBotBuilder<Provided<AgentImpl<M>>> {
-        ChatBotBuilder(Provided(AgentImpl {
-            agent,
-            max_turns: 1,
-            show_usage: false,
-            usage: Usage::default(),
-        }))
-    }
-
-    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<Provided<ChatImpl<T>>> {
-        ChatBotBuilder(Provided(ChatImpl(chatbot)))
-    }
-}
-
-impl<T> ChatBotBuilder<Provided<ChatImpl<T>>>
-where
-    T: Chat,
-{
-    pub fn build(self) -> ChatBot<ChatImpl<T>> {
-        ChatBot(self.0.0)
-    }
-}
-
-impl<M> ChatBotBuilder<Provided<AgentImpl<M>>>
-where
-    M: CompletionModel + 'static,
-{
-    /// Set the total model-call budget for each prompt, including the initial
-    /// call and every retry or continuation. Zero emits no model calls.
-    pub fn max_turns(self, max_turns: usize) -> Self {
-        ChatBotBuilder(Provided(AgentImpl {
-            max_turns,
-            ..self.0.0
-        }))
-    }
-
-    pub fn show_usage(self) -> Self {
-        ChatBotBuilder(Provided(AgentImpl {
-            show_usage: true,
-            ..self.0.0
-        }))
-    }
-
-    pub fn build(self) -> ChatBot<AgentImpl<M>> {
-        ChatBot(self.0.0)
-    }
-}
-
-#[allow(private_bounds)]
-impl<T> ChatBot<T>
-where
-    T: CliChat,
-{
+    /// Read prompts from stdin until `exit`, streaming each response.
     pub async fn run(mut self) -> Result<(), PromptError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
@@ -223,18 +149,17 @@ where
                     println!();
                     println!("========================== Response ============================");
 
-                    self.0.request(input, &mut history).await?;
+                    self.request(input, &mut history).await?;
 
                     println!("================================================================");
                     println!();
 
-                    if self.0.show_usage()
-                        && let Some(Usage {
+                    if self.show_usage {
+                        let Usage {
                             input_tokens,
                             output_tokens,
                             ..
-                        }) = self.0.usage()
-                    {
+                        } = self.usage;
                         println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
                 }

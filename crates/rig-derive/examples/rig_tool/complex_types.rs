@@ -31,7 +31,7 @@ fn list_items(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let def = rig_agent::tool::tool_definition(&ListItems);
+    let def = rig_agent::tool::portable_tool_definition(&ListItems);
     println!("Tool definition:\n{}", serde_json::to_string_pretty(&def)?);
 
     Ok(())

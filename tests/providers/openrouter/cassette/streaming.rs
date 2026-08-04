@@ -1,8 +1,5 @@
 //! Cassette-backed OpenRouter streaming coverage.
 
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
-
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
@@ -17,7 +14,7 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");
@@ -37,8 +34,8 @@ async fn example_streaming_prompt() {
             .build();
 
         let mut stream = agent
-            .stream_prompt("When and where and what type is the next solar eclipse?")
-            .await;
+            .runner("When and where and what type is the next solar eclipse?")
+            .stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");
@@ -47,3 +44,4 @@ async fn example_streaming_prompt() {
     })
     .await;
 }
+use rig::prelude::*;

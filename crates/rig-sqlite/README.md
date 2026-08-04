@@ -101,17 +101,14 @@ SQLite filters can target document-table columns that store JSON text. Use
 SQLite's JSON extraction operators in the filter key:
 
 ```rust
-use rig_core::vector_store::request::{SearchFilter, VectorSearchRequest};
+use rig_core::{OneOrMany, vector_store::request::{SearchFilter, VectorSearchRequest}};
 use rig_sqlite::SqliteSearchFilter;
 
-let req = VectorSearchRequest::builder()
-    .query("release notes")
-    .samples(5)
-    .filter(SqliteSearchFilter::eq(
+let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 5)
+    .with_filter(SqliteSearchFilter::eq(
         "metadata->>'$.source'",
         serde_json::json!("docs"),
-    ))
-    .build();
+    ));
 ```
 
 Use `->>` when you want SQLite to compare a JSON value as a SQL scalar, such as

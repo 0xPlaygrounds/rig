@@ -1,10 +1,8 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
+use rig::completion::{AssistantContent, CompletionRequest, Message};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use crate::support::{
@@ -52,17 +50,22 @@ async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-                .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(specific_add_choice())
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
+            let stream = client
+                .completion_model(model)
+                .stream(request)
+                .await
+                .expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 
             assert!(
@@ -105,16 +108,20 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let response = model
-                .completion_request(
-                    "Use the add tool to calculate 20 + 22. Do not use subtraction.",
-                )
-                .temperature(0.0)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(specific_add_choice())
-                .send()
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest::builder(
+                "Use the add tool to calculate 20 + 22. Do not use subtraction.",
+            )
+            .temperature(0.0)
+            .tools(vec![
+                rig::tool::portable_tool_definition(&Adder),
+                rig::tool::portable_tool_definition(&Subtract),
+            ])
+            .tool_choice(specific_add_choice())
+            .build();
+            let response = client
+                .completion_model(model)
+                .completion(request)
                 .await
                 .expect("specific add raw completion should succeed");
 
@@ -167,8 +174,8 @@ async fn none_streaming_does_not_emit_tool_calls() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Calculate 20 + 22 directly in text. Do not call tools.")
-                .await;
+                .runner("Calculate 20 + 22 directly in text. Do not call tools.")
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -227,3 +234,4 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
     )
     .await;
 }
+use rig::prelude::*;

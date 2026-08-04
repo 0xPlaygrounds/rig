@@ -147,12 +147,6 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.to_owned()
-            && !system_prompt.is_empty()
-        {
-            system_blocks.push(SystemContentBlock::Text(system_prompt));
-        }
-
         for message in self.inner.chat_history.iter() {
             if let Message::System { content } = message
                 && !content.is_empty()
@@ -245,7 +239,6 @@ mod tests {
     fn minimal_request() -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::one(Message::User {
                 content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
             }),
@@ -504,7 +497,6 @@ mod tests {
     fn test_system_prompt_includes_system_history() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("History system instruction"),
                 Message::User {
@@ -532,10 +524,12 @@ mod tests {
 
     #[test]
     fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
-        let request = CompletionRequest {
-            preamble: Some("System prompt".to_string()),
+        let mut request = CompletionRequest {
             ..minimal_request()
         };
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("System prompt"));
 
         let aws_request = aws_request(request, true);
         let system_prompt = aws_request
@@ -560,7 +554,6 @@ mod tests {
     fn test_messages_exclude_system_history() {
         let request = CompletionRequest {
             model: None,
-            preamble: None,
             chat_history: OneOrMany::many(vec![
                 Message::system("History system instruction"),
                 Message::User {
@@ -717,5 +710,45 @@ mod tests {
             .as_json_schema()
             .expect("should be JsonSchema variant");
         assert_eq!(json_schema.name(), Some("response_schema"));
+    }
+
+    /// Bedrock carries system instructions in a dedicated `system` block list,
+    /// so canonical `Message::System` entries must land there in order **and**
+    /// must not leak into the Converse message array. Bedrock's conversion is
+    /// outside the nine-provider cassette claim, so this pins it directly.
+    #[test]
+    fn system_messages_land_in_the_system_block_and_not_in_messages() {
+        let mut request = minimal_request();
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("second"));
+        request
+            .chat_history
+            .insert(0, rig_core::completion::Message::system("first"));
+
+        let converted = AwsCompletionRequest {
+            inner: request,
+            prompt_caching: false,
+        };
+
+        let system = converted
+            .system_prompt()
+            .expect("system prompt builds")
+            .expect("system blocks present");
+        let texts: Vec<&str> = system
+            .iter()
+            .filter_map(|block| match block {
+                SystemContentBlock::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, ["first", "second"], "order must be preserved");
+
+        // And they must not also appear as conversation turns.
+        let messages = converted.messages().expect("messages build");
+        assert!(
+            messages.len() <= 1,
+            "system messages must not leak into the Converse message array: {messages:?}"
+        );
     }
 }

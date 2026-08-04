@@ -1,12 +1,11 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
-use rig::streaming::StreamingPrompt;
 
 use serde::Deserialize;
 
@@ -98,7 +97,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -124,7 +123,7 @@ async fn example_streaming_with_tools() {
             .default_max_turns(2)
             .build();
 
-        let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+        let mut stream =agent.runner("Calculate 2 - 5").stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tools prompt should succeed");
@@ -145,9 +144,9 @@ async fn responses_stream_preserves_tool_result_flow() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .runner(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(
@@ -165,16 +164,15 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_openai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
+            let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+                              .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+                              .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
+                              .build();
 
             let first_turn = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw responses stream should start"),
             )
@@ -194,18 +192,13 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             };
             let tool_result_message =
                 Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+            let followup_request = CompletionRequest::builder("Now reply in one short sentence using the provided tool result. Do not call any tools.")
+.preamble("Use the provided tool result and answer directly.")
+.messages(vec![assistant_message, tool_result_message])
+.build();
 
             let second_turn = collect_raw_stream_observation(
-                model
-                    .stream(followup_request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, followup_request)
                     .await
                     .expect("raw followup responses stream should start"),
             )

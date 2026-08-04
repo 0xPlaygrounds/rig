@@ -9,15 +9,14 @@
 //! wire. The blocking and streaming tests assert the same, since both drivers
 //! resolve the override through the shared request builder.
 
+use rig::prelude::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, RequestPatch};
-use rig::completion::Prompt;
+use rig::agent::{CompletionCallAction, RequestPatch};
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -68,11 +67,7 @@ impl Tool for GetWeather {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(format!(
             "It is 18 degrees Celsius and clear in {}.",
@@ -104,11 +99,7 @@ impl Tool for GetTime {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok("12:00".to_string())
     }
 }
@@ -116,24 +107,20 @@ impl Tool for GetTime {
 /// A hook that, on the first turn only, narrows the advertised tools to
 /// `get_weather` and forces a tool call. Later turns are left untouched (the
 /// override is per-turn and non-sticky), so the model can answer with text.
-struct ForceWeatherOnlyOnFirstTurn;
-
-impl AgentHook for ForceWeatherOnlyOnFirstTurn {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        if event.turn == 1 {
-            CompletionCallAction::patch(
+fn force_weather_only_on_first_turn() -> HookEntry {
+    HookEntry::sync("force-weather-only-on-first-turn", |event| match event {
+        HookEvent::BeforeModelCall { turn: 1, .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::patch(
                 RequestPatch::new()
                     .active_tools([GetWeather::NAME])
                     .tool_choice(ToolChoice::Required),
-            )
-        } else {
-            CompletionCallAction::continue_run()
+            ))
         }
-    }
+        HookEvent::BeforeModelCall { .. } => {
+            HookDecision::CompletionCall(CompletionCallAction::continue_run())
+        }
+        _ => HookDecision::Continue,
+    })
 }
 
 /// Read the first recorded Anthropic request and assert the override hit the
@@ -205,13 +192,15 @@ async fn request_overridden_by_hook_blocking() {
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .add_hook(force_weather_only_on_first_turn())
                 .build();
 
             let response = agent
-                .prompt(PROMPT)
+                .runner(PROMPT)
                 .max_turns(5)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("blocking prompt should succeed");
 
             assert!(!response.is_empty(), "agent should produce a final answer");
@@ -239,10 +228,10 @@ async fn request_overridden_by_hook_streaming() {
                 .preamble(PREAMBLE)
                 .tool(weather)
                 .tool(GetTime)
-                .add_hook(ForceWeatherOnlyOnFirstTurn)
+                .add_hook(force_weather_only_on_first_turn())
                 .build();
 
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(5).await;
+            let mut stream = agent.runner(PROMPT).max_turns(5).stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");

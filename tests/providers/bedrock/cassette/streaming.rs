@@ -1,15 +1,13 @@
 //! AWS Bedrock streaming replay smoke tests.
 
-use rig::bedrock;
-use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
-
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
     Subtract, assert_mentions_expected_number, assert_nonempty_response,
     collect_stream_final_response,
 };
+use rig::bedrock;
+use rig::prelude::*;
 
 #[tokio::test]
 async fn streaming_smoke() {
@@ -19,7 +17,7 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");
@@ -40,7 +38,7 @@ async fn streaming_tools_smoke() {
             .default_max_turns(2)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+        let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tool prompt should succeed");

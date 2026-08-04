@@ -1,12 +1,11 @@
 //! Shared fixtures, tiny tools, and durable assertions for ignored smoke tests.
 #![allow(dead_code)]
 
-use futures::StreamExt;
 use rig::{
-    agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
-    completion::{AssistantContent, GetTokenUsage, ToolDefinition},
+    completion::{AssistantContent, PromptError, ToolDefinition},
     embeddings::Embedding,
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
+    stream::{AgentRunItem, AgentRunStream},
+    streaming::{CompletionStream, StreamFinal, StreamedAssistantContent, StreamedUserContent},
     tool::PortableTool,
     tool::Tool,
 };
@@ -168,11 +167,7 @@ impl Tool for Adder {
             .expect("adder schema should deserialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x + args.y)
     }
 }
@@ -197,11 +192,7 @@ impl Tool for Subtract {
             .expect("subtract schema should deserialize")
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(args.x - args.y)
     }
 }
@@ -285,11 +276,7 @@ impl Tool for AlphaSignal {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ALPHA_SIGNAL_OUTPUT.to_string())
     }
 }
@@ -315,11 +302,7 @@ impl Tool for BetaSignal {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(BETA_SIGNAL_OUTPUT.to_string())
     }
 }
@@ -477,13 +460,13 @@ pub(crate) fn assert_embeddings_nonempty_and_consistent(
     }
 }
 
-pub(crate) async fn collect_stream_final_response<R>(
-    stream: &mut StreamingResult<R>,
-) -> Result<String, StreamingError> {
+pub(crate) async fn collect_stream_final_response(
+    stream: &mut AgentRunStream,
+) -> Result<String, PromptError> {
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+        if let AgentRunItem::Final(response) = item? {
             final_response = Some(response.output().to_owned());
         }
     }
@@ -491,18 +474,18 @@ pub(crate) async fn collect_stream_final_response<R>(
     Ok(final_response.expect("stream should yield a final response"))
 }
 
-pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
-    stream: &mut StreamingResult<R>,
-) -> Result<(String, R), StreamingError> {
+pub(crate) async fn collect_stream_final_response_and_provider_final(
+    stream: &mut AgentRunStream,
+) -> Result<(String, StreamFinal), PromptError> {
     let mut final_response = None;
     let mut provider_final = None;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            AgentRunItem::Assistant(StreamedAssistantContent::Final(final_)) => {
                 provider_final = Some(final_);
             }
-            MultiTurnStreamItem::FinalResponse(response) => {
+            AgentRunItem::Final(response) => {
                 final_response = Some(response.output().to_owned());
             }
             _ => {}
@@ -515,13 +498,11 @@ pub(crate) async fn collect_stream_final_response_and_provider_final<R>(
     ))
 }
 
-pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named<R>(
-    mut stream: StreamingCompletionResponse<R>,
+pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
+    mut stream: CompletionStream,
     expected_name: &str,
     expect_final_response: bool,
-) where
-    R: Clone + Unpin + GetTokenUsage,
-{
+) {
     let mut saw_final = false;
     let mut saw_matching_tool_call = false;
 
@@ -604,14 +585,12 @@ impl RawStreamObservation {
     }
 }
 
-pub(crate) async fn collect_stream_observation<R>(
-    stream: &mut StreamingResult<R>,
-) -> StreamObservation {
+pub(crate) async fn collect_stream_observation(stream: &mut AgentRunStream) -> StreamObservation {
     let mut observation = StreamObservation::new();
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+            Ok(AgentRunItem::Assistant(content)) => match content {
                 StreamedAssistantContent::Text(text) => {
                     observation.all_streamed_text.push_str(&text.text);
                     observation.final_turn_text.push_str(&text.text);
@@ -642,12 +621,12 @@ pub(crate) async fn collect_stream_observation<R>(
                     observation.events.push("unknown");
                 }
             },
-            Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
+            Ok(AgentRunItem::User(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
                 observation.events.push("tool_result");
             }
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+            Ok(AgentRunItem::Final(response)) => {
                 observation.final_response_text = Some(response.output().to_owned());
                 observation.got_final_response = true;
                 observation.events.push("final_response");
@@ -663,12 +642,9 @@ pub(crate) async fn collect_stream_observation<R>(
     observation
 }
 
-pub(crate) async fn collect_raw_stream_observation<R>(
-    mut stream: StreamingCompletionResponse<R>,
-) -> RawStreamObservation
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
+pub(crate) async fn collect_raw_stream_observation(
+    mut stream: CompletionStream,
+) -> RawStreamObservation {
     let mut observation = RawStreamObservation::new();
 
     while let Some(item) = stream.next().await {

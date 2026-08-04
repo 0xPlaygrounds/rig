@@ -4,18 +4,16 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
-use rig::prelude::*;
-use rig::streaming::StreamingChat;
 
-use crate::chatgpt::{LIVE_MODEL, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_agent};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = live_client()
-        .agent(LIVE_MODEL)
+    let agent = live_agent(LIVE_MODEL)
+        .await
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -25,9 +23,10 @@ async fn streaming() {
         .build();
 
     let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .runner(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(3)
-        .await;
+        .stream_run();
 
     let stats = reasoning::collect_stream_stats(stream, "chatgpt").await;
     reasoning::assert_universal(&stats, &call_count, "chatgpt");

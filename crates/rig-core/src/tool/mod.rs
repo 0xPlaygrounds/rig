@@ -7,8 +7,6 @@ pub mod builtin;
 mod output;
 pub mod portable;
 mod result;
-pub use output::{IntoToolOutput, ToolOutput};
-pub use portable::{
-    PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
-};
+pub use output::{IntoToolOutput, ToolOutput, serialize_to_tool_output};
+pub use portable::{PortableDynamicTool, PortableTool, portable_tool_definition};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};

@@ -7,7 +7,6 @@ use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig_agent::test_utils::validate_unknown_tool_failure;
 
@@ -33,13 +32,16 @@ async fn run_until_invalid_add_call(
         .max_turns(2)
         .max_invalid_tool_call_retries(retries);
     let AgentRunStep::CallModel {
-        prompt, history, ..
+        prompt,
+        history,
+        attempt_id,
+        ..
     } = run.next_step().expect("run should advance")
     else {
         panic!("a fresh run starts with a model call");
     };
     let outcome = run
-        .model_response(call_model(agent, prompt, history, &executable, allowed).await)
+        .model_response(call_model(agent, prompt, history, attempt_id, &executable, allowed).await)
         .expect("model turn should be ingested");
     let ModelTurnOutcome::NeedsResolution(context) = outcome else {
         panic!("the add call must be rejected for this turn: {outcome:?}");
@@ -54,7 +56,7 @@ async fn fail_resolution_returns_unknown_tool_call() {
         "agent_run_recovery/fail_resolution_returns_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -97,7 +99,7 @@ async fn repair_renames_tool_call_and_executes_it() {
             // `sum` is registered alongside `add` so the post-repair wire
             // history references a tool Gemini saw advertised.
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -112,13 +114,23 @@ async fn repair_renames_tool_call_and_executes_it() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt,
+                        history,
+                        attempt_id,
+                        ..
                     } => {
                         let repaired_before = repaired_calls;
                         let mut outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &machine_names, &machine_names)
-                                    .await,
+                                call_model(
+                                    &agent,
+                                    prompt,
+                                    history,
+                                    attempt_id,
+                                    &machine_names,
+                                    &machine_names,
+                                )
+                                .await,
                             )
                             .expect("model turn should be ingested");
                         while let ModelTurnOutcome::NeedsResolution(context) = outcome {
@@ -129,17 +141,16 @@ async fn repair_renames_tool_call_and_executes_it() {
                             repaired_calls += 1;
                             assert!(repaired_calls < 6, "repair loop did not converge");
                         }
-                        let ModelTurnOutcome::Continue {
-                            response_hook_suppressed,
-                        } = outcome
-                        else {
+                        let ModelTurnOutcome::Continue(accepted) = outcome else {
                             panic!("repaired turns continue: {outcome:?}");
                         };
                         assert_eq!(
-                            response_hook_suppressed,
+                            accepted.response_hook_suppressed,
                             repaired_calls > repaired_before,
                             "exactly the recovered turns suppress the response hook"
                         );
+                        run.continue_model_turn()
+                            .expect("accepted repaired turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
@@ -182,7 +193,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
         "agent_run_recovery/skip_suppresses_every_call_in_the_turn",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -200,7 +211,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     } => {
                         let (allowed, expect_invalid) = if skipped_turn_calls.is_none() {
                             (&restricted, true)
@@ -209,7 +220,7 @@ async fn skip_suppresses_every_call_in_the_turn() {
                         };
                         let mut outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &executable, allowed).await,
+                                call_model(&agent, prompt, history, attempt_id, &executable, allowed).await,
                             )
                             .expect("model turn should be ingested");
                         if let ModelTurnOutcome::NeedsResolution(context) = outcome {
@@ -221,7 +232,9 @@ async fn skip_suppresses_every_call_in_the_turn() {
                                 ))
                                 .expect("skip should be accepted");
                         }
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted recovered turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         if skipped_turn_calls.is_none() {
@@ -274,7 +287,7 @@ async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
         "agent_run_recovery/retry_with_exhausted_budget_fails_with_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -304,7 +317,7 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
         "agent_run_recovery/repair_to_disallowed_name_fails_with_unknown_tool_call",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),

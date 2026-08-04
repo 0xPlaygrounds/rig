@@ -1,7 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::client::{MistralExt, Usage};
-use crate::completion::GetTokenUsage;
 use crate::providers::openai;
 use crate::{
     OneOrMany,
@@ -31,17 +29,72 @@ pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
 /// The `open-mistral-mamba` model
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
-/// Mistral completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<MistralExt, H>;
-
-/// Final streaming response, shared with the OpenAI Chat Completions path but
-/// carrying Mistral's own usage payload (cached-token fallbacks).
-pub type MistralStreamingCompletionResponse = openai::StreamingCompletionResponse<Usage>;
-
 // =================================================================
 // Rig Implementation Types
 // =================================================================
+
+/// In-depth details on prompt tokens.
+///
+/// Mirrors Mistral's `PromptTokensDetails` schema. The Mistral API also exposes
+/// the same shape under the singular field name `prompt_token_details`; the
+/// `Usage` field accepts either form via `serde(alias = ...)`.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct PromptTokensDetails {
+    /// Number of tokens served from the prompt cache.
+    #[serde(default)]
+    pub cached_tokens: u64,
+}
+
+/// Token usage returned by Mistral's chat completions and embeddings endpoints.
+///
+/// See <https://docs.mistral.ai/api/> (`UsageInfo` schema). The three counts are
+/// always present; the remaining fields are populated by Mistral on a best-effort
+/// basis (e.g. cached-token information appears once a prompt is large enough to
+/// be cached).
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Usage {
+    pub completion_tokens: usize,
+    pub prompt_tokens: usize,
+    pub total_tokens: usize,
+    /// Duration in seconds of audio tokens in the prompt (audio-input models only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_audio_seconds: Option<u64>,
+    /// Total cached prompt tokens reported at the top level. Some Mistral
+    /// responses populate this in addition to (or instead of)
+    /// `prompt_tokens_details.cached_tokens`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_cached_tokens: Option<u64>,
+    /// In-depth breakdown of prompt token usage (currently only cached tokens).
+    #[serde(
+        default,
+        alias = "prompt_token_details",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+impl Usage {
+    /// Returns the number of cached prompt tokens, preferring the structured
+    /// `prompt_tokens_details.cached_tokens` field and falling back to the
+    /// top-level `num_cached_tokens`. Returns 0 when neither is present.
+    pub fn cached_tokens(&self) -> u64 {
+        self.prompt_tokens_details
+            .as_ref()
+            .map(|d| d.cached_tokens)
+            .or(self.num_cached_tokens)
+            .unwrap_or(0)
+    }
+}
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt tokens: {} Total tokens: {}",
+            self.prompt_tokens, self.total_tokens
+        )
+    }
+}
 
 fn mistral_content_value_to_text(value: serde_json::Value) -> String {
     match value {
@@ -175,33 +228,27 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.completion_tokens as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage.cached_input_tokens = self.cached_tokens();
+        usage.input_tokens = value.prompt_tokens as u64;
+        usage.output_tokens = value.completion_tokens as u64;
+        usage.total_tokens = value.total_tokens as u64;
+        usage.cached_input_tokens = value.cached_tokens();
         usage
     }
 }
 
-impl GetTokenUsage for CompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage
-            .as_ref()
-            .map(GetTokenUsage::token_usage)
-            .unwrap_or_default()
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = (!choice.finish_reason.is_empty()).then(|| {
+            crate::providers::openai::completion::map_finish_reason(&choice.finish_reason)
+        });
         let content = match &choice.message {
             Message::Assistant {
                 content,
@@ -242,32 +289,20 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: usage.completion_tokens as u64,
-                total_tokens: usage.total_tokens as u64,
-                cached_input_tokens: usage.cached_tokens(),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(|usage| completion::Usage::from(usage.clone()))
             .unwrap_or_default();
 
-        let message_id = response.id.clone();
-
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: Some(message_id),
-        })
+        let mut normalized = completion::CompletionResponse::new(choice, usage, "mistral")
+            .with_model(response.model.clone())
+            .with_message_id(response.id.clone());
+        normalized.finish_reason = finish_reason;
+        Ok(normalized)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
 
     #[test]
     fn deserializes_response_with_array_and_null_content() {
@@ -364,9 +399,7 @@ mod tests {
             "tool_choice": "required"
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["tool_choice"], "any");
     }
@@ -379,9 +412,7 @@ mod tests {
             "tool_choice": {"type": "function", "function": {"name": "beta"}}
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(
             body["tool_choice"],
@@ -412,9 +443,7 @@ mod tests {
             ]
         });
 
-        MistralExt
-            .finalize_request_body(&mut body)
-            .expect("finalize should succeed");
+        super::super::functions::apply_wire_dialect(&mut body);
 
         assert_eq!(body["messages"][0]["content"], "Be brief.");
         assert_eq!(body["messages"][2]["content"], "Hello.");

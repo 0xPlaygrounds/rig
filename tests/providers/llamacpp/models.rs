@@ -1,14 +1,16 @@
 //! llama.cpp model listing smoke test.
 
-use rig::client::ModelListingClient;
+use rig::http_runtime::HttpRuntime;
+use rig::providers::openai;
 
 use super::support;
 
 #[tokio::test]
 #[ignore = "requires a local llama.cpp OpenAI-compatible server"]
 async fn list_models_smoke() {
-    let client = support::client();
-    let models = match client.list_models().await {
+    let cfg = support::completions_client().config(support::model_name());
+    let rt = HttpRuntime::new();
+    let models = match openai::functions::list_models(&cfg, &rt).await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing llama.cpp models should succeed\nDisplay: {error}\nDebug: {error:#?}")

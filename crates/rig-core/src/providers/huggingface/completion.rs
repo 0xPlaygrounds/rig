@@ -1,4 +1,3 @@
-use super::client::HuggingFaceExt;
 use crate::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -32,12 +31,6 @@ pub const QWEN2_5_CODER: &str = "Qwen/Qwen2.5-Coder-32B-Instruct";
 pub const QWEN2_VL: &str = "Qwen/Qwen2-VL-7B-Instruct";
 /// `Qwen/QVQ-72B-Preview` visual-language completion model
 pub const QWEN_QVQ_PREVIEW: &str = "Qwen/QVQ-72B-Preview";
-
-/// Huggingface completion model, driven by the shared OpenAI Chat Completions
-/// path. The sub-provider's completion endpoint and model-identifier mapping
-/// are applied by [`HuggingFaceExt`]'s `OpenAICompatibleProvider` impl.
-pub type CompletionModel<H = reqwest::Client> =
-    openai::completion::GenericCompletionModel<HuggingFaceExt, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;

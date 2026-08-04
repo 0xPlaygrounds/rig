@@ -6,7 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -24,16 +24,14 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
             let model = client
-                .completion_model(chatgpt::GPT_5_4)
-                .with_strict_tools();
-            let request = model
-                .completion_request("Use the add tool to add 7 and 5.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .build();
-
+                .config(chatgpt::GPT_5_4)
+                .with_strict_tools()
+                .bind_completion(client.runtime());
             let response = model
-                .completion(request)
+                .completion_request("Use the add tool to add 7 and 5.")
+                .preamble(TOOLS_PREAMBLE)
+                .tool(rig::tool::portable_tool_definition(&Adder))
+                .send()
                 .await
                 .expect("strict-tools completion should succeed");
 
@@ -73,17 +71,14 @@ async fn strict_tools_opt_in_roundtrip() {
 
 #[tokio::test]
 async fn store_false_and_prompt_cache_fields_roundtrip() {
-    with_chatgpt_cassette(
-        "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
-        |client| async move {
+    const SCENARIO: &str = "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip";
+    with_chatgpt_cassette("codex_behaviors/store_false_and_prompt_cache_fields_roundtrip", |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
             let response = model
-                .completion(
-                    model
-                        .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
-                        .preamble("Return only the requested marker.".to_string())
-                        .build(),
-                )
+                .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
+                .preamble("Return only the requested marker.")
+                .messages(Vec::new())
+                .send()
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
 
@@ -92,24 +87,42 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 text.contains("CODEX-STORE-FALSE"),
                 "final answer should preserve the requested marker, got {text:?}"
             );
-            assert_eq!(
-                response.raw_response.additional_parameters.store,
-                Some(false),
-                "ChatGPT provider must force store=false"
-            );
-            assert!(
-                response
-                    .raw_response
-                    .additional_parameters
-                    .prompt_cache_key
-                    .as_deref()
-                    .is_some_and(|value| !value.is_empty()),
-                "ChatGPT backend should return a prompt cache key that cassettes scrub"
-            );
             assert!(response.usage.input_tokens > 0);
             assert!(response.usage.output_tokens > 0);
-        },
-    )
+
+            // `store` and `prompt_cache_key` are provider wire fields; assert
+            // them against the recorded terminal `response.completed` event
+            // (replay only: the cassette file is written after the test body
+            // in record mode).
+            if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+                let bodies = crate::cassettes::recorded_response_bodies("chatgpt", SCENARIO);
+                assert_eq!(bodies.len(), 1, "scenario should record a single interaction");
+                let completed = bodies[0]
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data:"))
+                    .filter_map(|data| {
+                        serde_json::from_str::<serde_json::Value>(data.trim()).ok()
+                    })
+                    .find(|event| event["type"] == "response.completed")
+                    .expect("recorded SSE body should contain a response.completed event");
+                let raw: rig::providers::openai::responses_api::CompletionResponse =
+                    serde_json::from_value(completed["response"].clone()).expect(
+                        "recorded response.completed event should deserialize as a Responses API response",
+                    );
+                assert_eq!(
+                    raw.additional_parameters.store,
+                    Some(false),
+                    "ChatGPT provider must force store=false"
+                );
+                assert!(
+                    raw.additional_parameters
+                        .prompt_cache_key
+                        .as_deref()
+                        .is_some_and(|value| !value.is_empty()),
+                    "ChatGPT backend should return a prompt cache key that cassettes scrub"
+                );
+            }
+        })
     .await;
 }
 

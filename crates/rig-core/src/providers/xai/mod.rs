@@ -1,13 +1,17 @@
-//! xAI API client and Rig integration
+//! xAI API integration
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::{client::CompletionClient, providers::xai};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::http_runtime::HttpRuntime;
+//! use rig_core::providers::xai;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = xai::Client::new("YOUR_API_KEY")?;
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let cfg = xai::functions::Config::from_env(xai::GROK_3)?;
+//! let rt = HttpRuntime::new();
 //!
-//! let grok = client.completion_model(xai::GROK_3);
+//! let request = CompletionRequest::from_prompt("Who are you?");
+//! let response = xai::functions::complete(&cfg, &rt, request).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -15,18 +19,37 @@
 mod api;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
-pub mod client;
 pub mod completion;
+pub mod functions;
 #[cfg(feature = "image")]
 pub mod image_generation;
 mod streaming;
 
+crate::providers::client::define_http_client! {
+    config = functions::Config,
+    default_base_url = functions::DEFAULT_BASE_URL,
+    api_key_required = true,
+}
+
+impl Client {
+    /// Materialize image-generation configuration sharing this connection.
+    #[cfg(feature = "image")]
+    pub fn image_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+
+    /// Materialize audio-generation configuration sharing this connection.
+    #[cfg(feature = "audio")]
+    pub fn audio_generation_config(&self, model: impl Into<String>) -> functions::Config {
+        self.config(model)
+    }
+}
+
 #[cfg(feature = "audio")]
-pub use audio_generation::{AudioGenerationModel, TTS_1};
-pub use client::Client;
+pub use audio_generation::TTS_1;
 pub use completion::{
-    CompletionModel, CompletionResponse, GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212,
-    GROK_3, GROK_3_FAST, GROK_3_MINI, GROK_3_MINI_FAST, GROK_4,
+    CompletionResponse, GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212, GROK_3, GROK_3_FAST,
+    GROK_3_MINI, GROK_3_MINI_FAST, GROK_4,
 };
 #[cfg(feature = "image")]
-pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO, ImageGenerationModel};
+pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO};

@@ -1,16 +1,13 @@
 //! AWS Bedrock agent completion replay smoke test.
 
-use rig::agent::AgentBuilder;
-use rig::bedrock;
-use rig::completion::Prompt;
-use rig::prelude::*;
-
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
     Adder, BASIC_PREAMBLE, BASIC_PROMPT, CONTEXT_DOCS, CONTEXT_PROMPT, STREAMING_TOOLS_PREAMBLE,
     STREAMING_TOOLS_PROMPT, Subtract, assert_contains_any_case_insensitive,
     assert_mentions_expected_number, assert_nonempty_response,
 };
+use rig::bedrock;
+use rig::prelude::*;
 
 #[tokio::test]
 async fn completion_smoke() {
@@ -78,10 +75,14 @@ async fn prompt_caching_completion_smoke() {
     with_bedrock_cassette(
         "agent/prompt_caching_completion_smoke",
         |client| async move {
-            let model = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
-                .with_prompt_caching();
-            let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
+            let config =
+                rig::bedrock::functions::Config::new(bedrock::completion::AMAZON_NOVA_LITE)
+                    .with_prompt_caching();
+            let agent =
+                rig::agent::AgentBuilder::new(rig::provider::ProviderConfig::Bedrock(config))
+                    .runtime(client.runtime())
+                    .preamble(BASIC_PREAMBLE)
+                    .build();
 
             let response = agent
                 .prompt(BASIC_PROMPT)

@@ -8,7 +8,6 @@ use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
 use rig::{
     OneOrMany,
-    completion::Prompt,
     providers::gemini::{self, completion::gemini_api_types::GenerationConfig},
 };
 use serde_json::json;

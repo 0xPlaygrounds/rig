@@ -1,12 +1,12 @@
 //! xAI streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::xai;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -54,11 +54,7 @@ impl Tool for StatusWordTool {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
     }
 }
@@ -67,14 +63,17 @@ impl Tool for StatusWordTool {
 async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_xai_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
-        |client| async move {
-            let model = client.completion_model(xai::completion::GROK_4);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required)
-                .build();
-            let stream = model.stream(request).await.expect("stream should start");
+        |env| async move {
+            let cfg = env.config(xai::completion::GROK_4);
+            let rt = HttpRuntime::new();
+            let request = CompletionRequest {
+                tools: vec![zero_arg_tool_definition("ping")],
+                tool_choice: Some(ToolChoice::Required),
+                ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+            };
+            let stream = xai::functions::open_stream(&cfg, &rt, request)
+                .await
+                .expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
         },
@@ -86,17 +85,17 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 async fn responses_stream_preserves_tool_result_flow() {
     with_xai_cassette(
         "streaming_tools/responses_stream_preserves_tool_result_flow",
-        |client| async move {
-            let agent = client
+        |env| async move {
+            let agent = env
                 .agent(xai::completion::GROK_4)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE)
                 .tool(StatusWordTool)
                 .build();
 
             let mut stream = agent
-                .stream_prompt(XAI_STATUS_TOOL_PROMPT)
+                .runner(XAI_STATUS_TOOL_PROMPT)
                 .max_turns(5)
-                .await;
+                .stream_run();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(
@@ -113,17 +112,16 @@ async fn responses_stream_preserves_tool_result_flow() {
 async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
     with_xai_cassette(
         "streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering",
-        |client| async move {
-            let model = client.completion_model(xai::completion::GROK_4);
-            let request = model
-                .completion_request(XAI_STATUS_TOOL_PROMPT)
-                .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&StatusWordTool))
+        |env| async move {
+            let cfg = env.config(xai::completion::GROK_4);
+            let rt = HttpRuntime::new();
+            let request = CompletionRequest::builder(XAI_STATUS_TOOL_PROMPT)
+                .preamble(XAI_STATUS_TOOL_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&StatusWordTool)])
                 .build();
 
             let first_turn = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                xai::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("raw xAI responses stream should start"),
             )
@@ -146,18 +144,15 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 tool_call.call_id,
                 XAI_STATUS_TOOL_OUTPUT,
             );
-            let followup_request = model
-                .completion_request(
-                    "Now reply in one short sentence using the provided tool result only.",
-                )
-                .preamble("Use the provided tool result and answer directly.".to_string())
-                .message(assistant_message)
-                .message(tool_result_message)
-                .build();
+            let followup_request = CompletionRequest::builder(
+                "Now reply in one short sentence using the provided tool result only.",
+            )
+            .preamble("Use the provided tool result and answer directly.")
+            .messages(vec![assistant_message, tool_result_message])
+            .build();
 
             let second_turn = collect_raw_stream_observation(
-                model
-                    .stream(followup_request)
+                xai::functions::open_stream(&cfg, &rt, followup_request)
                     .await
                     .expect("raw xAI followup stream should start"),
             )

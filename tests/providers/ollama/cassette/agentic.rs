@@ -15,9 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use serde_json::json;
 
 use super::super::support::with_ollama_cassette;
@@ -50,7 +48,7 @@ fn raw_schema(value: serde_json::Value) -> schemars::Schema {
 /// thinking interaction repo-tagger relies on.
 #[tokio::test]
 async fn structured_output_raw_with_thinking() {
-    with_ollama_cassette("structured_output/raw_with_thinking", |client| async move {
+    with_ollama_cassette("structured_output/raw_with_thinking", |env| async move {
         let schema = raw_schema(json!({
             "type": "object",
             "properties": {
@@ -60,7 +58,7 @@ async fn structured_output_raw_with_thinking() {
             "required": ["title", "summary"]
         }));
 
-        let agent = client
+        let agent = env
             .agent(MODEL)
             .output_schema_raw(schema)
             .additional_params(json!({ "think": true }))
@@ -101,58 +99,55 @@ async fn structured_output_raw_with_thinking() {
 #[tokio::test]
 async fn structured_output_with_tools_and_thinking() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    with_ollama_cassette(
-        "agentic/structured_output_with_tools",
-        |client| async move {
-            let schema = raw_schema(json!({
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" },
-                    "summary": { "type": "string" }
-                },
-                "required": ["city", "summary"]
-            }));
+    with_ollama_cassette("agentic/structured_output_with_tools", |env| async move {
+        let schema = raw_schema(json!({
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" },
+                "summary": { "type": "string" }
+            },
+            "required": ["city", "summary"]
+        }));
 
-            let agent = client
-                .agent(MODEL)
-                .preamble(
-                    "You are a weather assistant. Use the get_weather tool to look up weather, \
+        let agent = env
+            .agent(MODEL)
+            .preamble(
+                "You are a weather assistant. Use the get_weather tool to look up weather, \
                      then answer.",
-                )
-                .tool(WeatherTool::new(call_count.clone()))
-                .output_schema_raw(schema)
-                .additional_params(json!({ "think": true }))
-                .default_max_turns(5)
-                .build();
+            )
+            .tool(WeatherTool::new(call_count.clone()))
+            .output_schema_raw(schema)
+            .additional_params(json!({ "think": true }))
+            .default_max_turns(5)
+            .build();
 
-            let response = agent
-                .prompt(
-                    "What is the current weather in Tokyo? Use the get_weather tool, then return \
+        let response = agent
+            .prompt(
+                "What is the current weather in Tokyo? Use the get_weather tool, then return \
                      the city and a one-sentence summary of the conditions.",
-                )
-                .await
-                .expect("agentic structured output should succeed");
+            )
+            .await
+            .expect("agentic structured output should succeed");
 
-            let parsed: serde_json::Value =
-                serde_json::from_str(&response).expect("response should be schema JSON");
-            for key in ["city", "summary"] {
-                assert!(
-                    parsed
-                        .get(key)
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(|s| !s.trim().is_empty()),
-                    "[ollama] agentic structured output missing non-empty `{key}`: {parsed}"
-                );
-            }
-
-            // #1928: under Tool output mode the model is free to use its tools,
-            // so the real tool is actually invoked (not suppressed by `format`).
+        let parsed: serde_json::Value =
+            serde_json::from_str(&response).expect("response should be schema JSON");
+        for key in ["city", "summary"] {
             assert!(
-                call_count.load(Ordering::SeqCst) >= 1,
-                "[ollama] get_weather should be invoked under Tool output mode (#1928)"
+                parsed
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty()),
+                "[ollama] agentic structured output missing non-empty `{key}`: {parsed}"
             );
-        },
-    )
+        }
+
+        // #1928: under Tool output mode the model is free to use its tools,
+        // so the real tool is actually invoked (not suppressed by `format`).
+        assert!(
+            call_count.load(Ordering::SeqCst) >= 1,
+            "[ollama] get_weather should be invoked under Tool output mode (#1928)"
+        );
+    })
     .await;
 }
 
@@ -167,7 +162,7 @@ async fn streaming_structured_output_with_tools() {
     let call_count = Arc::new(AtomicUsize::new(0));
     with_ollama_cassette(
         "agentic/streaming_structured_output_with_tools",
-        |client| async move {
+        |env| async move {
             let schema = raw_schema(json!({
                 "type": "object",
                 "properties": {
@@ -177,8 +172,7 @@ async fn streaming_structured_output_with_tools() {
                 "required": ["city", "summary"]
             }));
 
-            let agent = client
-                .agent(MODEL)
+            let agent = env.agent(MODEL)
                 .preamble(
                     "You are a weather assistant. Use the get_weather tool to look up weather, \
                      then answer.",
@@ -189,13 +183,13 @@ async fn streaming_structured_output_with_tools() {
                 .default_max_turns(5)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(
+            let mut stream =agent
+                .runner(
                     "What is the current weather in Tokyo? Use the get_weather tool, then return \
                      the city and a one-sentence summary of the conditions.",
                 )
                 .max_turns(5)
-                .await;
+                .stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming agentic structured output should succeed");
@@ -229,14 +223,14 @@ async fn streaming_structured_output_with_tools() {
 #[tokio::test]
 async fn native_mode_emits_structured_output() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    with_ollama_cassette("agentic/native_mode", |client| async move {
+    with_ollama_cassette("agentic/native_mode", |env| async move {
         let schema = raw_schema(json!({
             "type": "object",
             "properties": { "city": { "type": "string" }, "summary": { "type": "string" } },
             "required": ["city", "summary"]
         }));
 
-        let agent = client
+        let agent = env
             .agent(MODEL)
             .preamble("You are a weather assistant.")
             .tool(WeatherTool::new(call_count.clone()))
@@ -271,15 +265,14 @@ async fn native_mode_emits_structured_output() {
 /// models lacking reliable tool calling or native structured output.
 #[tokio::test]
 async fn prompted_mode_returns_parseable_json() {
-    with_ollama_cassette("agentic/prompted_mode", |client| async move {
+    with_ollama_cassette("agentic/prompted_mode", |env| async move {
         let schema = raw_schema(json!({
             "type": "object",
             "properties": { "title": { "type": "string" }, "summary": { "type": "string" } },
             "required": ["title", "summary"]
         }));
 
-        let agent = client
-            .agent(MODEL)
+        let agent = env.agent(MODEL)
             .output_schema_raw(schema)
             .output_mode(OutputMode::Prompted)
             .additional_params(json!({ "think": false }))

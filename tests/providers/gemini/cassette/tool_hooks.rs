@@ -1,16 +1,15 @@
 //! Prompt-hook dispatch on the tool execution path: skip-with-reason,
 //! terminate-early, and observation of every call/result pair.
 
-use rig::agent::AgentHook;
-use rig::completion::{Prompt, PromptError};
-use rig::prelude::*;
+use rig::completion::PromptError;
+use rig::hooks::HookEntry;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
 use super::super::agent_run_support::tool_result_texts;
 use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{
-    CountingAdd, FORCE_TOOLS_PREAMBLE, SkipToolHook, TerminateOnToolHook, ToolEventRecorder,
+    CountingAdd, FORCE_TOOLS_PREAMBLE, ToolEventRecorder, skip_tool_hook, terminate_on_tool_hook,
 };
 use crate::support::assert_nonempty_response;
 
@@ -33,13 +32,10 @@ async fn on_tool_call_skip_returns_reason_without_executing() {
                 .build();
 
             let response = agent
-                .prompt("What is 19 + 23?")
+                .runner("What is 19 + 23?")
                 .max_turns(3)
-                .add_hook(SkipToolHook {
-                    tool_name: CountingAdd::NAME,
-                    reason: SKIP_REASON,
-                })
-                .extended_details()
+                .add_hook(skip_tool_hook(CountingAdd::NAME, SKIP_REASON))
+                .run()
                 .await
                 .expect("a skipped tool call should not fail the run");
 
@@ -76,13 +72,10 @@ async fn on_tool_call_terminate_cancels_run() {
                 .build();
 
             let error = agent
-                .prompt("What is 19 + 23?")
+                .runner("What is 19 + 23?")
                 .max_turns(3)
-                .add_hook(TerminateOnToolHook {
-                    tool_name: CountingAdd::NAME,
-                    reason: TERMINATE_REASON,
-                })
-                .extended_details()
+                .add_hook(terminate_on_tool_hook(CountingAdd::NAME, TERMINATE_REASON))
+                .run()
                 .await
                 .expect_err("a terminating hook should cancel the run");
 
@@ -108,6 +101,7 @@ async fn hooks_observe_every_tool_call_and_result() {
     let add = CountingAdd::default();
     let recorder = ToolEventRecorder::default();
     let recorder_for_test = recorder.clone();
+    let recorder_entry = recorder.entry();
 
     with_gemini_cassette(
         "tool_hooks/hooks_observe_every_tool_call_and_result",
@@ -120,10 +114,12 @@ async fn hooks_observe_every_tool_call_and_result() {
                 .build();
 
             let response = agent
-                .prompt("Use the add tool to calculate 19 + 23, then report the result.")
+                .runner("Use the add tool to calculate 19 + 23, then report the result.")
                 .max_turns(3)
-                .add_hook(recorder)
+                .add_hook(recorder_entry)
+                .run()
                 .await
+                .map(|response| response.output)
                 .expect("recorded tool prompt should succeed");
 
             let calls = recorder_for_test.recorded_calls();
@@ -168,15 +164,10 @@ async fn hooks_observe_every_tool_call_and_result() {
 // Gemini model, so failures surface here instead of inside macro-expanded
 // builder code.
 #[allow(unused)]
-fn assert_hook_impls() {
-    fn requires_hook<H: AgentHook>(_hook: H) {}
-    requires_hook(ToolEventRecorder::default());
-    requires_hook(SkipToolHook {
-        tool_name: "add",
-        reason: "",
-    });
-    requires_hook(TerminateOnToolHook {
-        tool_name: "add",
-        reason: "",
-    });
+fn assert_hook_records() {
+    fn requires_entry(_entry: HookEntry) {}
+    requires_entry(ToolEventRecorder::default().entry());
+    requires_entry(skip_tool_hook("add", ""));
+    requires_entry(terminate_on_tool_hook("add", ""));
 }
+use rig::prelude::*;

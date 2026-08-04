@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message, ToolDefinition};
+use rig::completion::{CompletionRequest, Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -72,11 +72,7 @@ impl Tool for PlanTrip {
         plan_trip_parameters()
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(format!(
             "Booked {} for {} day(s), {} room(s) at {}, with {} planned activities. \
              Confirmation code SAKURA-77.",
@@ -158,15 +154,14 @@ async fn zero_argument_tool_call_streaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.".to_string())
-                .tool(zero_arg_tool_definition("ping"))
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
+            let request = CompletionRequest::builder(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .preamble("Follow the tool-calling instructions exactly.")
+                .tools(vec![zero_arg_tool_definition("ping")])
                 .build();
 
-            let stream = model
-                .stream(request)
+            let stream = openai::responses_api::functions::open_stream(&cfg, &rt, request)
                 .await
                 .expect("zero-arg streaming request should start");
 
@@ -181,15 +176,14 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.".to_string())
-                .tool(zero_arg_tool_definition("ping"))
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
+            let request = CompletionRequest::builder(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+                .preamble("Follow the tool-calling instructions exactly.")
+                .tools(vec![zero_arg_tool_definition("ping")])
                 .build();
 
-            let response = model
-                .completion(request)
+            let response = openai::responses_api::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("zero-arg completion should succeed");
 
@@ -262,16 +256,15 @@ async fn nested_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(NESTED_ARGS_PROMPT)
-                .preamble(NESTED_ARGS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&PlanTrip))
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
+            let request = CompletionRequest::builder(NESTED_ARGS_PROMPT)
+                .preamble(NESTED_ARGS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&PlanTrip)])
                 .build();
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("nested-args streaming request should start"),
             )
@@ -298,33 +291,31 @@ async fn unicode_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
-            let request = model
-                .completion_request(
-                    "Call the echo tool exactly once with the message argument set to \
+            let cfg = client.config(openai::GPT_4O);
+            let rt = client.http();
+            let request = CompletionRequest::builder(
+                "Call the echo tool exactly once with the message argument set to \
                      exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-                )
-                .preamble(
-                    "You must call the echo tool with the exact text the user provides. \
-                     Do not translate, reword, or drop any characters."
-                        .to_string(),
-                )
-                .tool(ToolDefinition {
-                    name: "echo".to_string(),
-                    description: "Echo a message back to the user.".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "message": { "type": "string" }
-                        },
-                        "required": ["message"]
-                    }),
-                })
-                .build();
+            )
+            .preamble(
+                "You must call the echo tool with the exact text the user provides. \
+                         Do not translate, reword, or drop any characters.",
+            )
+            .tools(vec![ToolDefinition {
+                name: "echo".to_string(),
+                description: "Echo a message back to the user.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string" }
+                    },
+                    "required": ["message"]
+                }),
+            }])
+            .build();
 
             let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
+                openai::responses_api::functions::open_stream(&cfg, &rt, request)
                     .await
                     .expect("unicode-args streaming request should start"),
             )

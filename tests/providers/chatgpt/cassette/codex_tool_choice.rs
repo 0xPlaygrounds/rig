@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -33,10 +33,9 @@ async fn required_forces_a_tool_call() {
         "codex_tool_choice/required_forces_a_tool_call",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request("Please greet me.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
+            let request = CompletionRequest::builder("Please greet me.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -66,12 +65,12 @@ async fn none_suppresses_tool_calls() {
         "codex_tool_choice/none_suppresses_tool_calls",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request("What is 2 plus 3? Reply with just the number.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(ToolChoice::None)
-                .build();
+            let request =
+                CompletionRequest::builder("What is 2 plus 3? Reply with just the number.")
+                    .preamble(TOOLS_PREAMBLE)
+                    .tools(vec![rig::tool::portable_tool_definition(&Adder)])
+                    .tool_choice(ToolChoice::None)
+                    .build();
 
             let response = model
                 .completion(request)
@@ -106,11 +105,12 @@ async fn specific_single_function_targets_named_tool() {
         "codex_tool_choice/specific_single_function_targets_named_tool",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request("Compute 9 minus 4 using a tool.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+            let request = CompletionRequest::builder("Compute 9 minus 4 using a tool.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })
@@ -165,12 +165,13 @@ async fn specific_multiple_functions_use_allowed_tools() {
         "codex_tool_choice/specific_multiple_functions_use_allowed_tools",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let request = model
-                .completion_request("What is 2 plus 3? Use exactly one tool.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool(rig::tool::tool_definition(&AlphaSignal))
+            let request = CompletionRequest::builder("What is 2 plus 3? Use exactly one tool.")
+                .preamble(TOOLS_PREAMBLE)
+                .tools(vec![
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                    rig::tool::portable_tool_definition(&AlphaSignal),
+                ])
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],
                 })

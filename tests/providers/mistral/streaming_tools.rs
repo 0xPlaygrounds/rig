@@ -1,24 +1,21 @@
 //! Mistral streaming tools coverage, including the migrated example path.
 
-use rig::completion::Message;
-use rig::prelude::*;
-use rig::providers::mistral;
-use rig::streaming::{StreamingChat, StreamingPrompt};
-
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
     ORDERED_TOOL_STREAM_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
     assert_mentions_expected_number, assert_tool_call_precedes_later_text,
     collect_stream_final_response, collect_stream_observation,
 };
+use rig::completion::Message;
+use rig::prelude::*;
 
 use super::TOOL_MODEL;
 
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn streaming_tools_smoke() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .max_tokens(256)
@@ -26,7 +23,7 @@ async fn streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+    let mut stream = agent.runner(STREAMING_TOOLS_PROMPT).stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -37,8 +34,8 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn example_streaming_with_tools() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \
@@ -49,7 +46,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = agent.runner("Calculate 2 - 5").stream_run();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tools prompt should succeed");
@@ -60,8 +57,8 @@ async fn example_streaming_with_tools() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
@@ -69,9 +66,9 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .build();
 
     let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+        .runner(ORDERED_TOOL_STREAM_PROMPT)
         .max_turns(5)
-        .await;
+        .stream_run();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(
@@ -84,8 +81,8 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::mistral::Client::from_env()
+        .expect("client should build")
         .agent(TOOL_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .max_tokens(256)
@@ -93,9 +90,10 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .build();
 
     let mut stream = agent
-        .stream_chat(ORDERED_TOOL_STREAM_PROMPT, Vec::<Message>::new())
+        .runner(ORDERED_TOOL_STREAM_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(5)
-        .await;
+        .stream_run();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(

@@ -1,13 +1,11 @@
 //! Gemini streaming coverage, including the migrated example path.
 
-use futures::StreamExt;
-use rig::completion::{CompletionModel, GetTokenUsage};
-use rig::prelude::*;
+use rig::completion::{CompletionRequest, FinishReason};
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, FinishReason, GenerationConfig, ThinkingConfig, ThinkingLevel,
+    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -36,14 +34,14 @@ async fn streaming_smoke() {
             )
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
-        let (response, provider_final): (_, gemini::streaming::StreamingCompletionResponse) =
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
+        let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert!(provider_final.token_usage().total_tokens > 0);
+        assert!(provider_final.usage.total_tokens > 0);
     })
     .await;
 }
@@ -51,6 +49,7 @@ async fn streaming_smoke() {
 #[tokio::test]
 async fn example_streaming_prompt() {
     let generation_config = GenerationConfig {
+        temperature: None,
         thinking_config: Some(ThinkingConfig {
             thinking_budget: None,
             thinking_level: Some(ThinkingLevel::Medium),
@@ -70,8 +69,8 @@ async fn example_streaming_prompt() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("When and where and what type is the next solar eclipse?")
-                .await;
+                .runner("When and where and what type is the next solar eclipse?")
+                .stream_run();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -87,12 +86,16 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: final metadata ok")
-                .temperature(0.0)
-                .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::from_prompt("Reply with exactly: final metadata ok")
+            };
+            let mut stream = client
+                .completion_model(model)
+                .stream(request)
+                .await
+                .expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -120,12 +123,12 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 final_response.finish_reason
             );
             assert_eq!(
-                final_response.model_version.as_deref(),
+                final_response.model.as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected resolved Gemini model version to be surfaced"
             );
             assert!(
-                final_response.token_usage().has_values(),
+                final_response.usage.has_values(),
                 "expected final response to expose token usage"
             );
         },
@@ -138,12 +141,18 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
-            let request = model
-                .completion_request("Reply with exactly: contentless final metadata ok")
-                .temperature(0.0)
-                .build();
-            let mut stream = model.stream(request).await.expect("stream should start");
+            let model = gemini::completion::GEMINI_2_5_FLASH;
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::from_prompt(
+                    "Reply with exactly: contentless final metadata ok",
+                )
+            };
+            let mut stream = client
+                .completion_model(model)
+                .stream(request)
+                .await
+                .expect("stream should start");
 
             let mut text = String::new();
             let mut final_response = None;
@@ -171,11 +180,11 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
                 final_response.finish_reason
             );
             assert_eq!(
-                final_response.model_version.as_deref(),
+                final_response.model.as_deref(),
                 Some(gemini::completion::GEMINI_2_5_FLASH),
                 "expected modelVersion from terminal chunks to be retained"
             );
-            let usage = final_response.token_usage();
+            let usage = final_response.usage;
             assert!(
                 usage.input_tokens > 0,
                 "expected positive input token usage, got {usage:?}"
@@ -192,3 +201,4 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     )
     .await;
 }
+use rig::prelude::*;

@@ -3,19 +3,17 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
-use rig::prelude::*;
-use rig::streaming::StreamingChat;
+use rig::completion::Message;
 
-use crate::copilot::{live_client, live_responses_model, with_copilot_cassette};
+use crate::copilot::{live_agent, live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let agent = live_client()
-        .agent(live_responses_model())
+    let agent = live_agent(live_responses_model())
+        .await
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
@@ -25,9 +23,10 @@ async fn streaming() {
         .build();
 
     let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .runner(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(3)
-        .await;
+        .stream_run();
 
     let stats = reasoning::collect_stream_stats(stream, "copilot").await;
     reasoning::assert_universal(&stats, &call_count, "copilot");
@@ -48,7 +47,7 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .agent(live_responses_model())
+                .agent(&live_responses_model())
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
@@ -68,3 +67,4 @@ async fn nonstreaming() {
     )
     .await;
 }
+use rig::prelude::*;

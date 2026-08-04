@@ -1,8 +1,7 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
-use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::CompletionRequest;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -40,9 +39,8 @@ async fn basic_interaction_returns_id() {
                 store: Some(true),
                 ..Default::default()
             };
-            let request = model
-                .completion_request("Give me two fun facts about hummingbirds.")
-                .preamble("Be concise.".to_string())
+            let request = CompletionRequest::builder("Give me two fun facts about hummingbirds.")
+                .preamble("Be concise.")
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
             let response = model
@@ -52,7 +50,10 @@ async fn basic_interaction_returns_id() {
 
             assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.id.is_empty(),
+                response
+                    .message_id
+                    .as_deref()
+                    .is_some_and(|id| !id.is_empty()),
                 "interactions api should return an interaction id"
             );
         },
@@ -68,8 +69,7 @@ async fn followup_with_previous_interaction_id() {
             let model = client.completion_model("gemini-3-flash-preview");
             let initial = model
                 .completion(
-                    model
-                        .completion_request("Give me one short fact about hummingbirds.")
+                    CompletionRequest::builder("Give me one short fact about hummingbirds.")
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
                                 store: Some(true),
@@ -81,13 +81,15 @@ async fn followup_with_previous_interaction_id() {
                 )
                 .await
                 .expect("initial completion should succeed");
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
                 .completion(
-                    model
-                        .completion_request("Now answer with a short analogy.")
+                    CompletionRequest::builder("Now answer with a short analogy.")
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
                                 previous_interaction_id: Some(interaction_id),
@@ -114,8 +116,7 @@ async fn google_search_tool_interaction() {
             let model = client.completion_model("gemini-3-flash-preview");
             let response = model
                 .completion(
-                    model
-                        .completion_request("Who won the Euro 2024 tournament?")
+                    CompletionRequest::builder("Who won the Euro 2024 tournament?")
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
                                 tools: Some(vec![Tool::GoogleSearch]),
@@ -129,8 +130,18 @@ async fn google_search_tool_interaction() {
                 .expect("search completion should succeed");
 
             assert_nonempty_response(&extract_text(&response.choice));
+            // The facade response no longer carries the wire payload; the
+            // search exchange is wire-specific, so deserialize the recorded
+            // interaction body from the cassette itself.
+            let bodies = crate::cassettes::recorded_response_bodies(
+                "gemini",
+                "interactions_api/google_search_tool_interaction",
+            );
+            let interaction: rig::providers::gemini::interactions_api::Interaction =
+                serde_json::from_str(bodies.first().expect("cassette should record one exchange"))
+                    .expect("recorded body should deserialize as an Interaction");
             assert!(
-                !response.raw_response.google_search_exchanges().is_empty(),
+                !interaction.google_search_exchanges().is_empty(),
                 "expected a search-backed exchange"
             );
         },
@@ -159,9 +170,8 @@ async fn tool_result_roundtrip() {
 
             let initial = model
                 .completion(
-                    model
-                        .completion_request("Use the add tool to sum 7 and 11.")
-                        .tool(tool)
+                    CompletionRequest::builder("Use the add tool to sum 7 and 11.")
+                        .tools(vec![tool])
                         .tool_choice(ToolChoice::Required)
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {
@@ -180,27 +190,31 @@ async fn tool_result_roundtrip() {
                 .call_id
                 .clone()
                 .unwrap_or_else(|| tool_call.id.clone());
-            let interaction_id = initial.raw_response.id.clone();
+            let interaction_id = initial
+                .message_id
+                .clone()
+                .expect("expected an interaction id");
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
                 .completion(
-                    model
-                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
+                    CompletionRequest::builder(Message::from(
+                        UserContent::tool_result_with_call_id(
                             tool_call.function.name,
                             call_id,
                             OneOrMany::one(ToolResultContent::json(
                                 serde_json::json!({ "sum": 18.0 }),
                             )),
-                        )))
-                        .additional_params(
-                            serde_json::to_value(AdditionalParameters {
-                                previous_interaction_id: Some(interaction_id),
-                                ..Default::default()
-                            })
-                            .expect("params should serialize"),
-                        )
-                        .build(),
+                        ),
+                    ))
+                    .additional_params(
+                        serde_json::to_value(AdditionalParameters {
+                            previous_interaction_id: Some(interaction_id),
+                            ..Default::default()
+                        })
+                        .expect("params should serialize"),
+                    )
+                    .build(),
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -217,10 +231,10 @@ async fn streaming_interaction() {
         "interactions_api/streaming_interaction",
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
-            let request = model
-                .completion_request("Write a 3-line poem about rust and rivers.")
-                .temperature(0.4)
-                .build();
+            let request = CompletionRequest {
+                temperature: Some(0.4),
+                ..CompletionRequest::from_prompt("Write a 3-line poem about rust and rivers.")
+            };
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
@@ -229,7 +243,7 @@ async fn streaming_interaction() {
                 match chunk.expect("stream chunk should succeed") {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
-                        saw_usage = response.token_usage().has_values();
+                        saw_usage = response.usage.has_values();
                     }
                     _ => {}
                 }
@@ -251,10 +265,10 @@ async fn streaming_final_metadata_exposes_model_version() {
         "interactions_api/streaming_final_metadata_exposes_model_version",
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
-            let request = model
-                .completion_request("Reply with exactly: interaction metadata ok")
-                .temperature(0.0)
-                .build();
+            let request = CompletionRequest {
+                temperature: Some(0.0),
+                ..CompletionRequest::from_prompt("Reply with exactly: interaction metadata ok")
+            };
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
@@ -266,8 +280,8 @@ async fn streaming_final_metadata_exposes_model_version() {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.token_usage().has_values();
-                        final_model_version = response.model_version.clone();
+                        saw_usage = response.usage.has_values();
+                        final_model_version = response.model.clone();
                     }
                     _ => {}
                 }

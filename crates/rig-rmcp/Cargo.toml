@@ -1,0 +1,38 @@
+[package]
+name = "rig-rmcp"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Host-owned MCP toolset for Rig's session runtime."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[lib]
+name = "rig_rmcp"
+path = "src/lib.rs"
+doctest = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# MCP remains native-only because its rmcp/tokio client machinery and
+# cancellation dispatch are target-specific. On wasm this crate compiles to an
+# empty library so workspace-wide wasm builds keep working; Rig's stored tool
+# records themselves are `Send + Sync` on every target.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rmcp = { workspace = true, features = ["client"] }
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

@@ -1,26 +1,39 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
-use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
+use rig::providers::openai;
 use serde_json::Value;
 
-use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_completions_cassette};
+use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
 
 #[tokio::test]
 async fn chat_completion_usage_without_output_tokens_details_deserializes() {
-    with_mistralrs_completions_cassette(
+    with_mistralrs_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
-        |client| async move {
-            let response = client
-                .completion_model(model_name())
-                .completion_request("/no_think Explain usage accounting in one sentence.")
-                .preamble(SYSTEM_PROMPT.to_string())
-                .max_tokens(64)
-                .send()
+        |env| async move {
+            let cfg = env.chat_config(model_name());
+            let rt = HttpRuntime::new();
+            let request =
+                CompletionRequest::builder("/no_think Explain usage accounting in one sentence.")
+                    .preamble(SYSTEM_PROMPT)
+                    .max_tokens(64)
+                    .build();
+            let _response = openai::functions::complete(&cfg, &rt, request)
                 .await
                 .expect("usage check completion should succeed");
-            let raw = serde_json::to_value(&response.raw_response)
-                .expect("raw chat completion response should serialize");
+            // The normalized response no longer exposes the raw payload, so the
+            // wire-shape assertions read the recorded cassette body directly.
+            let bodies = crate::cassettes::recorded_response_bodies(
+                "mistralrs",
+                "usage/chat_completion_usage_without_output_tokens_details_deserializes",
+            );
+            let raw: Value = serde_json::from_str(
+                bodies
+                    .last()
+                    .expect("cassette should contain a recorded response body"),
+            )
+            .expect("recorded mistral.rs chat completion body should be JSON");
             let usage = raw
                 .get("usage")
                 .expect("mistral.rs response should include usage");

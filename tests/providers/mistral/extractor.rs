@@ -10,25 +10,30 @@ use super::DEFAULT_MODEL;
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn extractor_smoke() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let extractor = client.extractor::<SmokePerson>(DEFAULT_MODEL).build();
-
-    let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+    let response = mistral::Client::from_env()
+        .expect("Mistral client should build from env")
+        .agent(DEFAULT_MODEL)
+        .build()
+        .extractor(EXTRACTOR_TEXT)
+        .run_with_usage::<SmokePerson>()
         .await
         .expect("extractor request should succeed");
 
     let first_name = response
-        .data
+        .value
         .first_name
         .as_deref()
         .expect("first_name should be present");
     let last_name = response
-        .data
+        .value
         .last_name
         .as_deref()
         .expect("last_name should be present");
-    let job = response.data.job.as_deref().expect("job should be present");
+    let job = response
+        .value
+        .job
+        .as_deref()
+        .expect("job should be present");
 
     assert_nonempty_response(first_name);
     assert_nonempty_response(last_name);

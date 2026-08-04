@@ -1,11 +1,11 @@
 //! Groq streaming tools smoke test.
 
 use rig::OneOrMany;
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
+use rig::http_runtime::HttpRuntime;
 use rig::message::{AssistantContent, Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -24,14 +24,17 @@ use super::{
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-        .tool(zero_arg_tool_definition("ping"))
-        .tool_choice(ToolChoice::Required)
-        .build();
-    let stream = model.stream(request).await.expect("stream should start");
+    let model_cfg =
+        groq::functions::Config::from_env(STREAMING_TOOLS_RAW_MODEL).expect("config should build");
+    let rt = HttpRuntime::new();
+    let request = CompletionRequest {
+        tools: vec![zero_arg_tool_definition("ping")],
+        tool_choice: Some(ToolChoice::Required),
+        ..CompletionRequest::from_prompt(REQUIRED_ZERO_ARG_TOOL_PROMPT)
+    };
+    let stream = groq::functions::open_stream(&model_cfg, &rt, request)
+        .await
+        .expect("stream should start");
 
     assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
 }
@@ -39,18 +42,19 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(TWO_TOOL_STREAM_PROMPT)
-        .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(rig::tool::tool_definition(&AlphaSignal))
-        .tool(rig::tool::tool_definition(&BetaSignal))
+    let model_cfg =
+        groq::functions::Config::from_env(STREAMING_TOOLS_RAW_MODEL).expect("config should build");
+    let rt = HttpRuntime::new();
+    let request = CompletionRequest::builder(TWO_TOOL_STREAM_PROMPT)
+        .preamble(TWO_TOOL_STREAM_PREAMBLE)
+        .tools(vec![
+            rig::tool::portable_tool_definition(&AlphaSignal),
+            rig::tool::portable_tool_definition(&BetaSignal),
+        ])
         .build();
 
     let observation = collect_raw_stream_observation(
-        model
-            .stream(request)
+        groq::functions::open_stream(&model_cfg, &rt, request)
             .await
             .expect("raw stream should start"),
     )
@@ -65,8 +69,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
         .agent(STREAMING_TOOLS_MULTI_MODEL)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
@@ -74,9 +78,9 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         .build();
 
     let mut stream = agent
-        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+        .runner(TWO_TOOL_STREAM_PROMPT)
         .max_turns(8)
-        .await;
+        .stream_run();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_two_tool_roundtrip_contract(
@@ -89,17 +93,17 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
+    let agent = rig::providers::groq::Client::from_env()
+        .expect("client should build")
         .agent(STREAMING_TOOLS_ORDERED_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .build();
 
     let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+        .runner(ORDERED_TOOL_STREAM_PROMPT)
         .max_turns(5)
-        .await;
+        .stream_run();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(
@@ -112,17 +116,16 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
-    let request = model
-        .completion_request(ORDERED_TOOL_STREAM_PROMPT)
-        .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-        .tool(rig::tool::tool_definition(&AlphaSignal))
+    let model_cfg =
+        groq::functions::Config::from_env(STREAMING_TOOLS_RAW_MODEL).expect("config should build");
+    let rt = HttpRuntime::new();
+    let request = CompletionRequest::builder(ORDERED_TOOL_STREAM_PROMPT)
+        .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
+        .tools(vec![rig::tool::portable_tool_definition(&AlphaSignal)])
         .build();
 
     let first_turn = collect_raw_stream_observation(
-        model
-            .stream(request)
+        groq::functions::open_stream(&model_cfg, &rt, request)
             .await
             .expect("raw stream should start"),
     )
@@ -142,18 +145,15 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     };
     let tool_result_message =
         Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
-    let followup_request = model
-        .completion_request(
-            "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-        )
-        .preamble("Use the provided tool result and answer directly.".to_string())
-        .message(assistant_message)
-        .message(tool_result_message)
-        .build();
+    let followup_request = CompletionRequest::builder(
+        "Now reply in one short sentence using the provided tool result. Do not call any tools.",
+    )
+    .preamble("Use the provided tool result and answer directly.")
+    .messages(vec![assistant_message, tool_result_message])
+    .build();
 
     let second_turn = collect_raw_stream_observation(
-        model
-            .stream(followup_request)
+        groq::functions::open_stream(&model_cfg, &rt, followup_request)
             .await
             .expect("raw followup stream should start"),
     )

@@ -25,20 +25,20 @@
 //! # Simple example
 //! ```no_run
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
-//!     completion::{AssistantContent, CompletionModel},
+//!     completion::AssistantContent,
+//!     http_runtime::HttpRuntime,
 //!     providers::openai,
 //! };
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create an OpenAI client and completion model.
+//!     // Configure an OpenAI completion call.
 //!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env()?;
-//!     let model = openai_client.completion_model(openai::GPT_5_2);
+//!     let cfg = openai::functions::Config::from_env(openai::GPT_5_2)?;
+//!     let rt = HttpRuntime::new();
 //!
-//!     let request = model.completion_request("Who are you?").build();
-//!     let response = model.completion(request).await?;
+//!     let request = rig_core::completion::CompletionRequest::from_prompt("Who are you?");
+//!     let response = openai::functions::complete(&cfg, &rt, request).await?;
 //!     for item in response.choice {
 //!         if let AssistantContent::Text(text) = item {
 //!             println!("{}", text.text);
@@ -52,12 +52,17 @@
 //! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 //!
 //! # Core concepts
-//! ## Completion and embedding models
+//! ## Completion and embedding data
 //! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
-//! each provider (e.g. OpenAI, Cohere) has a `Client` struct that can be used to initialize completion
-//! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
-//! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
-//! low-level interface for creating completion and embedding requests and executing them.
+//! each provider (e.g. OpenAI, Cohere) has a `functions` module holding a plain
+//! `Config` (model id, credentials, base URL, provider-specific knobs) plus free
+//! functions — `complete`, `stream`, `embed`, `transcribe`, and so on — that take
+//! `(&Config, &HttpRuntime, request)` and return the shared
+//! [CompletionResponse](crate::completion::CompletionResponse),
+//! [Embedding](crate::embeddings::Embedding), and sibling data types. The
+//! [HttpRuntime](crate::http_runtime::HttpRuntime) owns transport concerns and is
+//! shared across providers; static provider facts are described by
+//! [ProviderDescriptor](crate::providers::ProviderDescriptor).
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage
@@ -65,27 +70,30 @@
 //! run-loop API.
 //!
 //! ## Vector stores and indexes
-//! Rig provides a common interface for working with vector stores and indexes. Specifically, the library
-//! provides the [VectorStoreIndex](crate::vector_store::VectorStoreIndex)
-//! trait, which can be implemented to define vector stores and indices respectively.
-//! Indexes can be queried directly by applications or runtimes. For active RAG,
-//! expose the index through its blanket [`PortableTool`](crate::tool::PortableTool)
-//! implementation, or through a custom tool, so the model decides when and how
-//! to retrieve. The classic `rig-agent` runtime can also query indexes from
+//! Rig provides a common data vocabulary for working with vector stores:
+//! [VectorSearchRequest](crate::vector_store::VectorSearchRequest) (pre-embedded queries),
+//! [SearchHit](crate::vector_store::SearchHit), and
+//! [StoreRecord](crate::vector_store::StoreRecord). Store crates expose concrete
+//! inherent async methods (`top_n`, `top_n_ids`, `top_n_as`, `insert`, `insert_as`)
+//! over these types. Stores can be queried directly by applications or runtimes.
+//! For active RAG, expose a store through a custom tool so the model decides when
+//! and how to retrieve. The classic `rig-agent` runtime can also query stores from
 //! hooks and append the resulting documents to a turn's extra context.
 //!
-//! Indexes can also serve custom architectures that use multiple LLMs or agents.
+//! Stores can also serve custom architectures that use multiple LLMs or agents.
 //!
 //! ## Conversation memory
-//! Runtimes can load and persist per-conversation history through the
-//! [ConversationMemory](crate::memory::ConversationMemory) trait. The classic
-//! `rig-agent` runtime integrates this portable backend contract.
-//! The default in-process backend
-//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) is suitable
-//! for tests and single-process agents; reusable history-shaping policies (sliding
-//! window, token budget) live in the [`rig-memory`](https://crates.io/crates/rig-memory)
-//! companion crate. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
-//! for a runnable end-to-end example.
+//! Conversation history is host-owned data: nothing in Rig loads or saves it
+//! behind your back. The in-process store
+//! [InMemoryConversationMemory](crate::memory::InMemoryConversationMemory) has
+//! plain `load`/`append`/`clear` methods and is suitable for tests and
+//! single-process agents; hosts with a database implement whatever store they
+//! like and report failures as
+//! [MemoryError](crate::memory::MemoryError). Reusable history-shaping
+//! policies (sliding window, token budget, rolling summaries) live in the
+//! [`rig-memory`](https://crates.io/crates/rig-memory) companion crate as
+//! plain data. See [`examples/agent_with_memory.rs`](https://github.com/0xPlaygrounds/rig/blob/main/examples/agent_with_memory.rs)
+//! for the runnable load-before / append-after recipe.
 //!
 //! # Integrations
 //! ## Model Providers
@@ -114,8 +122,10 @@
 //! - Xiaomi MiMo
 //! - Z.ai
 //!
-//! You can also implement your own model provider integration by defining types that
-//! implement the [CompletionModel](crate::completion::CompletionModel) and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits.
+//! You can also add your own model provider integration by writing a `Config` plus
+//! free functions that build `http::Request`s, send them through
+//! [HttpRuntime](crate::http_runtime::HttpRuntime), and parse the responses into
+//! Rig's shared request/response data types.
 //!
 //! Vector stores are available as separate companion-crates:
 //!
@@ -131,8 +141,8 @@
 //! - HelixDB: [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb)
 //! - Cloudflare Vectorize: [`rig-vectorize`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vectorize)
 //!
-//! You can also implement your own vector store integration by defining types that
-//! implement the [VectorStoreIndex](crate::vector_store::VectorStoreIndex) trait.
+//! You can also implement your own vector store integration by exposing the same
+//! inherent methods over the shared vector store data types.
 //!
 //! The following providers are available as separate companion-crates:
 //!
@@ -147,10 +157,10 @@ extern crate self as rig;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
-pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod http_client;
+pub mod http_runtime;
 pub mod id;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
@@ -160,7 +170,6 @@ pub mod image_generation;
 #[doc(hidden)]
 pub mod json_utils;
 pub mod loaders;
-pub mod markers;
 pub mod memory;
 pub mod model;
 pub mod one_or_many;

@@ -1,6 +1,5 @@
 //! Llamafile tools smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};
@@ -14,9 +13,8 @@ async fn tools_smoke() {
         return;
     }
 
-    let client = support::client();
-    let agent = client
-        .agent(support::model_name())
+    let agent = support::client()
+        .agent(&support::model_name())
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \
              After you receive the tool result, do not call any more tools and reply with the final numeric answer only.",
@@ -26,10 +24,12 @@ async fn tools_smoke() {
         .build();
 
     let response = agent
-        .prompt("Calculate 2 - 5. Call `subtract` exactly once, then answer with just the result.")
+        .runner("Calculate 2 - 5. Call `subtract` exactly once, then answer with just the result.")
         .max_turns(3)
+        .run()
         .await
-        .expect("tool prompt should succeed");
+        .expect("tool prompt should succeed")
+        .output;
 
     assert_mentions_expected_number(&response, -3);
 }

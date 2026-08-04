@@ -7,7 +7,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::CompletionRequest;
+use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -32,11 +33,10 @@ async fn required_maps_to_any_and_forces_tool_use() {
         "messages_tool_choice/required_maps_to_any_and_forces_tool_use",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Please greet me.")
-                .preamble(TOOLS_PREAMBLE.to_string())
+            let request = CompletionRequest::builder("Please greet me.")
+                .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&Adder))
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
                 .tool_choice(ToolChoice::Required)
                 .build();
 
@@ -57,8 +57,8 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 "only the provided tool can be called, saw {names:?}"
             );
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("tool_use"),
+                response.finish_reason,
+                Some(FinishReason::ToolCalls),
                 "a forced tool_use turn should preserve the tool_use stop reason"
             );
         },
@@ -75,11 +75,10 @@ async fn none_suppresses_tool_use() {
             // The question must not match the forbidden tool: asking arithmetic
             // with the add tool blocked makes Anthropic return an empty
             // end_turn message instead of answering in text.
-            let request = model
-                .completion_request("Name the capital of France in one word.")
-                .preamble("You are a concise assistant. Answer directly.".to_string())
+            let request = CompletionRequest::builder("Name the capital of France in one word.")
+                .preamble("You are a concise assistant. Answer directly.")
                 .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&Adder))
+                .tools(vec![rig::tool::portable_tool_definition(&Adder)])
                 .tool_choice(ToolChoice::None)
                 .build();
 
@@ -106,8 +105,8 @@ async fn none_suppresses_tool_use() {
                 "model should answer directly without tools, got {text:?}"
             );
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("end_turn"),
+                response.finish_reason,
+                Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );
         },
@@ -121,12 +120,13 @@ async fn specific_tool_targets_named_tool() {
         "messages_tool_choice/specific_tool_targets_named_tool",
         |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request("Compute 9 minus 4 using a tool.")
-                .preamble(TOOLS_PREAMBLE.to_string())
+            let request = CompletionRequest::builder("Compute 9 minus 4 using a tool.")
+                .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
+                .tools(vec![
+                    rig::tool::portable_tool_definition(&Adder),
+                    rig::tool::portable_tool_definition(&Subtract),
+                ])
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })

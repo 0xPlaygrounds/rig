@@ -2,12 +2,10 @@
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::OneOrMany;
-use rig::completion::Prompt;
 use rig::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
     Message, UserContent, VideoMediaType,
 };
-use rig::prelude::*;
 
 use crate::support::{
     AUDIO_FIXTURE_PATH, IMAGE_FIXTURE_PATH, PDF_FIXTURE_PATH, VIDEO_FIXTURE_PATH,
@@ -170,3 +168,4 @@ async fn audio_analysis_prompt() {
     })
     .await;
 }
+use rig::prelude::*;

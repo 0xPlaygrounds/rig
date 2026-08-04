@@ -340,6 +340,20 @@ impl ToolFunction {
 // Base content models
 // ================================================================
 
+/// Deserialize a flattened `additional_params` map, normalizing the
+/// no-extra-keys case to `None` (serde's `flatten` otherwise yields
+/// `Some({})`, breaking round-trip equality).
+fn empty_params_as_none<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.filter(|value| match value {
+        serde_json::Value::Object(map) => !map.is_empty(),
+        _ => true,
+    }))
+}
+
 /// Basic text content.
 ///
 /// `additional_params` carries provider-specific fields that arrive on text
@@ -351,7 +365,12 @@ pub struct Text {
     /// Text content.
     pub text: String,
     /// Provider-specific text fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        flatten,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_params_as_none",
+        default
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -389,7 +408,12 @@ pub struct Image {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
     /// Provider-specific image fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        flatten,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_params_as_none",
+        default
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -499,7 +523,12 @@ pub struct Audio {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
     /// Provider-specific audio fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        flatten,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_params_as_none",
+        default
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -512,7 +541,12 @@ pub struct Video {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
     /// Provider-specific video fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        flatten,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_params_as_none",
+        default
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -525,7 +559,12 @@ pub struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
     /// Provider-specific document fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        flatten,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "empty_params_as_none",
+        default
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 

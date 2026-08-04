@@ -1,93 +1,66 @@
 // ================================================================
-//! Google Gemini gRPC Embedding Integration
+//! Google Gemini gRPC embedding wire conversions.
+//!
+//! Embedding model identifiers plus the single-document `EmbedContent` RPC
+//! that [`crate::functions::embed`] loops over. Drive embeddings through
+//! [`crate::functions`], not this module.
 // ================================================================
 
 /// `text-embedding-004` embedding model
 pub const EMBEDDING_004: &str = "text-embedding-004";
+
+/// Default `output_dimensionality` for [`EMBEDDING_004`] when a config leaves
+/// [`EmbeddingConfig::ndims`](crate::functions::EmbeddingConfig::ndims) unset.
+pub const DEFAULT_NDIMS: usize = 768;
 
 use rig_core::embeddings::{self, EmbeddingError};
 
 use super::Client;
 use super::proto::{self, EmbedContentRequest};
 
-#[derive(Clone, Debug)]
-pub struct EmbeddingModel {
-    client: Client,
-    model: String,
-    ndims: usize,
-}
+/// Embed one document over the `EmbedContent` RPC.
+///
+/// The single source of truth is [`crate::functions::embed`], which calls
+/// this once per document (the gRPC embedding API is single-document).
+pub(crate) async fn embed_one(
+    client: &Client,
+    model: &str,
+    output_dimensionality: Option<usize>,
+    doc: String,
+) -> Result<embeddings::Embedding, EmbeddingError> {
+    let mut grpc_client = client
+        .grpc_client()
+        .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
+    let request = EmbedContentRequest {
+        model: format!("models/{model}"),
+        content: Some(proto::Content {
+            parts: vec![proto::Part {
+                data: Some(proto::part::Data::Text(doc.clone())),
+                thought: false,
+                thought_signature: Vec::new(),
+                part_metadata: None,
+            }],
+            role: String::new(),
+        }),
+        task_type: None,
+        title: None,
+        output_dimensionality: output_dimensionality.map(|n| n as i32),
+    };
 
-impl EmbeddingModel {
-    pub fn new(client: Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims: dims.unwrap_or(768), // Default embedding size for text-embedding-004
-        }
-    }
-}
+    let response = grpc_client
+        .embed_content(request)
+        .await
+        .map_err(rpc_error)?
+        .into_inner();
 
-impl embeddings::EmbeddingModel for EmbeddingModel {
-    const MAX_DOCUMENTS: usize = 100;
-
-    type Client = super::Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String> + rig_core::wasm_compat::WasmCompatSend,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents_vec: Vec<String> = documents.into_iter().collect();
-        let mut embeddings = Vec::new();
-
-        let mut grpc_client = self
-            .client
-            .grpc_client()
-            .map_err(|e| EmbeddingError::ProviderError(e.to_string()))?;
-
-        for doc in documents_vec {
-            let request = EmbedContentRequest {
-                model: format!("models/{}", self.model),
-                content: Some(proto::Content {
-                    parts: vec![proto::Part {
-                        data: Some(proto::part::Data::Text(doc.clone())),
-                        thought: false,
-                        thought_signature: Vec::new(),
-                        part_metadata: None,
-                    }],
-                    role: String::new(),
-                }),
-                task_type: None,
-                title: None,
-                output_dimensionality: Some(self.ndims as i32),
-            };
-
-            let response = grpc_client
-                .embed_content(request)
-                .await
-                .map_err(rpc_error)?
-                .into_inner();
-
-            if let Some(embedding) = response.embedding {
-                embeddings.push(embeddings::Embedding {
-                    document: doc,
-                    vec: embedding.values.into_iter().map(|v| v as f64).collect(),
-                });
-            } else {
-                return Err(EmbeddingError::ResponseError(
-                    "No embedding in response".to_string(),
-                ));
-            }
-        }
-
-        Ok(embeddings)
+    match response.embedding {
+        Some(embedding) => Ok(embeddings::Embedding {
+            document: doc,
+            vec: embedding.values.into_iter().map(|v| v as f64).collect(),
+        }),
+        None => Err(EmbeddingError::ResponseError(
+            "No embedding in response".to_string(),
+        )),
     }
 }
 

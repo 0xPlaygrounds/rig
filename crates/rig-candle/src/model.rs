@@ -6,9 +6,16 @@
 //! synchronously inside the completion future; browser applications should own
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
+//! Candle models are not expressible as plain provider configuration (they
+//! are loaded tensors, not connection details), so they plug into the agent
+//! machinery through its sans-IO half: `rig_agent::agent::prepare_request`
+//! builds each turn's request and [`crate::functions::complete`] runs it on
+//! the loaded model.
+//!
 //! ```no_run
-//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::agent::{AgentConfig, ToolCatalog, prepare_request};
 //! use rig_candle::{CandleModel, ModelData};
+//! use rig_core::completion::Message;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let data = ModelData {
@@ -17,13 +24,23 @@
 //!     weights: std::fs::read("./model/model.safetensors")?,
 //! };
 //! let model = CandleModel::from_safetensors_async(data).await?;
-//! let agent = AgentBuilder::new(model)
-//!     .preamble("You are a helpful assistant.")
-//!     .temperature(0.7)
-//!     .max_tokens(256)
-//!     .build();
-//! let answer = agent.prompt("Explain Rust ownership briefly.").await?;
-//! println!("{answer}");
+//! let config = AgentConfig::new()
+//!     .with_preamble("You are a helpful assistant.")
+//!     .with_temperature(0.7)
+//!     .with_max_tokens(256);
+//! let prepared = prepare_request(
+//!     &config,
+//!     &ToolCatalog::default(),
+//!     false,
+//!     Message::user("Explain Rust ownership briefly."),
+//!     &[],
+//!     None,
+//!     None,
+//!     None,
+//!     None,
+//! )?;
+//! let response = rig_candle::functions::complete(&model, prepared.request).await?;
+//! println!("{:?}", response.choice);
 //! # Ok(())
 //! # }
 //! ```
@@ -65,12 +82,10 @@ use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use futures::Stream;
-use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
-};
+use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
+use rig_core::streaming::{CompletionStream, RawStreamingChoice, StreamFinal};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -98,20 +113,22 @@ use crate::types::*;
 #[cfg(test)]
 use crate::validation::*;
 
-const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
+pub(crate) const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
-#[derive(Clone)]
-enum ModelState {
-    Ready(Arc<LoadedModel>),
-    UnsupportedMake,
-}
-
 /// A cheaply cloneable, CPU-only Candle completion model.
+///
+/// This is a *loaded* handle, not a config: constructing one always means
+/// validating artifacts and materializing tensors. It is therefore an
+/// inherent type with inherent [`complete`](Self::complete) /
+/// [`stream`](Self::stream) methods rather than an implementation of any
+/// model trait — the documented entry points are
+/// [`crate::functions::complete`] and [`crate::functions::open_stream`],
+/// which delegate here.
 #[derive(Clone)]
 pub struct CandleModel {
-    state: ModelState,
+    loaded: Arc<LoadedModel>,
 }
 
 /// Builder for loading a [`CandleModel`] and customizing generation defaults.
@@ -219,32 +236,45 @@ impl CandleModel {
     }
 
     /// Returns the validated conversation/output protocol.
-    pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
-        }
+    pub fn conversation_protocol(&self) -> ConversationProtocol {
+        self.loaded.profile.definition.protocol
     }
 
     /// Backwards-compatible alias for [`Self::conversation_protocol`].
-    pub fn model_family(&self) -> Option<ModelFamily> {
+    pub fn model_family(&self) -> ModelFamily {
         self.conversation_protocol()
     }
 
     /// Returns the validated transformer architecture of the loaded checkpoint.
-    pub fn architecture(&self) -> Option<ModelArchitecture> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
-        }
+    pub fn architecture(&self) -> ModelArchitecture {
+        self.loaded.profile.definition.architecture
     }
 
     /// Returns the detected checkpoint quantization, if the model is quantized.
     pub fn quantization(&self) -> Option<Quantization> {
-        match &self.state {
-            ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
-        }
+        self.loaded.profile.definition.quantization
+    }
+
+    /// Runs a buffered completion against the loaded weights.
+    ///
+    /// Prefer [`crate::functions::complete`], which is the crate's
+    /// documented data-oriented entry point and delegates here.
+    pub async fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        complete_request(self, request).await
+    }
+
+    /// Opens a streaming completion against the loaded weights.
+    ///
+    /// Prefer [`crate::functions::open_stream`], which is the crate's
+    /// documented data-oriented entry point and delegates here.
+    pub async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionStream, CompletionError> {
+        open_stream_request(self, request).await
     }
 }
 
@@ -332,7 +362,7 @@ impl<'a> CandleModelBuilder<'a> {
             )?,
         };
         Ok(CandleModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            loaded: Arc::new(loaded),
         })
     }
 }
@@ -370,7 +400,7 @@ fn render_prompt_for(
 }
 
 #[cfg(not(target_family = "wasm"))]
-type CandleStreamItem = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>;
+type CandleStreamItem = Result<RawStreamingChoice, CompletionError>;
 
 #[cfg(not(target_family = "wasm"))]
 struct CandleReceiverStream {
@@ -413,29 +443,21 @@ fn stream_infer(
             .blocking_send(Ok(choice))
             .map_err(|_| CandleError::StreamingChannelClosed)
     })?;
+    let final_response = StreamFinal::new("candle", response.token_usage())
+        .with_finish_reason(response.finish_reason.normalized());
     sender
-        .blocking_send(Ok(RawStreamingChoice::FinalResponse(response)))
+        .blocking_send(Ok(RawStreamingChoice::FinalResponse(final_response)))
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    type Response = CandleCompletionResponse;
-    type StreamingResponse = CandleCompletionResponse;
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
-    }
-
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+/// Buffered completion over a loaded [`CandleModel`], shared by
+/// [`CandleModel::complete`] and [`crate::functions::complete`].
+pub(crate) async fn complete_request(
+    model: &CandleModel,
+    request: CompletionRequest,
+) -> Result<CompletionResponse, CompletionError> {
+    {
+        let loaded = &model.loaded;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -454,22 +476,28 @@ impl CompletionModel for CandleModel {
             .await
             .map_err(|error| CandleError::BlockingTaskJoin(error.to_string()));
             cancel_on_drop.disarm();
-            result?.map_err(CompletionError::from)
+            result?
+                .map(|(response, _)| response)
+                .map_err(CompletionError::from)
         }
 
         #[cfg(target_family = "wasm")]
         {
-            infer(loaded, request, &CancellationSignal).map_err(CompletionError::from)
+            infer(loaded, request, &CancellationSignal)
+                .map(|(response, _)| response)
+                .map_err(CompletionError::from)
         }
     }
+}
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+/// Streaming completion over a loaded [`CandleModel`], shared by
+/// [`CandleModel::stream`] and [`crate::functions::open_stream`].
+pub(crate) async fn open_stream_request(
+    model: &CandleModel,
+    request: CompletionRequest,
+) -> Result<CompletionStream, CompletionError> {
+    {
+        let loaded = &model.loaded;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -495,13 +523,12 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(CandleReceiverStream {
-                    receiver,
-                    cancellation,
-                });
+            let stream = CandleReceiverStream {
+                receiver,
+                cancellation,
+            };
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(CompletionStream::from_stream(stream))
         }
 
         #[cfg(target_family = "wasm")]
@@ -511,10 +538,11 @@ impl CompletionModel for CandleModel {
                 events.push(Ok(choice));
                 Ok(())
             })?;
-            events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(futures::stream::iter(events));
-            Ok(StreamingCompletionResponse::stream(stream))
+            let final_response = StreamFinal::new("candle", response.token_usage())
+                .with_finish_reason(response.finish_reason.normalized());
+            events.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
+            let stream = futures::stream::iter(events);
+            Ok(CompletionStream::from_stream(stream))
         }
     }
 }

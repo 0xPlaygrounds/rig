@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 rig.workspace = true
 anyhow = { workspace = true }
+futures = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }

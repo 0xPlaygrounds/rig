@@ -2,10 +2,11 @@
 //! turns: stepping protocol, multi-turn tool threading, parallel tool calls,
 //! and `max_turns` exhaustion.
 
+use std::collections::BTreeSet;
+
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{
@@ -24,7 +25,7 @@ async fn hand_driven_single_turn_completes() {
         "agent_run_stepping/hand_driven_single_turn_completes",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 BASIC_PREAMBLE,
                 &[],
                 None,
@@ -38,6 +39,7 @@ async fn hand_driven_single_turn_completes() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         assert_eq!(turn, 1, "a tool-free run makes exactly one model call");
                         assert!(
@@ -46,18 +48,20 @@ async fn hand_driven_single_turn_completes() {
                         );
                         let outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &names, &names).await,
+                                call_model(&agent, prompt, history, attempt_id, &names, &names)
+                                    .await,
                             )
                             .expect("model turn should be accepted");
                         assert!(
                             matches!(
                                 outcome,
-                                ModelTurnOutcome::Continue {
-                                    response_hook_suppressed: false
-                                }
+                                ModelTurnOutcome::Continue(accepted)
+                                    if !accepted.response_hook_suppressed
                             ),
                             "unrecovered turns must not suppress the response hook"
                         );
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         panic!("tool-free run must not request tool execution: {calls:?}")
@@ -107,7 +111,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
         "agent_run_stepping/hand_driven_multi_turn_tool_run_completes",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -119,6 +123,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
             )
             .max_turns(5);
             let mut executed_tools: Vec<String> = Vec::new();
+            let mut internal_call_ids = BTreeSet::new();
 
             let response = loop {
                 match run.next_step().expect("run should advance") {
@@ -126,6 +131,7 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                         prompt,
                         history,
                         turn,
+                        attempt_id,
                     } => {
                         if turn > 1 {
                             assert!(
@@ -138,9 +144,11 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                             );
                         }
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
@@ -148,9 +156,13 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                                 call.preresolved_result.is_none(),
                                 "no recovery happened, so no call should be preresolved"
                             );
+                            let internal_call_id = call
+                                .internal_call_id
+                                .as_ref()
+                                .expect("every pending call has durable Rig identity");
                             assert!(
-                                call.internal_call_id.is_none(),
-                                "non-streamed turns carry no internal call ids"
+                                internal_call_ids.insert(internal_call_id.clone()),
+                                "Rig internal call IDs remain unique across unary turns"
                             );
                             executed_tools.push(call.tool_call.function.name.clone());
                         }
@@ -199,7 +211,7 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
         "agent_run_stepping/hand_driven_parallel_tool_calls_arrive_in_one_step",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -215,12 +227,14 @@ async fn hand_driven_parallel_tool_calls_arrive_in_one_step() {
             let response = loop {
                 match run.next_step().expect("run should advance") {
                     AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     } => {
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     AgentRunStep::CallTools { calls } => {
                         if first_tool_step.is_none() {
@@ -263,7 +277,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
         "agent_run_stepping/max_turns_error_carries_pending_tool_results_message",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.config(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -277,12 +291,14 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             let error = loop {
                 match run.next_step() {
                     Ok(AgentRunStep::CallModel {
-                        prompt, history, ..
+                        prompt, history, attempt_id, ..
                     }) => {
                         let outcome = run
-                            .model_response(call_model(&agent, prompt, history, &names, &names).await)
+                            .model_response(call_model(&agent, prompt, history, attempt_id, &names, &names).await)
                             .expect("model turn should be accepted");
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                        assert!(matches!(outcome, ModelTurnOutcome::Continue(_)));
+                        run.continue_model_turn()
+                            .expect("accepted turn should advance");
                     }
                     Ok(AgentRunStep::CallTools { calls }) => {
                         run.tool_results(execute_pending_calls(&calls))

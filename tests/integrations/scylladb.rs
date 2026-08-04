@@ -6,15 +6,12 @@
     clippy::unreachable
 )]
 
-use rig::client::EmbeddingsClient;
+use rig::OneOrMany;
+use rig::http_runtime::HttpRuntime;
 use rig::providers::openai;
 use rig::scylladb::{ScyllaDbVectorStore, create_session};
 use rig::vector_store::request::VectorSearchRequest;
-use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{InsertDocuments, VectorStoreIndex},
-};
+use rig::{Embed, embeddings::embed_documents};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use testcontainers::{
@@ -82,13 +79,10 @@ async fn vector_search_test() {
 
     // Init fake openai service
     let openai_mock = create_openai_mock_service().await;
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(openai_mock.base_url())
-        .build()
-        .unwrap();
-
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(openai_mock.base_url());
+    let rt = HttpRuntime::new();
 
     // Create test documents with mocked embeddings
     let words = vec![
@@ -106,16 +100,20 @@ async fn vector_search_test() {
         }
     ];
 
-    let documents = EmbeddingsBuilder::new(model.clone())
-        .documents(words)
-        .unwrap()
-        .build()
-        .await
-        .expect("Failed to create embeddings");
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let documents = embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await
+    .expect("Failed to create embeddings");
 
-    // Create ScyllaDB vector store
+    // Create ScyllaDB vector store; queries arrive pre-embedded
     let vector_store = ScyllaDbVectorStore::new(
-        model.clone(),
         session,
         "test_keyspace",
         "test_words",
@@ -124,22 +122,31 @@ async fn vector_search_test() {
     .await
     .expect("Failed to create ScyllaDB vector store");
 
-    // Insert documents into vector store
+    // Insert documents into vector store; the store's id column is a UUID
     vector_store
-        .insert_documents(documents)
+        .insert_as(
+            documents
+                .into_iter()
+                .map(|(doc, embeddings)| (uuid::Uuid::new_v4().to_string(), doc, embeddings))
+                .collect(),
+        )
         .await
         .expect("Failed to insert documents");
 
     println!("Documents inserted successfully");
     let query = "What is a glarb?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .expect("Failed to embed query")
+        .embeddings
+        .into_iter()
+        .next()
+        .expect("one embedding");
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Test vector search
     let results = vector_store
-        .top_n::<Word>(req.clone())
+        .top_n_as::<Word>(req.clone())
         .await
         .expect("Failed to search for document");
 
@@ -175,14 +182,18 @@ async fn vector_search_test() {
     assert_eq!(result_id, id);
 
     let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let query_embedding = openai::functions::embed(&cfg, &rt, vec![query.to_string()])
+        .await
+        .expect("Failed to embed query")
+        .embeddings
+        .into_iter()
+        .next()
+        .expect("one embedding");
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
     // Test with different query
     let results2 = vector_store
-        .top_n::<Word>(req)
+        .top_n_as::<Word>(req)
         .await
         .expect("Failed to search for linglingdong");
 
@@ -354,13 +365,10 @@ async fn create_openai_mock_service() -> httpmock::MockServer {
 async fn test_mock_server_setup() {
     // Test that our mock server setup works without requiring ScyllaDB
     let server = create_openai_mock_service().await;
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
-        .unwrap();
-
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key("TEST")
+        .with_base_url(server.base_url());
+    let rt = HttpRuntime::new();
 
     // Test that we can create embeddings with the mock
     let words = vec![Word {
@@ -368,11 +376,16 @@ async fn test_mock_server_setup() {
         definition: "Test definition".to_string(),
     }];
 
-    let result = EmbeddingsBuilder::new(model)
-        .documents(words)
-        .unwrap()
-        .build()
-        .await;
+    let max_documents = openai::functions::DESCRIPTOR
+        .max_embedding_documents
+        .unwrap_or(usize::MAX);
+    let result = embed_documents(
+        words,
+        max_documents,
+        rig::embeddings::default_concurrency(max_documents),
+        |texts| openai::functions::embed(&cfg, &rt, texts),
+    )
+    .await;
 
     match &result {
         Ok(embeddings) => {

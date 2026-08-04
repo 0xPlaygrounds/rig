@@ -5,19 +5,14 @@
 //!
 //! ❗IMPORTANT: The `recommendations` database has 28k nodes, so this example will take a while to run.
 
+use rig_core::OneOrMany;
 use std::env;
 
-use rig_core::{
-    providers::openai::{self, Client},
-    vector_store::{
-        VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
-    },
-};
+use rig_core::http_runtime::HttpRuntime;
+use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
 
 use neo4rs::*;
-use rig_core::client::EmbeddingsClient;
-use rig_neo4j::{Neo4jClient, ToBoltType, vector_index::IndexConfig};
+use rig_neo4j::{Neo4jClient, Neo4jSearchFilter, ToBoltType, vector_index::IndexConfig};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -35,9 +30,15 @@ const INDEX_NAME: &str = "moviePlots";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client
+    // Embedding configuration is plain data plus a shared HTTP runtime.
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client: Client = Client::new(&openai_api_key)?;
+    let embed_cfg = openai::functions::EmbeddingConfig::new(openai::TEXT_EMBEDDING_ADA_002)
+        .with_api_key(&openai_api_key);
+    let rt = HttpRuntime::new();
+    // The config knows its model's native width; no need to restate it.
+    let embedding_dims = embed_cfg
+        .ndims()
+        .ok_or_else(|| anyhow::anyhow!("text-embedding-ada-002 has a known vector width"))?;
 
     let neo4j_uri = env::var("NEO4J_URI")?;
     let neo4j_username = env::var("NEO4J_USERNAME")?;
@@ -100,27 +101,31 @@ async fn main() -> Result<(), anyhow::Error> {
         );
     }
 
-    // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
-
     // Since we are starting from scratch, we need to create the DB vector index
     neo4j_client
-        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, &model)
+        .create_vector_index(IndexConfig::new(INDEX_NAME), NODE_LABEL, embedding_dims)
         .await?;
 
-    // ❗IMPORTANT: Reuse the same model that was used to generate the embeddings
-    let index = neo4j_client.get_index(model, INDEX_NAME).await?;
+    let index = neo4j_client.get_index(INDEX_NAME).await?;
 
     let query = "a historical movie on quebec";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(5)
-        .filter(SearchFilter::gt("node.year", 1990.into()))
-        .build();
+    // ❗IMPORTANT: Embed the query with the same model that was used to generate the embeddings
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        5,
+    )
+    .with_filter(Neo4jSearchFilter::gt("node.year", serde_json::json!(1990)));
 
     // Query the index
     let results = index
-        .top_n::<Movie>(req)
+        .top_n_as::<Movie>(req)
         .await?
         .into_iter()
         .map(|(score, id, doc)| display::SearchResult {
@@ -134,10 +139,17 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("{:#}", display::SearchResults(&results));
 
     let query = "What is a linglingdong?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    let req = VectorSearchRequest::new(
+        OneOrMany::one(
+            openai::functions::embed(&embed_cfg, &rt, vec![query.to_string()])
+                .await?
+                .embeddings
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?,
+        ),
+        1,
+    );
 
     let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
 

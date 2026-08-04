@@ -1,6 +1,4 @@
-use rig_agent::completion::Prompt;
 use rig_agent::prelude::*;
-use rig_core::client::ProviderClient;
 use rig_core::providers;
 use rig_core::tool::ToolExecutionError;
 use rig_derive::rig_tool;
@@ -37,7 +35,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Tool definition:");
     println!(
         "ASYNCOPERATION: {}",
-        serde_json::to_string_pretty(&rig_agent::tool::tool_definition(&AsyncOperation))?
+        serde_json::to_string_pretty(&rig_agent::tool::portable_tool_definition(&AsyncOperation))?
     );
 
     for prompt in [

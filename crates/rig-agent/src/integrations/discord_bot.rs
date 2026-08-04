@@ -1,7 +1,6 @@
 //! Integration for deploying your Rig agents (and more) as Discord bots.
 //! This feature is not WASM-compatible (and as such, is incompatible with the `worker` feature).
 use crate::agent::Agent;
-use crate::completion::{Chat, CompletionModel};
 use rig_core::message::Message as RigMessage;
 use serenity::all::{
     Command, CommandInteraction, Context, CreateCommand, CreateThread, EventHandler,
@@ -22,13 +21,13 @@ pub enum DiscordBotError {
 }
 
 // Bot state containing the agent and conversation histories
-struct BotState<M: CompletionModel> {
-    agent: Agent<M>,
+struct BotState {
+    agent: Agent,
     conversations: Arc<RwLock<HashMap<u64, Vec<RigMessage>>>>,
 }
 
-impl<M: CompletionModel> BotState<M> {
-    fn new(agent: Agent<M>) -> Self {
+impl BotState {
+    fn new(agent: Agent) -> Self {
         Self {
             agent,
             conversations: Arc::new(RwLock::new(HashMap::new())),
@@ -37,15 +36,12 @@ impl<M: CompletionModel> BotState<M> {
 }
 
 // Event handler for the Discord bot
-struct Handler<M: CompletionModel> {
-    state: Arc<BotState<M>>,
+struct Handler {
+    state: Arc<BotState>,
 }
 
 #[async_trait]
-impl<M> EventHandler for Handler<M>
-where
-    M: CompletionModel + Send + Sync + 'static,
-{
+impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
@@ -82,10 +78,7 @@ where
     }
 }
 
-impl<M> Handler<M>
-where
-    M: CompletionModel + Send + Sync + 'static,
-{
+impl Handler {
     async fn handle_command(&self, ctx: &Context, command: &CommandInteraction) {
         if command.data.name.as_str() == "new" {
             // Defer the response to prevent timeout
@@ -209,44 +202,44 @@ where
     }
 }
 
-/// A trait for turning a type into a `serenity` client.
+/// Build a `serenity` client that serves `agent` as a Discord bot.
 ///
-pub trait DiscordExt: Sized + Send + Sync
-where
-    Self: 'static,
-{
-    fn into_discord_bot(
-        self,
-        token: &str,
-    ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send;
+/// Replaces the deleted `DiscordExt` trait; `agent.into_discord_bot(token)`
+/// call sites become `discord_bot::into_discord_bot(agent, token)`, or use
+/// [`Agent::into_discord_bot`] directly, which forwards here.
+pub async fn into_discord_bot(
+    agent: Agent,
+    token: &str,
+) -> Result<serenity::Client, DiscordBotError> {
+    let intents =
+        GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-    fn into_discord_bot_from_env(
-        self,
-    ) -> impl std::future::Future<Output = Result<serenity::Client, DiscordBotError>> + Send {
-        async move {
-            let token = std::env::var("DISCORD_BOT_TOKEN")?;
-            DiscordExt::into_discord_bot(self, &token).await
-        }
-    }
+    let state = Arc::new(BotState::new(agent));
+    let handler = Handler {
+        state: state.clone(),
+    };
+
+    serenity::Client::builder(token, intents)
+        .event_handler(handler)
+        .await
+        .map_err(DiscordBotError::from)
 }
 
-impl<M> DiscordExt for Agent<M>
-where
-    M: CompletionModel + Send + Sync + 'static,
-{
-    async fn into_discord_bot(self, token: &str) -> Result<serenity::Client, DiscordBotError> {
-        let intents = GatewayIntents::GUILDS
-            | GatewayIntents::GUILD_MESSAGES
-            | GatewayIntents::MESSAGE_CONTENT;
+/// [`into_discord_bot`] with the token read from `DISCORD_BOT_TOKEN`.
+pub async fn into_discord_bot_from_env(agent: Agent) -> Result<serenity::Client, DiscordBotError> {
+    let token = std::env::var("DISCORD_BOT_TOKEN")?;
+    into_discord_bot(agent, &token).await
+}
 
-        let state = Arc::new(BotState::new(self));
-        let handler = Handler {
-            state: state.clone(),
-        };
+impl Agent {
+    /// Serve this agent as a Discord bot (see [`into_discord_bot`]).
+    pub async fn into_discord_bot(self, token: &str) -> Result<serenity::Client, DiscordBotError> {
+        into_discord_bot(self, token).await
+    }
 
-        serenity::Client::builder(token, intents)
-            .event_handler(handler)
-            .await
-            .map_err(DiscordBotError::from)
+    /// Serve this agent as a Discord bot with the token read from
+    /// `DISCORD_BOT_TOKEN` (see [`into_discord_bot_from_env`]).
+    pub async fn into_discord_bot_from_env(self) -> Result<serenity::Client, DiscordBotError> {
+        into_discord_bot_from_env(self).await
     }
 }

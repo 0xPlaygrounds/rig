@@ -1,8 +1,8 @@
 //! Shared fixtures for the tool-pipeline cassette suites: counting tools,
 //! deliberately failing tools, prompt hooks, and embeddable tools. These
-//! suites lock in the externally observable behavior of the handrolled tool
-//! plumbing (`ToolSet`, `ToolServer`, hook dispatch, result shaping) ahead of
-//! the planned migration onto `rmcp`.
+//! suites lock in the externally observable behavior of the tool plumbing
+//! (executor registration, hook dispatch, result shaping) ahead of the
+//! planned migration onto `rmcp`.
 //!
 //! ## On loose assertions
 //!
@@ -24,13 +24,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::OneOrMany;
-use rig::agent::{
-    AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
-};
+use rig::agent::{ToolCallAction, ToolResultAction};
 use rig::completion::ToolDefinition;
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
 use rig::message::{ImageMediaType, ToolResultContent};
-use rig::tool::server::ToolServerHandle;
-use rig::tool::{Tool, ToolEmbedding, ToolOutput};
+use rig::tool::{Tool, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -102,11 +100,7 @@ impl Tool for CountingAdd {
         operation_definition(Self::NAME, "Add x and y together").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x + args.y)
     }
@@ -132,11 +126,7 @@ impl Tool for CountingSubtract {
         operation_definition(Self::NAME, "Subtract y from x (i.e. x - y)").parameters
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(args.x - args.y)
     }
@@ -172,11 +162,7 @@ impl Tool for CountingPing {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(PING_OUTPUT.to_string())
     }
@@ -222,11 +208,7 @@ impl Tool for CodewordLookup {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         match args.team.as_str() {
             "blue" => Ok(BLUE_CODEWORD.to_string()),
@@ -278,11 +260,7 @@ impl Tool for StrictRegister {
         })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         self.counter.bump();
         Ok(format!("registered {} guests", args.seats))
     }
@@ -309,11 +287,7 @@ impl Tool for MottoTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(MOTTO_OUTPUT.to_string())
     }
 }
@@ -322,6 +296,12 @@ impl Tool for MottoTool {
 pub(crate) struct ConfigOutput {
     pub(crate) service: String,
     pub(crate) max_retries: u64,
+}
+
+impl rig::tool::IntoToolOutput for ConfigOutput {
+    fn into_tool_output(self) -> Result<ToolOutput, rig::tool::ToolExecutionError> {
+        rig::tool::serialize_to_tool_output(&self)
+    }
 }
 
 /// Tool with a structured output: pins that non-string outputs are
@@ -353,11 +333,7 @@ impl Tool for ConfigTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ConfigOutput {
             service: "cassette-lab".to_string(),
             max_retries: 3,
@@ -383,11 +359,7 @@ impl Tool for BadgeImageTool {
         json!({ "type": "object", "properties": {}, "required": [] })
     }
 
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
         Ok(ToolOutput::content(OneOrMany::one(
             ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
         )))
@@ -415,99 +387,67 @@ impl ToolEventRecorder {
             .expect("results lock should not be poisoned")
             .clone()
     }
-}
 
-impl AgentHook for ToolEventRecorder {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        self.calls
-            .lock()
-            .expect("calls lock should not be poisoned")
-            .push((event.tool_name.to_string(), event.args.to_string()));
-        ToolCallAction::run()
-    }
-
-    async fn on_tool_result(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.results
-            .lock()
-            .expect("results lock should not be poisoned")
-            .push((
-                event.tool_name.to_string(),
-                event.args.to_string(),
-                event.presentation.render(),
-            ));
-        ToolResultAction::keep()
+    /// The observe-only hook record for this recorder.
+    pub(crate) fn entry(&self) -> HookEntry {
+        let calls = self.calls.clone();
+        let results = self.results.clone();
+        HookEntry::sync("tool-event-recorder", move |event| match event {
+            HookEvent::ToolCall { call, .. } => {
+                calls
+                    .lock()
+                    .expect("calls lock should not be poisoned")
+                    .push((
+                        call.function.name.clone(),
+                        call.function.arguments.to_string(),
+                    ));
+                HookDecision::ToolCall(ToolCallAction::run())
+            }
+            HookEvent::ToolResult {
+                call, presentation, ..
+            } => {
+                results
+                    .lock()
+                    .expect("results lock should not be poisoned")
+                    .push((
+                        call.function.name.clone(),
+                        call.function.arguments.to_string(),
+                        presentation.render(),
+                    ));
+                HookDecision::ToolResult(ToolResultAction::keep())
+            }
+            _ => HookDecision::Continue,
+        })
     }
 }
 
 /// Hook that skips a named tool with a fixed reason instead of executing it.
-#[derive(Clone)]
-pub(crate) struct SkipToolHook {
-    pub(crate) tool_name: &'static str,
-    pub(crate) reason: &'static str,
-}
-
-impl AgentHook for SkipToolHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::skip(self.reason)
-        } else {
-            ToolCallAction::run()
+pub(crate) fn skip_tool_hook(tool_name: impl Into<String>, reason: impl Into<String>) -> HookEntry {
+    let tool_name = tool_name.into();
+    let reason = reason.into();
+    HookEntry::sync("skip-tool", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolCall(ToolCallAction::skip(reason.clone()))
         }
-    }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
+    })
 }
 
 /// Hook that terminates the run when a named tool is about to execute.
-#[derive(Clone)]
-pub(crate) struct TerminateOnToolHook {
-    pub(crate) tool_name: &'static str,
-    pub(crate) reason: &'static str,
-}
-
-impl AgentHook for TerminateOnToolHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            ToolCallAction::stop(self.reason)
-        } else {
-            ToolCallAction::run()
+pub(crate) fn terminate_on_tool_hook(
+    tool_name: impl Into<String>,
+    reason: impl Into<String>,
+) -> HookEntry {
+    let tool_name = tool_name.into();
+    let reason = reason.into();
+    HookEntry::sync("terminate-on-tool", move |event| match event {
+        HookEvent::ToolCall { call, .. } if call.function.name == tool_name => {
+            HookDecision::ToolCall(ToolCallAction::stop(reason.clone()))
         }
-    }
-}
-
-/// Hook that removes a tool from the shared tool server right before it would
-/// execute, forcing the execution-time `ToolNotFoundError` path.
-#[derive(Clone)]
-pub(crate) struct RemoveToolBeforeExecutionHook {
-    pub(crate) handle: ToolServerHandle,
-    pub(crate) tool_name: &'static str,
-}
-
-impl AgentHook for RemoveToolBeforeExecutionHook {
-    async fn on_tool_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        if event.tool_name == self.tool_name {
-            self.handle.remove_tool(self.tool_name).await;
-        }
-        ToolCallAction::run()
-    }
+        HookEvent::ToolCall { .. } => HookDecision::ToolCall(ToolCallAction::run()),
+        _ => HookDecision::Continue,
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -536,31 +476,18 @@ macro_rules! embeddable_operation {
                 operation_definition(Self::NAME, $description).parameters
             }
 
-            async fn call(
-                &self,
-                _context: &mut rig::tool::ToolContext,
-                args: Self::Args,
-            ) -> Result<Self::Output, Self::Error> {
+            async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
                 self.counter.bump();
                 let op: fn(i64, i64) -> i64 = $op;
                 Ok(op(args.x, args.y))
             }
         }
 
-        impl ToolEmbedding for $name {
-            type InitError = InitError;
-            type Context = ();
-            type State = ();
-
-            fn init(_state: Self::State, _context: Self::Context) -> Result<Self, Self::InitError> {
-                Ok(Self::default())
+        impl $name {
+            /// This tool's discovery record, as owned data.
+            pub fn discovery() -> rig::embeddings::ToolSchema {
+                rig::embeddings::ToolSchema::new(Self::NAME, vec![$embedding_doc.into()])
             }
-
-            fn embedding_docs(&self) -> Vec<String> {
-                vec![$embedding_doc.into()]
-            }
-
-            fn context(&self) -> Self::Context {}
         }
     };
 }

@@ -4,7 +4,6 @@
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::cassette_support::{CASSETTE_CHAT_MODEL, with_llamafile_cassette};
 use crate::support::{
@@ -13,13 +12,13 @@ use crate::support::{
 
 #[tokio::test]
 async fn streaming_smoke() {
-    with_llamafile_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
+    with_llamafile_cassette("streaming/streaming_smoke", |env| async move {
+        let agent = env
             .agent(CASSETTE_CHAT_MODEL)
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.runner(STREAMING_PROMPT).stream_run();
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming prompt should succeed");

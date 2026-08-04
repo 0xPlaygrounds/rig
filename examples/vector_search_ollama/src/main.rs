@@ -1,16 +1,15 @@
 //! Demonstrates vector search against a local Ollama embedding model.
 //! Requires a local Ollama server and the `derive` feature.
 //! Run it to compare semantic search results and matching document ids.
+//!
+//! Ollama needs no credentials, so its embedding configuration is built with
+//! `EmbeddingConfig::new` (plus an explicit base URL) rather than
+//! `from_env`. `EmbeddingsBuilder` is gone: [`EmbeddingJob`] batches the
+//! documents through the provider's free `embed` function.
 
-use rig::client::Nothing;
+use rig::embeddings::EmbeddingJob;
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::vector_store::request::VectorSearchRequest;
-use rig::{
-    Embed,
-    embeddings::EmbeddingsBuilder,
-    vector_store::{VectorStoreIndex, in_memory_store::InMemoryVectorStore},
-};
 
 use serde::{Deserialize, Serialize};
 
@@ -71,38 +70,42 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = ollama::Client::builder()
-        .api_key(Nothing)
-        .base_url("http://localhost:11434")
-        .build()?;
+    let ecfg = ollama::functions::EmbeddingConfig::new("nomic-embed-text")
+        .with_base_url("http://localhost:11434");
+    let rt = HttpRuntime::new();
 
-    let embedding_model = client.embedding_model("nomic-embed-text");
-
-    let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
-        .documents(sample_documents())?
-        .build()
+    let embeddings = EmbeddingJob::new()
+        .documents(sample_documents())
+        .for_provider(&ollama::functions::DESCRIPTOR)
+        .run(|texts| ollama::functions::embed(&ecfg, &rt, texts))
         .await?;
 
     let vector_store =
-        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone());
-
-    let index = vector_store.index(embedding_model);
+        InMemoryVectorStore::from_documents_with_id_f(embeddings, |doc| doc.id.clone())?;
 
     let query =
         "I need to buy something in a fictional universe. What type of money can I use for this?";
-    let req = VectorSearchRequest::builder()
-        .query(query)
-        .samples(1)
-        .build();
+    // Embed the query up front; the store only sees pre-embedded requests.
+    let query_embedding = ollama::functions::embed(&ecfg, &rt, vec![query.to_string()])
+        .await?
+        .embeddings
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no embedding returned for the query"))?;
+    let req = VectorSearchRequest::new(OneOrMany::one(query_embedding), 1);
 
-    let results = index
-        .top_n::<WordDefinition>(req.clone())
+    let results = vector_store
+        .top_n_as::<WordDefinition>(req.clone())
         .await?
         .into_iter()
         .map(|(score, id, doc)| (score, id, doc.word))
         .collect::<Vec<SearchMatch>>();
 
-    let id_results = index.top_n_ids(req).await?.into_iter().collect::<Vec<_>>();
+    let id_results = vector_store
+        .top_n_ids(req)
+        .await?
+        .into_iter()
+        .collect::<Vec<_>>();
 
     print_matches("Top document matches", &results);
     print_id_matches("Top document ids", &id_results);

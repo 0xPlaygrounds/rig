@@ -36,14 +36,29 @@ facade re-export, examples, README, and crate docs as applicable.
 
 ## Core Architecture
 
-Rig is built around provider-agnostic traits:
+Rig is data-oriented: agents store serde provider configuration, not provider
+implementations, and the runtime is not generic over a model type.
 
-- `CompletionModel` for text completion and chat models
-- `EmbeddingModel` for embedding generation
-- `VectorStoreIndex` for vector similarity search
-- `Tool` for callable tools
+- Completion and streaming go through each provider's `functions` module — a
+  serde `Config` plus free `complete`/`open_stream` functions.
+- `ProviderConfig` (`rig-agent`) is the one enum an `Agent` holds. It is
+  deliberately **not** `#[non_exhaustive]`: adding a bundled provider is a
+  breaking change by design, so hosts can match exhaustively. Out-of-tree
+  completion providers use its one `External` arm.
+- `ProviderDescriptor` (`rig-core/src/providers/descriptor.rs`) is the
+  capability sheet for a provider.
+- `ExternalCompletionProvider` is the typed out-of-tree authoring contract.
+  `ExternalCompletionProviderEntry::from_provider` erases it immediately into
+  a concrete record stored in a host-owned `Runtime` registry; no agent/runtime
+  type carries the provider or its associated config as a generic parameter.
+- Embeddings, transcription, image generation, audio generation, and rerank
+  are per-provider free functions over plain configs.
+- Vector stores expose concrete inherent methods over a pre-embedded
+  vocabulary. There is no shared store trait, and none should be added.
+- `Tool` is the portable record contract (`rig_core::tool::PortableTool`).
 
-Use these traits instead of creating parallel abstractions.
+Prefer concrete records and enums over new trait abstractions. Do not
+reintroduce a generic model, client, or store parameter.
 
 Configurable public types should follow Rig's builder style:
 
@@ -56,15 +71,25 @@ let agent = client
     .build();
 ```
 
-Provider clients use the generic client architecture:
+A provider is a serde `Config` plus free functions, not a generic client:
 
 ```rust
-pub struct Client<Ext = Nothing, H = reqwest::Client> {
-    // ...
-}
+// crates/rig-core/src/providers/<provider>/functions.rs
+pub const DESCRIPTOR: ProviderDescriptor = ProviderDescriptor { /* … */ };
+
+pub struct Config { /* model, api_key, base_url, knobs — all serde */ }
+
+pub async fn complete(cfg: &Config, rt: &HttpRuntime, request: CompletionRequest)
+    -> Result<CompletionResponse, CompletionError>;
+pub async fn open_stream(/* … */) -> Result<CompletionStream, CompletionError>;
 ```
 
-Providers declare capabilities explicitly with `Capable<T>` and `Nothing`.
+Bundled capabilities are declared as data on the `DESCRIPTOR` const, not as
+trait `const`s or marker types. External capabilities are owned data on the
+registered handler and never duplicated into serialized config. I/O goes
+through `HttpRuntime`; keep request building and response parsing as pure
+functions (`build_request_body`, `parse_response`) so they are testable without
+a transport.
 
 ## WASM Compatibility
 
@@ -110,13 +135,14 @@ implementation. For OpenAI-compatible chat APIs, start with:
 
 Provider implementations should include:
 
-- Provider extension and builder types
-- `Provider` implementation
-- `Capabilities` declaration
-- `ProviderBuilder` implementation
-- `ProviderClient::{from_env, from_val}`
-- public `Client` and `ClientBuilder` aliases; the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`
-- explicit API-key marker/auth types with redacted debug behavior for credential-bearing values
+- a `functions` module holding the provider's serde `Config`
+- a `DESCRIPTOR: ProviderDescriptor` const declaring capabilities honestly —
+  fulfilment code reads it to fail fast, so a wrong flag is a runtime bug
+- `Config::new`, `Config::from_env`, and `with_*` knob setters
+- redacted `Debug` for credential-bearing values; never log an API key
+- pure `build_request*` / `parse_*` functions, with `complete` and
+  `open_stream` composing them over `HttpRuntime`
+- a `ProviderConfig` variant in `rig-agent` so the provider can drive an agent
 - model constants where useful
 - request conversion from Rig request types
 - response conversion into Rig response types
@@ -150,34 +176,80 @@ Return `VectorStoreError` variants instead of ad hoc string errors.
 
 Use `WasmCompatSend` and `WasmCompatSync` bounds.
 
-## Agent Hook Changes
+## Agent Hooks
 
-Agent hooks are per-run lifecycle observers and steerers. `AgentHook` exposes
-one method per lifecycle event, and every method receives the run-scoped
-`HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).
-Each method returns an event-specific action type, so unsupported combinations
-are rejected by the compiler.
+Agent hooks are attach-and-forget **records**, not trait impls. A hook is a
+`HookEntry` (`rig::hooks`) wrapping a named async callback over owned
+`HookEvent` values, returning a `HookDecision`. Immutable event payloads use
+shared `Arc` handles so the owned event may cross await points without deep
+copies per entry. `Hooks` is the ordered list; `AgentBuilder::add_hook` takes
+one `HookEntry`.
 
-Composition through `HookStack` remains event-dependent:
+```rust
+use rig::hooks::{HookDecision, HookEntry, HookEvent};
+
+fn logger() -> HookEntry {
+    HookEntry::sync("logger", |event| match event {
+            HookEvent::BeforeModelCall { turn, .. } => {
+                tracing::info!(turn, "model call");
+                HookDecision::Continue
+            }
+            _ => HookDecision::Continue,
+    })
+}
+```
+
+A callback answers with the `HookDecision` variant matching the event it
+received; any other variant (including `Continue`) means "no opinion". The
+decision vocabulary itself — `RequestPatch`, `CompletionCallAction`,
+`ToolCallAction`, `ToolResultAction`, `InvalidToolCallAction`,
+`ObservationAction`, `ModelTurnAction` — is unchanged and still lives at
+`rig::agent::hook`. A wrong-lane non-`Continue` decision emits a content-free
+warning containing only the hook name and event/decision kinds.
+
+There is no `HookContext` and no `Scratchpad`. Run identity and shared state
+are host-owned: capture them in the closure (see
+`examples/request_hook`). Note the lifetime difference from the old
+run-scoped scratchpad — closure state lives as long as the `HookEntry` and is
+shared by every clone of it, so it spans **all** runs of an agent and
+interleaves across concurrent ones. State that must be per-run has to be keyed
+or reset explicitly. `turn` is a field on the events that carry it.
+
+`HookEvent::TextDelta` and `HookEvent::ToolCallDelta` fire once per streamed
+token and are opt-in: an entry receives them only if it was built with
+`HookEntry::observing_deltas()`. Drivers check `Hooks::observes_deltas()` once
+per run and skip building delta events entirely when no entry opted in — the
+data form of the old `observes(StepEventKind)` interest hint.
+
+Composition is event-dependent:
 
 - **Completion calls accumulate and merge.** Every
   `CompletionCallAction::Patch(RequestPatch)` is merged in registration order;
-  `Stop` short-circuits the stack.
+  the first `Stop` short-circuits, and later entries are not invoked.
 - **Tool calls and results chain.** `ToolCallAction::Rewrite` and
-  `ToolResultAction::Rewrite` are threaded into later hooks. A tool-call `Skip`
-  or either event's `Stop` is terminal.
+  `ToolResultAction::Rewrite` are threaded into later entries. A tool-call
+  `Skip` or either event's `Stop` is terminal, preserving the rewrite
+  accumulated before it. Tool-call argument rewrites chain as
+  `serde_json::Value`, not JSON-encoded strings.
 - **Invalid tool calls** return `InvalidToolCallAction` (`Fail`, `Retry`,
-  `Repair`, `Skip`, or `Stop`).
-- **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).
+  `Repair`, `Skip`, or `Stop`). The first `Some` resolution wins; `None`
+  everywhere preserves fail-fast behavior.
+- **Model-turn and observe-only events.** The first non-`Continue` wins.
+  Observation events return `ObservationAction`.
 
-Register observe-only hooks before steering hooks because stop actions
-short-circuit. Nested `HookStack`s must preserve merge and chaining semantics.
+Register observe-only entries before steering entries because stop actions
+short-circuit. The folds live in `rig::agent::hook`
+(`fold_completion_actions`, `fold_observation_actions`,
+`fold_invalid_resolutions`, `ToolCallResolution`, `ToolResultResolution`) and
+are shared by both drivers, so every driver composes decisions identically —
+reuse them rather than reimplementing a fold.
+
 `RequestPatch` remains per-turn and non-sticky; its documented merge rules are
 append `extra_context`, shallow-merge `additional_params`, intersect
 `active_tools`, and last-writer-wins scalars/history with a warning.
 
-Every hook semantic must behave identically on streaming and non-streaming
-surfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).
+Every hook semantic must behave identically on the blocking and streaming
+session drivers (`Agent::run` and `Agent::stream_run`).
 
 ## Style
 

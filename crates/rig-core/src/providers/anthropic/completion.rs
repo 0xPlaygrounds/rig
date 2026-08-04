@@ -1,21 +1,15 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
-use crate::providers::anthropic::streaming::StreamingCompletionResponse;
 use crate::{
     OneOrMany,
-    client::Provider,
-    completion::{self, CompletionError, GetTokenUsage},
-    http_client::HttpClientExt,
+    completion::{self, CompletionError},
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     one_or_many::string_or_one_or_many,
-    telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
-    wasm_compat::*,
+    telemetry::ProviderResponseExt,
 };
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, Level, enabled};
 
 // ================================================================
 // Anthropic Completion API
@@ -38,22 +32,27 @@ pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
-pub trait AnthropicCompatibleProvider: Provider {
-    const PROVIDER_NAME: &'static str;
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        let _ = model;
-        None
-    }
+/// A provider on the Anthropic Messages wire format, as plain data.
+///
+/// The two things the shared Messages path ever needed from a provider — the
+/// name stamped on telemetry and normalized responses, and how it resolves a
+/// default `max_tokens` — are a `&'static str` and a plain function. The
+/// data-oriented path does not consult this at all: `functions::Config` stores
+/// the *resolved* `default_max_tokens` as a field.
+#[derive(Debug, Clone, Copy)]
+pub struct AnthropicDialect {
+    /// Provider name for telemetry and normalized responses.
+    pub provider: &'static str,
+    /// The provider's default `max_tokens` for a model, applied when the
+    /// request does not set one.
+    pub default_max_tokens: fn(&str) -> Option<u64>,
 }
 
-impl AnthropicCompatibleProvider for super::client::AnthropicExt {
-    const PROVIDER_NAME: &'static str = "anthropic";
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        default_max_tokens_for_model(model)
-    }
-}
+/// Anthropic's own dialect.
+pub const ANTHROPIC_DIALECT: AnthropicDialect = AnthropicDialect {
+    provider: "anthropic",
+    default_max_tokens: default_max_tokens_for_model,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -130,23 +129,6 @@ impl std::fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = self.input_tokens;
-        usage.output_tokens = self.output_tokens;
-        usage.cached_input_tokens = self.cache_read_input_tokens.unwrap_or_default();
-        usage.cache_creation_input_tokens = self.cache_creation_input_tokens.unwrap_or_default();
-        usage.total_tokens = self.input_tokens
-            + self.cache_read_input_tokens.unwrap_or_default()
-            + self.cache_creation_input_tokens.unwrap_or_default()
-            + self.output_tokens;
-
-        usage
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -164,7 +146,7 @@ pub struct ToolDefinition {
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
 /// - `"1h"` — 1 hour
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
@@ -214,7 +196,17 @@ pub enum SystemContent {
     },
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Map Anthropic's `stop_reason` onto the normalized [`completion::FinishReason`].
+pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
+    match stop_reason {
+        "end_turn" | "stop_sequence" => completion::FinishReason::Stop,
+        "max_tokens" => completion::FinishReason::Length,
+        "tool_use" => completion::FinishReason::ToolCalls,
+        other => completion::FinishReason::Other(other.to_owned()),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -253,12 +245,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             reasoning_tokens: 0,
         };
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let mut converted = completion::CompletionResponse::new(choice, usage, "anthropic")
+            .with_message_id(response.id.clone())
+            .with_model(response.model.clone());
+        if let Some(stop_reason) = response.stop_reason.as_deref() {
+            converted = converted.with_finish_reason(map_finish_reason(stop_reason));
+        }
+        Ok(converted)
     }
 }
 
@@ -1542,145 +1535,10 @@ impl TryFrom<Message> for message::Message {
     }
 }
 
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest::Client> {
-    pub(crate) client: crate::client::Client<Ext, T>,
-    pub model: String,
-    pub default_max_tokens: Option<u64>,
-    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
-    /// tools, and messages)
-    pub prompt_caching: bool,
-    /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
-    /// request). The API automatically places the breakpoint on the last cacheable block and moves
-    /// it forward as the conversation grows. No beta header is required.
-    pub automatic_caching: bool,
-    /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
-    pub automatic_caching_ttl: Option<CacheTtl>,
-}
-
-/// Anthropic completion model.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type CompletionModel<T = reqwest::Client> =
-    GenericCompletionModel<super::client::AnthropicExt, T>;
-
-impl<Ext, T> GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt,
-    Ext: AnthropicCompatibleProvider + Clone + 'static,
-{
-    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
-        let model = model.into();
-        let default_max_tokens = Ext::default_max_tokens(&model);
-
-        Self {
-            client,
-            model,
-            default_max_tokens,
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-        }
-    }
-
-    pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            default_max_tokens: Ext::default_max_tokens(model)
-                .or_else(|| Some(default_max_tokens_with_fallback(model))),
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-        }
-    }
-
-    /// Enable manual prompt caching.
-    ///
-    /// When enabled, cache_control breakpoints are automatically added to:
-    /// - The system prompt (marked with ephemeral cache)
-    /// - The final tool definition, when tools are present (marked with ephemeral cache)
-    /// - The last content block of the last message (marked with ephemeral cache)
-    ///
-    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
-    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
-    /// to choose and advance a single top-level cache breakpoint automatically.
-    /// When combined with [`with_automatic_caching`], the top-level automatic breakpoint
-    /// owns the moving message cache point while Rig still marks tools and system prompt
-    /// blocks when budget permits.
-    /// Existing `cache_control` markers in provider-specific tool definitions are preserved
-    /// and count toward Anthropic's request limit of 4 cache breakpoints.
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching.
-    ///
-    /// When enabled, a top-level `cache_control: { "type": "ephemeral" }` field is added to every
-    /// request. Anthropic's API automatically applies the cache breakpoint to the last cacheable
-    /// block and moves it forward as the conversation grows — no beta header and no manual
-    /// breakpoint management are required.
-    ///
-    /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
-    /// instead when you need fine-grained, per-block control over what is cached.
-    ///
-    /// To use a one-hour TTL instead of the default five minutes, use
-    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
-    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
-    /// `cache_control` before budgeting and ordering manual prompt cache markers.
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
-    /// ```
-    ///
-    /// ## Minimum cacheable prompt length
-    ///
-    /// The combined prompt (tools + system + messages up to the automatically chosen breakpoint)
-    /// must meet the model-specific minimum or caching is silently skipped by the API:
-    ///
-    /// | Model | Minimum tokens |
-    /// |-------|---------------|
-    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
-    /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
-    /// | `claude-haiku-4-5` | 4 096 |
-    ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
-    pub fn with_automatic_caching(mut self) -> Self {
-        self.automatic_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
-    ///
-    /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field:
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
-    /// ```
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_automatic_caching_1h(mut self) -> Self {
-        self.automatic_caching = true;
-        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
-        self
-    }
-}
-
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
@@ -1694,10 +1552,6 @@ fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     } else {
         None
     }
-}
-
-fn default_max_tokens_with_fallback(model: &str) -> u64 {
-    default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
@@ -1842,9 +1696,12 @@ enum OutputFormat {
 }
 
 /// Configuration for the model's output format.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct OutputConfig {
-    format: OutputFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<OutputFormat>,
+    #[serde(flatten)]
+    additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2041,7 +1898,7 @@ fn validate_cache_control_ttl_order(
 fn top_level_cache_control_ttl(cache_control: Option<&CacheControl>) -> Option<CacheTtl> {
     cache_control
         .map(|cache_control| match cache_control {
-            CacheControl::Ephemeral { ttl } => ttl.clone(),
+            CacheControl::Ephemeral { ttl } => *ttl,
         })
         .unwrap_or_default()
 }
@@ -2218,7 +2075,7 @@ pub(super) fn resolve_top_level_cache_control(
 ) -> Result<Option<CacheControl>, CompletionError> {
     let raw_cache_control = extract_top_level_cache_control(additional_params)?;
     let typed_cache_control = automatic_caching.then_some(CacheControl::Ephemeral {
-        ttl: automatic_caching_ttl.clone(),
+        ttl: automatic_caching_ttl,
     });
 
     match (typed_cache_control, raw_cache_control) {
@@ -2361,20 +2218,28 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             &mut additional_params_payload,
         )?;
         let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
+        let mut output_config =
+            extract_output_config_from_additional_params(&mut additional_params_payload)?;
+        crate::json_utils::validated_additional_params(
+            Some(&additional_params_payload),
+            &[
+                "model",
+                "messages",
+                "max_tokens",
+                "system",
+                "temperature",
+                "tool_choice",
+                "tools",
+                "cache_control",
+                "stream",
+            ],
+            "Anthropic Messages request",
+        )?;
 
         // Convert system prompt to array format for cache_control support
-        let mut system = if let Some(preamble) = req.preamble {
-            if preamble.is_empty() {
-                vec![]
-            } else {
-                vec![SystemContent::Text {
-                    text: preamble,
-                    cache_control: None,
-                }]
-            }
-        } else {
-            vec![]
-        };
+        // System instructions arrive only as canonical `Message::System`
+        // entries now, already split out of the history above.
+        let mut system: Vec<SystemContent> = Vec::new();
         system.extend(history_system);
 
         apply_prompt_cache_control(
@@ -2385,17 +2250,27 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        if let Some(schema) = req.output_schema {
+            if output_config
+                .as_ref()
+                .and_then(|config| config.format.as_ref())
+                .is_some()
+            {
+                return Err(crate::json_utils::RequestOverlayError::Collision {
+                    context: "Anthropic Messages request",
+                    key: "output_config.format".to_string(),
+                }
+                .into());
+            }
+
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
-                    schema: schema_value,
-                },
-            })
-        } else {
-            None
-        };
+            output_config
+                .get_or_insert_with(OutputConfig::default)
+                .format = Some(OutputFormat::JsonSchema {
+                schema: schema_value,
+            });
+        }
 
         Ok(Self {
             model: model.to_string(),
@@ -2415,6 +2290,30 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             },
         })
     }
+}
+
+fn extract_output_config_from_additional_params(
+    additional_params: &mut serde_json::Value,
+) -> Result<Option<OutputConfig>, CompletionError> {
+    let Some(raw_output_config) = additional_params
+        .as_object_mut()
+        .and_then(|params| params.remove("output_config"))
+    else {
+        return Ok(None);
+    };
+
+    if raw_output_config.is_null() {
+        return Ok(None);
+    }
+
+    serde_json::from_value(raw_output_config)
+        .map(Some)
+        .map_err(|error| {
+            CompletionError::RequestError(
+                format!("Invalid Anthropic `additional_params.output_config` payload: {error}")
+                    .into(),
+            )
+        })
 }
 
 pub(super) fn extract_tools_from_additional_params(
@@ -2454,146 +2353,14 @@ pub(super) fn build_tool_definitions(
     Ok(tools)
 }
 
-impl<Ext, T> completion::CompletionModel for GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt + Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-    type Client = crate::client::Client<Ext, T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
-        &self,
-        mut completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::Chat,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens.is_none() {
-            if let Some(tokens) = self.default_max_tokens {
-                completion_request.max_tokens = Some(tokens);
-            } else {
-                return Err(CompletionError::RequestError(
-                    "`max_tokens` must be set for Anthropic".into(),
-                ));
-            }
-        }
-
-        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-            model: &request_model,
-            request: completion_request,
-            prompt_caching: self.prompt_caching,
-            automatic_caching: self.automatic_caching,
-            automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-        })?;
-
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
-
-        async move {
-            let request: Vec<u8> = serde_json::to_vec(&request)?;
-
-            let req = self
-                .client
-                .post("/v1/messages")?
-                .body(request)
-                .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-            let response = self
-                .client
-                .send::<_, Bytes>(req)
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            let status = response.status();
-            let body = response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {
-                ApiResponse::Message(completion) => {
-                    let span = tracing::Span::current();
-                    span.record_response_metadata(&completion);
-                    span.record_token_usage(&completion.usage);
-                    if enabled!(Level::TRACE) {
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Anthropic completion response: {}",
-                            serde_json::to_string_pretty(&completion)?
-                        );
-                    }
-                    completion.try_into()
-                }
-                ApiResponse::Error(ApiErrorResponse { message }) => {
-                    tracing::warn!(message = %message, "provider returned an error response");
-                    Err(CompletionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&body),
-                    ))
-                }
-            }
-        }
-        .instrument(span)
-        .await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
-        GenericCompletionModel::stream(self, request).await
-    }
-}
-
 #[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
+pub(super) struct ApiErrorResponse {
+    pub(super) message: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ApiResponse<T> {
+pub(super) enum ApiResponse<T> {
     Message(T),
     Error(ApiErrorResponse),
 }
@@ -2603,6 +2370,112 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    fn build_request_with_additional_params(
+        additional_params: serde_json::Value,
+    ) -> Result<AnthropicCompletionRequest, CompletionError> {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.additional_params = Some(additional_params);
+        AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+    }
+
+    #[test]
+    fn request_rejects_collisions_with_canonical_fields() {
+        for key in ["system", "messages"] {
+            let error = build_request_with_additional_params(json!({ (key): "override" }))
+                .expect_err("canonical field collision must fail");
+            assert!(matches!(error, CompletionError::RequestError(_)));
+            assert!(error.to_string().contains(key));
+        }
+    }
+
+    #[test]
+    fn request_preserves_unrelated_provider_extensions() {
+        let request = build_request_with_additional_params(json!({
+            "metadata": {"user_id": "request-user"}
+        }))
+        .expect("provider extension should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["metadata"]["user_id"], "request-user");
+    }
+
+    #[test]
+    fn request_preserves_provider_native_output_config_leaves() {
+        let request = build_request_with_additional_params(json!({
+            "output_config": {"effort": "medium"}
+        }))
+        .expect("provider-native output configuration should be accepted");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["output_config"]["effort"], "medium");
+        assert!(value["output_config"].get("format").is_none());
+    }
+
+    #[test]
+    fn typed_output_schema_merges_with_provider_native_output_config() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.output_schema = Some(
+            serde_json::from_value(json!({
+                "type": "object",
+                "properties": {"answer": {"type": "string"}}
+            }))
+            .expect("schema should deserialize"),
+        );
+        request.additional_params = Some(json!({
+            "output_config": {"effort": "low"}
+        }));
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .expect("distinct output_config leaves should merge");
+        let value = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(value["output_config"]["effort"], "low");
+        assert_eq!(value["output_config"]["format"]["type"], "json_schema");
+    }
+
+    #[test]
+    fn typed_output_schema_rejects_only_output_format_collision() {
+        let mut request = CompletionRequest::from_prompt("Hello");
+        request.max_tokens = Some(64);
+        request.output_schema = Some(
+            serde_json::from_value(json!({"type": "object"})).expect("schema should deserialize"),
+        );
+        request.additional_params = Some(json!({
+            "output_config": {
+                "format": {
+                    "type": "json_schema",
+                    "schema": {"type": "string"}
+                }
+            }
+        }));
+
+        let error = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .expect_err("two owners of output_config.format must collide");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(error.to_string().contains("output_config.format"));
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {
@@ -2617,9 +2490,11 @@ mod tests {
     }
 
     #[test]
-    fn unknown_model_uses_conservative_default_max_tokens_fallback() {
+    fn unknown_model_has_no_default_max_tokens() {
+        // The deleted classic model substituted 2048 here; the functions path
+        // instead requires the caller to set `max_tokens` (or
+        // `Config.default_max_tokens`) for a model with no known default.
         assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
-        assert_eq!(default_max_tokens_with_fallback("claude-unknown"), 2_048);
     }
 
     #[test]
@@ -3069,8 +2944,11 @@ mod tests {
     ) -> CompletionRequest {
         CompletionRequest {
             model: None,
-            preamble: Some("System prompt".to_string()),
-            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            chat_history: OneOrMany::many(vec![
+                crate::message::Message::system("System prompt".to_string()),
+                message::Message::from("Hello"),
+            ])
+            .expect("non-empty"),
             documents: Vec::new(),
             tools,
             temperature: None,
@@ -3086,9 +2964,14 @@ mod tests {
         chat_history: Vec<message::Message>,
         preamble: Option<String>,
     ) -> CompletionRequest {
+        // The helper still takes a preamble for readability; it now lands as a
+        // leading canonical system message instead of a separate field.
+        let mut chat_history = chat_history;
+        if let Some(preamble) = preamble {
+            chat_history.insert(0, crate::message::Message::system(preamble));
+        }
         CompletionRequest {
             model: None,
-            preamble,
             chat_history: OneOrMany::many(chat_history).unwrap(),
             documents: Vec::new(),
             tools: Vec::new(),
@@ -4993,7 +4876,7 @@ mod tests {
             },
         };
 
-        let parsed: completion::CompletionResponse<CompletionResponse> = response
+        let parsed: completion::CompletionResponse = response
             .try_into()
             .expect("empty end_turn should not error");
 
@@ -5021,7 +4904,7 @@ mod tests {
             },
         };
 
-        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+        let err = completion::CompletionResponse::try_from(response)
             .expect_err("empty non-end_turn should remain an error");
 
         assert!(matches!(
@@ -5283,11 +5166,11 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let raw_text = response.get_text_response();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         assert_eq!(converted.choice.len(), 3);
         assert_eq!(
-            converted.raw_response.get_text_response().as_deref(),
+            raw_text.as_deref(),
             Some("Claude Shannon was born on April 30, 1916.")
         );
 
@@ -5370,8 +5253,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
             panic!("expected raw web_search_tool_result metadata");
         };
@@ -5476,8 +5358,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted: completion::CompletionResponse = response.try_into().unwrap();
         let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
         else {
             panic!("expected raw code_execution_tool_result metadata");
@@ -5879,24 +5760,18 @@ mod tests {
 
     #[tokio::test]
     async fn completion_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::anthropic::functions;
         use crate::test_utils::RecordingHttpClient;
 
         let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
         let http_client =
             RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with non-success status");
 
@@ -5910,9 +5785,8 @@ mod tests {
 
     #[tokio::test]
     async fn completion_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
+        use crate::http_runtime::HttpRuntime;
+        use crate::providers::anthropic::functions;
         use crate::test_utils::RecordingHttpClient;
 
         // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
@@ -5921,16 +5795,11 @@ mod tests {
         // `from_http_response(OK, ..)` into `ProviderResponse`.
         let body = r#"{"type":"error","message":"model overloaded"}"#;
         let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let rt = HttpRuntime::recording(http_client);
+        let cfg = functions::Config::new(CLAUDE_SONNET_4_6).with_api_key("test-key");
+        let request = crate::completion::CompletionRequest::from_prompt("hello");
 
-        let error = model
-            .completion(request)
+        let error = functions::complete(&cfg, &rt, request)
             .await
             .expect_err("completion should fail with provider error envelope");
 
@@ -5945,43 +5814,13 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn completion_streaming_http_non_success_preserves_status_and_body() {
-        use crate::client::CompletionClient;
-        use crate::completion::CompletionModel as _;
-        use crate::providers::anthropic::Client;
-        use crate::test_utils::HttpErrorStreamingClient;
-        use futures::StreamExt;
-
-        let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
-        let http_client =
-            HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
-
-        let mut stream = model.stream(request).await.expect("stream should start");
-
-        // The transport failure surfaces as the first error item yielded by the stream.
-        let error = loop {
-            match stream.next().await {
-                Some(Ok(_)) => continue,
-                Some(Err(error)) => break error,
-                None => panic!("stream ended without yielding the transport error"),
-            }
-        };
-
-        assert!(matches!(error, CompletionError::HttpError(_)));
-        assert_eq!(
-            error.provider_response_status(),
-            Some(http::StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(error.provider_response_body(), Some(body));
-    }
+    // NOTE (R7): `completion_streaming_http_non_success_preserves_status_and_body`
+    // was removed here. It asserted that a non-success streaming response
+    // surfaces status + body on the first stream item, driving the classic
+    // model over `test_utils::HttpErrorStreamingClient`. `HttpRuntime` has no
+    // transport arm for that client, so the assertion cannot be expressed
+    // against `functions::open_stream` yet; restoring it needs an
+    // `HttpRuntime::streaming_error(..)` constructor in `http_runtime.rs`.
 
     #[test]
     fn coerce_tool_input_normalizes_non_object_arguments() {

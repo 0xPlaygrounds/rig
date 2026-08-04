@@ -1,9 +1,15 @@
-use crate::completion::CompletionModel;
+//! The live, OAuth-authenticated Vertex AI handle.
+//!
+//! Vertex AI authenticates through Google's Application Default Credentials
+//! chain, so a usable client cannot be plain serde configuration. [`Client`]
+//! is that live handle: build it from data with
+//! [`crate::functions::client_from_config`] (the documented path), or
+//! directly with [`Client::from_env`] / [`Client::builder`]. Every free
+//! function in [`crate::functions`] takes it by reference.
+
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig_core::client::{CompletionClient, Nothing};
-use rig_core::prelude::*;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -31,10 +37,6 @@ pub enum VertexAiClientError {
     ImpersonatedCredentials(String),
     #[error("failed to build Vertex AI prediction service: {0}")]
     PredictionService(String),
-    #[error(
-        "Vertex AI uses Application Default Credentials (ADC). Use `Client::from_env()` for default credentials or `Client::builder().with_credentials(...).build()` for explicit credentials."
-    )]
-    InvalidInput,
 }
 
 /// Helper function to build credentials with optional service account impersonation.
@@ -186,13 +188,12 @@ impl Client {
 
     /// Create a client using environment variables for project, location, and credentials.
     ///
-    /// This is a convenience method that calls the `ProviderClient::from_env()` trait method.
-    /// Reads from:
+    /// The documented no-configuration handle. Reads from:
     /// - `GOOGLE_CLOUD_PROJECT` (required)
     /// - `GOOGLE_CLOUD_LOCATION` (optional, defaults to "global")
     /// - `GOOGLE_CLOUD_SERVICE_ACCOUNT` (optional, for service account impersonation)
     pub fn from_env() -> Result<Self, VertexAiClientError> {
-        <Self as ProviderClient>::from_env()
+        Client::new()
     }
 
     pub fn project(&self) -> &str {
@@ -203,6 +204,10 @@ impl Client {
         &self.location
     }
 
+    /// The underlying `PredictionService`, built (and cached) on first use.
+    ///
+    /// Credentials are resolved eagerly at construction; the SDK channel is
+    /// built lazily here so a `Client` is cheap to hold and clone.
     pub async fn get_inner(
         &self,
     ) -> Result<&vertexai::client::PredictionService, VertexAiClientError> {
@@ -219,39 +224,5 @@ impl Client {
             .await
             .as_ref()
             .map_err(Clone::clone)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = Nothing;
-    type Error = VertexAiClientError;
-
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Client::new()
-    }
-
-    fn from_val(_: Self::Input) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Err(VertexAiClientError::InvalidInput)
-    }
-}
-
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model.into())
-    }
-}
-
-impl VerifyClient for Client {
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify credentials - they're validated on first use
-        Ok(())
     }
 }
