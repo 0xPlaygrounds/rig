@@ -65,7 +65,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 - Agentic workflows that can handle multi-turn streaming and prompting
 - A classic agent runtime enabled by default
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
-- 20+ model providers, all speaking one shared completion vocabulary — usable as classic clients or as plain serializable provider configuration
+- 20+ bundled model providers plus typed out-of-tree completion providers, all speaking one shared completion vocabulary — usable through concrete clients or plain serializable provider configuration
 - 10+ vector store integrations sharing one pre-embedded search vocabulary (`VectorSearchRequest`/`SearchHit`/`StoreRecord`), with concrete per-store surfaces
 - Full support for LLM completion and embedding workflows
 - Support for transcription, audio generation and image generation model capabilities

@@ -784,12 +784,14 @@ let cfg = anthropic::functions::Config::new(CLAUDE_SONNET_4_6)
 
 Defaults are unchanged (all off), so existing request bodies are identical.
 
-### Custom OpenAI-compatible providers: use the public data path
+### Custom providers: use provider data plus a runtime handler
 
-`OpenAICompatibleProvider` and `AnthropicCompatibleProvider` are removed. The
-closed `ProviderConfig` enum does not currently accept third-party providers,
-so there is no truthful migration from a custom extension into the bundled
-agent facade in this release.
+`OpenAICompatibleProvider` and `AnthropicCompatibleProvider` are removed.
+`ProviderConfig` remains a closed, exhaustively matched serde enum, but now has
+one `External` arm for every out-of-tree completion provider. External crates
+do not add enum variants: they serialize an exact-version driver ID, model, and
+provider-owned settings, then register executable behavior on the process-local
+`Runtime`.
 
 For a wire-compatible OpenAI endpoint, configure the public OpenAI data API
 with the endpoint and credentials you own. Its public `build_request_body`,
@@ -805,11 +807,45 @@ let body = openai::functions::build_request_body(&cfg, &request, false)?;
 ```
 
 If your provider has a different wire dialect, own its config, conversion,
-HTTP request, and parsing functions in your crate. Rig's internal
+HTTP request, and parsing functions in your crate. Implement the typed
+`ExternalCompletionProvider` authoring trait and erase it into the concrete
+runtime record at registration:
+
+```rust,ignore
+let id = ExternalProviderId::new("com.example/my-provider@1")?;
+let config = ExternalProviderConfig::new(
+    id.clone(),
+    "my-model",
+    MySerializableConfig { /* ... */ },
+)?;
+
+let entry = ExternalCompletionProviderEntry::from_provider(
+    MyProvider::new(id), // implements ExternalCompletionProvider
+);
+let runtime = Arc::new(Runtime::new().with_external_provider(entry)?);
+let agent = AgentBuilder::new(config).runtime(runtime).build();
+let answer = agent.prompt("Hello").await?;
+```
+
+The trait's `complete` and `open_stream` methods return ordinary
+`impl Future`/`async` blocks. Do not box them: `from_provider` owns the private
+future-erasure boundary. For runtime-defined callbacks, use
+`ExternalCompletionProviderEntry::new` or `with_state`; those constructors also
+accept ordinary futures.
+
+Only the config serializes. After restore, construct a runtime registering the
+same exact-version handler. Its descriptor is the sole capability source; it is
+not copied into the serde config. Unknown IDs and invalid typed settings fail
+before provider I/O. The registered unary/streaming callbacks return Rig's
+normalized `CompletionResponse`/`CompletionStream`, after which the ordinary
+session drivers retain ownership of hooks, tools, retries, extraction, and
+cancellation. See `examples/external_provider` for the complete round trip.
+
+Rig's internal
 `compatible_typed_request`, `compatible_body_value`, and
 `compatible_open_stream` helpers are intentionally not public APIs. Adding a
-data-driven third-party-provider arm is a separate design problem; do not copy
-those private helpers from this migration guide.
+custom provider does not make those bundled-dialect helpers public; keep the
+wire parser in your crate.
 
 ### `openai::send_compatible_streaming_request` is gone
 
@@ -906,12 +942,16 @@ longer identifies a provider. Use `client.agent(model)` or
 ### Providers that cannot be plain configuration
 
 `rig-candle` (in-memory model weights) and `rig-vertexai` (interactive OAuth)
-cannot be captured as serde configs, so they no longer construct classic
-agents. Drive the sans-IO protocol directly — `AgentRun::new(prompt)` +
-`prepare_request(…)` + the provider's own completion call; see
-`rig-vertexai/examples/tool_vertexai.rs` for the full loop. ChatGPT/Copilot
-clients bridge only credentials that are already cached (non-interactively);
-interactive OAuth flows still work through the classic clients themselves.
+cannot put their live state inside serde configs. A host can now retain that
+state in an `ExternalCompletionProvider` implementation or `with_state`
+callback and put only a stable reconstruction key/settings in
+`ExternalProviderConfig`, restoring the full high-level agent facade. Hosts
+that want direct lifecycle control can still drive the sans-IO protocol —
+`AgentRun::new(prompt)` + `prepare_request(…)` + the provider's own completion
+call; see `rig-vertexai/examples/tool_vertexai.rs` for that loop.
+ChatGPT/Copilot clients bridge only credentials that are already cached
+(non-interactively); interactive OAuth flows still work through the classic
+clients themselves.
 
 ### Prompting is inherent; extraction has a concrete fluent runner
 

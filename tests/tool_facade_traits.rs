@@ -106,9 +106,9 @@ fn portable_contract_paths_resolve() {
 
 /// A single `use rig::prelude::*` provides the whole construction surface:
 /// a provider `functions::Config`, the `ProviderConfig` that wraps it, and
-/// `AgentBuilder`. There is no client type and no capability trait. (The
-/// classic `extractor` builder is gone too; structured extraction now goes
-/// through `rig::extract::*` over a `ProviderConfig`.)
+/// `AgentBuilder`. No provider type is threaded through the agent. (The classic
+/// `extractor` builder is gone too; structured extraction now goes through
+/// `rig::extract::*` over a `ProviderConfig`.)
 #[test]
 fn provider_config_single_import_surface() {
     use rig::prelude::*;
@@ -128,11 +128,17 @@ fn provider_config_single_import_surface() {
 #[test]
 fn provider_config_explicit_facade_import_surface() {
     use rig::AgentBuilder;
-    use rig::provider::ProviderConfig;
+    use rig::provider::{ProviderConfig, Runtime};
 
     let cfg = rig::providers::openai::functions::Config::new("gpt-4o").with_api_key("test-key");
     let provider = ProviderConfig::OpenAi(cfg);
-    assert_eq!(provider.descriptor().name, "openai");
+    assert_eq!(
+        provider
+            .descriptor(&Runtime::new())
+            .expect("bundled descriptor is always available")
+            .name,
+        "openai"
+    );
     let _agent = AgentBuilder::new(provider).build();
 }
 

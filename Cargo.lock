@@ -3948,6 +3948,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "external_provider"
+version = "0.41.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "extractor"
 version = "0.41.0"
 dependencies = [

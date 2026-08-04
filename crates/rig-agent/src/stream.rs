@@ -38,6 +38,7 @@ use crate::agent::telemetry::{
 use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse, UNKNOWN_AGENT_NAME};
 use crate::completion::{Message, PromptError, Usage};
 use rig_core::OneOrMany;
+use rig_core::completion::CompletionError;
 use rig_core::message::{AssistantContent, ToolCall, UserContent};
 use rig_core::streaming::{
     CompletionStream, StreamFinal, StreamedAssistantContent, StreamedUserContent,
@@ -687,10 +688,18 @@ impl AgentStream {
     }
 
     async fn open_attempt(&mut self, mut attempt: ModelCallAttempt) -> Result<(), PromptError> {
+        let composes_native_output_with_tools = match self.provider.descriptor(&self.rt) {
+            Ok(descriptor) => descriptor.composes_native_output_with_tools,
+            Err(error) => {
+                attempt.make_retryable(&mut self.run);
+                self.retry_attempt = Some(attempt);
+                return Err(CompletionError::from(error).into());
+            }
+        };
         let mut prepared = match attempt.prepare(
             &self.config,
             &self.tools,
-            self.provider.descriptor().composes_native_output_with_tools,
+            composes_native_output_with_tools,
             self.run.output_tool_name(),
         ) {
             Ok(prepared) => prepared,

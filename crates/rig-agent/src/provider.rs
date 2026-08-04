@@ -1,15 +1,17 @@
 //! The closed, exhaustively-matched provider set.
 //!
-//! [`ProviderConfig`] is one serde value per bundled provider — plain
-//! configuration, never a live handle — and [`complete`]/[`open_stream`]
-//! fulfil a [`CompletionRequest`] for any arm with an exhaustive `match`.
-//! Adding a provider fails to compile until every fulfilment site handles
-//! it: that is the feature, which is also why the enum is deliberately
-//! **not** `#[non_exhaustive]` — external hosts matching provider configs
-//! get the same compile-time guarantee. Cargo features never change that
-//! vocabulary: Bedrock and Gemini gRPC keep lightweight configs in
-//! `rig-core`, and missing transport features fail only when fulfillment is
-//! attempted.
+//! [`ProviderConfig`] is one serde value per provider — plain configuration,
+//! never a live handle — and [`complete`]/[`open_stream`] fulfil a
+//! [`CompletionRequest`] for any arm with an exhaustive `match`. Bundled
+//! providers each have a dedicated arm. Out-of-tree providers share the one
+//! [`ProviderConfig::External`] arm and resolve an exact-version handler from
+//! [`Runtime`].
+//!
+//! The enum is deliberately **not** `#[non_exhaustive]`: adding a bundled arm
+//! fails to compile until every fulfillment site handles it, and external
+//! hosts matching configs get the same guarantee. Cargo features never change
+//! the vocabulary: Bedrock and Gemini gRPC keep lightweight configs in
+//! `rig-core`, and missing transport features fail only at fulfillment.
 //!
 //! The deterministic [`ProviderConfig::Mock`] and [`EmbedderConfig::Mock`]
 //! variants are part of that stable production-visible serde vocabulary.
@@ -18,19 +20,27 @@
 //! a [`MockScript`] can deliberately leave selected operations pending until
 //! their futures are cancelled.
 //!
-//! Live transports live in [`Runtime`], not in configs: a serialized
-//! `ProviderConfig` resumes anywhere, and handles (HTTP client, AWS client,
-//! gRPC channel) are rebuilt on first use per process.
-//!
-//! Out-of-tree providers cannot add arms; they drive the public
-//! [`AgentRun`](crate::agent::run::AgentRun) +
-//! [`prepare_request`](crate::agent::prepare::prepare_request) protocol
-//! directly instead.
+//! Live transports and external handlers live in [`Runtime`], not in configs:
+//! a serialized `ProviderConfig` resumes after the destination process rebuilds
+//! its transports and, for [`ProviderConfig::External`], registers the matching
+//! [`ExternalCompletionProviderEntry`]. Typed implementations use
+//! [`ExternalCompletionProvider`]; closure-authored handlers use
+//! [`ExternalCompletionProviderEntry::new`] or
+//! [`ExternalCompletionProviderEntry::with_state`].
 //!
 //! [`PROVIDER_SURFACES`] and both config enums are generated from one
 //! registry containing descriptors, completion/embedding fulfillment paths,
 //! and feature requirements. FastEmbed is deliberately absent because loaded
 //! local weights are runtime state, not resumable serde configuration.
+
+pub mod external;
+
+pub use external::{
+    ExternalCompletionProvider, ExternalCompletionProviderEntry, ExternalProviderConfig,
+    ExternalProviderConfigError, ExternalProviderId, ExternalProviderIdError,
+    ExternalProviderRegistry, ExternalProviderRegistryError, ExternalProviderRuntimeError,
+    OwnedProviderDescriptor, ProviderDescriptorView,
+};
 
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use rig_core::embeddings::EmbeddingError;
@@ -695,7 +705,7 @@ macro_rules! define_provider_surfaces {
             )*
         ];
 
-        /// A bundled completion-provider selection as plain serde config.
+        /// A completion-provider selection as plain serde config.
         ///
         /// The closed enum is feature-stable: variants whose transport needs
         /// an optional Cargo feature remain serializable and matchable without
@@ -710,20 +720,48 @@ macro_rules! define_provider_surfaces {
                     $variant($completion_config),
                 )?
             )*
+            /// An out-of-tree provider resolved through this process's runtime registry.
+            External(ExternalProviderConfig),
         }
 
         impl ProviderConfig {
-            /// The provider's capability sheet.
-            pub fn descriptor(&self) -> &'static ProviderDescriptor {
+            /// Resolve the provider's capability sheet through `runtime`.
+            ///
+            /// Bundled providers return their static descriptor. External
+            /// providers resolve the handler-owned descriptor registered in
+            /// this process.
+            pub fn descriptor<'a>(
+                &self,
+                runtime: &'a Runtime,
+            ) -> Result<ProviderDescriptorView<'a>, ExternalProviderRuntimeError> {
                 match self {
                     $(
                         $(
                             Self::$variant(cfg) => {
                                 let _: &$completion_config = cfg;
-                                &$descriptor
+                                Ok(ProviderDescriptorView::from(&$descriptor))
                             },
                         )?
                     )*
+                    Self::External(cfg) => runtime.external_descriptor(&cfg.driver),
+                }
+            }
+
+            /// Config-only provider identity suitable for diagnostics.
+            ///
+            /// External runtime metadata still comes from the registered
+            /// handler descriptor, not this identity string.
+            pub fn configured_provider_name(&self) -> &str {
+                match self {
+                    $(
+                        $(
+                            Self::$variant(cfg) => {
+                                let _: &$completion_config = cfg;
+                                $descriptor.name
+                            },
+                        )?
+                    )*
+                    Self::External(cfg) => cfg.driver.as_str(),
                 }
             }
 
@@ -738,11 +776,12 @@ macro_rules! define_provider_surfaces {
                             },
                         )?
                     )*
+                    Self::External(cfg) => &cfg.model,
                 }
             }
         }
 
-        /// Fulfill a completion request for any bundled provider.
+        /// Fulfill a completion request for any bundled or registered external provider.
         pub async fn complete(
             provider: &ProviderConfig,
             rt: &Runtime,
@@ -762,10 +801,16 @@ macro_rules! define_provider_surfaces {
                         },
                     )?
                 )*
+                ProviderConfig::External(cfg) => {
+                    let provider = rt.external_provider(&cfg.driver)?;
+                    provider
+                        .complete(cfg.clone(), rt.http.clone(), request)
+                        .await
+                }
             }
         }
 
-        /// Open a streaming completion for any bundled provider.
+        /// Open a streaming completion for any bundled or registered external provider.
         pub async fn open_stream(
             provider: &ProviderConfig,
             rt: &Runtime,
@@ -785,6 +830,12 @@ macro_rules! define_provider_surfaces {
                         },
                     )?
                 )*
+                ProviderConfig::External(cfg) => {
+                    let provider = rt.external_provider(&cfg.driver)?;
+                    provider
+                        .open_stream(cfg.clone(), rt.http.clone(), request)
+                        .await
+                }
             }
         }
 
@@ -797,6 +848,12 @@ macro_rules! define_provider_surfaces {
                 }
             )?
         )*
+
+        impl From<ExternalProviderConfig> for ProviderConfig {
+            fn from(config: ExternalProviderConfig) -> Self {
+                Self::External(config)
+            }
+        }
 
         /// A bundled embedding-provider selection as plain serde config.
         ///
@@ -936,7 +993,7 @@ pub async fn list_models(
         }
         other => Err(rig_core::model::ModelListingError::request_error(format!(
             "provider `{}` does not support model listing",
-            other.descriptor().name
+            other.configured_provider_name()
         ))),
     }
 }
@@ -1049,6 +1106,7 @@ pub static MOCK_DESCRIPTOR: ProviderDescriptor = ProviderDescriptor::named("mock
 pub struct Runtime {
     /// rig-core's HTTP executor (serves every in-core provider arm).
     pub http: HttpRuntime,
+    external: ExternalProviderRegistry,
     #[cfg(feature = "bedrock")]
     bedrock: BedrockCache,
     #[cfg(feature = "gemini-grpc")]
@@ -1065,11 +1123,68 @@ impl Runtime {
     pub fn with_http(http: HttpRuntime) -> Self {
         Self {
             http,
+            external: ExternalProviderRegistry::new(),
             #[cfg(feature = "bedrock")]
             bedrock: BedrockCache::default(),
             #[cfg(feature = "gemini-grpc")]
             gemini_grpc: GeminiGrpcCache::default(),
         }
+    }
+
+    /// Replace the external-provider registry attached to this runtime.
+    pub fn with_external_registry(mut self, registry: ExternalProviderRegistry) -> Self {
+        self.external = registry;
+        self
+    }
+
+    /// Return a new runtime containing one additional external provider.
+    ///
+    /// Existing runtime clones keep their frozen registry snapshot.
+    pub fn with_external_provider(
+        mut self,
+        provider: ExternalCompletionProviderEntry,
+    ) -> Result<Self, ExternalProviderRegistryError> {
+        self.external = self.external.clone().register(provider)?;
+        Ok(self)
+    }
+
+    /// The frozen external-provider registry used by this runtime.
+    pub fn external_registry(&self) -> &ExternalProviderRegistry {
+        &self.external
+    }
+
+    /// Resolve an exact-version external provider record.
+    pub fn external_provider(
+        &self,
+        id: &ExternalProviderId,
+    ) -> Result<&ExternalCompletionProviderEntry, ExternalProviderRuntimeError> {
+        self.external
+            .get(id)
+            .ok_or_else(|| ExternalProviderRuntimeError::NotRegistered { driver: id.clone() })
+    }
+
+    /// Validate that this runtime can fulfill `provider` without performing
+    /// provider I/O.
+    pub fn validate_provider(
+        &self,
+        provider: &ProviderConfig,
+    ) -> Result<(), ExternalProviderRuntimeError> {
+        let ProviderConfig::External(config) = provider else {
+            return Ok(());
+        };
+        self.external_provider(&config.driver)?
+            .validate(config)
+            .map_err(|source| ExternalProviderRuntimeError::InvalidConfig {
+                driver: config.driver.clone(),
+                source,
+            })
+    }
+
+    fn external_descriptor(
+        &self,
+        id: &ExternalProviderId,
+    ) -> Result<ProviderDescriptorView<'_>, ExternalProviderRuntimeError> {
+        Ok(self.external_provider(id)?.descriptor().as_view())
     }
 
     /// A runtime pre-seeded with a caller-built Bedrock SDK client.
@@ -1080,6 +1195,7 @@ impl Runtime {
     ) -> Self {
         Self {
             http: HttpRuntime::new(),
+            external: ExternalProviderRegistry::new(),
             bedrock: BedrockCache {
                 provider_client: None,
                 slot: std::sync::Arc::new(tokio::sync::Mutex::new(Some((
@@ -1098,6 +1214,7 @@ impl Runtime {
     pub fn with_bedrock_provider_client(client: rig_bedrock::Client) -> Self {
         Self {
             http: HttpRuntime::new(),
+            external: ExternalProviderRegistry::new(),
             bedrock: BedrockCache {
                 provider_client: Some(client),
                 slot: std::sync::Arc::default(),
@@ -1115,6 +1232,7 @@ impl Runtime {
     ) -> Self {
         Self {
             http: HttpRuntime::new(),
+            external: ExternalProviderRegistry::new(),
             #[cfg(feature = "bedrock")]
             bedrock: BedrockCache::default(),
             gemini_grpc: GeminiGrpcCache {
@@ -1199,6 +1317,12 @@ impl Runtime {
         *slot = Some((cfg.connection.clone(), client.clone()));
         Ok(client)
     }
+}
+
+#[allow(dead_code)]
+fn _assert_runtime_is_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Runtime>();
 }
 
 /// The connection-defining projection of a Bedrock config: exactly the
@@ -1685,17 +1809,27 @@ mod conversion_tests {
 
     #[test]
     fn feature_backed_variants_round_trip_without_transport_features() {
+        let runtime = Runtime::new();
         for provider in [
             ProviderConfig::Bedrock(rig_core::providers::bedrock::Config::new("bedrock-model")),
             ProviderConfig::GeminiGrpc(rig_core::providers::gemini_grpc::Config::new("grpc-model")),
         ] {
             let model = provider.model().to_string();
-            let descriptor = provider.descriptor().name;
+            let descriptor = provider
+                .descriptor(&runtime)
+                .expect("bundled descriptor is always available")
+                .name;
             let json = serde_json::to_string(&provider).expect("serialize stable provider variant");
             let round_trip: ProviderConfig =
                 serde_json::from_str(&json).expect("deserialize stable provider variant");
             assert_eq!(round_trip.model(), model);
-            assert_eq!(round_trip.descriptor().name, descriptor);
+            assert_eq!(
+                round_trip
+                    .descriptor(&runtime)
+                    .expect("bundled descriptor is always available")
+                    .name,
+                descriptor
+            );
         }
 
         for provider in [
@@ -1741,8 +1875,8 @@ mod conversion_tests {
 
         assert_eq!(from_bare.provider.model(), from_variant.provider.model());
         assert_eq!(
-            from_bare.provider.descriptor().name,
-            from_variant.provider.descriptor().name
+            from_bare.provider.configured_provider_name(),
+            from_variant.provider.configured_provider_name()
         );
     }
 }

@@ -51,6 +51,12 @@
 //! plus `functions::embed`, batched for stores through
 //! [`embeddings::embed_documents`].
 //!
+//! Genuinely new completion dialects implement
+//! [`provider::ExternalCompletionProvider`]. The constructor-position generic
+//! is erased into a concrete [`provider::ExternalCompletionProviderEntry`]
+//! registered on [`provider::Runtime`]; agents and sessions remain non-generic,
+//! and serialized [`provider::ExternalProviderConfig`] contains no callbacks.
+//!
 //! `rig::tool` exposes the portable, context-free tool contracts —
 //! `PortableTool` and `PortableDynamicTool` — and aliases `Tool` to
 //! `PortableTool`. The same surface also lives at [`crate::agent::tool`].
@@ -121,7 +127,7 @@ pub mod integrations {
     pub use rig_agent::integrations::*;
 }
 
-/// The bundled provider set as plain configuration, plus the live-handle
+/// Provider configuration, external-provider registration, and the live-handle
 /// runtime — the data-oriented fulfilment layer.
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
@@ -182,8 +188,10 @@ pub mod prelude {
     pub use rig_agent::prelude::{
         Agent, AgentBuilder, AgentClientExt, AgentRunItem, AgentRunStream, AgentStream,
         AgentStreamItem, BindCompletionExt, BoundCompletionRequest, CompletionClientExt,
-        CompletionHandle, EmbedderConfig, PromptError, PromptResponse, ProviderConfig, Runtime,
-        SessionRunner, StructuredOutputError, ToProviderConfig,
+        CompletionHandle, EmbedderConfig, ExternalCompletionProvider,
+        ExternalCompletionProviderEntry, ExternalProviderConfig, ExternalProviderId,
+        ExternalProviderRegistry, OwnedProviderDescriptor, PromptError, PromptResponse,
+        ProviderConfig, Runtime, SessionRunner, StructuredOutputError, ToProviderConfig,
     };
     pub use rig_core::prelude::*;
 }

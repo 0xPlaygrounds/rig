@@ -72,7 +72,7 @@ use crate::agent::{AgentConfig, InvalidToolCallContext, PromptResponse, UNKNOWN_
 use crate::completion::{Message, PromptError, Usage};
 use crate::tool::ToolResult;
 use rig_core::OneOrMany;
-use rig_core::completion::CompletionResponse;
+use rig_core::completion::{CompletionError, CompletionResponse};
 use rig_core::message::{AssistantContent, ToolCall, UserContent};
 
 use crate::provider::{self, ProviderConfig, Runtime};
@@ -586,10 +586,19 @@ impl AgentSession {
                             &mut self.next_patch,
                         ),
                     };
+                    let composes_native_output_with_tools = match self.provider.descriptor(&self.rt)
+                    {
+                        Ok(descriptor) => descriptor.composes_native_output_with_tools,
+                        Err(error) => {
+                            attempt.make_retryable(&mut self.run);
+                            self.model_attempt = Some(attempt);
+                            return Err(CompletionError::from(error).into());
+                        }
+                    };
                     let mut prepared = match attempt.prepare(
                         &self.config,
                         &self.tools,
-                        self.provider.descriptor().composes_native_output_with_tools,
+                        composes_native_output_with_tools,
                         self.run.output_tool_name(),
                     ) {
                         Ok(prepared) => prepared,

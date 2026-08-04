@@ -11,7 +11,11 @@ pub use crate::client::{
     CompletionHandle, ToProviderConfig,
 };
 pub use crate::completion::{CompletionError, Message, PromptError, StructuredOutputError};
-pub use crate::provider::{EmbedderConfig, ProviderConfig, Runtime};
+pub use crate::provider::{
+    EmbedderConfig, ExternalCompletionProvider, ExternalCompletionProviderEntry,
+    ExternalProviderConfig, ExternalProviderId, ExternalProviderRegistry, OwnedProviderDescriptor,
+    ProviderConfig, Runtime,
+};
 pub use crate::stream::{AgentRunItem, AgentRunStream, AgentStream, AgentStreamItem};
 pub use crate::tool::{PortableDynamicTool, PortableTool};
 

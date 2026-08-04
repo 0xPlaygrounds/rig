@@ -36,16 +36,21 @@ facade re-export, examples, README, and crate docs as applicable.
 
 ## Core Architecture
 
-Rig is data-oriented: providers are serde configuration, not trait
+Rig is data-oriented: agents store serde provider configuration, not provider
 implementations, and the runtime is not generic over a model type.
 
 - Completion and streaming go through each provider's `functions` module — a
   serde `Config` plus free `complete`/`open_stream` functions.
 - `ProviderConfig` (`rig-agent`) is the one enum an `Agent` holds. It is
-  deliberately **not** `#[non_exhaustive]`: adding a provider is a breaking
-  change by design, so hosts can match exhaustively.
+  deliberately **not** `#[non_exhaustive]`: adding a bundled provider is a
+  breaking change by design, so hosts can match exhaustively. Out-of-tree
+  completion providers use its one `External` arm.
 - `ProviderDescriptor` (`rig-core/src/providers/descriptor.rs`) is the
   capability sheet for a provider.
+- `ExternalCompletionProvider` is the typed out-of-tree authoring contract.
+  `ExternalCompletionProviderEntry::from_provider` erases it immediately into
+  a concrete record stored in a host-owned `Runtime` registry; no agent/runtime
+  type carries the provider or its associated config as a generic parameter.
 - Embeddings, transcription, image generation, audio generation, and rerank
   are per-provider free functions over plain configs.
 - Vector stores expose concrete inherent methods over a pre-embedded
@@ -79,10 +84,12 @@ pub async fn complete(cfg: &Config, rt: &HttpRuntime, request: CompletionRequest
 pub async fn open_stream(/* … */) -> Result<CompletionStream, CompletionError>;
 ```
 
-Capabilities are declared as data on the `DESCRIPTOR` const, not as trait
-`const`s or marker types. I/O goes through `HttpRuntime`; keep request
-building and response parsing as pure functions (`build_request_body`,
-`parse_response`) so they are testable without a transport.
+Bundled capabilities are declared as data on the `DESCRIPTOR` const, not as
+trait `const`s or marker types. External capabilities are owned data on the
+registered handler and never duplicated into serialized config. I/O goes
+through `HttpRuntime`; keep request building and response parsing as pure
+functions (`build_request_body`, `parse_response`) so they are testable without
+a transport.
 
 ## WASM Compatibility
 

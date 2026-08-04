@@ -14,7 +14,7 @@ use rig_core::message::ToolChoice;
 use rig_core::streaming::CompletionStream;
 
 use crate::AgentBuilder;
-use crate::provider::{self, ProviderConfig, Runtime};
+use crate::provider::{self, ExternalProviderConfig, ProviderConfig, Runtime};
 
 /// Convert a concrete provider client into plain provider configuration and a runtime.
 pub trait ToProviderConfig {
@@ -268,13 +268,13 @@ impl BoundCompletionRequest {
         self.build()
     }
 
-    /// Execute a non-streaming completion through the bundled dispatcher.
+    /// Execute a non-streaming completion through the provider dispatcher.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let request = self.builder.build();
         provider::complete(&self.target.provider, &self.target.runtime, request).await
     }
 
-    /// Open a normalized streaming completion through the bundled dispatcher.
+    /// Open a normalized streaming completion through the provider dispatcher.
     pub async fn stream(self) -> Result<CompletionStream, CompletionError> {
         let request = self.builder.build();
         provider::open_stream(&self.target.provider, &self.target.runtime, request).await
@@ -413,6 +413,12 @@ impl_bind_completion!(rig_core::providers::zai::functions::Config, Zai);
 
 impl_bind_completion!(rig_core::providers::bedrock::Config, Bedrock);
 impl_bind_completion!(rig_core::providers::gemini_grpc::Config, GeminiGrpc);
+
+impl BindCompletionExt for ExternalProviderConfig {
+    fn bind_completion(self, runtime: Arc<Runtime>) -> CompletionHandle {
+        CompletionHandle::new(self.into(), runtime)
+    }
+}
 
 #[cfg(test)]
 mod tests {

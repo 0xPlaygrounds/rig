@@ -23,14 +23,22 @@ let agent = AgentBuilder::new(ProviderConfig::OpenAi(cfg))
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 
-`ProviderConfig` and `EmbedderConfig` are generated from one capability
-registry. Their closed enum shapes do not change with Cargo feature
+Bundled `ProviderConfig` arms and `EmbedderConfig` are generated from one
+capability registry. Their closed enum shapes do not change with Cargo feature
 unification: Bedrock and Gemini gRPC config variants are always serializable
 and exhaustively matchable, while attempting fulfillment without the matching
 transport feature returns a boundary error. The embedding vocabulary includes
 Llamafile, Mistral, OpenRouter, and Together. FastEmbed remains outside the
 enum because loaded local weights are runtime state rather than honest serde
 configuration.
+
+Genuinely new completion dialects use the single `ProviderConfig::External`
+arm. Implement `ExternalCompletionProvider` with a typed associated config and
+ordinary future-returning methods, erase it with
+`ExternalCompletionProviderEntry::from_provider`, and register the record on a
+`Runtime`. The config serializes only exact-version identity, model, and JSON
+settings; callbacks and the canonical capability descriptor remain
+process-local. See [`examples/external_provider`](../../examples/external_provider).
 
 Tools implement `rig_core::tool::PortableTool`, the single portable record
 contract. There is no separate contextual tool trait and no `ToolContext`:
