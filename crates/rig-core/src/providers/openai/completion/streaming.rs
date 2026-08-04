@@ -368,8 +368,31 @@ where
         let data = match serde_json::from_str::<StreamingCompletionChunk<U>>(data) {
             Ok(data) => data,
             Err(error) => {
+                // The chat-completions wire has no `type` discriminator, so a
+                // recognizable chunk is one that says `"object":
+                // "chat.completion.chunk"` or carries `choices`. Valid JSON
+                // that is neither is an event shape this client doesn't model
+                // yet — skipped for forward compatibility. A recognizable
+                // chunk that fails to decode, or a frame that isn't JSON at
+                // all, is a corrupt frame and must surface as an error item;
+                // the shared layer keeps consuming after it and withholds the
+                // terminal record when no frame ever decoded.
+                let is_unrecognized_event = serde_json::from_str::<serde_json::Value>(data)
+                    .is_ok_and(|value| {
+                        value.get("object").and_then(serde_json::Value::as_str)
+                            != Some("chat.completion.chunk")
+                            && value.get("choices").is_none()
+                    });
+                if is_unrecognized_event {
+                    tracing::warn!(
+                        ?error,
+                        message = data,
+                        "skipping unrecognized chat-completions SSE event"
+                    );
+                    return Ok(None);
+                }
                 tracing::error!(?error, message = data, "Failed to parse SSE message");
-                return Ok(None);
+                return Err(error.into());
             }
         };
 
@@ -1203,5 +1226,51 @@ mod tests {
         // but the stream reached EOF without `[DONE]` or a finish reason, so
         // no terminal record is synthesized for the truncated turn.
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", false).await;
+    }
+
+    /// The default OpenAI profile must not let a stream end silently: corrupt
+    /// frames surface as error items, and a bare `[DONE]` with no successfully
+    /// decoded frame yields no terminal record. Unknown-shaped events (no
+    /// `object`/`choices`) stay skippable for forward compatibility.
+    #[tokio::test]
+    async fn test_default_profile_surfaces_unparseable_frames_as_errors() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                // Not JSON at all.
+                "{bad",
+                // Recognizable chat chunk with a schema defect.
+                "{\"object\":\"chat.completion.chunk\",\"choices\":\"nope\"}",
+                // Unknown event shape: skipped, not an error.
+                "{\"type\":\"ping\"}",
+                "[DONE]",
+            ]),
+        };
+
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
+
+        let mut error_count = 0;
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(other) => panic!("unexpected stream item: {other:?}"),
+                Err(_) => error_count += 1,
+            }
+        }
+
+        assert_eq!(
+            error_count, 2,
+            "each corrupt frame must surface as an error item"
+        );
+        assert!(
+            !saw_final,
+            "a stream with no successfully decoded frame must not emit a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 }

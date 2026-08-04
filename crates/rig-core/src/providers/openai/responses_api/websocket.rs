@@ -1283,6 +1283,92 @@ mod tests {
         server.await.expect("server task should finish");
     }
 
+    #[tokio::test]
+    async fn incomplete_turn_without_deltas_normalizes_terminal_body_output() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            let request = socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+            let payload = request.into_text().expect("request should be text");
+            assert!(
+                payload.contains("\"type\":\"response.create\""),
+                "expected response.create payload, got {payload}"
+            );
+
+            // No delta events at all AND an incomplete terminal whose body
+            // carries the partial output: the body must be normalized rather
+            // than the turn reading as empty.
+            let mut response = sample_response(ResponseStatus::Incomplete);
+            response.incomplete_details = Some(IncompleteDetailsReason {
+                reason: "max_output_tokens".to_string(),
+            });
+            response.output = vec![
+                serde_json::from_value::<Output>(json!({
+                    "type": "message",
+                    "id": "msg_body_only_1",
+                    "status": "incomplete",
+                    "role": "assistant",
+                    "content": [{ "type": "output_text", "annotations": [], "text": "partial from body" }]
+                }))
+                .expect("output message should deserialize"),
+            ];
+            let response = serde_json::to_value(response).expect("response should serialize");
+
+            socket
+                .send(Message::text(
+                    json!({
+                        "type": "response.incomplete",
+                        "sequence_number": 1,
+                        "response": response,
+                    })
+                    .to_string(),
+                ))
+                .await
+                .expect("incomplete event should send");
+        });
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("incomplete turn with body output should normalize");
+
+        assert!(matches!(
+            normalized.choice.first(),
+            crate::completion::AssistantContent::Text(text) if text.text == "partial from body"
+        ));
+        assert_eq!(
+            normalized.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(normalized.message_id.as_deref(), Some("msg_body_only_1"));
+
+        server.await.expect("server task should finish");
+    }
+
     #[test]
     fn terminal_failed_response_with_error_preserves_raw_payload() {
         let mut response = sample_response(ResponseStatus::Failed);

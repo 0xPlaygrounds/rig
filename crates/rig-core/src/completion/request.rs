@@ -272,6 +272,7 @@ impl FinishReason {
 /// `raw_completion` method, which performs the same request and returns the
 /// provider's native type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "CompletionResponseRepr")]
 #[non_exhaustive]
 pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
@@ -410,6 +411,50 @@ impl CompletionResponse {
     pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
         self.model = model.map(Into::into).filter(|model| !model.is_empty());
         self
+    }
+}
+
+/// Wire-shape mirror of [`CompletionResponse`], used only for deserialization.
+///
+/// Serde must never construct an invariant-bearing value structurally: a plain
+/// derive would let `"finish_reason":"stop"` skip
+/// [`FinishReason::reconcile_with_output`] and `"message_id":""` skip the
+/// empty-string filtering. This mirror deserializes the exact wire shape and
+/// [`From`] funnels it through [`CompletionResponse::new`] and the `with_*`
+/// setters, so every deserialized value satisfies the same invariants as a
+/// constructed one. Serialization stays derived on [`CompletionResponse`]
+/// itself, so the wire format is unchanged.
+#[derive(Deserialize)]
+struct CompletionResponseRepr {
+    choice: OneOrMany<AssistantContent>,
+    usage: Usage,
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    response_id: Option<String>,
+    #[serde(default)]
+    finish_reason: Option<FinishReason>,
+    provider: String,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+impl From<CompletionResponseRepr> for CompletionResponse {
+    fn from(repr: CompletionResponseRepr) -> Self {
+        let CompletionResponseRepr {
+            choice,
+            usage,
+            message_id,
+            response_id,
+            finish_reason,
+            provider,
+            model,
+        } = repr;
+        Self::new(choice, usage, provider)
+            .with_optional_message_id(message_id)
+            .with_optional_response_id(response_id)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_model(model)
     }
 }
 
@@ -1159,6 +1204,47 @@ mod tests {
             serde_json::to_value(decoded).expect("re-serialize"),
             encoded
         );
+    }
+
+    /// Serde must not be a back door around `reconcile_with_output`: a
+    /// persisted `"stop"` next to a tool-call choice deserializes as
+    /// `ToolCalls`, exactly as if it had gone through the setter.
+    #[test]
+    fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
+        let mut encoded = serde_json::to_value(CompletionResponse::new(
+            tool_call_choice(),
+            Usage::new(),
+            "example",
+        ))
+        .expect("serialize response");
+        encoded["finish_reason"] = serde_json::json!("stop");
+
+        let decoded =
+            serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
+
+        assert_eq!(decoded.finish_reason(), Some(FinishReason::ToolCalls));
+    }
+
+    /// Serde must not be a back door around the empty-string filtering either:
+    /// a persisted `""` identifier deserializes as `None`.
+    #[test]
+    fn deserializing_empty_identifiers_yields_none() {
+        let mut encoded = serde_json::to_value(CompletionResponse::new(
+            OneOrMany::one(AssistantContent::text("hello")),
+            Usage::new(),
+            "example",
+        ))
+        .expect("serialize response");
+        encoded["message_id"] = serde_json::json!("");
+        encoded["response_id"] = serde_json::json!("");
+        encoded["model"] = serde_json::json!("");
+
+        let decoded =
+            serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
+
+        assert_eq!(decoded.message_id, None);
+        assert_eq!(decoded.response_id, None);
+        assert_eq!(decoded.model, None);
     }
 
     #[test]

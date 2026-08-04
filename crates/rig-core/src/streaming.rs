@@ -101,12 +101,18 @@ pub enum StreamFinalKind {
 /// | Malformed frame (recoverable parse error) | yes | yes | if a genuine terminal later arrives |
 /// | Truncation (EOF without the provider's end event) | no | — | never |
 ///
+/// On a terminal error (a transport failure or the provider's own failure
+/// event), tool calls that were fully delivered before the failure are yielded
+/// *before* the terminal `Err`; nothing follows the error — the stream then
+/// ends without a terminal record.
+///
 /// Consequently an `Err` item is **not** by itself terminal: a malformed frame
 /// is surfaced and the stream keeps consuming, so a later genuine terminal
 /// still completes it. Consumers must drain the stream to `None` rather than
 /// stop at the first `Err`, and must treat the absence of a terminal record as
 /// truncation, never as a successful zero-usage completion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "StreamFinalRepr")]
 #[non_exhaustive]
 pub struct StreamFinal {
     /// Discriminating field; always [`StreamFinalKind::Final`].
@@ -206,6 +212,52 @@ impl StreamFinal {
     pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
         self.model = model.map(Into::into).filter(|model| !model.is_empty());
         self
+    }
+}
+
+/// Wire-shape mirror of [`StreamFinal`], used only for deserialization.
+///
+/// Serde must never construct an invariant-bearing value structurally: a plain
+/// derive would let `"message_id":""` skip the empty-string filtering the
+/// `with_*` setters apply. This mirror deserializes the exact wire shape —
+/// including the discriminating `kind` field — and [`From`] funnels it through
+/// [`StreamFinal::new`] and the setters, so every deserialized value satisfies
+/// the same invariants as a constructed one. Serialization stays derived on
+/// [`StreamFinal`] itself, so the wire format is unchanged.
+#[derive(Deserialize)]
+struct StreamFinalRepr {
+    kind: StreamFinalKind,
+    usage: Usage,
+    #[serde(default)]
+    finish_reason: Option<crate::completion::FinishReason>,
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    response_id: Option<String>,
+    provider: String,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+impl From<StreamFinalRepr> for StreamFinal {
+    fn from(repr: StreamFinalRepr) -> Self {
+        let StreamFinalRepr {
+            kind,
+            usage,
+            finish_reason,
+            message_id,
+            response_id,
+            provider,
+            model,
+        } = repr;
+        // `StreamFinal::new` sets the only possible discriminant; the
+        // irrefutable pattern consumes the mirrored field.
+        let StreamFinalKind::Final = kind;
+        Self::new(provider, usage)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_message_id(message_id)
+            .with_optional_response_id(response_id)
+            .with_optional_model(model)
     }
 }
 
@@ -731,11 +783,31 @@ impl Stream for StreamingCompletionResponse {
                         content: vec![content],
                     };
                     stream.text_item_index = None;
-                    // Full reasoning block supersedes any delta accumulation
+                    // A full reasoning block supersedes its own delta
+                    // accumulation: the deltas are only a fallback for
+                    // providers that never send the completed block, so the
+                    // delta-built item is *replaced*, not kept alongside a
+                    // duplicate. When both the accumulating item and the full
+                    // block carry an ID and they differ, the block belongs to
+                    // a different reasoning item and is appended instead.
+                    let replace_index = stream.reasoning_item_index.filter(|&index| {
+                        match stream.assistant_items.get(index) {
+                            Some(AssistantContent::Reasoning(existing)) => {
+                                match (&existing.id, &reasoning.id) {
+                                    (Some(existing_id), Some(id)) => existing_id == id,
+                                    _ => true,
+                                }
+                            }
+                            _ => false,
+                        }
+                    });
+                    match replace_index.and_then(|index| stream.assistant_items.get_mut(index)) {
+                        Some(item) => *item = AssistantContent::Reasoning(reasoning.clone()),
+                        None => stream
+                            .assistant_items
+                            .push(AssistantContent::Reasoning(reasoning.clone())),
+                    }
                     stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::Reasoning(reasoning.clone()));
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                 }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
@@ -1115,6 +1187,57 @@ mod tests {
         assert_eq!(decoded, StreamedAssistantContent::Unknown(provider_item));
     }
 
+    /// Deserialization funnels through `new` + the setters, so the invariants
+    /// hold on persisted values too: a `""` identifier comes back as `None`.
+    #[test]
+    fn deserializing_stream_final_filters_empty_identifiers() {
+        let decoded = serde_json::from_value::<StreamFinal>(serde_json::json!({
+            "kind": "final",
+            "usage": Usage::new(),
+            "message_id": "",
+            "response_id": "",
+            "model": "",
+            "provider": "example",
+        }))
+        .expect("deserialize terminal record");
+
+        assert_eq!(decoded.message_id, None);
+        assert_eq!(decoded.response_id, None);
+        assert_eq!(decoded.model, None);
+    }
+
+    /// The deserialization mirror must not change the wire format: a fully
+    /// populated terminal record round-trips to byte-identical JSON.
+    #[test]
+    fn stream_final_serde_round_trip_is_identity() {
+        let final_record = StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: 4,
+                output_tokens: 6,
+                total_tokens: 10,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 2,
+                tool_use_prompt_tokens: 3,
+                reasoning_tokens: 4,
+            },
+        )
+        .with_finish_reason(FinishReason::Stop)
+        .with_message_id("msg_123")
+        .with_response_id("resp_456")
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(&final_record).expect("serialize terminal record");
+        assert_eq!(encoded["kind"], serde_json::json!("final"));
+
+        let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
+        assert_eq!(decoded, final_record);
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("re-serialize"),
+            encoded
+        );
+    }
+
     #[tokio::test]
     async fn usage_is_zero_sentinel_before_final_response() {
         // A stream that never yields a FinalResponse reports the zero sentinel.
@@ -1228,6 +1351,84 @@ mod tests {
                     }) if text == "step one" && signature == "sig_1"
                 )
         )));
+    }
+
+    /// A full reasoning block replaces its own delta accumulation, so the
+    /// aggregated choice matches unary normalization of the same turn: one
+    /// reasoning item carrying the completed block, not delta-plus-duplicate.
+    #[tokio::test]
+    async fn full_reasoning_block_supersedes_its_accumulated_deltas() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "partial ".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_1".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "the complete chain".to_string(),
+                        signature: Some("sig_1".to_string()),
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_items: Vec<&Reasoning> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_items.len(), 1, "got {choice_items:?}");
+        let reasoning = reasoning_items.first().expect("one reasoning item");
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert!(matches!(
+            reasoning.content.first(),
+            Some(ReasoningContent::Text { text, signature: Some(signature) })
+                if text == "the complete chain" && signature == "sig_1"
+        ));
+    }
+
+    /// A full block whose ID differs from the accumulating item's ID is a
+    /// distinct reasoning item and is appended, not a replacement.
+    #[tokio::test]
+    async fn full_reasoning_block_with_a_different_id_appends() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "first item deltas".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_2".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "a different item".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_ids: Vec<Option<&str>> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
     }
 
     #[tokio::test]

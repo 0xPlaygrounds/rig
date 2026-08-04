@@ -217,6 +217,38 @@ fn provider_response_from_responses_error_value(
     crate::provider_response::completion_error_from_body(data)
 }
 
+/// Whether `kind` is a Responses SSE event type this client models.
+///
+/// The union of [`ResponseChunkKind`]'s and [`ItemChunkKind`]'s wire names: a
+/// frame carrying one of these that still fails to deserialize is a data-level
+/// defect in a known event, not an unknown event type, and must surface as an
+/// error rather than be skipped.
+fn is_known_responses_event_type(kind: &str) -> bool {
+    matches!(
+        kind,
+        "response.created"
+            | "response.in_progress"
+            | "response.completed"
+            | "response.failed"
+            | "response.incomplete"
+            | "response.output_item.added"
+            | "response.output_item.done"
+            | "response.content_part.added"
+            | "response.content_part.done"
+            | "response.output_text.delta"
+            | "response.output_text.done"
+            | "response.refusal.delta"
+            | "response.refusal.done"
+            | "response.function_call_arguments.delta"
+            | "response.function_call_arguments.done"
+            | "response.reasoning_summary_part.added"
+            | "response.reasoning_summary_part.done"
+            | "response.reasoning_summary_text.delta"
+            | "response.reasoning_summary_text.done"
+            | "response.reasoning_text.delta"
+    )
+}
+
 fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     (value.get("type").and_then(serde_json::Value::as_str) == Some("error"))
@@ -514,6 +546,13 @@ impl RawChoiceAccumulator {
         }
     }
 
+    /// Drain the buffered fully-delivered tool calls without finishing the
+    /// stream. The errored-terminal path flushes these before the error and
+    /// must not produce a terminal record.
+    pub(crate) fn take_tool_calls(&mut self) -> Vec<StreamingRawChoice> {
+        std::mem::take(&mut self.tool_calls)
+    }
+
     pub(crate) fn finish(mut self) -> Vec<StreamingRawChoice> {
         let mut choices = Vec::new();
         choices.append(&mut self.tool_calls);
@@ -571,43 +610,63 @@ pub(crate) fn raw_choices_from_sse_body(
             continue;
         }
 
+        // This is a buffered unary path: there is no stream to carry error
+        // items, so a corrupt frame that would be yielded as an `Err` item on
+        // the live loop must instead fail the whole operation — the
+        // alternative is a successful-but-incomplete completion.
         let value = match serde_json::from_str::<serde_json::Value>(data) {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(error) => {
+                return Err(CompletionError::ResponseError(format!(
+                    "invalid JSON frame in buffered Responses SSE body: {error}"
+                )));
+            }
         };
 
-        match value.get("type").and_then(serde_json::Value::as_str) {
-            Some("response.output_text.delta") | Some("response.refusal.delta") => {
-                if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
-                    raw_choices.push(streaming::RawStreamingChoice::Message(delta.to_owned()));
-                }
+        let kind = value.get("type").and_then(serde_json::Value::as_str);
+        let malformed = |kind: &str| {
+            CompletionError::ResponseError(format!(
+                "malformed `{kind}` event in buffered Responses SSE body"
+            ))
+        };
+
+        match kind {
+            Some(kind @ ("response.output_text.delta" | "response.refusal.delta")) => {
+                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
+                    return Err(malformed(kind));
+                };
+                raw_choices.push(streaming::RawStreamingChoice::Message(delta.to_owned()));
             }
-            Some("response.reasoning_summary_text.delta") => {
-                if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
-                    raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                        id: None,
-                        reasoning: delta.to_owned(),
-                    });
-                }
+            Some(kind @ "response.reasoning_summary_text.delta") => {
+                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
+                    return Err(malformed(kind));
+                };
+                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
+                    id: None,
+                    reasoning: delta.to_owned(),
+                });
             }
-            Some("response.reasoning_text.delta") => {
-                if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
-                    raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                        id: value
-                            .get("item_id")
-                            .and_then(serde_json::Value::as_str)
-                            .map(ToOwned::to_owned),
-                        reasoning: delta.to_owned(),
-                    });
-                }
+            Some(kind @ "response.reasoning_text.delta") => {
+                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
+                    return Err(malformed(kind));
+                };
+                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
+                    id: value
+                        .get("item_id")
+                        .and_then(serde_json::Value::as_str)
+                        .map(ToOwned::to_owned),
+                    reasoning: delta.to_owned(),
+                });
             }
-            Some("response.output_item.added") => {
-                if let Some(item) = value
+            Some(kind @ "response.output_item.added") => {
+                let Some(item) = value
                     .get("item")
                     .cloned()
                     .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                    && let Output::FunctionCall(func) = item
-                {
+                else {
+                    return Err(malformed(kind));
+                };
+                if let Output::FunctionCall(func) = item {
                     let internal_call_id = accumulator
                         .tool_call_internal_ids
                         .entry(func.id.clone())
@@ -620,49 +679,55 @@ pub(crate) fn raw_choices_from_sse_body(
                     });
                 }
             }
-            Some("response.output_item.done") => {
-                if let Some(item) = value
+            Some(kind @ "response.output_item.done") => {
+                let Some(item) = value
                     .get("item")
                     .cloned()
                     .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                {
-                    accumulator.push_output_item_done(item, &mut raw_choices, false);
-                }
+                else {
+                    return Err(malformed(kind));
+                };
+                accumulator.push_output_item_done(item, &mut raw_choices, false);
             }
-            Some("response.function_call_arguments.delta") => {
-                if let (Some(item_id), Some(delta)) = (
+            Some(kind @ "response.function_call_arguments.delta") => {
+                let (Some(item_id), Some(delta)) = (
                     value.get("item_id").and_then(serde_json::Value::as_str),
                     value.get("delta").and_then(serde_json::Value::as_str),
-                ) {
-                    let internal_call_id = accumulator
-                        .tool_call_internal_ids
-                        .entry(item_id.to_owned())
-                        .or_insert_with(crate::id::generate)
-                        .clone();
-                    raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
-                        id: item_id.to_owned(),
-                        internal_call_id,
-                        content: streaming::ToolCallDeltaContent::Delta(delta.to_owned()),
-                    });
-                }
+                ) else {
+                    return Err(malformed(kind));
+                };
+                let internal_call_id = accumulator
+                    .tool_call_internal_ids
+                    .entry(item_id.to_owned())
+                    .or_insert_with(crate::id::generate)
+                    .clone();
+                raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
+                    id: item_id.to_owned(),
+                    internal_call_id,
+                    content: streaming::ToolCallDeltaContent::Delta(delta.to_owned()),
+                });
             }
-            Some("response.completed") | Some("response.failed") | Some("response.incomplete") => {
-                if let Some(response) = value.get("response").cloned() {
-                    let response = serde_json::from_value::<CompletionResponse>(response)?;
-                    let Some(kind) = (match value.get("type").and_then(serde_json::Value::as_str) {
-                        Some("response.completed") => Some(ResponseChunkKind::ResponseCompleted),
-                        Some("response.failed") => Some(ResponseChunkKind::ResponseFailed),
-                        Some("response.incomplete") => Some(ResponseChunkKind::ResponseIncomplete),
-                        _ => None,
-                    }) else {
-                        continue;
-                    };
-                    accumulator.record_response_chunk(kind, response, data)?;
-                }
+            Some(kind @ ("response.completed" | "response.failed" | "response.incomplete")) => {
+                let Some(response) = value.get("response").cloned() else {
+                    return Err(malformed(kind));
+                };
+                let response = serde_json::from_value::<CompletionResponse>(response)?;
+                let chunk_kind = match kind {
+                    "response.completed" => ResponseChunkKind::ResponseCompleted,
+                    "response.failed" => ResponseChunkKind::ResponseFailed,
+                    _ => ResponseChunkKind::ResponseIncomplete,
+                };
+                accumulator.record_response_chunk(chunk_kind, response, data)?;
             }
             Some("error") => {
                 return Err(provider_response_from_responses_error_value(&value, data));
             }
+            // A known event type that failed the typed decode above and
+            // carries none of the content handled here is a data-level defect.
+            Some(kind) if is_known_responses_event_type(kind) => {
+                return Err(malformed(kind));
+            }
+            // Unknown event types stay skippable for forward compatibility.
             _ => {}
         }
     }
@@ -716,6 +781,30 @@ pub(crate) async fn completion_response_from_raw_choices(
         return Ok(None);
     }
 
+    // Merge per content kind: the replayed choice is authoritative for what it
+    // carried (reasoning, tool calls, streamed text), but some backends emit
+    // message text only in the terminal body while streaming other kinds as
+    // deltas. A replay with no message text takes the body's message content;
+    // everything replayed is kept.
+    let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    let replay_has_message_text = contents.iter().any(|content| {
+        matches!(
+            content,
+            completion::AssistantContent::Text(text) if !text.text.trim().is_empty()
+        )
+    });
+    if !replay_has_message_text {
+        contents.extend(
+            raw_response
+                .output
+                .iter()
+                .filter(|item| matches!(item, Output::Message(_)))
+                .cloned()
+                .flat_map(<Vec<completion::AssistantContent>>::from),
+        );
+    }
+    let choice = crate::OneOrMany::many(contents).unwrap_or_else(|_| stream.choice.clone());
+
     let terminal = stream.response.clone();
     let usage = terminal
         .as_ref()
@@ -746,7 +835,7 @@ pub(crate) async fn completion_response_from_raw_choices(
         .or_else(|| Some(raw_response.id.clone()).filter(|id| !id.is_empty()));
 
     Ok(Some(
-        completion::CompletionResponse::new(stream.choice.clone(), usage, provider)
+        completion::CompletionResponse::new(choice, usage, provider)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
             .with_optional_model(model)
@@ -806,7 +895,7 @@ where
         let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
         let span = tracing::Span::current();
 
-        let mut terminated_with_error = false;
+        let mut pending_error = None;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -820,26 +909,33 @@ where
                     }
 
                     if let Some(error) = provider_response_from_responses_sse_data(&evt.data) {
-                        terminated_with_error = true;
-                        yield Err(error);
+                        pending_error = Some(error);
                         break;
                     }
 
                     let data = match serde_json::from_str::<StreamingCompletionChunk>(&evt.data) {
                         Ok(data) => data,
                         Err(error) => {
-                            // Valid JSON that doesn't match our model is an
-                            // event type this client doesn't know yet (xAI and
-                            // other Responses-compatible gateways emit extras)
-                            // — skip it for forward compatibility, mirroring
-                            // how unknown wire enum values are preserved
-                            // rather than fatal. Invalid JSON is a genuinely
-                            // corrupt frame: surface it but keep consuming —
-                            // SSE self-synchronizes on blank lines, so a later
-                            // genuine terminal event can still complete the
-                            // stream, and without one the missing
-                            // `saw_terminal` suppresses the terminal record.
-                            if serde_json::from_str::<serde_json::Value>(&evt.data).is_ok() {
+                            // An unknown `type` is an event this client
+                            // doesn't model yet (xAI and other
+                            // Responses-compatible gateways emit extras) —
+                            // skip it for forward compatibility, mirroring
+                            // `ItemChunkKind::Unknown`. A known type that
+                            // fails to decode, or a frame that isn't JSON at
+                            // all, is a corrupt frame: surface it but keep
+                            // consuming — SSE self-synchronizes on blank
+                            // lines, so a later genuine terminal event can
+                            // still complete the stream, and without one the
+                            // missing `saw_terminal` suppresses the terminal
+                            // record.
+                            let is_unknown_event = serde_json::from_str::<serde_json::Value>(&evt.data)
+                                .is_ok_and(|value| {
+                                    value
+                                        .get("type")
+                                        .and_then(serde_json::Value::as_str)
+                                        .is_some_and(|kind| !is_known_responses_event_type(kind))
+                                });
+                            if is_unknown_event {
                                 tracing::warn!(
                                     "skipping unrecognized Responses SSE event: {:?}",
                                     error
@@ -868,8 +964,7 @@ where
                                 response,
                                 &evt.data,
                             ) {
-                                terminated_with_error = true;
-                                yield Err(error);
+                                pending_error = Some(error);
                                 break;
                             }
                         }
@@ -880,8 +975,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    terminated_with_error = true;
-                    yield Err(CompletionError::from_stream_transport(error));
+                    pending_error = Some(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -889,7 +983,14 @@ where
 
         event_source.close();
 
-        if terminated_with_error {
+        // Tool calls the provider fully delivered are content: they flush
+        // before the terminal error, which then ends the stream with no
+        // terminal record, preserving the failure signal.
+        if let Some(error) = pending_error {
+            for tool_call in accumulator.take_tool_calls() {
+                yield Ok(tool_call);
+            }
+            yield Err(error);
             return;
         }
 
@@ -1035,6 +1136,9 @@ pub struct SummaryPartChunk {
 pub struct SummaryTextChunk {
     pub summary_index: u64,
     pub sequence_number: u64,
+    // `response.reasoning_summary_text.delta` carries `delta`;
+    // the `.done` sibling carries the full `text` under the same shape.
+    #[serde(alias = "text")]
     pub delta: String,
 }
 
@@ -1648,8 +1752,11 @@ mod tests {
         assert_eq!(final_response.usage.total_tokens, 15);
     }
 
+    /// A `response.failed` after a fully-delivered tool call: the tool call is
+    /// content and flushes first, the terminal error follows, and nothing
+    /// (least of all a terminal record) comes after it.
     #[tokio::test]
-    async fn response_failed_chunk_terminates_stream_without_followup_items() {
+    async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
         let tool_call_done = json!({
             "type": "response.output_item.done",
             "output_index": 0,
@@ -1687,6 +1794,18 @@ mod tests {
         let request = model.completion_request("hello").build();
         let mut stream = model.stream(request).await.expect("stream should start");
 
+        let tool_call = match stream
+            .next()
+            .await
+            .expect("stream should yield the flushed tool call")
+            .expect("the flushed tool call must precede the terminal error")
+        {
+            StreamedAssistantContent::ToolCall { tool_call, .. } => tool_call,
+            other => panic!("expected the flushed tool call first, got {other:?}"),
+        };
+        assert_eq!(tool_call.id, "fc_123");
+        assert_eq!(tool_call.function.name, "example_tool");
+
         let err = stream
             .next()
             .await
@@ -1702,7 +1821,162 @@ mod tests {
         }));
         assert!(
             stream.next().await.is_none(),
-            "stream should terminate immediately after the first terminal error"
+            "stream should terminate immediately after the terminal error"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    /// Same ordering for a transport failure: fully-delivered tool call, then
+    /// the error, then the end — with no terminal record.
+    #[tokio::test]
+    async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
+        use crate::http_client::sse::GenericEventSource;
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        let tool_call_done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_123",
+                "arguments": "{}",
+                "call_id": "call_123",
+                "name": "example_tool",
+                "status": "completed"
+            }
+        });
+        let chunks = vec![
+            Ok(sse_bytes_from_data_lines([tool_call_done.to_string()])),
+            Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::BAD_GATEWAY,
+                r#"{"error":{"message":"upstream unavailable"}}"#.to_string(),
+            )),
+        ];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+        let event_source = GenericEventSource::new(client, req);
+        let mut stream = super::normalize_responses_stream(
+            "openai",
+            super::raw_stream_from_event_source(event_source, tracing::Span::none()),
+        );
+
+        match stream
+            .next()
+            .await
+            .expect("stream should yield the flushed tool call")
+            .expect("the flushed tool call must precede the transport error")
+        {
+            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                assert_eq!(tool_call.id, "fc_123");
+            }
+            other => panic!("expected the flushed tool call first, got {other:?}"),
+        }
+
+        let err = stream
+            .next()
+            .await
+            .expect("stream should yield the transport error")
+            .expect_err("the transport failure must reach the consumer");
+        assert_eq!(
+            err.provider_response_status(),
+            Some(http::StatusCode::BAD_GATEWAY)
+        );
+
+        assert!(
+            stream.next().await.is_none(),
+            "nothing may follow the terminal error"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    /// A known terminal event with a data-level defect (malformed `usage`) is
+    /// a corrupt frame, not silent truncation: the error surfaces and, since
+    /// the terminal itself failed to parse, no terminal record is emitted.
+    #[tokio::test]
+    async fn known_terminal_with_malformed_usage_surfaces_error_without_terminal() {
+        let mut event = json!({
+            "type": "response.completed",
+            "sequence_number": 1,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        event["response"]["usage"] = json!("banana");
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[event]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut saw_error = false;
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(other) => panic!("unexpected stream item: {other:?}"),
+                Err(err) => {
+                    assert!(
+                        matches!(err, crate::completion::CompletionError::JsonError(_)),
+                        "expected a parse error item, got {err:?}"
+                    );
+                    saw_error = true;
+                }
+            }
+        }
+
+        assert!(saw_error, "the corrupt terminal must surface as an error");
+        assert!(
+            !saw_final,
+            "a terminal that failed to parse must not produce a terminal record"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    /// An invented event type stays skippable for forward compatibility; a
+    /// later genuine terminal still completes the stream.
+    #[tokio::test]
+    async fn unknown_event_type_is_skipped_and_stream_completes() {
+        let unknown = json!({
+            "type": "response.rocket_launch",
+            "payload": { "count": 3 }
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 2,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[unknown, completed]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Final(_) =
+                item.expect("unknown event types must not surface as errors")
+            {
+                saw_final = true;
+            }
+        }
+        assert!(
+            saw_final,
+            "the genuine terminal must still complete the stream"
         );
     }
 
@@ -1839,6 +2113,96 @@ mod tests {
             stream.next().await.is_none(),
             "stream should terminate after HTTP non-success"
         );
+    }
+
+    /// The buffered unary path has no stream to carry error items, so a
+    /// corrupt known frame fails the whole decode — even when a valid terminal
+    /// follows — instead of returning a silently partial completion.
+    #[test]
+    fn corrupt_known_frame_fails_the_buffered_body() {
+        let corrupt = json!({
+            "type": "response.output_text.delta",
+            "delta": 42
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 2,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        let body = format!("data: {corrupt}\ndata: {completed}\n");
+
+        let err = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect_err("a corrupt known frame must fail the buffered decode");
+        assert!(
+            err.to_string().contains("response.output_text.delta"),
+            "the error should name the malformed event, got: {err}"
+        );
+
+        // Syntactically invalid JSON fails too.
+        let body = format!("data: {{not json\ndata: {completed}\n");
+        raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect_err("invalid JSON must fail the buffered decode");
+
+        // Unknown event types stay skippable.
+        let unknown = json!({ "type": "response.rocket_launch", "count": 3 });
+        let body = format!("data: {unknown}\ndata: {completed}\n");
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("unknown event types must stay skippable");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_))),
+            "the genuine terminal must still be recorded"
+        );
+    }
+
+    /// The replayed choice keeps its reasoning/tool calls, but message text
+    /// present only in the terminal body's `output` must merge in when no text
+    /// deltas were streamed (websocket replays hit exactly this quadrant).
+    #[tokio::test]
+    async fn terminal_body_message_text_merges_into_reasoning_only_replay() {
+        use crate::providers::openai::responses_api::Output;
+
+        let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
+            id: Some("rs_1".to_string()),
+            reasoning: "thinking".to_string(),
+        }];
+
+        let mut raw_response = sample_response(ResponseStatus::Completed);
+        raw_response.output = vec![
+            serde_json::from_value::<Output>(json!({
+                "type": "message",
+                "id": "msg_body_1",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "annotations": [], "text": "full answer" }]
+            }))
+            .expect("output message should deserialize"),
+        ];
+
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a reasoning-bearing replay is not empty");
+
+        let text: String = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "full answer");
+        assert!(
+            response.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(_)
+            )),
+            "the replayed reasoning must be kept"
+        );
+        assert_eq!(response.message_id.as_deref(), Some("msg_body_1"));
     }
 
     #[test]

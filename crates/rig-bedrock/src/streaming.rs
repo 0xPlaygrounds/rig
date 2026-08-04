@@ -241,16 +241,32 @@ fn process_event(
                     ))
                 }),
             );
-            // Tool calls normally flush at their ContentBlockStop; drain any
-            // stragglers here defensively (in block order) so a stream that
-            // omits the stop event still delivers every call. Other stop
-            // reasons (including MaxTokens) are genuine provider terminals,
-            // not errors: the Metadata path emits the terminal record with
-            // the mapped finish reason via `final_stop_reason`.
-            let mut remaining: Vec<(i32, ToolCallState)> = state.tool_calls.drain().collect();
-            remaining.sort_by_key(|(index, _)| *index);
-            for (_, tool_call) in remaining {
-                items.push(finalize_tool_call(tool_call));
+            // Tool calls normally flush at their ContentBlockStop; when the
+            // message genuinely stopped for tool use, drain any stragglers
+            // here defensively (in block order) so a stream that omits the
+            // stop event still delivers every call. Under any other stop
+            // reason (notably MaxTokens) an in-flight block is one the model
+            // never finished: drop it rather than fabricate a `{}`-args call
+            // or a spurious error item — truncation is signaled to the
+            // consumer by the mapped finish reason on the terminal record,
+            // which the Metadata path emits via `final_stop_reason`.
+            if matches!(state.final_stop_reason, Some(StopReason::ToolUse)) {
+                let mut remaining: Vec<(i32, ToolCallState)> = state.tool_calls.drain().collect();
+                remaining.sort_by_key(|(index, _)| *index);
+                for (_, tool_call) in remaining {
+                    items.push(finalize_tool_call(tool_call));
+                }
+            } else if !state.tool_calls.is_empty() {
+                let dropped: Vec<String> = state
+                    .tool_calls
+                    .drain()
+                    .map(|(_, tool_call)| tool_call.name)
+                    .collect();
+                tracing::warn!(
+                    tools = ?dropped,
+                    stop_reason = ?state.final_stop_reason,
+                    "dropping unfinished tool-use blocks left in flight at MessageStop"
+                );
             }
         }
         aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
@@ -961,6 +977,49 @@ mod tests {
             )),
             "malformed tool JSON must yield an error item"
         );
+    }
+
+    #[test]
+    fn max_tokens_stop_drops_in_flight_tool_block_without_deltas() {
+        // A tool-use block cut off by MaxTokens before any input arrived must
+        // produce neither a fabricated `{}`-args call nor an error item; the
+        // truncation is signaled by the Length-mapping stop reason on the
+        // terminal record.
+        let (items, state) = run_events(vec![
+            tool_start_event(0, "call_a", "get_weather"),
+            message_stop_event(aws_bedrock::StopReason::MaxTokens),
+        ]);
+
+        assert!(emitted_tool_calls(&items).is_empty());
+        assert!(
+            items.iter().all(|item| item.is_ok()),
+            "truncation must not surface as an error item"
+        );
+        assert_eq!(state.final_stop_reason, Some(StopReason::MaxTokens));
+        assert_eq!(
+            map_stop_reason(&StopReason::MaxTokens),
+            rig_core::completion::FinishReason::Length
+        );
+        assert!(state.tool_calls.is_empty(), "state must be cleared at stop");
+    }
+
+    #[test]
+    fn max_tokens_stop_drops_in_flight_tool_block_with_partial_json() {
+        // Same, but with partial JSON accumulated: the malformed input must
+        // not be parsed into a spurious Err at MessageStop.
+        let (items, state) = run_events(vec![
+            tool_start_event(0, "call_a", "get_weather"),
+            tool_delta_event(0, "{\"location\":\"Par"),
+            message_stop_event(aws_bedrock::StopReason::MaxTokens),
+        ]);
+
+        assert!(emitted_tool_calls(&items).is_empty());
+        assert!(
+            items.iter().all(|item| item.is_ok()),
+            "a truncated partial-JSON block must not yield an error item"
+        );
+        assert_eq!(state.final_stop_reason, Some(StopReason::MaxTokens));
+        assert!(state.tool_calls.is_empty(), "state must be cleared at stop");
     }
 
     #[test]

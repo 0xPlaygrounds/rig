@@ -482,6 +482,12 @@ The identifier and model setters on both `CompletionResponse` and
 produce `None`, matching the streaming paths, and the rule lives in the
 setters rather than at provider call sites.
 
+Both invariants also hold through `Deserialize`: the two types deserialize
+via a wire-shape mirror that funnels through `new(...)` and the setters, so
+a persisted `"finish_reason": "stop"` alongside a tool-call choice comes
+back as `ToolCalls` and a persisted `""` identifier comes back as `None`.
+The serialized wire format is unchanged.
+
 Corrupt stream frames (payloads that are not valid JSON) are now surfaced as
 `Err` items on the stream instead of being logged and silently skipped; the
 stream keeps consuming, and a later genuine terminal still completes it.

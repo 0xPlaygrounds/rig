@@ -41,6 +41,22 @@ enum StreamingEvent {
     },
 }
 
+/// The kebab-case `type` values [`StreamingEvent`] can deserialize. A frame
+/// whose `type` is in this set but fails the full parse has a data-level
+/// defect and is surfaced as an `Err` item; a `type` outside this set is an
+/// event this client doesn't know yet and is skipped.
+const KNOWN_EVENT_TYPES: [&str; 9] = [
+    "message-start",
+    "content-start",
+    "content-delta",
+    "content-end",
+    "tool-plan",
+    "tool-call-start",
+    "tool-call-delta",
+    "tool-call-end",
+    "message-end",
+];
+
 #[derive(Debug, Deserialize)]
 struct MessageContentDelta {
     text: Option<String>,
@@ -184,14 +200,25 @@ where
                         let event: StreamingEvent = match serde_json::from_str(data_str) {
                             Ok(ev) => ev,
                             Err(err) => {
-                                // Valid JSON with an unrecognized shape is an
-                                // event type this client doesn't know yet —
-                                // skip it for forward compatibility. Invalid
-                                // JSON is a genuinely corrupt frame: surface
-                                // it but keep consuming, so a later genuine
+                                // An unknown `type` is an event this client
+                                // doesn't know yet — skip it for forward
+                                // compatibility. A *known* `type` that fails
+                                // the full parse has a data-level defect, and
+                                // invalid JSON is a genuinely corrupt frame:
+                                // both are surfaced as `Err` items, but the
+                                // loop keeps consuming so a later genuine
                                 // `message-end` event can still complete the
                                 // stream with its terminal record.
-                                if serde_json::from_str::<serde_json::Value>(data_str).is_ok() {
+                                let is_unknown_event_type = serde_json::from_str::<serde_json::Value>(data_str)
+                                    .ok()
+                                    .and_then(|value| {
+                                        value
+                                            .get("type")
+                                            .and_then(serde_json::Value::as_str)
+                                            .map(|event_type| !KNOWN_EVENT_TYPES.contains(&event_type))
+                                    })
+                                    .unwrap_or(false);
+                                if is_unknown_event_type {
                                     tracing::warn!("skipping unrecognized Cohere SSE event: {err:?}");
                                 } else {
                                     yield Err(CompletionError::JsonError(err));
@@ -491,6 +518,106 @@ mod tests {
         assert!(saw_error, "the malformed frame must reach the consumer");
         let terminal = terminal.expect("the genuine terminal record must still arrive");
         assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
+    }
+
+    #[tokio::test]
+    async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // A known `type` whose payload fails the full parse (text should be a
+        // string) is a data-level defect, not a forward-compatibility event.
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":42}}}}"#,
+                r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut saw_error = false;
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(final_response)) => {
+                    terminal = Some(final_response)
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    assert!(
+                        matches!(err, CompletionError::JsonError(_)),
+                        "expected a JSON parse error item, got {err:?}"
+                    );
+                    saw_error = true;
+                }
+            }
+        }
+
+        assert!(
+            saw_error,
+            "a known event with a malformed field must surface an error item"
+        );
+        let terminal = terminal.expect("the genuine terminal record must still arrive");
+        assert_eq!(terminal.usage.input_tokens, 10);
+    }
+
+    #[tokio::test]
+    async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // An invented `type` is an event this client doesn't know yet: it is
+        // skipped for forward compatibility, not surfaced as an error.
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"citation-start","delta":{"whatever":true}}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"hi"}}}}"#,
+                r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("unknown event types must not surface errors") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        let terminal = terminal.expect("the genuine terminal record must still arrive");
         assert_eq!(terminal.usage.output_tokens, 4);
     }
 

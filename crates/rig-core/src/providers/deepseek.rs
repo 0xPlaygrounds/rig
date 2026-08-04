@@ -418,8 +418,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         let usage = crate::completion::Usage::from(&response.usage);
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_response_id(response.id.as_deref().filter(|id| !id.is_empty()))
-            .with_optional_model(response.model.as_deref().filter(|model| !model.is_empty()))
+            .with_optional_response_id(response.id.as_deref())
+            .with_optional_model(response.model.as_deref())
             .with_optional_finish_reason(finish_reason))
     }
 }

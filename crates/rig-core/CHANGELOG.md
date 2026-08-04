@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(completion)* identifier and model setters on `CompletionResponse`/`StreamFinal` treat empty strings as absent
 - *(streaming)* [**breaking**] corrupt stream frames (invalid JSON) are surfaced as `Err` items (stream continues; a later genuine terminal still completes it) instead of being logged and skipped; valid-JSON events with unrecognized shapes are still skipped for forward compatibility — openai responses, copilot, cohere, ollama
 - *(streaming)* a bare `[DONE]` after only unparseable frames no longer fabricates a zero-usage terminal record
+- *(streaming)* a full reasoning block now supersedes its accumulated deltas in the aggregated choice (correlated by reasoning item id) instead of duplicating them
+- *(streaming)* on a terminal stream error, fully-delivered tool calls are yielded before the terminal `Err` on every path (shared compat, openai responses, copilot) — previously the three paths disagreed
+- *(streaming)* stream parse policy discriminates on the known event `type`: known event with a schema defect surfaces an `Err`; unknown event types are skipped for forward compatibility (openai chat default profile included — its silent `Ok(None)` swallow is gone)
+- *(completion)* `CompletionResponse` and `StreamFinal` deserialize through a wire-shape mirror that funnels the validating setters, so finish-reason reconciliation and empty-string filtering also hold for persisted values (wire format unchanged)
+- *(providers)* the ChatGPT buffered SSE fallback fails the completion on corrupt known frames instead of returning silently partial content; the openai responses websocket path merges terminal-body message text absent from deltas
+- *(providers)* gemini interactions `InteractionStatus::is_terminal` enumerates the known in-flight states, so unknown statuses read as terminal instead of spinning a future poll loop forever
+- *(providers)* xai `response.reasoning_summary_text.done` events (which carry `text` rather than `delta`) now decode
 - *(providers)* copilot Responses streaming treats `response.incomplete` as a genuine terminal (partial content + `Length` finish reason) instead of an error; the WebSocket session preserves streamed partial output on incomplete terminals
 - *(providers)* errored streams flush fully-delivered tool calls before ending (shared OpenAI-compatible path and copilot Responses route)
 - *(providers)* gemini REST and Interactions wire enums preserve unknown values verbatim (`FinishReason`/`BlockReason`/`InteractionStatus` gained untagged catch-alls), matching the gRPC mapper

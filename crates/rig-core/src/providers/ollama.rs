@@ -2702,6 +2702,63 @@ mod tests {
         assert_eq!(terminal.usage.output_tokens, 4);
     }
 
+    // Proves the `done: true` record ends the stream: a content line that
+    // arrives after it is never yielded — only the pre-done content and the
+    // terminal record reach the consumer.
+    #[tokio::test]
+    async fn content_after_the_done_record_is_not_yielded() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":"stray"},"done":false}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(final_response) => {
+                    assert!(
+                        terminal.is_none(),
+                        "the terminal record must be yielded exactly once"
+                    );
+                    terminal = Some(final_response);
+                }
+                other => panic!("unexpected stream item: {other:?}"),
+            }
+        }
+
+        assert_eq!(
+            texts,
+            ["hi"],
+            "content after the done record must not be yielded"
+        );
+        let terminal = terminal.expect("the done record must yield the terminal record");
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
+    }
+
     // Proves a non-success HTTP response from `/api/chat` preserves the
     // provider's status + body through the `provider_response_*` helpers
     // (issue #1931).

@@ -295,7 +295,7 @@ where
         let mut final_finish_reason = None;
         let mut response_id = None;
         let mut response_model = None;
-        let mut terminated_with_error = false;
+        let mut pending_error = None;
         let mut saw_terminal = false;
         let mut saw_any_valid_frame = false;
 
@@ -315,8 +315,10 @@ where
                     }
 
                     if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
-                        terminated_with_error = true;
-                        yield Err(error);
+                        // Buffered rather than yielded here: fully-delivered
+                        // tool calls flush before the terminal error reaches
+                        // the consumer.
+                        pending_error = Some(error);
                         break;
                     }
 
@@ -455,8 +457,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    terminated_with_error = true;
-                    yield Err(CompletionError::from_stream_transport(error));
+                    pending_error = Some(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -465,16 +466,18 @@ where
         event_source.close();
 
         // Tool calls the provider fully delivered are content, so a truncated
-        // or errored stream still flushes them to the consumer.
+        // or errored stream still flushes them to the consumer — before any
+        // terminal error, so a first-`Err`-stop consumer sees them too.
         for tool_call in
             take_finalized_tool_calls(&mut tool_calls, DroppedToolCallContext::EndOfStream)
         {
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
         }
 
-        // An errored stream has already yielded its error; it ends with no
+        // A terminal failure ends the stream after the flush, with no
         // terminal record, preserving the truncation signal.
-        if terminated_with_error {
+        if let Some(error) = pending_error {
+            yield Err(error);
             return;
         }
 
@@ -1388,8 +1391,9 @@ mod tests {
         use crate::test_utils::SequencedStreamingHttpClient;
 
         // A fully-delivered tool call followed by a transport error: the tool
-        // call is content and must flush, the error must surface, and the
-        // stream must end without a terminal record.
+        // call is content and must flush BEFORE the error surfaces (so a
+        // first-`Err`-stop consumer sees it), and the stream must end without
+        // a terminal record.
         let chunks = vec![
             Ok(sse_bytes_from_data_lines([
                 "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"{\\\"x\\\":1}\"}}]}}],\"usage\":null}",
@@ -1417,11 +1421,18 @@ mod tests {
             match item {
                 Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
                 Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    assert!(
+                        !saw_error,
+                        "the flushed tool call must arrive before the terminal error"
+                    );
                     collected_tool_calls.push(tool_call);
                 }
                 Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(_) => saw_error = true,
+            }
+            if saw_error {
+                break;
             }
         }
 
@@ -1436,6 +1447,10 @@ mod tests {
         assert_eq!(
             collected_tool_calls[0].function.arguments,
             serde_json::json!({"x": 1})
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "nothing may follow the terminal error"
         );
         assert!(
             !saw_final,

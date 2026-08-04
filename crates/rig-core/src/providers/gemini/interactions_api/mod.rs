@@ -1306,14 +1306,15 @@ pub mod interactions_api_types {
 
     impl InteractionStatus {
         /// Returns true if the status is terminal.
+        ///
+        /// The known *in-flight* statuses are the allowlist, so a status this
+        /// crate does not know yet reads as terminal: a poll loop that treated
+        /// an unknown status as in-flight would wait on it forever, whereas
+        /// surfacing it lets the caller act on the provider's own spelling.
         pub fn is_terminal(&self) -> bool {
-            matches!(
+            !matches!(
                 self,
-                InteractionStatus::Completed
-                    | InteractionStatus::Incomplete
-                    | InteractionStatus::BudgetExceeded
-                    | InteractionStatus::Failed
-                    | InteractionStatus::Cancelled
+                InteractionStatus::InProgress | InteractionStatus::RequiresAction
             )
         }
 
@@ -3304,6 +3305,10 @@ mod tests {
         assert!(!interaction.is_terminal());
         assert!(!interaction.is_completed());
 
+        interaction.status = Some(InteractionStatus::RequiresAction);
+        assert!(!interaction.is_terminal());
+        assert!(!interaction.is_completed());
+
         interaction.status = Some(InteractionStatus::Completed);
         assert!(interaction.is_terminal());
         assert!(interaction.is_completed());
@@ -3392,7 +3397,9 @@ mod tests {
     #[test]
     fn test_interaction_with_unknown_status_stays_parseable() {
         // A status Google ships tomorrow must not fail the interaction
-        // payload; the unknown status is conservatively non-terminal.
+        // payload; the unknown status is conservatively *terminal* — only the
+        // known in-flight statuses keep a poll loop waiting, so a future
+        // status surfaces to the caller instead of hanging it.
         let interaction: Interaction = serde_json::from_value(json!({
             "id": "int-future",
             "status": "status_future",
@@ -3405,7 +3412,7 @@ mod tests {
             interaction.status,
             Some(InteractionStatus::Unknown(ref s)) if s == "status_future"
         ));
-        assert!(!interaction.is_terminal());
+        assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
         assert_eq!(
             interaction.usage.as_ref().and_then(|u| u.total_tokens),
