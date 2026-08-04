@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- Normalized completion metadata with shared `FinishReason`, concrete `CompletionResponse` and `StreamFinal`, public `ProviderCapabilities`, and provider-model `raw_completion`/`raw_stream` escape hatches for typed native responses.
+
+### Changed
+
+- [**breaking**] Removed response/client associated types and `make` from `CompletionModel`, made ordinary streaming carriers concrete, removed `GetTokenUsage`, and made `CompletionClient::completion_model` the required construction boundary.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
 
 ### Added

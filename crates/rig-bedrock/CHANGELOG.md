@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- `CompletionModel::raw_completion` and `raw_stream` preserve AWS Converse unary and terminal streaming responses before provider-local normalization.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.40.0...rig-bedrock-v0.41.0) - 2026-07-28
 
 ### Added
