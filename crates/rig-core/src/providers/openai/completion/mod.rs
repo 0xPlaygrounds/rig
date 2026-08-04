@@ -1170,7 +1170,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     })
                     .collect::<Vec<_>>();
 
-                if let Some(reasoning) = reasoning {
+                if let Some(reasoning) = reasoning
+                    && !reasoning.is_empty()
+                {
                     // llama.cpp exposes hidden reasoning on a separate non-standard field.
                     // Keep it structured here so the non-streaming path matches streaming
                     // behavior and does not pollute plain-text response surfaces.
@@ -2952,6 +2954,45 @@ mod tests {
             tool_calls[0].function.arguments,
             serde_json::json!({"city": "Paris"})
         );
+    }
+
+    #[test]
+    fn completion_response_accepts_tool_call_with_empty_content() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "",
+                    "tool_calls": [{ "type": "function", "function": { "name": "submit", "arguments": "{\"file_names\":[]}" }, "id": "xxx" }]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-5.4-2026-03-05",
+            "system_fingerprint": "fp_xxx",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 17, "prompt_tokens": 490, "total_tokens": 507, "completion_tokens_details": { "reasoning_tokens": 0 }, "prompt_tokens_details": { "cached_tokens": 0 } },
+            "id": "chatcmpl-test"
+        }
+        "#;
+        let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+
+        let completion: completion::CompletionResponse<CompletionResponse> =
+            response.try_into().expect("tool call response should convert");
+
+        assert_eq!(completion.choice.len(), 1);
+        let completion::AssistantContent::ToolCall(tool_call) = completion.choice.first() else {
+            panic!("expected tool call assistant content");
+        };
+        assert_eq!(tool_call.id, "xxx");
+        assert_eq!(tool_call.function.name, "submit");
+        assert_eq!(tool_call.function.arguments, serde_json::json!({"file_names": []}));
     }
 
     #[test]
