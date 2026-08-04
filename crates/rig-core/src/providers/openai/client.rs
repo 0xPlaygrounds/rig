@@ -282,7 +282,7 @@ impl ProviderClient for CompletionsClient {
 /// caller; `message` is only used for logging.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
+    #[serde(alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
 }
 

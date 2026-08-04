@@ -1289,6 +1289,7 @@ fn assistant_message_text_response(message: &Message) -> Option<String> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
+    #[serde(default)]
     pub index: usize,
     pub message: Message,
     pub logprobs: Option<serde_json::Value>,
@@ -2061,6 +2062,7 @@ mod tests {
     use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
     use crate::test_utils::MockCompletionModel;
+    use serde::de::IntoDeserializer;
     use std::collections::HashMap;
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -2989,8 +2991,9 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().expect("tool call response should convert");
+        let completion: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("tool call response should convert");
 
         assert_eq!(completion.choice.len(), 1);
         let completion::AssistantContent::ToolCall(tool_call) = completion.choice.first() else {
@@ -2998,7 +3001,10 @@ mod tests {
         };
         assert_eq!(tool_call.id, "xxx");
         assert_eq!(tool_call.function.name, "submit");
-        assert_eq!(tool_call.function.arguments, serde_json::json!({"file_names": []}));
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"file_names": []})
+        );
     }
 
     #[test]
@@ -3038,8 +3044,9 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().expect("azure tool call response should convert");
+        let completion: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("azure tool call response should convert");
 
         assert_eq!(completion.choice.len(), 1);
         let completion::AssistantContent::ToolCall(tool_call) = completion.choice.first() else {
@@ -3047,7 +3054,51 @@ mod tests {
         };
         assert_eq!(tool_call.id, "call_uxzJMRFj67ATO3PUXoRVEkiL");
         assert_eq!(tool_call.function.name, "submit");
-        assert_eq!(tool_call.function.arguments, serde_json::json!({"file_names": []}));
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"file_names": []})
+        );
+    }
+
+    #[test]
+    fn azure_completion_response_latest_body_deserializes() {
+        let request = r#"{
+            "id":"chatcmpl-E94XfRyGfDOuGpC5bdihIaC5s60ID",
+            "object":"chat.completion",
+            "created":1785831119,
+            "model":"gpt-5.4-2026-03-05",
+            "choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","reasoning_content":"","tool_calls":[{"index":0,"id":"call_pt3lGsEBiwiHZJGjzHTqGpzb","type":"function","function":{"name":"submit","arguments":"{\"file_names\":[]}"}}]}}],
+            "prompt_filter_results":null,
+            "usage":{"completion_tokens":17,"prompt_tokens":484,"total_tokens":501,"completion_tokens_details":{"audio_tokens":0,"reasoning_tokens":0},"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0}}
+        }"#;
+
+        let value: serde_json::Value = serde_json::from_str(request).unwrap();
+        let deserializer = value.into_deserializer();
+        let mut path_tracker = serde_path_to_error::Track::new();
+        let deserializer = serde_path_to_error::Deserializer::new(deserializer, &mut path_tracker);
+        let response =
+            ApiResponse::<CompletionResponse>::deserialize(deserializer).unwrap_or_else(|err| {
+                panic!("failed at {}: {err}", path_tracker.path());
+            });
+
+        let ApiResponse::Ok(response) = response else {
+            panic!("expected successful completion response");
+        };
+
+        let completion: completion::CompletionResponse<CompletionResponse> = response
+            .try_into()
+            .expect("latest azure tool call response should convert");
+
+        assert_eq!(completion.choice.len(), 1);
+        let completion::AssistantContent::ToolCall(tool_call) = completion.choice.first() else {
+            panic!("expected tool call assistant content");
+        };
+        assert_eq!(tool_call.id, "call_pt3lGsEBiwiHZJGjzHTqGpzb");
+        assert_eq!(tool_call.function.name, "submit");
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"file_names": []})
+        );
     }
 
     #[test]
