@@ -1,14 +1,16 @@
 //! Shared provider infrastructure: the wire-adapter contract, its
 //! single-policy-site driver, and the decode-then-validate classify layer.
 //!
-//! [`adapter`] and [`wire`] are public so out-of-tree providers implement
-//! [`adapter::WireAdapter`] and inherit the shared driver and frame-triage
-//! policy instead of hand-rolling per-provider assemblers; the remaining
-//! helpers are crate-private.
+//! [`adapter`], [`wire`], and [`tool_call_bridge`] are public so out-of-tree
+//! providers implement [`adapter::WireAdapter`] and inherit the shared driver,
+//! frame-triage policy, and index→identity tool-call bridging instead of
+//! hand-rolling per-provider assemblers; the remaining helpers are
+//! crate-private.
 
 pub mod adapter;
 pub(crate) mod auth;
 pub(crate) mod openai_chat_completions_compatible;
+pub mod tool_call_bridge;
 pub mod wire;
 
 pub(crate) fn completion_usage(

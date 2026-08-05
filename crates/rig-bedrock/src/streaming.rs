@@ -8,17 +8,17 @@ use crate::{
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
-    streaming::{RawStreamingChoice, ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput},
+    streaming::{RawStreamingChoice, ToolCallDeltaContent, UnparseableToolInput},
     wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing_futures::Instrument;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -59,17 +59,6 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
     }
 }
 
-/// Wire identity of an open tool-use block. Fragment assembly, internal-id
-/// minting, and finalize policy live in the shared accumulator
-/// (`PartsAccumulator::tool_input_*`); the adapter keeps only what the wire
-/// keys by — `contentBlockIndex` — mapped to the block's tool-use id (and the
-/// name, for the dropped-block warning).
-#[derive(Default, Clone)]
-struct OpenToolUseBlock {
-    name: String,
-    id: String,
-}
-
 #[derive(Default)]
 struct ReasoningState {
     content: String,
@@ -106,24 +95,19 @@ fn finalize_reasoning(
 
 /// Accumulated per-stream state for [`process_event`].
 ///
-/// In-flight tool calls are keyed by Bedrock's own `contentBlockIndex`: the
-/// Converse stream indexes every content block, and a message may open several
-/// tool-use blocks before it stops, so a single "current" slot would let a
-/// later block silently overwrite an earlier one.
+/// In-flight tool calls are keyed by Bedrock's own `contentBlockIndex` via
+/// the shared [`ToolCallBridge`]: the Converse stream indexes every content
+/// block, and a message may open several tool-use blocks before it stops, so
+/// a single "current" slot would let a later block silently overwrite an
+/// earlier one. Fragment assembly, internal-id minting, and finalize policy
+/// live in the shared accumulator (`PartsAccumulator::tool_input_*`); the
+/// bridge keeps only the index → identity mapping (and the name, for the
+/// dropped-block warning).
 #[derive(Default)]
 struct StreamState {
-    tool_calls: HashMap<i32, OpenToolUseBlock>,
+    tool_calls: ToolCallBridge<i32>,
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
-}
-
-/// End a closed tool-use block: the shared accumulator finalizes the
-/// assembled input. An empty accumulated input means a tool with no
-/// parameters; malformed JSON surfaces as an error item
-/// (`UnparseableToolInput::Error`) rather than a silent drop, so the terminal
-/// can never report tool use whose calls the consumer never saw.
-fn finalize_tool_call(tool_call: OpenToolUseBlock) -> RawStreamingChoice<BedrockStreamingResponse> {
-    RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(tool_call.id, UnparseableToolInput::Error))
 }
 
 /// Handle one Converse stream event, returning the items to yield in order.
@@ -146,11 +130,11 @@ fn process_event(
                     items.push(Ok(RawStreamingChoice::Message(text)));
                 }
                 aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
-                    if let Some(tool_call) = state.tool_calls.get(&event.content_block_index) {
+                    if let Some(tool_call) = state.tool_calls.get(event.content_block_index) {
                         // Emit the delta so UI can show progress; the shared
                         // accumulator assembles the fragments.
                         items.push(Ok(RawStreamingChoice::ToolCallDelta {
-                            id: tool_call.id.clone(),
+                            id: tool_call.key().to_owned(),
                             content: ToolCallDeltaContent::Delta(tool.input().to_string()),
                         }));
                     }
@@ -190,15 +174,16 @@ fn process_event(
             };
             match start {
                 aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
-                    state.tool_calls.insert(
+                    // The wire always supplies a tool-use id here; the shared
+                    // bridge fixes it as the assembly key (and would mint one
+                    // in the reserved namespace if the wire ever omitted it).
+                    let slot = state.tool_calls.open(
                         event.content_block_index,
-                        OpenToolUseBlock {
-                            name: tool_use.name.clone(),
-                            id: tool_use.tool_use_id.clone(),
-                        },
+                        Some(&tool_use.tool_use_id),
+                        Some(&tool_use.name),
                     );
                     items.push(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: tool_use.tool_use_id,
+                        id: slot.key().to_owned(),
                         content: ToolCallDeltaContent::Name(tool_use.name),
                     }));
                 }
@@ -215,9 +200,16 @@ fn process_event(
             }
             // A closed tool-use block is complete: finalize and emit it here,
             // mirroring the reasoning finalize above, so every call in a
-            // multi-tool-call message reaches the consumer.
-            if let Some(tool_call) = state.tool_calls.remove(&event.content_block_index) {
-                items.push(Ok(finalize_tool_call(tool_call)));
+            // multi-tool-call message reaches the consumer. The shared
+            // accumulator finalizes the assembled input: an empty accumulated
+            // input means a tool with no parameters, and malformed JSON
+            // surfaces as an error item (`UnparseableToolInput::Error`) rather
+            // than a silent drop, so the terminal can never report tool use
+            // whose calls the consumer never saw.
+            if let Some(tool_call) = state.tool_calls.remove(event.content_block_index) {
+                items.push(Ok(RawStreamingChoice::ToolInputEnd(
+                    tool_call.end_event(UnparseableToolInput::Error),
+                )));
             }
         }
         aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
@@ -241,17 +233,17 @@ fn process_event(
             // consumer by the mapped finish reason on the terminal record,
             // which the Metadata path emits via `final_stop_reason`.
             if matches!(state.final_stop_reason, Some(StopReason::ToolUse)) {
-                let mut remaining: Vec<(i32, OpenToolUseBlock)> =
-                    state.tool_calls.drain().collect();
-                remaining.sort_by_key(|(index, _)| *index);
-                for (_, tool_call) in remaining {
-                    items.push(Ok(finalize_tool_call(tool_call)));
+                for tool_call in state.tool_calls.drain_ordered() {
+                    items.push(Ok(RawStreamingChoice::ToolInputEnd(
+                        tool_call.end_event(UnparseableToolInput::Error),
+                    )));
                 }
             } else if !state.tool_calls.is_empty() {
                 let dropped: Vec<String> = state
                     .tool_calls
-                    .drain()
-                    .map(|(_, tool_call)| tool_call.name)
+                    .drain_ordered()
+                    .into_iter()
+                    .map(|tool_call| tool_call.name)
                     .collect();
                 tracing::warn!(
                     tools = ?dropped,

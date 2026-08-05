@@ -6,21 +6,19 @@
 //! state machine while leaving request parsing and provider-specific metadata to
 //! small profile hooks.
 
-use std::collections::HashMap;
-
 use async_stream::stream;
 use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
 use super::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use super::tool_call_bridge::{ToolCallBridge, ToolCallSlot};
 use super::wire::WireEvent;
 use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming::{
-    self, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent, ToolInputEnd,
-    UnparseableToolInput,
+    self, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent, UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
 
@@ -236,11 +234,7 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
         false
     }
 
-    fn should_evict(
-        &self,
-        existing: &OpenToolCallSlot,
-        incoming: &CompatibleToolCallChunk,
-    ) -> bool {
+    fn should_evict(&self, existing: &ToolCallSlot, incoming: &CompatibleToolCallChunk) -> bool {
         self.uses_distinct_tool_call_eviction()
             && should_evict_distinct_named_tool_call(existing, incoming)
     }
@@ -266,41 +260,8 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     }
 }
 
-/// Wire identity of a tool call whose input is streaming, as tracked by the
-/// adapter. Argument assembly, internal-id minting, and finalize policy live
-/// in the shared accumulator; the adapter keeps only what the *wire* keys
-/// by — the chunk index — mapped to the identity it established.
-#[derive(Debug, Clone)]
-pub(crate) struct OpenToolCallSlot {
-    /// Assembly id: the id under which this call's fragments are emitted.
-    /// Fixed at open: the first-seen provider id, or a `tool-{index}` id
-    /// minted from the chunk index when the wire omits one — never empty, so
-    /// parallel id-less calls can never share an assembly key downstream.
-    key: String,
-    /// Established provider id: updated when a later chunk carries one.
-    pub(crate) id: String,
-    /// Established tool name: the last non-empty value seen.
-    pub(crate) name: String,
-    signature: Option<String>,
-    additional_params: Option<serde_json::Value>,
-}
-
-impl OpenToolCallSlot {
-    fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
-        let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
-        // Only an established provider id overrides the assembly key; a call
-        // whose wire never supplied one keeps its minted `tool-{index}` id.
-        if !self.id.is_empty() {
-            end.tool_id = Some(self.id.clone());
-        }
-        end.signature = self.signature.clone();
-        end.additional_params = self.additional_params.clone();
-        end
-    }
-}
-
 pub(crate) fn should_evict_distinct_named_tool_call(
-    existing: &OpenToolCallSlot,
+    existing: &ToolCallSlot,
     incoming: &CompatibleToolCallChunk,
 ) -> bool {
     if let Some(new_id) = &incoming.id
@@ -331,9 +292,9 @@ pub(crate) enum CompatEvent<U, D> {
 /// Fragment assembly itself lives in the shared accumulator.
 struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
-    /// Index-to-identity map only: the Chat Completions wire keys tool call
-    /// fragments by chunk index, so the adapter must correlate.
-    open_tool_calls: HashMap<usize, OpenToolCallSlot>,
+    /// Index-to-identity bridge only: the Chat Completions wire keys tool
+    /// call fragments by chunk index, so the adapter must correlate.
+    open_tool_calls: ToolCallBridge<usize>,
     final_usage: Option<P::Usage>,
     final_finish_reason: Option<FinishReason>,
     response_id: Option<String>,
@@ -351,7 +312,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     fn new(profile: P) -> Self {
         Self {
             profile,
-            open_tool_calls: HashMap::new(),
+            open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
             final_finish_reason: None,
             response_id: None,
@@ -419,10 +380,10 @@ where
         }
 
         for incoming in choice.tool_calls {
-            if let Some(existing) = self.open_tool_calls.get(&incoming.index)
-                && self.profile.should_evict(existing, &incoming)
-                && let Some(evicted) = self.open_tool_calls.remove(&incoming.index)
-            {
+            let profile = &self.profile;
+            if let Some(evicted) = self.open_tool_calls.evict_if(incoming.index, |existing| {
+                profile.should_evict(existing, &incoming)
+            }) {
                 // The wire reused this call's slot: the evicted call is
                 // delivered even when its arguments never parse
                 // (empty-object fallback).
@@ -431,37 +392,20 @@ where
                 )));
             }
 
-            let slot = self
-                .open_tool_calls
-                .entry(incoming.index)
-                .or_insert_with(|| OpenToolCallSlot {
-                    key: match incoming.id.as_deref() {
-                        Some(id) if !id.is_empty() => id.to_owned(),
-                        // Id-less wires (several llama.cpp/vllm-style
-                        // gateways) key tool calls by chunk index alone; the
-                        // grammar id is minted from that index in the
-                        // reserved namespace so it is never empty and never
-                        // collides with a wire-genuine id.
-                        _ => super::adapter::SyntheticIds::tool().for_index(incoming.index),
-                    },
-                    id: String::new(),
-                    name: String::new(),
-                    signature: None,
-                    additional_params: None,
-                });
-
-            if let Some(id) = incoming.id.as_ref()
-                && !id.is_empty()
-            {
-                slot.id = id.clone();
-            }
+            // The bridge fixes the assembly key at open — the wire id, or a
+            // provenance-gated `tool-{index}` mint when the wire omits one —
+            // and updates the established id/name from later fragments.
+            let slot = self.open_tool_calls.open(
+                incoming.index,
+                incoming.id.as_deref(),
+                incoming.name.as_deref(),
+            );
 
             if let Some(name) = incoming.name.as_ref()
                 && !name.is_empty()
             {
-                slot.name = name.clone();
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: slot.key.clone(),
+                    id: slot.key().to_owned(),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }));
             }
@@ -470,7 +414,7 @@ where
                 && !arguments.is_empty()
             {
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: slot.key.clone(),
+                    id: slot.key().to_owned(),
                     content: ToolCallDeltaContent::Delta(arguments.clone()),
                 }));
             }
@@ -481,8 +425,8 @@ where
             {
                 // Completion probe: the accumulator finalizes the call only
                 // if its input parses, and keeps it open otherwise (`Keep`).
-                // The slot stays in the map either way — a later flush of an
-                // already finalized key is a no-op downstream.
+                // The slot stays in the bridge either way — a later flush of
+                // an already finalized key is a no-op downstream.
                 out.push(Ok(RawStreamingChoice::ToolInputEnd(
                     slot.end_event(UnparseableToolInput::Keep),
                 )));
@@ -490,14 +434,8 @@ where
         }
 
         for detail in &choice.details {
-            if let Some(decoration) = self.profile.decorate_tool_call(detail)
-                && let Some(slot) = self
-                    .open_tool_calls
-                    .values_mut()
-                    .find(|slot| slot.id == decoration.tool_id)
-            {
-                slot.signature = decoration.signature;
-                slot.additional_params = decoration.additional_params;
+            if let Some(decoration) = self.profile.decorate_tool_call(detail) {
+                self.open_tool_calls.decorate(decoration);
             }
         }
 
@@ -519,7 +457,8 @@ where
         }
 
         if choice.finish_reason.is_tool_calls() {
-            for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+            for slot in self.open_tool_calls.drain_ordered() {
+                let end = slot.end_event(UnparseableToolInput::Drop);
                 out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
             }
         }
@@ -529,7 +468,8 @@ where
         // Tool calls the provider fully delivered are content, so a truncated
         // stream still flushes them to the consumer. Partial calls (arguments
         // that never parse) drop in the accumulator.
-        for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+        for slot in self.open_tool_calls.drain_ordered() {
+            let end = slot.end_event(UnparseableToolInput::Drop);
             out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
         }
 
@@ -559,7 +499,8 @@ where
     fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
         // Fully-delivered tool calls flush before the terminal error reaches
         // the consumer, so a first-`Err`-stop consumer sees them too.
-        for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+        for slot in self.open_tool_calls.drain_ordered() {
+            let end = slot.end_event(UnparseableToolInput::Drop);
             out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
         }
     }
@@ -662,20 +603,6 @@ fn record_response_metadata(
     {
         span.record("gen_ai.response.model", response_model);
     }
-}
-
-fn drain_open_tool_calls(
-    open_tool_calls: &mut HashMap<usize, OpenToolCallSlot>,
-) -> Vec<ToolInputEnd> {
-    // The wire keys tool calls by chunk index; flush in index order so a
-    // multi-call turn keeps its wire ordering. Nameless or partial calls
-    // drop in the accumulator (`UnparseableToolInput::Drop`).
-    let mut slots: Vec<(usize, OpenToolCallSlot)> = open_tool_calls.drain().collect();
-    slots.sort_by_key(|(index, _)| *index);
-    slots
-        .into_iter()
-        .map(|(_, slot)| slot.end_event(UnparseableToolInput::Drop))
-        .collect()
 }
 
 #[cfg(test)]
