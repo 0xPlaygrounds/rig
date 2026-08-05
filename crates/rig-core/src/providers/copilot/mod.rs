@@ -1447,34 +1447,13 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
     type Detail = ();
     type FinalResponse = CopilotStreamingResponse;
 
-    fn normalize_chunk(
+    fn classify_chunk(
         &self,
         data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        // Frame policy for Copilot's chat SSE wire — same classify as the
-        // shared OpenAI-compatible chat profile (see
-        // `providers::internal::wire::classify_chat_completions_frame` for
-        // the recognizability dispatch):
-        //
-        // | classify  | action                                              |
-        // |-----------|-----------------------------------------------------|
-        // | `Known`   | normalize below                                     |
-        // | `Unknown` | warn + skip (forward compatibility)                 |
-        // | `Corrupt` | surface an `Err` item; the shared compat layer      |
-        // |           | keeps consuming, so a later genuine terminal still  |
-        // |           | completes the stream                                |
-        let data = match wire::classify_chat_completions_frame::<ChatStreamingChunk>(data) {
-            wire::WireEvent::Known(chunk) => chunk,
-            wire::WireEvent::Unknown { event_type, .. } => {
-                tracing::warn!(event_type, "skipping unrecognized Copilot chat SSE event");
-                return Ok(None);
-            }
-            wire::WireEvent::Corrupt(error) => {
-                return Err(CompletionError::from(error));
-            }
-        };
-
-        Ok(Some(
+    ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        // Classification only — the unknown/corrupt policy (warn-skip vs.
+        // in-band `Err` item) lives in the shared driver, not here.
+        wire::classify_chat_completions_frame::<ChatStreamingChunk>(data).map(|data| {
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
@@ -1506,8 +1485,8 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                     ),
                     details: Vec::new(),
                 },
-            ),
-        ))
+            )
+        })
     }
 
     fn build_final_response(

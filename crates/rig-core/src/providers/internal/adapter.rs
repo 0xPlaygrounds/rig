@@ -94,8 +94,53 @@ pub trait WireAdapter {
     /// Never runs after a transport error (truncation drops partials) or after
     /// a terminal was interpreted. Must not synthesize a terminal record: EOF
     /// without the provider's own end event is truncation, and a fabricated
-    /// terminal would read as a successfully completed turn.
+    /// terminal would read as a successfully completed turn. (A terminal the
+    /// provider *did* signal earlier — e.g. the chat-completions `[DONE]`
+    /// sentinel or a `finish_reason` chunk, whose usage trailer arrives later —
+    /// may be emitted here; that is deferral, not synthesis.)
     fn finish(&mut self, out: &mut AdapterOutput<Self::Response>);
+
+    /// Flush content the provider fully delivered before a terminal error item
+    /// (a transport failure or an in-band provider error envelope) reaches the
+    /// consumer.
+    ///
+    /// Default: nothing — truncation drops partials. Wires that buffer
+    /// fully-delivered tool calls (the chat-completions compat family, the
+    /// Responses SSE loop) override this so a first-`Err`-stop consumer still
+    /// sees them. Must not push a terminal record.
+    fn flush_before_terminal_error(&mut self, _out: &mut AdapterOutput<Self::Response>) {}
+
+    /// Whether `interpret` consumed the wire's own in-band terminal failure.
+    ///
+    /// When true after an `interpret` call, the driver stops consuming without
+    /// running the EOF `finish` flush — the adapter has already pushed the
+    /// flush-then-`Err` sequence itself. Default: never.
+    fn is_finished(&self) -> bool {
+        false
+    }
+}
+
+/// Triage one classified frame under the shared policy table (see the module
+/// docs): `Known` passes through, `Unknown` is warned (with its payload) and
+/// skipped, `Corrupt` is a [`CompletionError::JsonError`].
+///
+/// This is [`run_wire_stream`]'s per-frame policy factored out for the
+/// non-stream surfaces that classify frames one at a time (the websocket
+/// pre-dispatch, the interactions typed-event stream), so they share the
+/// driver's table instead of restating it.
+pub fn triage_frame<T>(event: WireEvent<T>) -> Result<Option<T>, CompletionError> {
+    match event {
+        WireEvent::Known(event) => Ok(Some(event)),
+        WireEvent::Unknown { event_type, value } => {
+            tracing::warn!(
+                event_type,
+                payload = %value,
+                "skipping unrecognized stream event"
+            );
+            Ok(None)
+        }
+        WireEvent::Corrupt(error) => Err(CompletionError::JsonError(error)),
+    }
 }
 
 /// Drive one transport stream through an adapter under the shared policy.
@@ -119,23 +164,24 @@ where
                 Ok(frame) => frame,
                 Err(error) => {
                     // Truncation semantics: the error is the last item — no
-                    // finish flush (partials drop), no terminal record.
+                    // finish flush (partials drop), no terminal record. Content
+                    // the provider fully delivered (an adapter's buffered tool
+                    // calls) still flushes first, so a first-`Err`-stop
+                    // consumer sees it.
+                    adapter.flush_before_terminal_error(&mut out);
+                    for item in out.drain(..) {
+                        yield item;
+                    }
                     yield Err(error);
                     return;
                 }
             };
 
-            match adapter.classify(frame) {
-                WireEvent::Known(event) => adapter.interpret(event, &mut out),
-                WireEvent::Unknown { event_type, value } => {
-                    tracing::warn!(
-                        event_type,
-                        payload = %value,
-                        "skipping unrecognized stream event"
-                    );
-                }
-                WireEvent::Corrupt(error) => {
-                    yield Err(CompletionError::JsonError(error));
+            match triage_frame(adapter.classify(frame)) {
+                Ok(Some(event)) => adapter.interpret(event, &mut out),
+                Ok(None) => {}
+                Err(error) => {
+                    yield Err(error);
                 }
             }
 
@@ -145,7 +191,7 @@ where
             for item in out.drain(..) {
                 yield item;
             }
-            if saw_terminal {
+            if saw_terminal || adapter.is_finished() {
                 return;
             }
         }
@@ -155,6 +201,76 @@ where
             yield item;
         }
     })
+}
+
+/// Drive an already-buffered frame sequence through an adapter under the
+/// no-stream policy.
+///
+/// This is the driver's buffered/unary mode, for replayed SSE bodies decoded
+/// after the fact (the Responses unary path, ChatGPT's replayed bodies). There
+/// is no stream to carry in-band `Err` items, so the policy table tightens —
+/// everything else is identical to [`run_wire_stream`]:
+///
+/// | classify                  | buffered action                              |
+/// |---------------------------|----------------------------------------------|
+/// | [`WireEvent::Known`]      | `adapter.interpret`; an `Err` item it pushes |
+/// |                           | fails the whole operation                    |
+/// | [`WireEvent::Unknown`]    | `tracing::warn!` + skip                      |
+/// | [`WireEvent::Corrupt`]    | fail the whole operation — the alternative   |
+/// |                           | is a successful-but-incomplete completion    |
+///
+/// The `Corrupt` error's own message is surfaced verbatim (as a
+/// [`CompletionError::ResponseError`]), so a classifier can attach
+/// frame-naming context for the operation error.
+pub fn run_wire_buffered<A>(
+    frames: impl IntoIterator<Item = A::Frame>,
+    mut adapter: A,
+) -> Result<Vec<RawStreamingChoice<A::Response>>, CompletionError>
+where
+    A: WireAdapter,
+{
+    let mut out: AdapterOutput<A::Response> = Vec::new();
+    let mut choices = Vec::new();
+
+    for frame in frames {
+        match adapter.classify(frame) {
+            WireEvent::Known(event) => adapter.interpret(event, &mut out),
+            WireEvent::Unknown { event_type, value } => {
+                tracing::warn!(
+                    event_type,
+                    payload = %value,
+                    "skipping unrecognized stream event"
+                );
+            }
+            WireEvent::Corrupt(error) => {
+                return Err(CompletionError::ResponseError(error.to_string()));
+            }
+        }
+
+        let saw_terminal = drain_buffered(&mut out, &mut choices)?;
+        if saw_terminal || adapter.is_finished() {
+            return Ok(choices);
+        }
+    }
+
+    adapter.finish(&mut out);
+    drain_buffered(&mut out, &mut choices)?;
+    Ok(choices)
+}
+
+/// Move one buffered step's output into `choices`, failing the operation on
+/// the first `Err` item; reports whether a terminal record was appended.
+fn drain_buffered<R>(
+    out: &mut AdapterOutput<R>,
+    choices: &mut Vec<RawStreamingChoice<R>>,
+) -> Result<bool, CompletionError> {
+    let mut saw_terminal = false;
+    for item in out.drain(..) {
+        let choice = item?;
+        saw_terminal |= matches!(choice, RawStreamingChoice::FinalResponse(_));
+        choices.push(choice);
+    }
+    Ok(saw_terminal)
 }
 
 /// Fabricated per-stream identity for wires that carry none.

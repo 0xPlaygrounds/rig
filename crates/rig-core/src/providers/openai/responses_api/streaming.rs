@@ -4,6 +4,9 @@ use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
+use crate::providers::internal::adapter::{
+    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered, run_wire_stream,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
@@ -670,10 +673,11 @@ pub(crate) fn raw_choices_from_sse_body(
     body: &str,
     initial_usage: ResponsesUsage,
 ) -> Result<Vec<StreamingRawChoice>, CompletionError> {
-    let mut raw_choices = Vec::new();
-    let mut accumulator = RawChoiceAccumulator::new(initial_usage);
-    let options = ResponsesStreamOptions::strict();
-
+    // Framing layer for the buffered (unary) Responses SSE body: line
+    // splitting, sentinel skipping, and the provider `error` envelope
+    // pre-check (which fails the operation, mirroring the live transport).
+    // Classification and policy live in the buffered driver.
+    let mut frames = Vec::new();
     for line in body.lines() {
         let data = line
             .strip_prefix("data:")
@@ -683,80 +687,21 @@ pub(crate) fn raw_choices_from_sse_body(
             continue;
         }
 
-        // Provider `error` events fail the operation, mirroring the live
-        // loop's pre-classify check.
         if let Some(error) = provider_response_from_responses_sse_data(data) {
             return Err(error);
         }
 
-        // Frame policy for the buffered (unary) Responses SSE body — the SAME
-        // interpreter as the live loop (`classify_responses_frame` feeding
-        // `RawChoiceAccumulator`), but there is no stream to carry `Err`
-        // items, so defects fail the whole operation:
-        //
-        // | classify  | action                                              |
-        // |-----------|-----------------------------------------------------|
-        // | `Known`   | apply to the accumulator                            |
-        // | `Unknown` | skip (forward compatibility)                        |
-        // | `Corrupt`, invalid JSON | fail the operation — the alternative  |
-        // |           | is a successful-but-incomplete completion           |
-        // | `Corrupt`, valid JSON   | envelope repair, then reclassify      |
-        // |           | through the same interpreter                        |
-        //
-        // The repair step exists because replayed bodies (ChatGPT) omit
-        // envelope bookkeeping fields the typed decode requires; see
-        // [`repair_envelope_less_frame`]. A frame that is still corrupt after
-        // repair is defective in its data, not its envelope, and fails.
-        let chunk = match classify_responses_frame(data) {
-            WireEvent::Known(chunk) => Some(chunk),
-            WireEvent::Unknown { event_type, .. } => {
-                tracing::warn!(event_type, "skipping unrecognized Responses SSE event");
-                None
-            }
-            WireEvent::Corrupt(corrupt) => {
-                let repaired = repair_envelope_less_frame(data).ok_or_else(|| {
-                    CompletionError::ResponseError(format!(
-                        "invalid JSON frame in buffered Responses SSE body: {corrupt}"
-                    ))
-                })?;
-                match classify_responses_frame(&repaired) {
-                    WireEvent::Known(chunk) => Some(chunk),
-                    // `Unknown` is unreachable here (an unknown `type` never
-                    // classified as `Corrupt` above); treat it as the defect
-                    // it would be.
-                    WireEvent::Unknown { .. } | WireEvent::Corrupt(_) => {
-                        let kind = serde_json::from_str::<serde_json::Value>(data)
-                            .ok()
-                            .and_then(|value| {
-                                value
-                                    .get("type")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(ToOwned::to_owned)
-                            })
-                            .unwrap_or_default();
-                        return Err(CompletionError::ResponseError(format!(
-                            "malformed `{kind}` event in buffered Responses SSE body"
-                        )));
-                    }
-                }
-            }
-        };
-
-        if let Some(chunk) = chunk {
-            match chunk {
-                StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
-                }
-                StreamingCompletionChunk::Response(chunk) => {
-                    let ResponseChunk { kind, response, .. } = *chunk;
-                    accumulator.record_response_chunk(kind, response, data)?;
-                }
-            }
-        }
+        frames.push(WireFrame::Text(data.to_owned()));
     }
 
-    raw_choices.extend(accumulator.finish());
-    Ok(raw_choices)
+    // The SAME interpreter as the live loop (`classify_responses_frame`
+    // feeding `RawChoiceAccumulator`), under [`run_wire_buffered`]'s
+    // no-stream policy: there is no stream to carry `Err` items, so `Corrupt`
+    // frames — and adapter-detected data errors like `response.failed` — fail
+    // the whole operation instead of returning a silently partial completion.
+    // Buffered classification adds the envelope-repair salvage; see
+    // [`ResponsesAdapter::buffered`].
+    run_wire_buffered(frames, ResponsesAdapter::buffered(initial_usage))
 }
 
 pub(crate) async fn completion_response_from_sse_body(
@@ -908,7 +853,7 @@ where
 }
 
 pub(crate) fn raw_stream_from_event_source_with_options<HttpClient, RequestBody>(
-    mut event_source: GenericEventSource<HttpClient, RequestBody>,
+    event_source: GenericEventSource<HttpClient, RequestBody>,
     span: tracing::Span,
     options: ResponsesStreamOptions,
 ) -> streaming::RawStreamingResult<StreamingCompletionResponse>
@@ -916,17 +861,16 @@ where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    let stream = stream! {
-        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
-        let span = tracing::Span::current();
-
-        let mut pending_error = None;
-
+    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
+    // and the wire's in-band provider `error` envelope (a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure would
+    // be) — classification and policy live downstream.
+    let transport = stream! {
+        let mut event_source = Box::pin(event_source);
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(Event::Open) => {
                     tracing::trace!("SSE connection opened");
-                    continue;
                 }
                 Ok(Event::Message(evt)) => {
                     if evt.data.trim().is_empty() || evt.data == "[DONE]" {
@@ -934,88 +878,169 @@ where
                     }
 
                     if let Some(error) = provider_response_from_responses_sse_data(&evt.data) {
-                        pending_error = Some(error);
+                        // A terminal failure: the driver flushes
+                        // fully-delivered content, yields this error last,
+                        // and emits no terminal record.
+                        yield Err(error);
                         break;
                     }
 
-                    // Frame policy for the live Responses SSE loop:
-                    //
-                    // | classify  | action                                     |
-                    // |-----------|--------------------------------------------|
-                    // | `Known`   | apply to the accumulator below             |
-                    // | `Unknown` | warn + skip (xAI and other Responses-      |
-                    // |           | compatible gateways emit extra events)     |
-                    // | `Corrupt` | yield an `Err` item, keep consuming — SSE  |
-                    // |           | self-synchronizes on blank lines, so a     |
-                    // |           | later genuine terminal event can still     |
-                    // |           | complete the stream, and without one the   |
-                    // |           | missing `saw_terminal` suppresses the      |
-                    // |           | terminal record                            |
-                    let data = match classify_responses_frame(&evt.data) {
-                        WireEvent::Known(data) => data,
-                        WireEvent::Unknown { event_type, .. } => {
-                            tracing::warn!(event_type, "skipping unrecognized Responses SSE event");
-                            continue;
-                        }
-                        WireEvent::Corrupt(error) => {
-                            yield Err(CompletionError::from(error));
-                            continue;
-                        }
-                    };
-
-                    match data {
-                        StreamingCompletionChunk::Delta(chunk) => {
-                            for choice in accumulator.decode_item_chunk(chunk, options) {
-                                yield Ok(choice);
-                            }
-                        }
-                        StreamingCompletionChunk::Response(chunk) => {
-                            let ResponseChunk { kind, response, .. } = *chunk;
-                            if matches!(kind, ResponseChunkKind::ResponseCompleted) {
-                                span.record("gen_ai.response.id", response.id.as_str());
-                                span.record("gen_ai.response.model", response.model.as_str());
-                            }
-                            if let Err(error) = accumulator.record_response_chunk(
-                                kind,
-                                response,
-                                &evt.data,
-                            ) {
-                                pending_error = Some(error);
-                                break;
-                            }
-                        }
-                    }
+                    yield Ok(WireFrame::Text(evt.data));
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
-                    event_source.close();
+                    break;
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    pending_error = Some(CompletionError::from_stream_transport(error));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
         }
-
         event_source.close();
+    };
 
-        // Tool calls the provider fully delivered are content: they flush
-        // before the terminal error, which then ends the stream with no
-        // terminal record, preserving the failure signal.
-        if let Some(error) = pending_error {
-            for tool_call in accumulator.take_tool_calls() {
-                yield Ok(tool_call);
-            }
-            yield Err(error);
+    Box::pin(run_wire_stream(transport, ResponsesAdapter::live(options)).instrument(span))
+}
+
+/// One classified Responses frame, carrying its raw payload alongside the
+/// decoded chunk: `response.failed` preserves the raw event body as the
+/// provider error body, exactly as the pre-migration loop did.
+pub(crate) struct ResponsesFrameEvent {
+    raw: String,
+    chunk: StreamingCompletionChunk,
+}
+
+/// The OpenAI Responses SSE wire as a [`WireAdapter`], shared by the live
+/// loop ([`run_wire_stream`]) and the buffered unary path
+/// ([`run_wire_buffered`]).
+///
+/// Holds the per-stream assembly state ([`RawChoiceAccumulator`]); frame
+/// triage policy lives in the drivers, not here. The two modes differ only in
+/// classification: the buffered mode adds the envelope-repair salvage for
+/// ChatGPT's replayed bodies (see [`repair_envelope_less_frame`] for why the
+/// live wire deliberately does NOT repair).
+pub(crate) struct ResponsesAdapter {
+    accumulator: RawChoiceAccumulator,
+    options: ResponsesStreamOptions,
+    /// Buffered-only envelope salvage; `false` on the live wire.
+    repair_envelopes: bool,
+    /// A `response.failed` event ended the turn: the flush-then-`Err`
+    /// sequence has been pushed and the driver stops consuming.
+    finished: bool,
+}
+
+impl ResponsesAdapter {
+    fn live(options: ResponsesStreamOptions) -> Self {
+        Self {
+            accumulator: RawChoiceAccumulator::new(ResponsesUsage::new()),
+            options,
+            repair_envelopes: false,
+            finished: false,
+        }
+    }
+
+    fn buffered(initial_usage: ResponsesUsage) -> Self {
+        Self {
+            accumulator: RawChoiceAccumulator::new(initial_usage),
+            options: ResponsesStreamOptions::strict(),
+            repair_envelopes: true,
+            finished: false,
+        }
+    }
+}
+
+impl WireAdapter for ResponsesAdapter {
+    type Frame = WireFrame;
+    type Event = ResponsesFrameEvent;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesFrameEvent> {
+        let data = frame.as_str().into_owned();
+        let event = if self.repair_envelopes {
+            // Buffered bodies (ChatGPT's replayed unary SSE) omit envelope
+            // bookkeeping fields; salvage through the SAME interpreter, with
+            // the operation-error wording the buffered driver surfaces
+            // verbatim.
+            wire::classify_with_repair(
+                &data,
+                classify_responses_frame,
+                repair_envelope_less_frame,
+                |corrupt| {
+                    <serde_json::Error as serde::de::Error>::custom(format!(
+                        "invalid JSON frame in buffered Responses SSE body: {corrupt}"
+                    ))
+                },
+                || {
+                    let kind = serde_json::from_str::<serde_json::Value>(&data)
+                        .ok()
+                        .and_then(|value| {
+                            value
+                                .get("type")
+                                .and_then(serde_json::Value::as_str)
+                                .map(ToOwned::to_owned)
+                        })
+                        .unwrap_or_default();
+                    <serde_json::Error as serde::de::Error>::custom(format!(
+                        "malformed `{kind}` event in buffered Responses SSE body"
+                    ))
+                },
+            )
+        } else {
+            classify_responses_frame(&data)
+        };
+        event.map(|chunk| ResponsesFrameEvent { raw: data, chunk })
+    }
+
+    fn interpret(&mut self, event: ResponsesFrameEvent, out: &mut AdapterOutput<Self::Response>) {
+        if self.finished {
             return;
         }
 
+        match event.chunk {
+            StreamingCompletionChunk::Delta(chunk) => {
+                out.extend(
+                    self.accumulator
+                        .decode_item_chunk(chunk, self.options)
+                        .into_iter()
+                        .map(Ok),
+                );
+            }
+            StreamingCompletionChunk::Response(chunk) => {
+                let ResponseChunk { kind, response, .. } = *chunk;
+                if matches!(kind, ResponseChunkKind::ResponseCompleted) {
+                    let span = tracing::Span::current();
+                    span.record("gen_ai.response.id", response.id.as_str());
+                    span.record("gen_ai.response.model", response.model.as_str());
+                }
+                if let Err(error) = self
+                    .accumulator
+                    .record_response_chunk(kind, response, &event.raw)
+                {
+                    // `response.failed`: fully-delivered tool calls flush
+                    // before the terminal error, which ends the stream with
+                    // no terminal record, preserving the failure signal.
+                    out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
+                    out.push(Err(error));
+                    self.finished = true;
+                }
+            }
+        }
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        let accumulator = std::mem::replace(
+            &mut self.accumulator,
+            RawChoiceAccumulator::new(ResponsesUsage::new()),
+        );
         let final_usage = accumulator.final_usage.clone();
 
-        for tool_call in accumulator.finish() {
-            yield Ok(tool_call)
-        }
+        // Flush buffered tool calls, then the terminal record when a genuine
+        // terminal event arrived; EOF without one is truncation and the
+        // accumulator withholds the record (deferral, never synthesis).
+        out.extend(accumulator.finish().into_iter().map(Ok));
 
+        let span = tracing::Span::current();
         span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
         span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
         let cached_tokens = final_usage
@@ -1024,11 +1049,17 @@ where
             .map(|d| d.cached_tokens)
             .unwrap_or(0);
         span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
-
     }
-    .instrument(span);
 
-    Box::pin(stream)
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        // Tool calls the provider fully delivered are content: they flush
+        // before the terminal error reaches the consumer.
+        out.extend(self.accumulator.take_tool_calls().into_iter().map(Ok));
+    }
+
+    fn is_finished(&self) -> bool {
+        self.finished
+    }
 }
 
 /// An item message chunk from OpenAI's Responses API.

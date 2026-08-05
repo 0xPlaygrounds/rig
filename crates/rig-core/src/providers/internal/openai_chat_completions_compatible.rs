@@ -13,6 +13,8 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
+use super::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use super::wire::WireEvent;
 use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -163,9 +165,6 @@ pub(crate) struct CompatibleChunk<U, D> {
     pub(crate) usage: Option<U>,
 }
 
-pub(crate) type NormalizedCompatibleChunk<U, D> =
-    Result<Option<CompatibleChunk<U, D>>, CompletionError>;
-
 impl<T, D> From<CompatibleChoiceData<T, D>> for CompatibleChoice<D>
 where
     T: Into<CompatibleToolCallChunk>,
@@ -217,7 +216,13 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     type Detail: WasmCompatSend + 'static;
     type FinalResponse: Clone + WasmCompatSend + 'static;
 
-    fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
+    /// Classify one SSE `data:` payload as this profile's chunk shape.
+    ///
+    /// Implementations MUST delegate to a `wire.rs` classifier (normally
+    /// [`crate::providers::internal::wire::classify_chat_completions_frame`])
+    /// and map the `Known` payload via [`WireEvent::map`] — no triage here;
+    /// the driver owns the unknown/corrupt policy.
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>>;
 
     /// Build the provider's own terminal record from the stream's terminal
     /// state. The record stays provider-native for `raw_stream`; the normalized
@@ -312,6 +317,254 @@ pub(crate) fn should_evict_distinct_named_tool_call(
     false
 }
 
+/// One classified event of the chat-completions stream: a decoded chunk, or
+/// the wire's `[DONE]` terminal sentinel.
+pub(crate) enum CompatEvent<U, D> {
+    Chunk(CompatibleChunk<U, D>),
+    Done,
+}
+
+/// The OpenAI chat-completions-compatible SSE wire as a [`WireAdapter`].
+///
+/// Holds the per-stream bridge state (index→identity tool-call slots, terminal
+/// metadata); frame-triage policy lives in [`run_wire_stream`], not here.
+/// Fragment assembly itself lives in the shared accumulator.
+struct CompatAdapter<P: CompatibleStreamProfile> {
+    profile: P,
+    /// Index-to-identity map only: the Chat Completions wire keys tool call
+    /// fragments by chunk index, so the adapter must correlate.
+    open_tool_calls: HashMap<usize, OpenToolCallSlot>,
+    final_usage: Option<P::Usage>,
+    final_finish_reason: Option<FinishReason>,
+    response_id: Option<String>,
+    response_model: Option<String>,
+    /// Whether `[DONE]` or a chunk carrying a finish reason arrived — the only
+    /// signals that count as the provider completing the turn.
+    saw_terminal: bool,
+    /// Whether any frame decoded successfully. A bare `[DONE]` after only
+    /// parse failures must not dress the failure up as a default-usage
+    /// success.
+    saw_any_valid_frame: bool,
+}
+
+impl<P: CompatibleStreamProfile> CompatAdapter<P> {
+    fn new(profile: P) -> Self {
+        Self {
+            profile,
+            open_tool_calls: HashMap::new(),
+            final_usage: None,
+            final_finish_reason: None,
+            response_id: None,
+            response_model: None,
+            saw_terminal: false,
+            saw_any_valid_frame: false,
+        }
+    }
+}
+
+impl<P> WireAdapter for CompatAdapter<P>
+where
+    P: CompatibleStreamProfile,
+{
+    type Frame = WireFrame;
+    type Event = CompatEvent<P::Usage, P::Detail>;
+    type Response = P::FinalResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        let data = frame.as_str();
+        // `[DONE]` is the wire's terminal sentinel, not JSON; it is Known by
+        // definition. Everything else delegates to the profile's classifier.
+        if data == "[DONE]" {
+            return WireEvent::Known(CompatEvent::Done);
+        }
+        self.profile.classify_chunk(&data).map(CompatEvent::Chunk)
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        let chunk = match event {
+            CompatEvent::Done => {
+                self.saw_terminal = true;
+                return;
+            }
+            CompatEvent::Chunk(chunk) => chunk,
+        };
+        self.saw_any_valid_frame = true;
+
+        let span = tracing::Span::current();
+        record_response_metadata(
+            &span,
+            chunk.response_id.as_deref(),
+            chunk.response_model.as_deref(),
+        );
+
+        if let Some(id) = chunk.response_id {
+            self.response_id = Some(id);
+        }
+
+        if let Some(model) = chunk.response_model {
+            self.response_model = Some(model);
+        }
+
+        if let Some(usage) = chunk.usage {
+            self.final_usage = Some(usage);
+        }
+
+        let Some(choice) = chunk.choice else {
+            return;
+        };
+
+        if let Some(reason) = choice.finish_reason.reported() {
+            self.final_finish_reason = Some(reason);
+            self.saw_terminal = true;
+        }
+
+        for incoming in choice.tool_calls {
+            if let Some(existing) = self.open_tool_calls.get(&incoming.index)
+                && self.profile.should_evict(existing, &incoming)
+                && let Some(evicted) = self.open_tool_calls.remove(&incoming.index)
+            {
+                // The wire reused this call's slot: the evicted call is
+                // delivered even when its arguments never parse
+                // (empty-object fallback).
+                out.push(Ok(RawStreamingChoice::ToolInputEnd(
+                    evicted.end_event(UnparseableToolInput::EmptyObject),
+                )));
+            }
+
+            let slot = self
+                .open_tool_calls
+                .entry(incoming.index)
+                .or_insert_with(|| OpenToolCallSlot {
+                    key: match incoming.id.as_deref() {
+                        Some(id) if !id.is_empty() => id.to_owned(),
+                        // Id-less wires (several llama.cpp/vllm-style
+                        // gateways) key tool calls by chunk index alone; the
+                        // grammar id is minted from that index in the
+                        // reserved namespace so it is never empty and never
+                        // collides with a wire-genuine id.
+                        _ => super::adapter::SyntheticIds::tool().for_index(incoming.index),
+                    },
+                    id: String::new(),
+                    name: String::new(),
+                    signature: None,
+                    additional_params: None,
+                });
+
+            if let Some(id) = incoming.id.as_ref()
+                && !id.is_empty()
+            {
+                slot.id = id.clone();
+            }
+
+            if let Some(name) = incoming.name.as_ref()
+                && !name.is_empty()
+            {
+                slot.name = name.clone();
+                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                    id: slot.key.clone(),
+                    content: ToolCallDeltaContent::Name(name.clone()),
+                }));
+            }
+
+            if let Some(arguments) = incoming.arguments.as_ref()
+                && !arguments.is_empty()
+            {
+                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                    id: slot.key.clone(),
+                    content: ToolCallDeltaContent::Delta(arguments.clone()),
+                }));
+            }
+
+            if self
+                .profile
+                .should_emit_completed_tool_call_immediately(&incoming)
+            {
+                // Completion probe: the accumulator finalizes the call only
+                // if its input parses, and keeps it open otherwise (`Keep`).
+                // The slot stays in the map either way — a later flush of an
+                // already finalized key is a no-op downstream.
+                out.push(Ok(RawStreamingChoice::ToolInputEnd(
+                    slot.end_event(UnparseableToolInput::Keep),
+                )));
+            }
+        }
+
+        for detail in &choice.details {
+            if let Some(decoration) = self.profile.decorate_tool_call(detail)
+                && let Some(slot) = self
+                    .open_tool_calls
+                    .values_mut()
+                    .find(|slot| slot.id == decoration.tool_id)
+            {
+                slot.signature = decoration.signature;
+                slot.additional_params = decoration.additional_params;
+            }
+        }
+
+        if let Some(reasoning) = choice.reasoning
+            && !reasoning.is_empty()
+        {
+            out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                // `reasoning_content` deltas carry no wire id and never
+                // interleave; per-stream constant.
+                id: "reasoning-0".to_string(),
+                reasoning,
+            }));
+        }
+
+        if let Some(content) = choice.text
+            && !content.is_empty()
+        {
+            out.push(Ok(RawStreamingChoice::Message(content)));
+        }
+
+        if choice.finish_reason.is_tool_calls() {
+            for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+                out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+            }
+        }
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        // Tool calls the provider fully delivered are content, so a truncated
+        // stream still flushes them to the consumer. Partial calls (arguments
+        // that never parse) drop in the accumulator.
+        for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+            out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+        }
+
+        // Only `[DONE]` or a chunk carrying a finish reason counts as the
+        // provider completing the turn. A stream that reached EOF without
+        // either signal (truncation) gets no terminal record — synthesizing
+        // one would present the partial turn as a successful, default-usage
+        // completion. A bare `[DONE]` with no successfully decoded frame at
+        // all is treated the same way: the parse errors were already yielded,
+        // and a default-usage terminal would dress the failure up as success.
+        if !self.saw_terminal || !self.saw_any_valid_frame {
+            return;
+        }
+
+        let final_usage = self.final_usage.take().unwrap_or_default();
+        record_usage(&tracing::Span::current(), &final_usage.clone().into());
+        out.push(Ok(RawStreamingChoice::FinalResponse(
+            self.profile.build_final_response(CompatibleTerminal {
+                usage: final_usage,
+                finish_reason: self.final_finish_reason.take(),
+                response_id: self.response_id.take(),
+                model: self.response_model.take(),
+            }),
+        )));
+    }
+
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput<Self::Response>) {
+        // Fully-delivered tool calls flush before the terminal error reaches
+        // the consumer, so a first-`Err`-stop consumer sees them too.
+        for end in drain_open_tool_calls(&mut self.open_tool_calls) {
+            out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
+        }
+    }
+}
+
 pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
@@ -321,247 +574,53 @@ where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
 {
-    let span = tracing::Span::current();
-    let instrument_span = span.clone();
-    let mut event_source = GenericEventSource::new(http_client, req);
+    let instrument_span = tracing::Span::current();
+    let event_source = GenericEventSource::new(http_client, req);
 
-    let stream = stream! {
-        // Index-to-identity map only: the Chat Completions wire keys tool
-        // call fragments by chunk index, so the adapter must correlate.
-        // Fragment assembly itself lives in the shared accumulator.
-        let mut open_tool_calls: HashMap<usize, OpenToolCallSlot> = HashMap::new();
-        let mut final_usage = None;
-        let mut final_finish_reason = None;
-        let mut response_id = None;
-        let mut response_model = None;
-        let mut pending_error = None;
-        let mut saw_terminal = false;
-        let mut saw_any_valid_frame = false;
-
+    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
+    // and the wire's in-band provider error envelope (a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure would
+    // be) — classification and policy live downstream.
+    let transport = stream! {
+        let mut event_source = Box::pin(event_source);
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(Event::Open) => {
                     tracing::trace!("SSE connection opened");
-                    continue;
                 }
                 Ok(Event::Message(message)) => {
-                    if message.data == "[DONE]" {
-                        saw_terminal = true;
-                        continue;
-                    }
-                    if message.data.trim().is_empty() {
+                    if message.data != "[DONE]" && message.data.trim().is_empty() {
                         continue;
                     }
 
                     if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
-                        // Buffered rather than yielded here: fully-delivered
-                        // tool calls flush before the terminal error reaches
-                        // the consumer.
-                        pending_error = Some(error);
+                        // A terminal failure: the driver flushes
+                        // fully-delivered content, yields this error last,
+                        // and emits no terminal record.
+                        yield Err(error);
                         break;
                     }
 
-                    let chunk = match profile.normalize_chunk(&message.data) {
-                        Ok(Some(chunk)) => {
-                            saw_any_valid_frame = true;
-                            chunk
-                        }
-                        Ok(None) => continue,
-                        Err(error) => {
-                            // Surface the malformed frame but keep consuming:
-                            // a later genuine terminal signal can still
-                            // complete the stream, and without one the
-                            // missing `saw_terminal` suppresses the terminal
-                            // record below.
-                            yield Err(error);
-                            continue;
-                        }
-                    };
-
-                    record_response_metadata(
-                        &span,
-                        chunk.response_id.as_deref(),
-                        chunk.response_model.as_deref(),
-                    );
-
-                    if let Some(id) = chunk.response_id.as_ref() {
-                        response_id = Some(id.clone());
-                    }
-
-                    if let Some(model) = chunk.response_model.as_ref() {
-                        response_model = Some(model.clone());
-                    }
-
-                    if let Some(usage) = chunk.usage {
-                        final_usage = Some(usage);
-                    }
-
-                    let Some(choice) = chunk.choice else {
-                        continue;
-                    };
-
-                    if let Some(reason) = choice.finish_reason.reported() {
-                        final_finish_reason = Some(reason);
-                        saw_terminal = true;
-                    }
-
-                    for incoming in choice.tool_calls {
-                        if let Some(existing) = open_tool_calls.get(&incoming.index)
-                            && profile.should_evict(existing, &incoming)
-                            && let Some(evicted) = open_tool_calls.remove(&incoming.index)
-                        {
-                            // The wire reused this call's slot: the evicted
-                            // call is delivered even when its arguments never
-                            // parse (empty-object fallback).
-                            yield Ok(RawStreamingChoice::ToolInputEnd(
-                                evicted.end_event(UnparseableToolInput::EmptyObject),
-                            ));
-                        }
-
-                        let slot = open_tool_calls
-                            .entry(incoming.index)
-                            .or_insert_with(|| OpenToolCallSlot {
-                                key: match incoming.id.as_deref() {
-                                    Some(id) if !id.is_empty() => id.to_owned(),
-                                    // Id-less wires (several llama.cpp/vllm-
-                                    // style gateways) key tool calls by chunk
-                                    // index alone; the grammar id is minted
-                                    // from that index in the reserved
-                                    // namespace so it is never empty and never
-                                    // collides with a wire-genuine id.
-                                    _ => super::adapter::SyntheticIds::tool()
-                                        .for_index(incoming.index),
-                                },
-                                id: String::new(),
-                                name: String::new(),
-                                signature: None,
-                                additional_params: None,
-                            });
-
-                        if let Some(id) = incoming.id.as_ref()
-                            && !id.is_empty()
-                        {
-                            slot.id = id.clone();
-                        }
-
-                        if let Some(name) = incoming.name.as_ref()
-                            && !name.is_empty()
-                        {
-                            slot.name = name.clone();
-                            yield Ok(RawStreamingChoice::ToolCallDelta {
-                                id: slot.key.clone(),
-                                content: ToolCallDeltaContent::Name(name.clone()),
-                            });
-                        }
-
-                        if let Some(arguments) = incoming.arguments.as_ref()
-                            && !arguments.is_empty()
-                        {
-                            yield Ok(RawStreamingChoice::ToolCallDelta {
-                                id: slot.key.clone(),
-                                content: ToolCallDeltaContent::Delta(arguments.clone()),
-                            });
-                        }
-
-                        if profile.should_emit_completed_tool_call_immediately(&incoming) {
-                            // Completion probe: the accumulator finalizes the
-                            // call only if its input parses, and keeps it
-                            // open otherwise (`Keep`). The slot stays in the
-                            // map either way — a later flush of an already
-                            // finalized key is a no-op downstream.
-                            yield Ok(RawStreamingChoice::ToolInputEnd(
-                                slot.end_event(UnparseableToolInput::Keep),
-                            ));
-                        }
-                    }
-
-                    for detail in &choice.details {
-                        if let Some(decoration) = profile.decorate_tool_call(detail)
-                            && let Some(slot) = open_tool_calls
-                                .values_mut()
-                                .find(|slot| slot.id == decoration.tool_id)
-                        {
-                            slot.signature = decoration.signature;
-                            slot.additional_params = decoration.additional_params;
-                        }
-                    }
-
-                    if let Some(reasoning) = choice.reasoning
-                        && !reasoning.is_empty()
-                    {
-                        yield Ok(RawStreamingChoice::ReasoningDelta {
-                            // `reasoning_content` deltas carry no wire id and
-                            // never interleave; per-stream constant.
-                            id: "reasoning-0".to_string(),
-                            reasoning,
-                        });
-                    }
-
-                    if let Some(content) = choice.text
-                        && !content.is_empty()
-                    {
-                        yield Ok(RawStreamingChoice::Message(content));
-                    }
-
-                    if choice.finish_reason.is_tool_calls() {
-                        for end in drain_open_tool_calls(&mut open_tool_calls) {
-                            yield Ok(RawStreamingChoice::ToolInputEnd(end));
-                        }
-                    }
+                    yield Ok(WireFrame::Text(message.data));
                 }
                 Err(crate::http_client::Error::StreamEnded) => {
                     break;
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    pending_error = Some(CompletionError::from_stream_transport(error));
+                    yield Err(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
         }
-
         event_source.close();
+    };
 
-        // Tool calls the provider fully delivered are content, so a truncated
-        // or errored stream still flushes them to the consumer — before any
-        // terminal error, so a first-`Err`-stop consumer sees them too.
-        // Partial calls (arguments that never parse) drop in the accumulator.
-        for end in drain_open_tool_calls(&mut open_tool_calls) {
-            yield Ok(RawStreamingChoice::ToolInputEnd(end));
-        }
+    let stream: streaming::RawStreamingResult<P::FinalResponse> = Box::pin(
+        run_wire_stream(transport, CompatAdapter::new(profile)).instrument(instrument_span),
+    );
 
-        // A terminal failure ends the stream after the flush, with no
-        // terminal record, preserving the truncation signal.
-        if let Some(error) = pending_error {
-            yield Err(error);
-            return;
-        }
-
-        // But only `[DONE]` or a chunk carrying a finish reason counts as the
-        // provider completing the turn. A stream that reached EOF without
-        // either signal (truncation) gets no terminal record — synthesizing
-        // one would present the partial turn as a successful, default-usage
-        // completion. A bare `[DONE]` with no successfully decoded frame at
-        // all is treated the same way: the parse errors were already yielded,
-        // and a default-usage terminal would dress the failure up as success.
-        if !saw_terminal || !saw_any_valid_frame {
-            return;
-        }
-
-        let final_usage = final_usage.unwrap_or_default();
-        record_usage(&span, &final_usage.clone().into());
-        yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(CompatibleTerminal {
-                usage: final_usage,
-                finish_reason: final_finish_reason,
-                response_id,
-                model: response_model,
-            }),
-        ));
-    }
-    .instrument(instrument_span);
-
-    Ok(Box::pin(stream))
+    Ok(stream)
 }
 
 fn record_usage(span: &tracing::Span, usage: &Usage) {
@@ -858,7 +917,7 @@ mod tests {
             .await
             .expect("expected normalize error")
             .expect_err("second item should be the normalize error");
-        assert_eq!(err.to_string(), "ProviderError: normalize failed");
+        assert_eq!(err.to_string(), "JsonError: normalize failed");
 
         // The malformed frame does not abort the stream; consumption continues
         // to EOF. The fully-delivered zero-arg tool call still flushes as

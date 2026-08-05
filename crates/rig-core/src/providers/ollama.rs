@@ -820,11 +820,12 @@ where
             ));
         }
 
-        let stream = stream! {
-            let span = tracing::Span::current();
+        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
+        // splitting and framing only — classification and policy live
+        // downstream.
+        let transport = stream! {
             let mut line_buf = NdjsonBuffer::new();
-
-            'outer: while let Some(chunk) = byte_stream.next().await {
+            while let Some(chunk) = byte_stream.next().await {
                 let bytes = match chunk {
                     Ok(bytes) => bytes,
                     Err(e) => {
@@ -835,75 +836,110 @@ where
 
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
-
-                    // Frame policy for the Ollama NDJSON wire (see
-                    // `providers::internal::wire`) — the wire carries no
-                    // discriminator, so a line either decodes as the
-                    // response shape or is corrupt:
-                    //
-                    // | classify  | action                                  |
-                    // |-----------|-----------------------------------------|
-                    // | `Known`   | apply below                             |
-                    // | `Unknown` | unpopulated for an undiscriminated wire |
-                    // | `Corrupt` | yield an `Err` item, keep consuming so  |
-                    // |           | a later genuine `done: true` record can |
-                    // |           | still complete the stream               |
-                    let response = match internal::wire::classify_untyped_line::<CompletionResponse>(&line) {
-                        internal::wire::WireEvent::Known(response) => response,
-                        internal::wire::WireEvent::Unknown { .. } => continue,
-                        internal::wire::WireEvent::Corrupt(err) => {
-                            yield Err(CompletionError::JsonError(err));
-                            continue;
-                        }
-                    };
-
-                    if response.done {
-                        span.record("gen_ai.response.model", &response.model);
-                    }
-
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield Ok(RawStreamingChoice::ReasoningDelta {
-                                // `thinking` deltas carry no wire id and never
-                                // interleave; per-stream constant.
-                                id: "reasoning-0".to_string(),
-                                reasoning: thinking_content,
-                            });
-                        }
-
-                        if !content.is_empty() {
-                            yield Ok(RawStreamingChoice::Message(content));
-                        }
-
-                        for tool_call in tool_calls {
-                            yield Ok(RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(tool_call.function.name.clone(), tool_call.function.name, tool_call.function.arguments)
-                            ));
-                        }
-                    }
-
-                    if response.done {
-                        span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-                        span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield Ok(RawStreamingChoice::FinalResponse(
-                            StreamingCompletionResponse {
-                                model: response.model,
-                                total_duration: response.total_duration,
-                                load_duration: response.load_duration,
-                                prompt_eval_count: response.prompt_eval_count,
-                                prompt_eval_duration: response.prompt_eval_duration,
-                                eval_count: response.eval_count,
-                                eval_duration: response.eval_duration,
-                                done_reason: response.done_reason,
-                            }
-                        ));
-                        break 'outer;
-                    }
+                    yield Ok(internal::adapter::WireFrame::Bytes(line));
                 }
             }
-        }.instrument(span);
+        };
 
-        Ok(Box::pin(stream))
+        let stream: RawStreamingResult<StreamingCompletionResponse> =
+            Box::pin(internal::adapter::run_wire_stream(transport, OllamaAdapter).instrument(span));
+
+        Ok(stream)
+    }
+}
+
+/// The Ollama NDJSON wire as a
+/// [`WireAdapter`](internal::adapter::WireAdapter).
+///
+/// Stateless: every line is a whole response record. Frame-triage policy
+/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
+/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
+/// still complete the stream) lives in
+/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
+struct OllamaAdapter;
+
+impl internal::adapter::WireAdapter for OllamaAdapter {
+    type Frame = internal::adapter::WireFrame;
+    type Event = CompletionResponse;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
+        match frame {
+            internal::adapter::WireFrame::Bytes(line) => {
+                internal::wire::classify_untyped_line(&line)
+            }
+            internal::adapter::WireFrame::Text(line) => {
+                internal::wire::classify_untyped_line(line.as_bytes())
+            }
+        }
+    }
+
+    fn interpret(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut internal::adapter::AdapterOutput<Self::Response>,
+    ) {
+        let span = tracing::Span::current();
+        if response.done {
+            span.record("gen_ai.response.model", &response.model);
+        }
+
+        if let Message::Assistant {
+            content,
+            thinking,
+            tool_calls,
+            ..
+        } = response.message
+        {
+            if let Some(thinking_content) = thinking
+                && !thinking_content.is_empty()
+            {
+                out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                    // `thinking` deltas carry no wire id and never
+                    // interleave; per-stream constant.
+                    id: "reasoning-0".to_string(),
+                    reasoning: thinking_content,
+                }));
+            }
+
+            if !content.is_empty() {
+                out.push(Ok(RawStreamingChoice::Message(content)));
+            }
+
+            for tool_call in tool_calls {
+                out.push(Ok(RawStreamingChoice::ToolCall(
+                    crate::streaming::RawStreamingToolCall::new(
+                        tool_call.function.name.clone(),
+                        tool_call.function.name,
+                        tool_call.function.arguments,
+                    ),
+                )));
+            }
+        }
+
+        // Only a `done: true` record counts as the provider completing the
+        // turn; the driver stops consuming after the terminal record.
+        if response.done {
+            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+            span.record("gen_ai.usage.output_tokens", response.eval_count);
+            out.push(Ok(RawStreamingChoice::FinalResponse(
+                StreamingCompletionResponse {
+                    model: response.model,
+                    total_duration: response.total_duration,
+                    load_duration: response.load_duration,
+                    prompt_eval_count: response.prompt_eval_count,
+                    prompt_eval_duration: response.prompt_eval_duration,
+                    eval_count: response.eval_count,
+                    eval_duration: response.eval_duration,
+                    done_reason: response.done_reason,
+                },
+            )));
+        }
+    }
+
+    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput<Self::Response>) {
+        // EOF without a `done: true` record is truncation: no terminal record
+        // may be synthesized.
     }
 }
 

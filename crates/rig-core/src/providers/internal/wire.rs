@@ -31,6 +31,21 @@ pub enum WireEvent<T> {
     Corrupt(serde_json::Error),
 }
 
+impl<T> WireEvent<T> {
+    /// Map the `Known` payload, preserving the classification.
+    ///
+    /// This is how an adapter layers a pure event-shape mapping on top of a
+    /// classifier without restating the triage: `Unknown` and `Corrupt` pass
+    /// through untouched, so policy stays with the driver.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WireEvent<U> {
+        match self {
+            Self::Known(event) => WireEvent::Known(f(event)),
+            Self::Unknown { event_type, value } => WireEvent::Unknown { event_type, value },
+            Self::Corrupt(error) => WireEvent::Corrupt(error),
+        }
+    }
+}
+
 /// Classify one frame of a tag-discriminated JSON wire (OpenAI Responses SSE,
 /// Cohere SSE, and Anthropic use `type`; Gemini Interactions uses
 /// `event_type`).
@@ -178,6 +193,41 @@ pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
         TypedEvent::Malformed(message) => {
             WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
         }
+    }
+}
+
+/// Classify a frame with a one-shot salvage step for `Corrupt` results.
+///
+/// Some replayed (buffered) wire bodies verifiably omit envelope bookkeeping
+/// fields the typed decode requires (ChatGPT's unary Responses bodies). This
+/// wrapper keeps that salvage inside the classify layer: when `classify`
+/// reports `Corrupt`, `repair` may produce an amended frame that is classified
+/// once more through the SAME interpreter. A frame `repair` cannot amend
+/// (`None`) maps to `Corrupt(on_unrepairable(original_error))`; a repaired
+/// frame that still fails maps to `Corrupt(on_still_corrupt())` — it is
+/// defective in its data, not its envelope. `Known` and `Unknown` results
+/// pass through untouched, so no policy is decided here.
+pub fn classify_with_repair<T>(
+    data: &str,
+    classify: impl Fn(&str) -> WireEvent<T>,
+    repair: impl FnOnce(&str) -> Option<String>,
+    on_unrepairable: impl FnOnce(&serde_json::Error) -> serde_json::Error,
+    on_still_corrupt: impl FnOnce() -> serde_json::Error,
+) -> WireEvent<T> {
+    match classify(data) {
+        WireEvent::Corrupt(corrupt) => match repair(data) {
+            None => WireEvent::Corrupt(on_unrepairable(&corrupt)),
+            Some(repaired) => match classify(&repaired) {
+                WireEvent::Known(event) => WireEvent::Known(event),
+                // `Unknown` is unreachable in practice (an unknown tag never
+                // classified `Corrupt` in the first pass); treat it as the
+                // defect it would be.
+                WireEvent::Unknown { .. } | WireEvent::Corrupt(_) => {
+                    WireEvent::Corrupt(on_still_corrupt())
+                }
+            },
+        },
+        event => event,
     }
 }
 

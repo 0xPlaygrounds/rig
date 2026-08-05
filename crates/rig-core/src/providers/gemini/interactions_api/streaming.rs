@@ -16,7 +16,9 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::adapter::{
+    AdapterOutput, WireAdapter, WireFrame, run_wire_stream, triage_frame,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -305,20 +307,13 @@ where
 
                     // Same frame-triage table as the completion path's
                     // `run_wire_stream` driver — this surface yields typed
-                    // events rather than grammar events, so the policy is
-                    // restated here against the same classify site.
-                    match classify_interaction_frame(&message.data) {
-                        WireEvent::Known(event) => yield Ok(event),
-                        WireEvent::Unknown { event_type, value } => {
-                            tracing::warn!(
-                                event_type,
-                                payload = %value,
-                                "skipping unrecognized stream event"
-                            );
-                        }
-                        WireEvent::Corrupt(error) => {
-                            yield Err(CompletionError::JsonError(error));
-                        }
+                    // events rather than grammar events, so it applies the
+                    // driver's factored per-frame policy against the same
+                    // classify site instead of restating the table.
+                    match triage_frame(classify_interaction_frame(&message.data)) {
+                        Ok(Some(event)) => yield Ok(event),
+                        Ok(None) => {}
+                        Err(error) => yield Err(error),
                     }
                 }
                 Err(crate::http_client::Error::StreamEnded) => break,

@@ -94,6 +94,7 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "message_delta",
     "message_stop",
     "ping",
+    "error",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +125,14 @@ pub enum StreamingEvent {
     MessageStop,
     /// Keep-alive; a Known no-op, not an unknown event to warn about.
     Ping,
+    /// Anthropic's top-level error envelope (`{"type":"error","error":{...}}`,
+    /// e.g. `overloaded_error`). A modeled event, not an unknown to warn-skip:
+    /// it surfaces as a provider error like every other family's error
+    /// envelope. The payload stays a raw `Value` so every provider field
+    /// (type, message, extras) survives into the error body.
+    Error {
+        error: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,6 +290,18 @@ impl WireAdapter for AnthropicAdapter {
                         message_id: self.message_id.clone(),
                         model: self.response_model.clone(),
                     },
+                )));
+                return;
+            }
+            StreamingEvent::Error { error } => {
+                // The provider aborted the turn in-band. Preserve the full
+                // error envelope (code + message + extras) as the error body,
+                // matching the interactions wire's handling; the stream
+                // carries it as an in-band `Err` item, and EOF without
+                // `message_delta` then withholds the terminal record.
+                let body = serde_json::json!({ "type": "error", "error": error }).to_string();
+                out.push(Err(crate::provider_response::completion_error_from_body(
+                    body,
                 )));
                 return;
             }
@@ -618,12 +639,13 @@ fn handle_event(
                 )))
             })
         }
-        // Interpreted by the adapter (`message_start`/`message_delta`) or
-        // Known no-ops (`message_stop`, `ping`).
+        // Interpreted by the adapter (`message_start`/`message_delta`/the
+        // `error` envelope) or Known no-ops (`message_stop`, `ping`).
         StreamingEvent::MessageStart { .. }
         | StreamingEvent::MessageDelta { .. }
         | StreamingEvent::MessageStop
-        | StreamingEvent::Ping => None,
+        | StreamingEvent::Ping
+        | StreamingEvent::Error { .. } => None,
     }
 }
 
@@ -1877,6 +1899,38 @@ mod tests {
             adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Corrupt(_)
         ));
+    }
+
+    /// Anthropic's top-level `{"type":"error"}` envelope (e.g.
+    /// `overloaded_error`) is a Known event that surfaces as a provider error
+    /// carrying the full envelope — never a warn-skipped unknown — and, since
+    /// no `message_delta` follows, the stream ends with no terminal record.
+    #[test]
+    fn top_level_error_event_surfaces_as_a_provider_error() {
+        let adapter = AnthropicAdapter::default();
+        let frame = WireFrame::Text(
+            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame)
+        else {
+            panic!("the error envelope must classify as a Known event");
+        };
+
+        let mut adapter = AnthropicAdapter::default();
+        let mut out = Vec::new();
+        adapter.interpret(event, &mut out);
+
+        assert_eq!(out.len(), 1, "the error envelope maps to one error item");
+        let Some(Err(error)) = out.pop() else {
+            panic!("the error envelope must surface as an Err item");
+        };
+        let body = error
+            .provider_response_body()
+            .expect("the provider's error payload must be preserved");
+        assert!(
+            body.contains("overloaded_error") && body.contains("Overloaded"),
+            "the full envelope must survive into the error body, got: {body}"
+        );
     }
 
     /// Bedrock-compat quirk: `message_start` without a message body is a

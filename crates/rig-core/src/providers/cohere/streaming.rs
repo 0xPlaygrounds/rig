@@ -5,6 +5,7 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire;
 use crate::streaming::{
     RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent, ToolInputEnd,
@@ -130,6 +131,176 @@ impl From<StreamingCompletionResponse> for StreamFinal {
     }
 }
 
+/// The Cohere v2 chat SSE wire as a [`WireAdapter`].
+///
+/// Holds the per-stream state (open tool call, message id); frame-triage
+/// policy (warn-skip `Unknown` for forward compatibility, in-band `Err` on
+/// `Corrupt` so a later genuine `message-end` can still complete the stream)
+/// lives in [`run_wire_stream`], not here.
+#[derive(Default)]
+struct CohereAdapter {
+    /// Wire id of the open tool call, when one is streaming. Only the wire
+    /// identity is tracked here; fragment assembly, internal-id minting, and
+    /// finalize policy live in the shared accumulator.
+    current_tool_call: Option<String>,
+    message_id: Option<String>,
+}
+
+impl WireAdapter for CohereAdapter {
+    type Frame = WireFrame;
+    type Event = StreamingEvent;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: WireFrame) -> wire::WireEvent<StreamingEvent> {
+        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
+            KNOWN_EVENT_TYPES.contains(&event_type)
+        })
+    }
+
+    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput<Self::Response>) {
+        match event {
+            StreamingEvent::MessageStart { id: Some(id) } => {
+                self.message_id = Some(id);
+            }
+
+            StreamingEvent::ContentDelta { delta: Some(delta) } => {
+                let Some(message) = &delta.message else {
+                    return;
+                };
+                let Some(content) = &message.content else {
+                    return;
+                };
+
+                // Thinking deltas carry no wire id and never interleave with
+                // other output mid-item; the per-stream constant lives in the
+                // minted namespace so the accumulator's boundary bump and the
+                // upstream-serialization guard both apply.
+                if let Some(thinking) = &content.thinking
+                    && !thinking.is_empty()
+                {
+                    out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                        id: "reasoning-0".to_string(),
+                        reasoning: thinking.clone(),
+                    }));
+                }
+
+                if let Some(text) = &content.text
+                    && !text.is_empty()
+                {
+                    out.push(Ok(RawStreamingChoice::Message(text.clone())));
+                }
+            }
+
+            StreamingEvent::MessageEnd { delta } => {
+                // `message-end` is the genuine terminal even when its optional
+                // payload is absent; usage and finish reason then default. The
+                // driver stops consuming after the terminal record.
+                let span = tracing::Span::current();
+                let (usage, finish_reason) = match delta {
+                    Some(delta) => (delta.usage, delta.finish_reason),
+                    None => (None, None),
+                };
+                let recorded_usage = usage
+                    .as_ref()
+                    .map(crate::completion::Usage::from)
+                    .unwrap_or_default();
+                span.record_token_usage(&recorded_usage);
+                out.push(Ok(RawStreamingChoice::FinalResponse(
+                    StreamingCompletionResponse {
+                        usage,
+                        finish_reason,
+                        message_id: self.message_id.take(),
+                    },
+                )));
+            }
+
+            StreamingEvent::ToolCallStart { delta: Some(delta) } => {
+                let Some(message) = &delta.message else {
+                    return;
+                };
+                let Some(tool_calls) = &message.tool_calls else {
+                    return;
+                };
+                let Some(id) = tool_calls.id.clone() else {
+                    return;
+                };
+                let Some(function) = &tool_calls.function else {
+                    return;
+                };
+                let Some(name) = function.name.clone() else {
+                    return;
+                };
+                let Some(arguments) = function.arguments.clone() else {
+                    return;
+                };
+
+                self.current_tool_call = Some(id.clone());
+
+                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                    id: id.clone(),
+                    content: ToolCallDeltaContent::Name(name),
+                }));
+                // `tool-call-start` may carry initial argument text; on the
+                // wire it is empty, but any payload must still enter assembly.
+                if !arguments.is_empty() {
+                    out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                        id,
+                        content: ToolCallDeltaContent::Delta(arguments),
+                    }));
+                }
+            }
+
+            StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
+                let Some(message) = &delta.message else {
+                    return;
+                };
+                let Some(tool_calls) = &message.tool_calls else {
+                    return;
+                };
+                let Some(function) = &tool_calls.function else {
+                    return;
+                };
+                let Some(arguments) = function.arguments.clone() else {
+                    return;
+                };
+
+                // A delta with no open call has nothing to extend; skip it, as
+                // the wire never starts a call mid-delta.
+                let Some(id) = self.current_tool_call.clone() else {
+                    return;
+                };
+
+                // Emit the delta so UI can show progress
+                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                    id,
+                    content: ToolCallDeltaContent::Delta(arguments),
+                }));
+            }
+
+            StreamingEvent::ToolCallEnd => {
+                let Some(id) = self.current_tool_call.take() else {
+                    return;
+                };
+                // Unparseable assembled input drops in the accumulator,
+                // matching the old skip.
+                out.push(Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
+                    id,
+                    UnparseableToolInput::Drop,
+                ))));
+            }
+
+            _ => {}
+        }
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // Only Cohere's `message-end` event counts as the provider completing
+        // the turn. A stream that reached EOF without it (truncation) has no
+        // terminal record to report; synthesizing one would present a partial
+        // turn as a successful, zero-usage completion.
+    }
+}
+
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
@@ -179,199 +350,42 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
+        let event_source = GenericEventSource::new(self.client.clone(), req);
 
-        let stream = stream! {
-            let mut current_tool_call: Option<String> = None;
-            let mut final_usage = None;
-            let mut final_finish_reason = None;
-            let mut message_id = None;
-            let mut terminated_with_error = false;
-            let mut saw_terminal = false;
-
+        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
+        // framing only — classification and policy live downstream.
+        let transport = stream! {
+            let mut event_source = Box::pin(event_source);
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
                         tracing::trace!("SSE connection opened");
-                        continue;
                     }
-
                     Ok(Event::Message(message)) => {
                         let data_str = message.data.trim();
                         if data_str.is_empty() || data_str == "[DONE]" {
                             continue;
                         }
-
-                        // Frame policy for the Cohere SSE wire (see
-                        // `providers::internal::wire` for the `type`
-                        // dispatch against `KNOWN_EVENT_TYPES`):
-                        //
-                        // | classify  | action                              |
-                        // |-----------|-------------------------------------|
-                        // | `Known`   | apply below                         |
-                        // | `Unknown` | warn + skip (forward compatibility) |
-                        // | `Corrupt` | yield an `Err` item, keep consuming |
-                        // |           | so a later genuine `message-end`    |
-                        // |           | can still complete the stream with  |
-                        // |           | its terminal record                 |
-                        let event = match wire::classify_tagged_frame::<StreamingEvent>(
-                            data_str,
-                            "type",
-                            |event_type| KNOWN_EVENT_TYPES.contains(&event_type),
-                        ) {
-                            wire::WireEvent::Known(event) => event,
-                            wire::WireEvent::Unknown { event_type, .. } => {
-                                tracing::warn!(event_type, "skipping unrecognized Cohere SSE event");
-                                continue;
-                            }
-                            wire::WireEvent::Corrupt(err) => {
-                                yield Err(CompletionError::JsonError(err));
-                                continue;
-                            }
-                        };
-
-                        match event {
-                            StreamingEvent::MessageStart { id: Some(id) } => {
-                                message_id = Some(id);
-                            },
-
-                            StreamingEvent::ContentDelta { delta: Some(delta) } => {
-                                let Some(message) = &delta.message else { continue; };
-                                let Some(content) = &message.content else { continue; };
-
-                                // Thinking deltas carry no wire id and never
-                                // interleave with other output mid-item; the
-                                // per-stream constant lives in the minted
-                                // namespace so the accumulator's boundary
-                                // bump and the upstream-serialization guard
-                                // both apply.
-                                if let Some(thinking) = &content.thinking
-                                    && !thinking.is_empty()
-                                {
-                                    yield Ok(RawStreamingChoice::ReasoningDelta {
-                                        id: "reasoning-0".to_string(),
-                                        reasoning: thinking.clone(),
-                                    });
-                                }
-
-                                if let Some(text) = &content.text
-                                    && !text.is_empty()
-                                {
-                                    yield Ok(RawStreamingChoice::Message(text.clone()));
-                                }
-                            },
-
-                            StreamingEvent::MessageEnd { delta } => {
-                                // `message-end` is the genuine terminal even
-                                // when its optional payload is absent; usage
-                                // and finish reason then default.
-                                let span = tracing::Span::current();
-                                let (usage, finish_reason) = match delta {
-                                    Some(delta) => (delta.usage, delta.finish_reason),
-                                    None => (None, None),
-                                };
-                                let recorded_usage = usage
-                                    .as_ref()
-                                    .map(crate::completion::Usage::from)
-                                    .unwrap_or_default();
-                                span.record_token_usage(&recorded_usage);
-                                final_usage = Some(usage);
-                                final_finish_reason = finish_reason;
-                                saw_terminal = true;
-                                break;
-                            },
-
-                            StreamingEvent::ToolCallStart { delta: Some(delta) } => {
-                                let Some(message) = &delta.message else { continue; };
-                                let Some(tool_calls) = &message.tool_calls else { continue; };
-                                let Some(id) = tool_calls.id.clone() else { continue; };
-                                let Some(function) = &tool_calls.function else { continue; };
-                                let Some(name) = function.name.clone() else { continue; };
-                                let Some(arguments) = function.arguments.clone() else { continue; };
-
-                                // Only the wire identity is tracked here;
-                                // fragment assembly, internal-id minting, and
-                                // finalize policy live in the shared
-                                // accumulator.
-                                current_tool_call = Some(id.clone());
-
-                                yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id: id.clone(),
-                                    content: ToolCallDeltaContent::Name(name),
-                                });
-                                // `tool-call-start` may carry initial argument
-                                // text; on the wire it is empty, but any
-                                // payload must still enter assembly.
-                                if !arguments.is_empty() {
-                                    yield Ok(RawStreamingChoice::ToolCallDelta {
-                                        id,
-                                        content: ToolCallDeltaContent::Delta(arguments),
-                                    });
-                                }
-                            },
-
-                            StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
-                                let Some(message) = &delta.message else { continue; };
-                                let Some(tool_calls) = &message.tool_calls else { continue; };
-                                let Some(function) = &tool_calls.function else { continue; };
-                                let Some(arguments) = function.arguments.clone() else { continue; };
-
-                                // A delta with no open call has nothing to
-                                // extend; skip it, as the wire never starts a
-                                // call mid-delta.
-                                let Some(id) = current_tool_call.clone() else { continue; };
-
-                                // Emit the delta so UI can show progress
-                                yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id,
-                                    content: ToolCallDeltaContent::Delta(arguments),
-                                });
-                            },
-
-                            StreamingEvent::ToolCallEnd => {
-                                let Some(id) = current_tool_call.take() else { continue; };
-                                // Unparseable assembled input drops in the
-                                // accumulator, matching the old skip.
-                                yield Ok(RawStreamingChoice::ToolInputEnd(
-                                    ToolInputEnd::new(id, UnparseableToolInput::Drop),
-                                ));
-                            },
-
-                            _ => {}
-                        }
-                    },
+                        yield Ok(WireFrame::Text(data_str.to_owned()));
+                    }
                     Err(crate::http_client::Error::StreamEnded) => {
                         break;
                     }
                     Err(err) => {
                         tracing::error!(?err, "SSE error");
-                        terminated_with_error = true;
                         yield Err(CompletionError::from_stream_transport(err));
                         break;
                     }
                 }
             }
-
             // Ensure event source is closed when stream ends
             event_source.close();
+        };
 
-            // Only Cohere's `message-end` event counts as the provider
-            // completing the turn. A stream that errored, or that reached EOF
-            // without it (truncation), has no terminal record to report;
-            // synthesizing one would present a partial turn as a successful,
-            // zero-usage completion.
-            if terminated_with_error || !saw_terminal {
-                return;
-            }
+        let stream: RawStreamingResult<StreamingCompletionResponse> =
+            Box::pin(run_wire_stream(transport, CohereAdapter::default()).instrument(span));
 
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default(),
-                finish_reason: final_finish_reason,
-                message_id,
-            }))
-        }.instrument(span);
-
-        Ok(Box::pin(stream))
+        Ok(stream)
     }
 
     pub(crate) async fn stream(

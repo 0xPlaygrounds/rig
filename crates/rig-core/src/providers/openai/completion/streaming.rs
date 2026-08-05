@@ -368,39 +368,13 @@ where
     type Detail = serde_json::Value;
     type FinalResponse = StreamingCompletionResponse<Self::Usage>;
 
-    fn normalize_chunk(
+    fn classify_chunk(
         &self,
         data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        // Frame policy for the OpenAI-compatible chat SSE wire (see
-        // `providers::internal::wire::classify_chat_completions_frame` for
-        // the recognizability dispatch):
-        //
-        // | classify  | action                                              |
-        // |-----------|-----------------------------------------------------|
-        // | `Known`   | normalize below                                     |
-        // | `Unknown` | warn + skip (forward compatibility)                 |
-        // | `Corrupt` | surface an `Err` item; the shared layer keeps       |
-        // |           | consuming after it and withholds the terminal       |
-        // |           | record when no frame ever decoded                   |
-        let data = match wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data)
-        {
-            wire::WireEvent::Known(data) => data,
-            wire::WireEvent::Unknown { event_type, .. } => {
-                tracing::warn!(
-                    event_type,
-                    message = data,
-                    "skipping unrecognized chat-completions SSE event"
-                );
-                return Ok(None);
-            }
-            wire::WireEvent::Corrupt(error) => {
-                tracing::error!(?error, message = data, "Failed to parse SSE message");
-                return Err(error.into());
-            }
-        };
-
-        Ok(Some(
+    ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        // Classification only — the unknown/corrupt policy (warn-skip vs.
+        // in-band `Err` item) lives in the shared driver, not here.
+        wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data).map(|data| {
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
@@ -422,8 +396,8 @@ where
                     ),
                     details: choice.delta.reasoning_details.clone(),
                 },
-            ),
-        ))
+            )
+        })
     }
 
     fn build_final_response(

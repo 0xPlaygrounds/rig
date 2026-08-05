@@ -7,7 +7,7 @@
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::wire::WireEvent;
+use crate::providers::internal::adapter::triage_frame;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
     StreamingCompletionChunk, classify_responses_frame, completion_response_from_raw_choices,
@@ -759,23 +759,16 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
         "response.done" => serde_json::from_str(payload)
             .map(|d| Some(ResponsesWebSocketEvent::Done(d)))
             .map_err(CompletionError::from),
-        _ => match classify_responses_frame(payload) {
-            WireEvent::Known(StreamingCompletionChunk::Response(response)) => {
-                Ok(Some(ResponsesWebSocketEvent::Response(response)))
-            }
-            WireEvent::Known(StreamingCompletionChunk::Delta(item)) => {
-                Ok(Some(ResponsesWebSocketEvent::Item(item)))
-            }
-            WireEvent::Unknown { event_type, .. } => {
-                tracing::warn!(
-                    target: "rig::completions",
-                    event_type,
-                    "skipping unrecognized OpenAI websocket event"
-                );
-                Ok(None)
-            }
-            WireEvent::Corrupt(error) => Err(CompletionError::from(error)),
-        },
+        // Shared per-frame triage (warn-skip `Unknown`, `Corrupt` fails the
+        // turn — this surface has no stream to carry `Err` items).
+        _ => Ok(
+            triage_frame(classify_responses_frame(payload))?.map(|chunk| match chunk {
+                StreamingCompletionChunk::Response(response) => {
+                    ResponsesWebSocketEvent::Response(response)
+                }
+                StreamingCompletionChunk::Delta(item) => ResponsesWebSocketEvent::Item(item),
+            }),
+        ),
     }
 }
 
