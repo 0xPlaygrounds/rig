@@ -12,10 +12,10 @@ use crate::{
         Usage,
     },
     message::{ToolCall, ToolFunction},
-    streaming::{StreamingCompletionResponse, StreamingResult},
+    streaming::StreamingCompletionResponse,
 };
 
-use super::streaming::{MockResponse, MockStreamEvent};
+use super::streaming::{MOCK_PROVIDER, MockStreamEvent};
 
 /// Scripted error returned by [`MockCompletionModel`].
 #[derive(Clone, Debug)]
@@ -56,6 +56,7 @@ struct MockTurnResponse {
     choice: OneOrMany<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
+    response_id: Option<String>,
 }
 
 impl MockTurn {
@@ -97,6 +98,7 @@ impl MockTurn {
                 choice: OneOrMany::one(content),
                 usage: Usage::new(),
                 message_id: None,
+                response_id: None,
             }),
         }
     }
@@ -110,6 +112,7 @@ impl MockTurn {
                 choice: OneOrMany::many(content)?,
                 usage: Usage::new(),
                 message_id: None,
+                response_id: None,
             }),
         })
     }
@@ -144,14 +147,21 @@ impl MockTurn {
         self
     }
 
-    fn into_completion_response(self) -> Result<CompletionResponse<MockResponse>, CompletionError> {
+    /// Set a provider-assigned response-scoped ID for this turn.
+    pub fn with_response_id(mut self, response_id: impl Into<String>) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.response_id = Some(response_id.into());
+        }
+        self
+    }
+
+    fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
-        Ok(CompletionResponse {
-            choice: response.choice,
-            usage: response.usage,
-            raw_response: MockResponse::with_usage(response.usage),
-            message_id: response.message_id,
-        })
+        Ok(
+            CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
+                .with_optional_message_id(response.message_id)
+                .with_optional_response_id(response.response_id),
+        )
     }
 }
 
@@ -257,18 +267,10 @@ impl MockCompletionModel {
 }
 
 impl CompletionModel for MockCompletionModel {
-    type Response = MockResponse;
-    type StreamingResponse = MockResponse;
-    type Client = ();
-
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self::default()
-    }
-
     async fn completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         self.record_request(request);
         let Some(turn) = self.next_turn() else {
             return Err(CompletionError::ProviderError(
@@ -282,7 +284,7 @@ impl CompletionModel for MockCompletionModel {
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         self.record_request(request);
         let Some(events) = self.next_stream_turn() else {
             return Err(CompletionError::ProviderError(
@@ -295,8 +297,11 @@ impl CompletionModel for MockCompletionModel {
                 yield event.into_raw_choice();
             }
         };
-        let stream: StreamingResult<Self::StreamingResponse> = Box::pin(stream);
-        Ok(StreamingCompletionResponse::stream(stream))
+        // Scripted terminals go through `normalize_stream` like every real
+        // provider's, so the mock observes the same `Stop` -> `ToolCalls`
+        // reconciliation callers see in production.
+        let stream = crate::streaming::normalize_stream(Box::pin(stream), Ok);
+        Ok(StreamingCompletionResponse::stream(MOCK_PROVIDER, stream))
     }
 }
 
@@ -304,7 +309,6 @@ impl CompletionModel for MockCompletionModel {
 mod tests {
     use super::*;
     use crate::{
-        completion::GetTokenUsage,
         message::Message,
         streaming::{StreamedAssistantContent, ToolCallDeltaContent},
     };
@@ -415,7 +419,7 @@ mod tests {
                 }
                 StreamedAssistantContent::Final(response) => {
                     saw_final = matches!(
-                        response.token_usage(),
+                        response.usage,
                         Usage {
                             total_tokens: 7,
                             ..

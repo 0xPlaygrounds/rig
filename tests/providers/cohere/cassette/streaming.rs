@@ -1,6 +1,5 @@
 //! Cassette-backed Cohere streaming completion coverage.
 
-use rig::completion::GetTokenUsage;
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 
@@ -29,30 +28,14 @@ async fn streaming_smoke() {
 
         assert_nonempty_response(&response);
 
-        let tokens = provider_final
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.tokens.as_ref())
-            .expect("`message-end` should carry `usage.tokens`");
-        let usage = provider_final.token_usage();
-
-        assert_eq!(
-            usage.input_tokens,
-            tokens.input_tokens.expect("input token count") as u64
-        );
-        assert_eq!(
-            usage.output_tokens,
-            tokens.output_tokens.expect("output token count") as u64
-        );
+        // Cassette's `message-end` usage: tokens.{input,output} = 553/64,
+        // cached_tokens = 480. `tokens` is the counter rig reports, not
+        // `billed_units`, which excludes cached input and understates usage.
+        let usage = provider_final.usage;
+        assert_eq!(usage.input_tokens, 553);
+        assert_eq!(usage.output_tokens, 64);
         assert_eq!(usage.total_tokens, usage.input_tokens + usage.output_tokens);
-        assert!(usage.total_tokens > 0, "streamed usage should be non-zero");
-
-        let cached = provider_final
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.cached_tokens)
-            .expect("`message-end` should carry `cached_tokens`");
-        assert_eq!(usage.cached_input_tokens, cached as u64);
+        assert_eq!(usage.cached_input_tokens, 480);
     })
     .await;
 }

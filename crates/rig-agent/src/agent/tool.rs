@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     agent::Agent,
-    completion::{CompletionModel, Prompt},
+    completion::Prompt,
     tool::{DynamicTool, ToolExecutionError, ToolOutput},
 };
 use schemars::{JsonSchema, schema_for};
@@ -17,7 +17,7 @@ struct AgentToolArgs {
 
 const DEFAULT_AGENT_TOOL_NAME: &str = "agent_tool";
 
-impl<M: CompletionModel + 'static> Agent<M> {
+impl Agent {
     /// Convert this agent into a runtime-defined tool.
     ///
     /// The configured agent name becomes the tool name. Unnamed agents use
@@ -64,8 +64,8 @@ impl<M: CompletionModel + 'static> Agent<M> {
     }
 }
 
-impl<M: CompletionModel + 'static> From<Agent<M>> for DynamicTool {
-    fn from(agent: Agent<M>) -> Self {
+impl From<Agent> for DynamicTool {
+    fn from(agent: Agent) -> Self {
         agent.into_tool()
     }
 }

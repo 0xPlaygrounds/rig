@@ -343,10 +343,9 @@ mod tests {
                     ]),
             ),
         ]);
-        let response: CompletionResponse<VertexGenerateContentOutput> =
-            VertexGenerateContentOutput(response)
-                .try_into()
-                .expect("image response should convert");
+        let response: CompletionResponse = VertexGenerateContentOutput(response)
+            .try_into()
+            .expect("image response should convert");
 
         let content: vertexai::model::Content = RigMessage(Message::Assistant {
             id: None,

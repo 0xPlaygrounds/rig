@@ -6,7 +6,8 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::NormalizeCompletionResponse;
+use rig::completion::{Chat, CompletionModel, FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -84,18 +85,21 @@ async fn incomplete_response_surfaces_partial_output() {
                 .max_tokens(16)
                 .build();
 
-            let response = model
-                .completion(request)
+            // `status` and `incomplete_details` are Responses-API wire fields, so
+            // they are read off the provider's own response type. The cassette
+            // records a single interaction, so the normalized response is derived
+            // from that same raw response rather than re-requested.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
 
             assert_eq!(
-                response.raw_response.status,
+                raw.status,
                 ResponseStatus::Incomplete,
                 "hitting max_output_tokens should mark the response incomplete"
             );
-            let reason = response
-                .raw_response
+            let reason = raw
                 .incomplete_details
                 .as_ref()
                 .map(|details| details.reason.as_str());
@@ -103,6 +107,15 @@ async fn incomplete_response_surfaces_partial_output() {
                 reason,
                 Some("max_output_tokens"),
                 "incomplete_details should carry the truncation reason"
+            );
+
+            let response: rig::completion::CompletionResponse = raw
+                .normalize("openai")
+                .expect("an incomplete response should still convert, not error");
+            assert_eq!(
+                response.finish_reason(),
+                Some(FinishReason::Length),
+                "the incomplete/max_output_tokens pair should normalize to a length stop"
             );
             let text: String = response
                 .choice

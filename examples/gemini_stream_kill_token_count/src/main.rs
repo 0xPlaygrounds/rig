@@ -18,11 +18,12 @@
 //! Disruptions reach a consumer in four different shapes:
 //!   1. Manual kill / drop          -> stream ends with `None`, no `Final`
 //!   2. Transport/server error      -> stream yields `Some(Err(..))`
-//!   3. Premature clean close       -> a `Final` whose usage is all zeros
+//!   3. Premature clean close       -> stream ends with no `Final`
+//!      (absence of a terminal record = truncation)
 //!   4. Stall / half-open socket    -> `next()` never returns
 //!
 //! Rather than branch on *why* the stream stopped, we key on a single question:
-//! **did we ever receive authoritative (non-zero) usage?** If not — for ANY of
+//! **did we ever receive authoritative usage?** If not — for ANY of
 //! the reasons above — we estimate locally from whatever partial output arrived,
 //! using Gemini's free `countTokens` endpoint (no inference, not billed).
 //!
@@ -49,7 +50,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::{CompletionError, CompletionModel, GetTokenUsage, Usage};
+use rig::completion::{CompletionError, CompletionModel, Usage};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
@@ -81,22 +82,16 @@ enum Disruption {
 /// Wraps a live `StreamingCompletionResponse` and injects a disruption after
 /// `after_chars` of output has been forwarded. This lets us exercise every
 /// disruption shape against a genuine Gemini stream's partial output.
-struct Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    inner: StreamingCompletionResponse<R>,
+struct Disrupt {
+    inner: StreamingCompletionResponse,
     mode: Disruption,
     after_chars: usize,
     seen_chars: usize,
     fired: bool,
 }
 
-impl<R> Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    fn new(inner: StreamingCompletionResponse<R>, mode: Disruption, after_chars: usize) -> Self {
+impl Disrupt {
+    fn new(inner: StreamingCompletionResponse, mode: Disruption, after_chars: usize) -> Self {
         // For `None`, make the trigger unreachable so it never fires.
         let after_chars = match mode {
             Disruption::None => usize::MAX,
@@ -112,11 +107,8 @@ where
     }
 }
 
-impl<R> Stream for Disrupt<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    type Item = Result<StreamedAssistantContent<R>, CompletionError>;
+impl Stream for Disrupt {
+    type Item = Result<StreamedAssistantContent, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
@@ -163,7 +155,7 @@ where
 }
 
 /// Length of human-visible text in a stream item (text + reasoning deltas).
-fn visible_len<R>(item: &StreamedAssistantContent<R>) -> usize {
+fn visible_len(item: &StreamedAssistantContent) -> usize {
     match item {
         StreamedAssistantContent::Text(t) => t.text.chars().count(),
         StreamedAssistantContent::ReasoningDelta { reasoning, .. } => reasoning.chars().count(),
@@ -192,7 +184,7 @@ struct Report {
 /// each read with a timeout. If the stream ends — by `None`, `Err`, a zeroed
 /// `Final`, or a stall — without authoritative usage, it estimates tokens from
 /// the partial output via `countTokens`.
-async fn drain_with_accounting<S, R>(
+async fn drain_with_accounting<S>(
     label: &'static str,
     mut stream: S,
     http: &reqwest::Client,
@@ -200,8 +192,7 @@ async fn drain_with_accounting<S, R>(
     prompt_text: &str,
 ) -> anyhow::Result<Report>
 where
-    S: Stream<Item = Result<StreamedAssistantContent<R>, CompletionError>> + Unpin,
-    R: Clone + Unpin + GetTokenUsage,
+    S: Stream<Item = Result<StreamedAssistantContent, CompletionError>> + Unpin,
 {
     let mut output = String::new();
     let mut authoritative: Option<Usage> = None;
@@ -235,9 +226,12 @@ where
                 }
                 StreamedAssistantContent::Reasoning(r) => output.push_str(&r.display_text()),
                 StreamedAssistantContent::Final(resp) => {
-                    // Authoritative usage — but only trust it if non-zero. A
-                    // premature clean close yields a zeroed Final (shape #3).
-                    let usage = resp.token_usage();
+                    // Authoritative usage. A premature clean close (shape #3)
+                    // never emits a Final at all — the absence of a terminal
+                    // record is itself the truncation signal — so reaching this
+                    // arm means the stream completed. Still guard on non-zero
+                    // usage in case the provider reported none.
+                    let usage = resp.usage;
                     if usage.has_values() {
                         authoritative = Some(usage);
                     }

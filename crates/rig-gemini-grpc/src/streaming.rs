@@ -16,11 +16,12 @@ use super::proto;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
 
-pub(crate) async fn stream(
+/// Open a stream whose terminal record stays Gemini's own protobuf response.
+pub(crate) async fn raw_stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError> {
+) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
     let request = super::completion::create_grpc_request(model, completion_request)?;
 
     let mut grpc_client = client
@@ -34,7 +35,6 @@ pub(crate) async fn stream(
         .into_inner();
 
     let stream = stream! {
-        let mut last_resp: Option<StreamingCompletionResponse> = None;
         let mut final_resp: Option<StreamingCompletionResponse> = None;
 
         while let Some(item) = response_stream.next().await {
@@ -96,8 +96,6 @@ pub(crate) async fn stream(
                     if is_final {
                         final_resp = Some(resp);
                         break;
-                    } else {
-                        last_resp = Some(resp);
                     }
                 }
                 Err(status) => {
@@ -107,13 +105,62 @@ pub(crate) async fn stream(
             }
         }
 
-        let resp = final_resp.or(last_resp).unwrap_or_default();
-        yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        // Only a chunk carrying a genuine finish reason counts as the provider
+        // completing the turn. A stream that reached EOF without one was
+        // truncated, and synthesizing a terminal record from the last content
+        // chunk (or a default) would report a successful completion for a turn
+        // the provider never finished.
+        if let Some(resp) = final_resp {
+            yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
+        }
     };
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
+}
+
+/// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
+/// record. Delegates to [`raw_stream`] — one RPC either way.
+pub(crate) async fn stream(
+    client: Client,
+    model: String,
+    completion_request: CompletionRequest,
+) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    let raw = raw_stream(client, model, completion_request).await?;
+    let normalized = streaming::normalize_stream(raw, |response| {
+        let usage = response
+            .usage_metadata
+            .as_ref()
+            .map(|usage| rig_core::completion::Usage {
+                input_tokens: usage.prompt_token_count as u64,
+                output_tokens: usage.candidates_token_count as u64,
+                total_tokens: usage.total_token_count as u64,
+                cached_input_tokens: usage.cached_content_token_count as u64,
+                cache_creation_input_tokens: 0,
+                tool_use_prompt_tokens: 0,
+                reasoning_tokens: 0,
+            })
+            .unwrap_or_default();
+        let finish_reason = response
+            .candidates
+            .first()
+            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
+
+        Ok(
+            streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage)
+                .with_optional_finish_reason(finish_reason)
+                .with_optional_response_id(
+                    Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+                )
+                .with_optional_model(
+                    Some(response.model_version.clone()).filter(|model| !model.is_empty()),
+                ),
+        )
+    });
+
+    Ok(streaming::StreamingCompletionResponse::stream(
+        super::completion::PROVIDER_NAME,
+        normalized,
+    ))
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

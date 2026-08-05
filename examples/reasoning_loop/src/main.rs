@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::{
     agent::Agent,
-    completion::{CompletionError, CompletionModel, Prompt, PromptError},
+    completion::{CompletionError, Prompt, PromptError},
     extractor::Extractor,
     message::Message,
     providers::anthropic,
@@ -21,12 +21,12 @@ struct ChainOfThoughtSteps {
     steps: Vec<String>,
 }
 
-struct ReasoningAgent<M: CompletionModel> {
-    chain_of_thought_extractor: Extractor<M, ChainOfThoughtSteps>,
-    executor: Agent<M>,
+struct ReasoningAgent {
+    chain_of_thought_extractor: Extractor<ChainOfThoughtSteps>,
+    executor: Agent,
 }
 
-impl<M: CompletionModel + 'static> Prompt for ReasoningAgent<M> {
+impl Prompt for ReasoningAgent {
     #[allow(refining_impl_trait)]
     async fn prompt(&self, prompt: impl Into<Message> + Send) -> Result<String, PromptError> {
         let prompt: Message = prompt.into();

@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
+- *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
+
+### Changed
+
+- *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete and carry normalized `finish_reason`/`provider`/`model`/`message_id`
+- *(completion)* [**breaking**] `CompletionModel` no longer requires `Clone`; generic code that cloned models must bound `+ Clone` explicitly, and `completion_request` now gates on `Self: Clone` (a relaxation for implementors — derives kept only for the old bound can be dropped)
+- *(completion)* implement `CompletionModel` for `Arc<M>` by forwarding, making the "wrap it in an `Arc`" guidance work through the generic APIs
+- *(completion)* [**breaking**] `CompletionResponse::finish_reason` is now a private field with a `finish_reason()` getter, so the `Stop` → `ToolCalls` reconciliation cannot be bypassed by direct assignment
+- *(completion)* identifier and model setters on `CompletionResponse`/`StreamFinal` treat empty strings as absent
+- *(streaming)* [**breaking**] corrupt stream frames (invalid JSON) are surfaced as `Err` items (stream continues; a later genuine terminal still completes it) instead of being logged and skipped; valid-JSON events with unrecognized shapes are still skipped for forward compatibility — openai responses, copilot, cohere, ollama
+- *(streaming)* a bare `[DONE]` after only unparseable frames no longer fabricates a zero-usage terminal record
+- *(streaming)* a full reasoning block now supersedes its accumulated deltas in the aggregated choice — correlated strictly by reasoning item id (matching ids or both absent replace; an id on only one side appends), with a by-id fallback scan so interleaved output (reasoning → tool call → completed block) also replaces
+- *(streaming)* on a terminal stream error, fully-delivered tool calls are yielded before the terminal `Err` on every path (shared compat, openai responses, copilot) — previously the three paths disagreed
+- *(streaming)* stream parse policy discriminates on the known event `type`: known event with a schema defect surfaces an `Err`; unknown event types are skipped for forward compatibility (openai chat default profile included — its silent `Ok(None)` swallow is gone)
+- *(completion)* `CompletionResponse` and `StreamFinal` deserialize through a wire-shape mirror that funnels the validating setters, so finish-reason reconciliation and empty-string filtering also hold for persisted values (wire format unchanged)
+- *(providers)* the ChatGPT buffered SSE fallback fails the completion on corrupt known frames instead of returning silently partial content; the openai responses websocket path merges terminal-body message text absent from deltas
+- *(providers)* gemini interactions `InteractionStatus::is_terminal` enumerates the known in-flight states, so unknown statuses read as terminal instead of spinning a future poll loop forever
+- *(providers)* xai `response.reasoning_summary_text.done` events (which carry `text` rather than `delta`) now decode
+- *(providers)* delta-less streamed choices (e.g. Azure's `prompt_filter_results` content-filter prelude) parse as no-op frames instead of surfacing a spurious error on every stream — openai-compatible and copilot chat chunk models
+- *(providers)* unmodeled Responses `content_part` shapes (`refusal`, `reasoning_text` parts) parse as no-ops instead of erroring refusal/reasoning-text turns; refusal text flows via `response.refusal.delta` as before
+- *(providers)* gemini interactions `RequiresAction` is terminal for a poll loop (it never advances without submitted tool results); callers branch on it as a distinct resumable outcome
+- *(providers)* copilot Responses streaming treats `response.incomplete` as a genuine terminal (partial content + `Length` finish reason) instead of an error; the WebSocket session preserves streamed partial output on incomplete terminals
+- *(providers)* errored streams flush fully-delivered tool calls before ending (shared OpenAI-compatible path and copilot Responses route)
+- *(providers)* gemini REST and Interactions wire enums preserve unknown values verbatim (`FinishReason`/`BlockReason`/`InteractionStatus` gained untagged catch-alls), matching the gRPC mapper
+- *(providers)* cohere `message-end` without a `delta` still emits the terminal record
+
+### Removed
+
+- *(completion)* [**breaking**] remove `CompletionModel::{Response, StreamingResponse, Client, make}`; model construction moves to the required `CompletionClient::completion_model`
+- *(completion)* [**breaking**] remove the `GetTokenUsage` trait — read `StreamFinal::usage`
+- *(completion)* [**breaking**] remove `CompletionResponse::raw_response` — use a provider model's `raw_completion`/`raw_stream`
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.40.0...rig-core-v0.41.0) - 2026-07-28
 
 ### Added

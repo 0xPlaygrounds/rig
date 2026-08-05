@@ -1,8 +1,9 @@
 # Migrating Rig
 
-This guide covers every breaking change from 0.30 through 0.41. Releases 0.36,
-0.37, 0.40 and 0.41 were the disruptive ones; 0.40 alone carried 31 breaking
-changes, and 0.37 renamed `rig-core`'s library target.
+This guide covers every breaking change from 0.30 through the unreleased changes
+after 0.41. Releases 0.36, 0.37, 0.40 and 0.41 were the disruptive ones; 0.40
+alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library
+target.
 
 ## Which sections apply to you
 
@@ -11,6 +12,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.41 | [0.41 → next](#041--next) |
 | 0.40 | [0.40 → 0.41](#040--041) |
 | 0.39 | [0.39 → 0.40](#039--040) |
 | 0.38 | [0.38 → 0.39](#038--039) |
@@ -326,6 +328,267 @@ non-success response moves from `Instance(..)` to
 
 ---
 
+## 0.41 → next
+
+### Completion responses are concrete and normalized
+
+`CompletionResponse<T>` is now `CompletionResponse`. The provider-native
+`raw_response` field is gone; the normalized response carries the metadata that
+callers actually reached into `raw_response` for:
+
+```rust
+pub struct CompletionResponse {
+    pub choice: OneOrMany<AssistantContent>,
+    pub usage: Usage,
+    pub message_id: Option<String>,
+    pub response_id: Option<String>,
+    pub finish_reason: Option<FinishReason>,
+    pub provider: String,
+    pub model: Option<String>,
+}
+```
+
+| Before | After |
+| --- | --- |
+| `response.raw_response.model` | `response.model` |
+| provider stop/finish reason off `raw_response` | `response.finish_reason` |
+| provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
+| response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
+| a genuinely provider-specific field | `model.raw_completion(request).await?` |
+
+`usage` is unchanged, including the rule that all-zero values mean the provider
+supplied no metrics. `model` is the identifier the *wire response* reported, not
+the one you requested — it is `None` when the provider omits it. `provider` is
+always populated, including on a response derived from a stream that ended
+before its terminal record.
+
+`message_id` and `response_id` are distinct on purpose. `message_id` holds only
+identifiers the provider would recognize on a *replayed assistant message* (an
+OpenAI Responses output-message `msg_*` ID, an Anthropic `msg_*` ID); it is what
+agent history promotes into `Message::Assistant`'s `id`. `response_id` holds
+identifiers that name the response as a whole (an OpenAI chat `chatcmpl-*` ID, a
+Gemini `responseId`, a Cohere generation ID) — useful for logging and support,
+never echoed back to a provider. Code that previously read a chat provider's
+`message_id` should read `response_id` instead; for those providers
+`message_id` is now `None`.
+
+`CompletionResponse` is `#[non_exhaustive]`; build it with
+`CompletionResponse::new(choice, usage, provider)` plus the `with_*` helpers.
+Use `with_finish_reason` / `with_optional_finish_reason` rather than assigning
+the field: the setters apply `FinishReason::reconcile_with_output`, which
+upgrades a reported `Stop` to `ToolCalls` when the turn actually carried tool
+calls. Several OpenAI-compatible gateways report `stop` on a tool-calling turn,
+so code branching on `ToolCalls` would otherwise miss the call.
+
+Tests (or other code) holding a provider's raw response can re-derive the
+normalized fields via the additive `NormalizeCompletionResponse::normalize`
+bridge — the same conversion the provider's normalized path uses.
+
+### Provider-native responses moved to `raw_completion` / `raw_stream`
+
+Every built-in provider model exposes both:
+
+```rust
+let native = model.raw_completion(request).await?;   // the provider's own type
+let native_stream = model.raw_stream(request).await?; // RawStreamingResult<TheirTerminal>
+```
+
+These share one request builder, transport call, parser, telemetry path, and
+error-preservation path with the normalized methods — the normalized method
+calls the raw one and maps the result, so there is still exactly one network
+request.
+
+The trade: raw access now requires the concrete provider model rather than any
+`CompletionResponse`. Code that was generic over `CompletionModel` could never
+touch `raw_response` without a bound anyway, so in practice this affects code
+that had already committed to a provider.
+
+### Normalized finish reasons
+
+```rust
+pub enum FinishReason { Stop, Length, ToolCalls, ContentFilter, Other(String) }
+```
+
+Unrecognized provider values are preserved verbatim in `Other` — in the
+provider's own spelling, so Gemini's `RECITATION` stays `RECITATION`. A provider
+adding a new terminal reason surfaces it rather than reading as a natural stop.
+`None` means the provider genuinely reported no reason.
+
+### Ordinary streaming types no longer carry a response parameter
+
+`StreamingCompletionResponse<R>`, `StreamingResult<R>`,
+`StreamedAssistantContent<R>`, and the downstream agent streaming types are
+concrete. Their terminal record is `StreamFinal`, which carries normalized
+usage, finish reason, provider, provider-reported model, message ID, and
+response ID.
+
+A full `Reasoning` stream event supersedes prior `ReasoningDelta` events with
+the same reasoning `id` — UIs that render deltas incrementally should replace
+the accumulated text when the full block arrives, mirroring what the
+aggregated `choice` already does.
+
+`GetTokenUsage` is deleted — read `StreamFinal::usage` (or
+`StreamingCompletionResponse::usage()`) directly. A stream that ends without a
+terminal record still reports `Usage::new()`, the documented zero sentinel.
+With `GetTokenUsage` gone, the telemetry helper
+`SpanCombinator::record_token_usage` takes `&Usage` instead of a
+`GetTokenUsage`-bounded generic.
+
+A terminal record is now emitted only when the provider signaled genuine
+completion (its own end-of-response event). Previously, several provider
+streams synthesized a default-usage terminal record when the connection ended —
+including streams cut off mid-response. A stream that ends without a terminal
+record was truncated; treat the missing record as an incomplete turn, not a
+zero-usage success.
+
+The agent surface enforces this: `agent.stream_prompt(...)` now yields
+`Err("provider stream ended without a terminal record; treating the turn as
+truncated")` for a stream the provider never confirmed complete, where it
+previously finished "successfully" with zero usage. If you see this error
+behind a flaky provider or proxy, the connection was cut mid-response — retry
+the turn rather than trusting the partial content.
+
+`StreamingCompletionResponse::stream` takes the provider descriptor name first:
+
+```rust
+StreamingCompletionResponse::stream(PROVIDER_NAME, normalized_stream)
+```
+
+Provider implementations keep their native terminal type behind
+`RawStreamingResult<Native>` and map it once:
+
+```rust
+let raw = self.raw_stream(request).await?;
+let normalized = rig_core::streaming::normalize_stream(raw, |native| {
+    Ok(StreamFinal::new(PROVIDER_NAME, native.usage)
+        .with_optional_finish_reason(map_finish_reason(native.finish_reason)))
+});
+Ok(StreamingCompletionResponse::stream(PROVIDER_NAME, normalized))
+```
+
+`normalize_stream` applies the same `Stop` → `ToolCalls` reconciliation as the
+unary path, using the tool calls it actually saw on the stream.
+
+`StreamingPrompt<M, R>` and `StreamingChat<M, R>` lost their `R` parameter:
+`StreamingPrompt<M>`, `StreamingChat<M>`.
+
+### `CompletionModel` no longer owns response or construction types
+
+Remove `Response`, `StreamingResponse`, `Client`, and `make` from custom
+implementations. A custom model implements only the normalized operations, and
+optionally `capabilities`:
+
+```rust
+impl CompletionModel for MyModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> { /* ... */ }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> { /* ... */ }
+}
+```
+
+Construction is a separate, optional opt-in. `CompletionClient::completion_model`
+is now required and calls your model's own constructor:
+
+```rust
+impl CompletionClient for MyClient {
+    type CompletionModel = MyModel;
+
+    fn completion_model(&self, model: impl Into<String>) -> MyModel {
+        MyModel::new(self.clone(), model.into())
+    }
+}
+```
+
+`client.completion_model(model)` and `client.agent(model)` are unchanged at call
+sites. A model type with no client at all is now expressible: implementing
+`CompletionModel` no longer drags in a client associated type.
+
+A provider extension built on the generic `rig::client::Client<Ext, H>` cannot
+implement `CompletionClient` for that foreign type itself (orphan rule).
+Instead, implement the public `ConstructCompletionModel<Client<Ext, H>>` hook
+on your model type; the blanket `CompletionClient` implementation over
+`Client<Ext, H>` then supplies `completion_model` for you.
+
+`CompletionModel` also no longer requires `Clone` — the trait demands only
+async service behavior, in the spirit of `tower::Service`; cloning or sharing
+a model is the caller's concern — and wrapping in an `Arc` genuinely works:
+`CompletionModel` is implemented for `Arc<M>` by forwarding, so `Arc<M>`
+passes through every generic API (`CompletionRequestBuilder`, agent
+construction), and `completion_request` on an `Arc` clones the `Arc`, never
+the model. Implementors can drop `Clone` derives they only carried for the
+bound (keeping them is harmless). Generic code that cloned a model through
+the trait must now bound `M: CompletionModel + Clone` explicitly or take the
+model by value. The `completion_request` convenience gates on `Self: Clone`
+individually; every built-in provider model, `Arc<M>`, and `ModelHandle`
+satisfy it, so call sites on concrete types compile unchanged.
+
+`CompletionResponse::finish_reason` is now a private field with a
+`finish_reason()` getter: every write flows through `with_finish_reason` /
+`with_optional_finish_reason`, so the `Stop` → `ToolCalls` reconciliation can
+no longer be bypassed by direct assignment. Replace field reads with the
+getter call.
+
+The identifier and model setters on both `CompletionResponse` and
+`StreamFinal` now treat an empty string as absent: gateways that echo `""`
+produce `None`, matching the streaming paths, and the rule lives in the
+setters rather than at provider call sites.
+
+Both invariants also hold through `Deserialize`: the two types deserialize
+via a wire-shape mirror that funnels through `new(...)` and the setters, so
+a persisted `"finish_reason": "stop"` alongside a tool-call choice comes
+back as `ToolCalls` and a persisted `""` identifier comes back as `None`.
+The serialized wire format is unchanged.
+
+Corrupt stream frames (payloads that are not valid JSON) are now surfaced as
+`Err` items on the stream instead of being logged and silently skipped; the
+stream keeps consuming, and a later genuine terminal still completes it.
+Valid-JSON events whose shape this client doesn't recognize are still skipped
+(with a warning) for forward compatibility with new provider event types.
+Consumers that drained to `None` see the same content as before plus any
+error items; consumers that stopped at the first `Err` should drain to
+`None` — see the emission-contract table on `StreamFinal`.
+
+### Provider behavior is reported through capabilities
+
+`CompletionModel::composes_native_output_with_tools()` is replaced by
+`CompletionModel::capabilities()`:
+
+```rust
+fn capabilities(&self) -> ProviderCapabilities {
+    ProviderCapabilities::default().with_native_output_tool_composition(true)
+}
+```
+
+`ProviderCapabilities` is public and `#[non_exhaustive]`; start from `Default`
+or `ProviderCapabilities::new()` and enable what you support. Capabilities are
+plain data, so a runtime can snapshot them instead of holding a callback into
+the concrete model.
+
+### Agents erase the model type at construction (runtime model swapping)
+
+`Agent<M>`, `AgentBuilder<M>`, `AgentRunner<M>`, the prompt/stream request
+types, and `Extractor<M, T>` lost their model parameter: `AgentBuilder::new`
+takes any `CompletionModel + 'static` and erases it once into a concrete
+`ModelHandle` (which itself implements `CompletionModel`). Update type
+annotations by deleting the parameter — `Agent<openai::CompletionModel>`
+becomes `Agent`; `Extractor<M, T>` becomes `Extractor<T>`. Construction call
+sites are unchanged.
+
+Because the stored model is a handle, it can now change at runtime:
+`Agent::set_model`, per-run `runner(...).using_model(...)`, or an
+`AgentHook::on_model_select` hook receiving `ModelSelection` (which sees the
+merged `RequestPatch` and the previous model, and may pick a different handle
+per model call). `CompletionModel::capabilities()` is captured by value when
+the handle is created.
+
+---
+
 ## 0.40 → 0.41
 
 ### 1. The crate split
@@ -496,9 +759,10 @@ response. For intentionally hook-free transport, start from
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
 not an alternate execution path for configured agents.
 
-An `Agent`'s model is fixed and private. Former per-call `.model(...)` /
-`.model_opt(...)` users should retain the provider `CompletionModel` and use its
-raw request API, or construct a separate `Agent`.
+An `Agent`'s default model is set at construction. Per-run overrides now go
+through `runner(...).using_model(...)`, `Agent::set_model`, or a
+`ModelSelection` hook (see the "runtime model swapping" section for the
+current release).
 
 `Extractor` now routes through the full hook lifecycle.
 

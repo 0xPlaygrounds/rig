@@ -13,7 +13,7 @@ use rig::providers::chatgpt;
 use rig::tool::Tool;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
-use crate::support::{Adder, TOOLS_PREAMBLE, assistant_text_response};
+use crate::support::{Adder, TOOLS_PREAMBLE};
 
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
@@ -77,8 +77,17 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
         "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
         |client| async move {
             let model = client.completion_model(chatgpt::GPT_5_4);
-            let response = model
-                .completion(
+            // `store` and `prompt_cache_key` are Responses-API wire fields with
+            // no normalized home, so they are read off the backend's own
+            // response type. ChatGPT's terminal `response.completed` payload
+            // carries no output items, so this raw record cannot be normalized
+            // locally (the SSE rebuild `CompletionModel::completion` performs is
+            // crate-private) and the cassette records a single interaction, so
+            // the assistant-text check that used to ride along here now lives
+            // only in `codex_sessions`. The marker prompt itself is kept
+            // verbatim so the request still matches the recorded cassette.
+            let raw = model
+                .raw_completion(
                     model
                         .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
                         .preamble("Return only the requested marker.".to_string())
@@ -87,27 +96,24 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
 
-            let text = assistant_text_response(&response.choice).expect("response text");
-            assert!(
-                text.contains("CODEX-STORE-FALSE"),
-                "final answer should preserve the requested marker, got {text:?}"
-            );
             assert_eq!(
-                response.raw_response.additional_parameters.store,
+                raw.additional_parameters.store,
                 Some(false),
                 "ChatGPT provider must force store=false"
             );
             assert!(
-                response
-                    .raw_response
-                    .additional_parameters
+                raw.additional_parameters
                     .prompt_cache_key
                     .as_deref()
                     .is_some_and(|value| !value.is_empty()),
                 "ChatGPT backend should return a prompt cache key that cassettes scrub"
             );
-            assert!(response.usage.input_tokens > 0);
-            assert!(response.usage.output_tokens > 0);
+            let usage = raw
+                .usage
+                .as_ref()
+                .expect("ChatGPT/Codex completion should report usage");
+            assert!(usage.input_tokens > 0);
+            assert!(usage.output_tokens > 0);
         },
     )
     .await;

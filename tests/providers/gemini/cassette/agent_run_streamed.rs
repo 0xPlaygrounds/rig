@@ -14,7 +14,7 @@ use rig::agent::{
     AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
     ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::completion::{GetTokenUsage, PromptError, Usage};
+use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -136,13 +136,12 @@ async fn run_streamed_turn(
     Ok(TurnEnd::Finished)
 }
 
-async fn drain_stream_usage<R>(stream: &mut rig::streaming::StreamingCompletionResponse<R>) -> Usage
+async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResponse) -> Usage
 where
-    R: Clone + Unpin + GetTokenUsage,
 {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {
-            return final_response.token_usage();
+            return final_response.usage;
         }
     }
     Usage::new()

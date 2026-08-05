@@ -5,6 +5,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
+    providers::internal::openai_chat_completions_compatible::map_openai_finish_reason,
     providers::openai,
 };
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,10 @@ pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
 pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
 pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
+
+/// Stable descriptor name recorded on telemetry spans and on every normalized
+/// response produced by this provider.
+pub(crate) const PROVIDER_NAME: &str = "openrouter";
 
 // ================================================================
 // Provider Selection and Prioritization
@@ -575,13 +580,67 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
+/// Normalize OpenRouter's terminal reason for a choice.
+///
+/// OpenRouter reports two fields: `finish_reason`, normalized by OpenRouter to
+/// the OpenAI Chat Completions vocabulary, and `native_finish_reason`, which is
+/// whatever the upstream provider said (e.g. Gemini's `"STOP"`). The normalized
+/// field wins; the native one is only consulted when OpenRouter omitted the
+/// normalized field, so a reason the gateway could not translate is still
+/// reported rather than lost. The native value must not be read with the OpenAI
+/// vocabulary — routing Gemini's `STOP` or Anthropic's `end_turn` through
+/// [`map_openai_finish_reason`] would report a plain natural stop as
+/// [`completion::FinishReason::Other`]. Either way an unrecognized value is
+/// preserved verbatim in [`FinishReason::Other`](completion::FinishReason::Other).
+pub(crate) fn map_finish_reason(choice: &Choice) -> Option<completion::FinishReason> {
+    if let Some(reason) = choice
+        .finish_reason
+        .as_deref()
+        .filter(|reason| !reason.is_empty())
+    {
+        return Some(map_openai_finish_reason(reason));
+    }
 
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+    choice
+        .native_finish_reason
+        .as_deref()
+        .filter(|reason| !reason.is_empty())
+        .map(map_native_finish_reason)
+}
+
+/// Map an upstream provider's own terminal reason, as forwarded by OpenRouter.
+///
+/// This covers the vocabularies OpenRouter routes to, matched
+/// case-insensitively because they disagree on casing (Gemini screams,
+/// Anthropic does not). Anything unrecognized is still carried verbatim in the
+/// spelling the upstream provider used.
+pub(crate) fn map_native_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason.to_ascii_lowercase().as_str() {
+        // OpenAI-compatible upstreams, plus Anthropic's `end_turn`/`stop_sequence`
+        // and Gemini's `STOP`.
+        "stop" | "end_turn" | "stop_sequence" | "complete" => completion::FinishReason::Stop,
+        "length" | "max_tokens" | "model_length" => completion::FinishReason::Length,
+        "tool_calls" | "function_call" | "tool_use" => completion::FinishReason::ToolCalls,
+        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
+            completion::FinishReason::ContentFilter
+        }
+        _ => completion::FinishReason::Other(reason.to_owned()),
+    }
+}
+
+/// Normalize an OpenRouter chat completion response.
+///
+/// The provider descriptor name is an *input* because the message model is the
+/// shared OpenAI one; taking it as part of the conversion keeps the shape
+/// consistent with the OpenAI-compatible path even though only OpenRouter
+/// produces this envelope.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = map_finish_reason(choice);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -703,37 +762,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| {
-                let (cached_input, cache_creation) = usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
-                    .unwrap_or((0, 0));
-                completion::Usage {
-                    input_tokens: usage.prompt_tokens as u64,
-                    // Reported completion tokens (like the streaming path),
-                    // falling back to saturating total - prompt for gateways
-                    // that omit the field (it deserializes to 0).
-                    output_tokens: if usage.completion_tokens > 0 {
-                        usage.completion_tokens as u64
-                    } else {
-                        usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64
-                    },
-                    total_tokens: usage.total_tokens as u64,
-                    cached_input_tokens: cached_input,
-                    cache_creation_input_tokens: cache_creation,
-                    tool_use_prompt_tokens: 0,
-                    reasoning_tokens: 0,
-                }
-            })
+            .map(completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(
+            // OpenRouter's `id` identifies the generation, not an assistant
+            // message, so it is carried as a response ID rather than a
+            // message ID.
+            completion::CompletionResponse::new(choice, usage, provider)
+                .with_response_id(response.id)
+                .with_model(response.model)
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -1442,7 +1482,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
 }
 
 impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
-    const PROVIDER_NAME: &'static str = "openrouter";
+    const PROVIDER_NAME: &'static str = self::PROVIDER_NAME;
 
     type StreamingUsage = Usage;
     type Response = CompletionResponse;
@@ -1497,6 +1537,13 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
 }
 
 /// OpenRouter completion model, driven by the shared OpenAI Chat Completions path.
+///
+/// The provider-native escape hatches come with it:
+/// [`raw_completion`](openai::completion::GenericCompletionModel::raw_completion)
+/// returns OpenRouter's own [`CompletionResponse`] and
+/// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
+/// stream whose terminal record stays provider-native — both over the same
+/// single request path as the normalized methods.
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
@@ -1520,8 +1567,23 @@ impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::NormalizeCompletionResponse;
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
+
+    #[test]
+    fn openrouter_client_constructs_a_completion_model() {
+        // Also a compile guard: it instantiates the shared chat-completions
+        // model over `OpenRouterExt`, which is what proves this provider's
+        // response conversion satisfies the normalization bound.
+        use crate::client::CompletionClient;
+
+        let client =
+            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let model = client.completion_model(GEMINI_FLASH_2_0);
+
+        assert_eq!(model.model, GEMINI_FLASH_2_0);
+    }
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
@@ -1824,7 +1886,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         assert_eq!(converted.usage.output_tokens, 10);
     }
 
@@ -1844,7 +1906,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         assert_eq!(converted.usage.output_tokens, 10);
     }
 
@@ -1875,8 +1937,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(converted.usage.input_tokens, 500);
         assert_eq!(converted.usage.output_tokens, 10);
@@ -1907,8 +1968,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
         assert_eq!(converted.usage.cache_creation_input_tokens, 0);
@@ -1942,17 +2002,103 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
+        // The normalized response carries the model OpenRouter reported, which
+        // is routinely not the one that was requested.
         assert_eq!(
-            converted.raw_response.model,
-            "google/gemini-2.5-pro-exp-03-25:free"
+            converted.model.as_deref(),
+            Some("google/gemini-2.5-pro-exp-03-25:free")
         );
+        assert_eq!(converted.provider, "openrouter");
         assert!(matches!(
             converted.choice.first(),
             completion::AssistantContent::Text(text) if text.text == "CONTENT"
         ));
+    }
+
+    #[test]
+    fn openrouter_finish_reasons_map_and_preserve_unknown_values() {
+        use crate::completion::FinishReason;
+
+        let choice = |finish_reason: Option<&str>, native: Option<&str>| Choice {
+            index: 0,
+            native_finish_reason: native.map(str::to_string),
+            message: Message::Assistant {
+                content: vec![],
+                reasoning: None,
+                refusal: None,
+                audio: None,
+                name: None,
+                tool_calls: vec![],
+                reasoning_details: vec![],
+                images: vec![],
+            },
+            finish_reason: finish_reason.map(str::to_string),
+        };
+
+        assert_eq!(
+            map_finish_reason(&choice(Some("stop"), Some("STOP"))),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("length"), None)),
+            Some(FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("tool_calls"), None)),
+            Some(FinishReason::ToolCalls)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("content_filter"), None)),
+            Some(FinishReason::ContentFilter)
+        );
+        // A reason OpenRouter could not translate survives verbatim rather
+        // than reading as a natural stop.
+        assert_eq!(
+            map_finish_reason(&choice(Some("error"), None)),
+            Some(FinishReason::Other("error".to_string()))
+        );
+        // No normalized reason: the upstream provider's own spelling is
+        // reported, in its own casing.
+        assert_eq!(
+            map_finish_reason(&choice(None, Some("MALFORMED_FUNCTION_CALL"))),
+            Some(FinishReason::Other("MALFORMED_FUNCTION_CALL".to_string()))
+        );
+        assert_eq!(map_finish_reason(&choice(None, None)), None);
+    }
+
+    #[test]
+    fn openrouter_stop_with_tool_call_reports_tool_calls() {
+        // OpenRouter gateways routinely report a plain `stop` on a turn that
+        // carried tool calls; the normalized response upgrades it.
+        let json = json!({
+            "id": "gen-tool",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"}
+                    }]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
     }
 
     #[test]
@@ -2833,8 +2979,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
         assert!(items.iter().any(|item| matches!(
@@ -3015,8 +3160,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3343,8 +3487,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3704,8 +3847,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 
@@ -3753,8 +3895,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 

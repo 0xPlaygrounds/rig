@@ -1,10 +1,9 @@
 //! Cassette-backed Cohere tool-calling coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, Prompt, ToolDefinition, message::ToolChoice,
+    AssistantContent, CompletionModel, FinishReason, Prompt, ToolDefinition, message::ToolChoice,
 };
 use rig::prelude::*;
-use rig::providers::cohere::completion::FinishReason;
 
 use super::super::{
     CASSETTE_MODEL,
@@ -66,8 +65,8 @@ async fn required_tool_choice_is_accepted() {
                 .expect("required tool choice should be accepted");
 
             assert_eq!(
-                response.raw_response.finish_reason,
-                FinishReason::ToolCall,
+                response.finish_reason(),
+                Some(FinishReason::ToolCalls),
                 "REQUIRED should force a tool call"
             );
 

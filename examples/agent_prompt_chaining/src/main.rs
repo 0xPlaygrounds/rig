@@ -14,15 +14,11 @@ const RNG_PREAMBLE: &str =
 const ADDER_PREAMBLE: &str =
     "Add 1000 to the number you receive, unless it is 0. Return only the final number.";
 
-fn build_rng_agent(
-    client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+fn build_rng_agent(client: &Client) -> rig::agent::Agent {
     client.agent(openai::GPT_4).preamble(RNG_PREAMBLE).build()
 }
 
-fn build_adder_agent(
-    client: &Client,
-) -> rig::agent::Agent<openai::responses_api::ResponsesCompletionModel> {
+fn build_adder_agent(client: &Client) -> rig::agent::Agent {
     client.agent(openai::GPT_4).preamble(ADDER_PREAMBLE).build()
 }
 

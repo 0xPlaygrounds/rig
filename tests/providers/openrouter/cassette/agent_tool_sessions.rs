@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rig::OneOrMany;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message, TypedPrompt};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -647,7 +648,13 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            // The per-choice finish reasons live on OpenRouter's own wire
+            // response, so this reads them from `raw_completion` and applies
+            // the same conversion `completion` does — one cassette interaction
+            // either way.
+            let raw = model.raw_completion(request).await?;
+            let response: rig::completion::CompletionResponse =
+                raw.clone().normalize("openrouter")?;
             let text = response
                 .choice
                 .iter()
@@ -664,14 +671,17 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                response
-                    .raw_response
-                    .choices
+                raw.choices
                     .iter()
                     .all(|choice| choice.finish_reason.is_some()),
                 "raw response should preserve finish reasons"
             );
-            assert_nonempty_response(&response.raw_response.model);
+            anyhow::ensure!(
+                response.finish_reason().is_some(),
+                "normalized response should preserve the finish reason: {:?}",
+                response.finish_reason()
+            );
+            assert_nonempty_response(&raw.model);
 
             Ok(())
         },

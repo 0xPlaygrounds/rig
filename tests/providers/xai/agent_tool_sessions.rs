@@ -394,15 +394,34 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse<xai::CompletionResponse>,
-) {
-    assert_nonempty_response(&response.raw_response.id);
-    assert_nonempty_response(&response.raw_response.model);
-    assert_eq!(response.raw_response.status.as_deref(), Some("completed"));
+/// Assert the provider-native metadata xAI reports on its own wire response.
+///
+/// The response id (`resp_...`), the untyped `status`, and the raw usage
+/// envelope have no normalized home, so they are read from
+/// [`xai::CompletionModel::raw_completion`]. `completion` is that same call
+/// followed by the same conversion, so a cassette still records exactly one
+/// interaction.
+fn assert_raw_response_metadata(raw: &xai::CompletionResponse) {
+    assert_nonempty_response(&raw.id);
+    assert_nonempty_response(&raw.model);
+    assert_eq!(raw.status.as_deref(), Some("completed"));
     assert!(
-        response.raw_response.usage.is_some(),
+        raw.usage.is_some(),
         "raw xAI response should preserve usage metadata"
+    );
+}
+
+fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
+    assert_nonempty_response(
+        response
+            .model
+            .as_deref()
+            .expect("normalized xAI response should report the provider model"),
+    );
+    assert_eq!(
+        response.finish_reason(),
+        Some(rig::completion::FinishReason::Stop),
+        "xAI `status: completed` should normalize to a stop finish reason"
     );
     assert!(
         response
@@ -682,7 +701,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let response = model.completion(request).await?;
+            let raw = model.raw_completion(request).await?;
+            assert_raw_response_metadata(&raw);
+            let response: rig::completion::CompletionResponse = raw.try_into()?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -799,7 +820,23 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let raw = model.raw_completion(request).await?;
+
+            anyhow::ensure!(
+                raw.output
+                    .iter()
+                    .any(|output| matches!(output, Output::Reasoning { .. })),
+                "raw xAI output should preserve provider reasoning item"
+            );
+            let raw_reasoning_tokens = raw
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.output_tokens_details.as_ref())
+                .map(|details| details.reasoning_tokens)
+                .unwrap_or_default();
+            assert_raw_response_metadata(&raw);
+
+            let response: rig::completion::CompletionResponse = raw.try_into()?;
 
             anyhow::ensure!(
                 response
@@ -809,25 +846,10 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 "xAI reasoning response should preserve a reasoning content block"
             );
             anyhow::ensure!(
-                response
-                    .raw_response
-                    .output
-                    .iter()
-                    .any(|output| matches!(output, Output::Reasoning { .. })),
-                "raw xAI output should preserve provider reasoning item"
-            );
-            anyhow::ensure!(
                 response.usage.reasoning_tokens > 0,
                 "core usage should preserve xAI reasoning tokens: {:?}",
                 response.usage
             );
-            let raw_reasoning_tokens = response
-                .raw_response
-                .usage
-                .as_ref()
-                .and_then(|usage| usage.output_tokens_details.as_ref())
-                .map(|details| details.reasoning_tokens)
-                .unwrap_or_default();
             anyhow::ensure!(
                 response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
                 "usage reasoning tokens should match raw provider details"
@@ -890,7 +912,9 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 }))
                 .build();
 
-            let response = model.completion(request).await?;
+            let raw = model.raw_completion(request).await?;
+            assert_raw_response_metadata(&raw);
+            let response: rig::completion::CompletionResponse = raw.try_into()?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

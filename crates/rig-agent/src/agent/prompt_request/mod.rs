@@ -8,7 +8,7 @@ use rig_core::{
 };
 
 use crate::{
-    completion::{CompletionModel, Message, PromptError, Usage},
+    completion::{Message, PromptError, Usage},
     tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
@@ -169,6 +169,24 @@ macro_rules! forward_prompt_setters {
             self.$recv = self.$recv.max_invalid_tool_call_retries(retries);
             self
         }
+
+        /// Set the default model candidate for this run.
+        ///
+        /// This does not suppress registered model-selection hooks, which may
+        /// replace this candidate before each model call (including retries).
+        pub fn using_model(mut self, model: $crate::agent::ModelHandle) -> Self {
+            self.$recv = self.$recv.using_model(model);
+            self
+        }
+
+        /// Erase and set a typed default model for this run.
+        pub fn using_model_value<M>(mut self, model: M) -> Self
+        where
+            M: $crate::completion::CompletionModel + 'static,
+        {
+            self.$recv = self.$recv.using_model_value(model);
+            self
+        }
     };
 }
 pub(crate) use forward_prompt_setters;
@@ -206,24 +224,20 @@ impl PromptType for Extended {}
 /// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
 /// configured or implicit budget; a tool call followed by a model-authored final
 /// answer generally requires at least two model calls.
-pub struct PromptRequest<S, M>
+pub struct PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// The hook-aware driver this request configures and runs.
-    pub(crate) runner: AgentRunner<M>,
+    pub(crate) runner: AgentRunner,
     /// Phantom data to track the type of the request (Standard vs Extended).
     state: PhantomData<S>,
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     /// Create a new PromptRequest from an agent, cloning the agent's data and
     /// default hook stack.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         PromptRequest {
             runner: AgentRunner::from_agent(agent, prompt),
             state: PhantomData,
@@ -231,10 +245,9 @@ where
     }
 }
 
-impl<S, M> PromptRequest<S, M>
+impl<S> PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -242,7 +255,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M> {
+    pub fn extended_details(self) -> PromptRequest<Extended> {
         PromptRequest {
             runner: self.runner,
             state: PhantomData,
@@ -260,10 +273,11 @@ where
 
     /// Append a hook for this request (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use first-non-`Continue`-wins). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use
+    /// first-non-`Continue`-wins). See the [`hook`](crate::agent::hook) module
+    /// docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -279,10 +293,7 @@ where
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M> IntoFuture for PromptRequest<Standard, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Standard> {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -291,10 +302,7 @@ where
     }
 }
 
-impl<M> IntoFuture for PromptRequest<Extended, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Extended> {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -303,10 +311,7 @@ where
     }
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
     }
@@ -675,10 +680,7 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
         .collect()
 }
 
-impl<M> PromptRequest<Extended, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Extended> {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         self.runner.run().await
     }
@@ -708,25 +710,23 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M>
+pub struct TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
-    inner: PromptRequest<S, M>,
+    inner: PromptRequest<S>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Create a new TypedPromptRequest from an agent.
     ///
     /// This automatically sets the output schema based on the type parameter `T`.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.runner.output_schema = Some(schema_for!(T));
@@ -744,18 +744,17 @@ where
     }
 }
 
-impl<T, S, M> TypedPromptRequest<T, S, M>
+impl<T, S> TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -807,10 +806,9 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -825,10 +823,9 @@ where
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Extended, M>
+impl<T> TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -844,10 +841,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Standard, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -857,10 +853,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Extended, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -2300,7 +2295,7 @@ mod tests {
                 .with_usage(first_call_usage),
             MockTurn::text("").with_usage(second_call_usage),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
 
         let response = agent
             .prompt("do tool work")
@@ -2370,7 +2365,7 @@ mod tests {
                     AssistantContent::Text(text) if text.text.is_empty()
                 ))
         )));
-        let requests = agent.model.requests();
+        let requests = model.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
     }

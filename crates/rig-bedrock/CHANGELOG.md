@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+
+- *(streaming)* the `MessageStop` straggler flush is gated on a `ToolUse` stop reason: a tool block truncated by `MaxTokens` is dropped with a warning instead of fabricating a `{}`-args call or a spurious error
+- *(streaming)* emit every parallel tool call (in-flight state is keyed by `content_block_index` and flushed per `ContentBlockStop`); text after a closed tool block is no longer dropped; malformed tool-call JSON surfaces an `Err` item instead of silently dropping the call under a `ToolCalls` terminal
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.40.0...rig-bedrock-v0.41.0) - 2026-07-28
 
 ### Added

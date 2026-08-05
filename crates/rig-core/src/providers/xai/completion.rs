@@ -11,12 +11,14 @@ use tracing::{Instrument, Level, enabled};
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
-use crate::providers::openai::responses_api::streaming::StreamingCompletionResponse;
-use crate::providers::openai::responses_api::{Output, ResponsesUsage};
-use crate::streaming::StreamingCompletionResponse as BaseStreamingCompletionResponse;
+use crate::providers::openai::responses_api::{IncompleteDetailsReason, Output, ResponsesUsage};
+
+/// Stable descriptor name recorded on telemetry spans and on every normalized
+/// response produced by this provider.
+pub(crate) const PROVIDER_NAME: &str = "xai";
 
 /// xAI completion models as of 2025-06-04
 pub const GROK_2_1212: &str = "grok-2-1212";
@@ -128,10 +130,60 @@ pub struct CompletionResponse {
     pub object: String,
     #[serde(default)]
     pub status: Option<String>,
+    /// Why an `incomplete` response stopped early. Only the Responses API's
+    /// `incomplete` status distinguishes a token-limit truncation from a
+    /// filtered one, and it does so here rather than on `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_details: Option<IncompleteDetailsReason>,
     pub usage: Option<ResponsesUsage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Map an xAI Responses API terminal state onto the normalized vocabulary.
+///
+/// Mirrors
+/// [`responses_api::map_finish_reason`](crate::providers::openai::responses_api)
+/// decision for decision — the two APIs share this vocabulary — but reads the
+/// status as a string, because xAI's `status` is kept untyped here so a status
+/// xAI adds later still deserializes (and still surfaces) instead of failing
+/// the whole response.
+///
+/// The API splits "why did generation end" across two fields: `status` says
+/// whether the turn ran to completion, and `incomplete_details.reason` says why
+/// it did not. Anything unrecognized is carried verbatim in
+/// [`FinishReason::Other`](completion::FinishReason::Other) so it never reads
+/// as a natural stop; in-flight statuses report no reason at all.
+///
+/// Tool-call termination has no distinct status: xAI reports `completed` on a
+/// turn whose output carries `function_call` items. That upgrade to
+/// [`FinishReason::ToolCalls`](completion::FinishReason::ToolCalls) is applied
+/// once, centrally, by
+/// [`completion::CompletionResponse::with_optional_finish_reason`].
+pub(crate) fn map_finish_reason(
+    status: &str,
+    incomplete_details: Option<&IncompleteDetailsReason>,
+) -> Option<completion::FinishReason> {
+    match status {
+        "completed" => Some(completion::FinishReason::Stop),
+        "incomplete" => Some(
+            match incomplete_details
+                .map(|details| details.reason.as_str())
+                .filter(|reason| !reason.is_empty())
+            {
+                Some("max_output_tokens") => completion::FinishReason::Length,
+                Some("content_filter") => completion::FinishReason::ContentFilter,
+                Some(other) => completion::FinishReason::Other(other.to_owned()),
+                // Incomplete without a stated reason: the status itself is all
+                // the provider told us.
+                None => completion::FinishReason::Other(status.to_owned()),
+            },
+        ),
+        // The turn has not terminated, so there is genuinely no reason yet.
+        "in_progress" | "queued" => None,
+        other => Some(completion::FinishReason::Other(other.to_owned())),
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
@@ -149,19 +201,25 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(message) => Some(message.id.clone()),
             _ => None,
         });
+        let finish_reason = response
+            .status
+            .as_deref()
+            .filter(|status| !status.is_empty())
+            .and_then(|status| map_finish_reason(status, response.incomplete_details.as_ref()));
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id,
-        })
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_message_id(message_id)
+                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_model(response.model)
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -184,30 +242,30 @@ impl<T> CompletionModel<T> {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a completion and return xAI's own wire response.
+    ///
+    /// This is the escape hatch for provider-specific fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one
+    /// network request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<CompletionResponse>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request =
             XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
-        let span = CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let span =
+            CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
+                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+                .build();
 
         if enabled!(Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -235,7 +293,7 @@ where
                         span.record("gen_ai.response.id", response.id.as_str());
                         span.record("gen_ai.response.model", response.model.as_str());
                         if let Some(usage) = &response.usage {
-                            span.record_token_usage(usage);
+                            span.record_token_usage(&crate::completion::Usage::from(usage));
                         }
 
                         if enabled!(Level::TRACE) {
@@ -245,7 +303,7 @@ where
                             );
                         }
 
-                        response.try_into()
+                        Ok(response)
                     }
                     ApiResponse::Error(error) => {
                         tracing::warn!(message = %error.message(), "provider returned an error response");
@@ -265,12 +323,33 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<BaseStreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        self.stream(request).await
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        CompletionModel::stream(self, request).await
+    }
+}
+
+impl<H> crate::client::ConstructCompletionModel<Client<H>> for CompletionModel<H>
+where
+    Client<H>: Clone,
+{
+    fn construct(client: &Client<H>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -439,6 +518,117 @@ mod tests {
         assert_eq!(converted.usage.cached_input_tokens, 3);
         assert_eq!(converted.usage.output_tokens, 8);
         assert_eq!(converted.usage.reasoning_tokens, 5);
+        assert_eq!(converted.provider, "xai");
+        // The provider-reported model, not the one the handle was created with.
+        assert_eq!(converted.model.as_deref(), Some("grok-4.3"));
+        // The fixture reports no top-level status, so no reason is invented.
+        assert_eq!(converted.finish_reason(), None);
+    }
+
+    #[test]
+    fn xai_finish_reasons_map_and_preserve_unknown_values() {
+        use crate::completion::FinishReason;
+        use crate::providers::openai::responses_api::IncompleteDetailsReason;
+
+        let incomplete = |reason: &str| IncompleteDetailsReason {
+            reason: reason.to_string(),
+        };
+
+        assert_eq!(
+            super::map_finish_reason("completed", None),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(
+            super::map_finish_reason("incomplete", Some(&incomplete("max_output_tokens"))),
+            Some(FinishReason::Length)
+        );
+        assert_eq!(
+            super::map_finish_reason("incomplete", Some(&incomplete("content_filter"))),
+            Some(FinishReason::ContentFilter)
+        );
+        // An unknown incomplete reason survives verbatim rather than being
+        // flattened into a natural stop.
+        assert_eq!(
+            super::map_finish_reason("incomplete", Some(&incomplete("moderation_hold"))),
+            Some(FinishReason::Other("moderation_hold".to_string()))
+        );
+        assert_eq!(
+            super::map_finish_reason("incomplete", None),
+            Some(FinishReason::Other("incomplete".to_string()))
+        );
+        assert_eq!(
+            super::map_finish_reason("failed", None),
+            Some(FinishReason::Other("failed".to_string()))
+        );
+        // A terminal status xAI has not documented is reported, not smoothed
+        // into a natural stop.
+        assert_eq!(
+            super::map_finish_reason("throttled", None),
+            Some(FinishReason::Other("throttled".to_string()))
+        );
+        // In-flight statuses genuinely have no terminal reason yet.
+        assert_eq!(super::map_finish_reason("in_progress", None), None);
+        assert_eq!(super::map_finish_reason("queued", None), None);
+    }
+
+    #[test]
+    fn xai_response_reports_length_for_truncated_output() {
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_trunc",
+            "model": "grok-4-0709",
+            "status": "incomplete",
+            "incomplete_details": { "reason": "max_output_tokens" },
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_trunc",
+                    "role": "assistant",
+                    "status": "incomplete",
+                    "content": [
+                        { "type": "output_text", "text": "partial", "annotations": [] }
+                    ]
+                }
+            ]
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = crate::completion::CompletionResponse::try_from(raw)
+            .expect("xAI response should convert");
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[test]
+    fn xai_completed_response_with_tool_call_reports_tool_calls() {
+        // xAI reports `completed` even when the turn ended to call a tool;
+        // the reconciliation on the normalized response upgrades it.
+        let raw: super::CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "resp_tool",
+            "model": "grok-4-0709",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_1",
+                    "name": "example_tool",
+                    "arguments": "{}",
+                    "status": "completed"
+                }
+            ]
+        }))
+        .expect("fixture should deserialize");
+
+        let converted = crate::completion::CompletionResponse::try_from(raw)
+            .expect("xAI response should convert");
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
     }
 
     #[tokio::test]
