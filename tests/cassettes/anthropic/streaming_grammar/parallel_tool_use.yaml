@@ -57,4 +57,3 @@ then:
 
     event: message_stop
     data: {"type":"message_stop"}
-
