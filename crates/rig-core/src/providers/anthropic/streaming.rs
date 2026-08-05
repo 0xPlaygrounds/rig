@@ -13,6 +13,8 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
     self, RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal,
     ToolCallDeltaContent,
@@ -77,11 +79,32 @@ fn create_streaming_request_body(
     Ok(body)
 }
 
+/// The `type` values this client models on the Anthropic Messages SSE wire.
+///
+/// [`classify_tagged_frame`] dispatches on this list: a frame whose `type` is
+/// outside it classifies `Unknown` (driver policy: warn + skip), while a
+/// listed type must pass the full [`StreamingEvent`] decode or classify
+/// `Corrupt`. There is no `#[serde(other)]` fallback — policy lives in the
+/// classify layer, never in serde.
+const KNOWN_EVENT_TYPES: &[&str] = &[
+    "message_start",
+    "content_block_start",
+    "content_block_delta",
+    "content_block_stop",
+    "message_delta",
+    "message_stop",
+    "ping",
+];
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamingEvent {
     MessageStart {
-        message: MessageStart,
+        /// Anthropic-compatible relays (Bedrock's Messages passthrough) can
+        /// emit `message_start` with a null `message`; `None` is a no-op
+        /// rather than a corrupt frame.
+        #[serde(default)]
+        message: Option<MessageStart>,
     },
     ContentBlockStart {
         index: usize,
@@ -99,9 +122,8 @@ pub enum StreamingEvent {
         usage: PartialUsage,
     },
     MessageStop,
+    /// Keep-alive; a Known no-op, not an unknown event to warn about.
     Ping,
-    #[serde(other)]
-    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,11 +155,6 @@ pub enum ContentDelta {
     CitationsDelta {
         citation: super::completion::Citation,
     },
-    /// Forward-compatibility fallback. Any delta type Anthropic adds in the
-    /// future that this crate does not yet model deserializes here so the
-    /// surrounding [`StreamingEvent`] still parses.
-    #[serde(other)]
-    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
@@ -198,6 +215,94 @@ struct ServerToolUseState {
 struct ThinkingState {
     thinking: String,
     signature: String,
+}
+
+/// The Anthropic Messages SSE wire as a [`WireAdapter`].
+///
+/// Holds the per-stream assembly state (open tool call, server tool uses,
+/// open thinking block, terminal metadata); frame-triage policy lives in
+/// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
+/// not here.
+#[derive(Default)]
+struct AnthropicAdapter {
+    current_tool_call: Option<ToolCallState>,
+    server_tool_uses: HashMap<usize, ServerToolUseState>,
+    current_thinking: Option<ThinkingState>,
+    input_tokens: u64,
+    message_id: Option<String>,
+    response_model: Option<String>,
+}
+
+impl WireAdapter for AnthropicAdapter {
+    type Event = StreamingEvent;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: &WireFrame) -> WireEvent<StreamingEvent> {
+        wire::classify_tagged_frame(&frame.as_str(), |event_type| {
+            KNOWN_EVENT_TYPES.contains(&event_type)
+        })
+    }
+
+    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput<Self::Response>) {
+        match &event {
+            StreamingEvent::MessageStart { message } => {
+                // Bedrock-compat quirk: a `message_start` without a message
+                // body is a no-op, not an error.
+                let Some(message) = message else { return };
+                self.input_tokens = message.usage.input_tokens;
+                self.message_id = Some(message.id.clone());
+                self.response_model = Some(message.model.clone());
+
+                let span = tracing::Span::current();
+                span.record("gen_ai.response.id", &message.id);
+                span.record("gen_ai.response.model", &message.model);
+                return;
+            }
+            StreamingEvent::MessageDelta { delta, usage } => {
+                // Only a `message_delta` carrying a stop reason is the
+                // provider's genuine terminal; without one it is a no-op.
+                let Some(reason) = delta.stop_reason.as_ref() else {
+                    return;
+                };
+                // cache_creation_input_tokens and cache_read_input_tokens are
+                // cumulative totals on message_delta.usage per the Anthropic
+                // streaming API spec — use them directly.
+                let usage = PartialUsage {
+                    output_tokens: usage.output_tokens,
+                    input_tokens: usize::try_from(self.input_tokens).ok(),
+                    cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                    cache_read_input_tokens: usage.cache_read_input_tokens,
+                };
+
+                let span = tracing::Span::current();
+                span.record_token_usage(&crate::completion::Usage::from(&usage));
+                out.push(Ok(RawStreamingChoice::FinalResponse(
+                    StreamingCompletionResponse {
+                        usage,
+                        stop_reason: Some(reason.clone()),
+                        message_id: self.message_id.clone(),
+                        model: self.response_model.clone(),
+                    },
+                )));
+                return;
+            }
+            _ => {}
+        }
+
+        if let Some(result) = handle_event(
+            &event,
+            &mut self.current_tool_call,
+            &mut self.server_tool_uses,
+            &mut self.current_thinking,
+        ) {
+            out.push(result);
+        }
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // EOF without `message_delta` is truncation: open blocks stay
+        // partial, and no terminal record may be synthesized.
+    }
 }
 
 /// Anthropic's own terminal stream record, as returned by
@@ -303,110 +408,33 @@ where
 
         let stream = GenericEventSource::new(self.client.clone(), req);
 
-        // Use our SSE decoder to directly handle Server-Sent Events format
-        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(stream! {
-            let mut current_tool_call: Option<ToolCallState> = None;
-            let mut server_tool_uses: HashMap<usize, ServerToolUseState> = HashMap::new();
-            let mut current_thinking: Option<ThinkingState> = None;
+        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
+        // framing only — classification and policy live downstream.
+        let transport = stream! {
             let mut sse_stream = Box::pin(stream);
-            let mut input_tokens = 0;
-            let mut final_usage = None;
-            let mut stop_reason = None;
-            let mut message_id = None;
-            let mut response_model = None;
-            let mut terminated_with_error = false;
-            let mut saw_terminal = false;
-
-            let mut text_content = String::new();
-
             while let Some(sse_result) = sse_stream.next().await {
                 match sse_result {
                     Ok(Event::Open) => {}
                     Ok(Event::Message(sse)) => {
-                        // Parse the SSE data as a StreamingEvent
-                        match serde_json::from_str::<StreamingEvent>(&sse.data) {
-                            Ok(event) => {
-                                match &event {
-                                    StreamingEvent::MessageStart { message } => {
-                                        input_tokens = message.usage.input_tokens;
-                                        message_id = Some(message.id.clone());
-                                        response_model = Some(message.model.clone());
-
-                                        let span = tracing::Span::current();
-                                        span.record("gen_ai.response.id", &message.id);
-                                        span.record("gen_ai.response.model", &message.model);
-                                    },
-                                    StreamingEvent::MessageDelta { delta, usage } => {
-                                        if let Some(reason) = delta.stop_reason.as_ref() {
-                                            // cache_creation_input_tokens and cache_read_input_tokens
-                                            // are cumulative totals on message_delta.usage per the
-                                            // Anthropic streaming API spec — use them directly.
-                                            let usage = PartialUsage {
-                                                 output_tokens: usage.output_tokens,
-                                                 input_tokens: usize::try_from(input_tokens).ok(),
-                                                 cache_creation_input_tokens: usage.cache_creation_input_tokens,
-                                                 cache_read_input_tokens: usage.cache_read_input_tokens
-                                            };
-
-                                            let span = tracing::Span::current();
-                                            span.record_token_usage(&crate::completion::Usage::from(&usage));
-                                            final_usage = Some(usage);
-                                            stop_reason = Some(reason.clone());
-                                            saw_terminal = true;
-                                            break;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-
-                                if let Some(result) = handle_event(
-                                    &event,
-                                    &mut current_tool_call,
-                                    &mut server_tool_uses,
-                                    &mut current_thinking,
-                                ) {
-                                    if let Ok(RawStreamingChoice::Message(ref text)) = result {
-                                        text_content += text;
-                                    }
-                                    yield result;
-                                }
-                            },
-                            Err(e) => {
-                                if !sse.data.trim().is_empty() {
-                                    yield Err(CompletionError::ResponseError(
-                                        format!("Failed to parse JSON: {} (Data: {})", e, sse.data)
-                                    ));
-                                }
-                            }
+                        // Data-less frames (keep-alive comments) carry no
+                        // payload and are not wire frames.
+                        if sse.data.trim().is_empty() {
+                            continue;
                         }
-                    },
+                        yield Ok(WireFrame::Text(sse.data));
+                    }
                     Err(e) => {
-                        terminated_with_error = true;
                         yield Err(CompletionError::from_stream_transport(e));
                         break;
                     }
                 }
             }
-
             // Ensure event source is closed when stream ends
             sse_stream.close();
+        };
 
-            // Only a genuine `message_delta` carrying a stop reason counts as
-            // the provider completing the turn. A transport failure, or a
-            // stream that reached EOF without that event (truncation), leaves
-            // whatever was accumulated partial — emitting a terminal record
-            // then would read as a successfully completed turn.
-            if terminated_with_error || !saw_terminal {
-                return;
-            }
-
-            yield Ok(RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                usage: final_usage.unwrap_or_default(),
-                stop_reason,
-                message_id,
-                model: response_model,
-            }))
-        }.instrument(span));
+        let stream: RawStreamingResult<StreamingCompletionResponse> =
+            Box::pin(run_wire_stream(transport, AnthropicAdapter::default()).instrument(span));
 
         Ok(stream)
     }
@@ -477,7 +505,9 @@ fn handle_event(
                     .signature
                     .push_str(signature);
 
-                // Don't yield signature chunks, they will be included in the final Reasoning
+                // Wire quirk: the signature is not emitted as its own chunk —
+                // it closes the thinking block, riding on the completed
+                // `Reasoning` the `content_block_stop` restatement emits.
                 None
             }
             ContentDelta::CitationsDelta { citation } => {
@@ -485,7 +515,6 @@ fn handle_event(
                     "citations": [citation]
                 }))))
             }
-            ContentDelta::Unknown => None,
         },
         StreamingEvent::ContentBlockStart {
             index,
@@ -608,12 +637,12 @@ fn handle_event(
                 None
             }
         }
-        // Ignore other event types or handle as needed
+        // Interpreted by the adapter (`message_start`/`message_delta`) or
+        // Known no-ops (`message_stop`, `ping`).
         StreamingEvent::MessageStart { .. }
         | StreamingEvent::MessageDelta { .. }
         | StreamingEvent::MessageStop
-        | StreamingEvent::Ping
-        | StreamingEvent::Unknown => None,
+        | StreamingEvent::Ping => None,
     }
 }
 
@@ -1859,11 +1888,60 @@ mod tests {
         assert_eq!(citations, vec![citation]);
     }
 
+    /// The `#[serde(other)]` policy fallbacks are gone: classification is the
+    /// only policy site. An unmodeled *top-level* event type is `Unknown`
+    /// (driver: warn + skip); a `ping` is Known; and a known tag whose payload
+    /// this client cannot decode — including an unmodeled nested delta type —
+    /// is `Corrupt`, never silently demoted to an ignorable unknown.
     #[test]
-    fn test_unknown_content_delta_falls_back() {
-        let json = r#"{"type": "something_new_from_anthropic", "field": "x"}"#;
-        let delta: ContentDelta = serde_json::from_str(json).unwrap();
-        assert!(matches!(delta, ContentDelta::Unknown));
+    fn classify_dispatches_on_the_known_event_list() {
+        let adapter = AnthropicAdapter::default();
+
+        let frame =
+            WireFrame::Text(r#"{"type":"something_new_from_anthropic","field":"x"}"#.into());
+        assert!(matches!(
+            adapter.classify(&frame),
+            crate::providers::internal::wire::WireEvent::Unknown { event_type, .. }
+                if event_type == "something_new_from_anthropic"
+        ));
+
+        let frame = WireFrame::Text(r#"{"type":"ping"}"#.into());
+        assert!(matches!(
+            adapter.classify(&frame),
+            crate::providers::internal::wire::WireEvent::Known(StreamingEvent::Ping)
+        ));
+
+        let frame = WireFrame::Text(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"delta_shape_from_the_future"}}"#
+                .into(),
+        );
+        assert!(matches!(
+            adapter.classify(&frame),
+            crate::providers::internal::wire::WireEvent::Corrupt(_)
+        ));
+
+        let frame = WireFrame::Text("{not json".into());
+        assert!(matches!(
+            adapter.classify(&frame),
+            crate::providers::internal::wire::WireEvent::Corrupt(_)
+        ));
+    }
+
+    /// Bedrock-compat quirk: `message_start` without a message body is a
+    /// Known no-op, not a corrupt frame.
+    #[test]
+    fn message_start_with_null_message_is_a_known_noop() {
+        let adapter = AnthropicAdapter::default();
+        let frame = WireFrame::Text(r#"{"type":"message_start","message":null}"#.into());
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(&frame)
+        else {
+            panic!("null-message message_start must stay a known event");
+        };
+
+        let mut adapter = AnthropicAdapter::default();
+        let mut out = Vec::new();
+        adapter.interpret(event, &mut out);
+        assert!(out.is_empty(), "a message-less message_start is a no-op");
     }
 
     #[tokio::test]

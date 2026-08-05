@@ -11,15 +11,18 @@
 
 /// One classified wire frame.
 #[derive(Debug)]
-pub(crate) enum WireEvent<T> {
+pub enum WireEvent<T> {
     /// The frame carries a discriminator this client models and its payload
     /// decoded fully.
     Known(T),
-    /// Valid JSON whose discriminator this client does not model. Policy at
-    /// every site: warn and skip, for forward compatibility.
+    /// Valid JSON whose discriminator this client does not model. Policy
+    /// (owned by the stream driver, never per adapter): warn — with the
+    /// payload, so unrecognized events are diagnosable — and skip, for
+    /// forward compatibility.
     Unknown {
+        /// The unmodeled discriminator value.
         event_type: String,
-        #[allow(dead_code)]
+        /// The full frame payload, for the driver's warn log.
         value: serde_json::Value,
     },
     /// Not valid JSON, or a modeled discriminator whose payload failed the
@@ -35,7 +38,7 @@ pub(crate) enum WireEvent<T> {
 /// is `Unknown`; a modeled value — or a missing `type`, which no modeled
 /// event omits — must pass the full typed decode, and a failure there is
 /// `Corrupt`, not `Unknown`.
-pub(crate) fn classify_tagged_frame<T>(
+pub fn classify_tagged_frame<T>(
     data: &str,
     is_known_event_type: impl Fn(&str) -> bool,
 ) -> WireEvent<T>
@@ -62,7 +65,7 @@ where
 /// a frame saying `"object": "chat.completion.chunk"` or carrying `choices`
 /// is a chunk and must pass the full typed decode (failure is `Corrupt`);
 /// valid JSON that is neither is `Unknown`.
-pub(crate) fn classify_chat_completions_frame<T>(data: &str) -> WireEvent<T>
+pub fn classify_chat_completions_frame<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
 {
@@ -93,7 +96,7 @@ where
 /// The wire has no discriminator at all: a line either decodes as the
 /// response shape (`Known`) or is `Corrupt`. This family never produces
 /// `Unknown`.
-pub(crate) fn classify_untyped_line<T>(line: &[u8]) -> WireEvent<T>
+pub fn classify_untyped_line<T>(line: &[u8]) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
 {

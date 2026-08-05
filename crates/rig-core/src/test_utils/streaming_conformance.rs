@@ -1756,6 +1756,128 @@ pub mod fixtures {
         }
     }
 
+    /// Anthropic Messages SSE wire (`type`-tagged events, index-as-id blocks).
+    pub mod anthropic {
+        use super::*;
+
+        fn driver() -> WireDriver {
+            WireDriver::new("anthropic", |chunks| {
+                Box::pin(async move {
+                    let client = crate::providers::anthropic::Client::builder()
+                        .api_key("test-key")
+                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .build()?;
+                    let model = client.completion_model(
+                        crate::providers::anthropic::completion::CLAUDE_SONNET_4_6,
+                    );
+                    let request = model.completion_request("hello").build();
+                    let stream = model.stream(request).await?;
+                    Ok(drain(stream).await)
+                })
+            })
+        }
+
+        fn message_start() -> Bytes {
+            sse(&json!({
+                "type": "message_start",
+                "message": {
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "content": [],
+                    "model": "claude-sonnet-4-6",
+                    "stop_reason": null,
+                    "stop_sequence": null,
+                    "usage": {"input_tokens": 5, "output_tokens": 0},
+                },
+            }))
+        }
+
+        /// The Anthropic fixture.
+        pub fn fixture() -> ProviderWireFixture {
+            ProviderWireFixture {
+                driver: driver(),
+                text_frames: vec![
+                    message_start(),
+                    sse(&json!({
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {"type": "text", "text": ""},
+                    })),
+                    sse(&json!({
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "text_delta", "text": "hi"},
+                    })),
+                ],
+                expected_texts: vec!["hi"],
+                tool_call_frames: vec![
+                    sse(&json!({
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": "toolu_1",
+                            "name": "get_weather",
+                            "input": {},
+                        },
+                    })),
+                    sse(&json!({
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "input_json_delta", "partial_json": "{\"city\":\"Tokyo\"}"},
+                    })),
+                    // `content_block_stop` completes the call; the stream
+                    // terminal (`message_delta`) is deliberately absent.
+                    sse(&json!({"type": "content_block_stop", "index": 0})),
+                ],
+                expected_tool_name: "get_weather",
+                partial_tool_call_frames: Some(vec![
+                    sse(&json!({
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": "toolu_1",
+                            "name": "get_weather",
+                            "input": {},
+                        },
+                    })),
+                    sse(&json!({
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "input_json_delta", "partial_json": "{\"cit"},
+                    })),
+                ]),
+                terminal_frames: vec![sse(&json!({
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn", "stop_sequence": null},
+                    "usage": {"output_tokens": 4},
+                }))],
+                // input 5 (from message_start) + output 4.
+                expected_usage_total: 9,
+                expected_finish_reason: Some(FinishReason::Stop),
+                // The Anthropic terminal always carries `usage`; there is no
+                // usage-less genuine terminal to spell on this wire.
+                zero_usage_terminal_frames: None,
+                // `message_stop` carries no data of its own and must not
+                // fabricate a terminal record.
+                bare_terminal_frames: Some(vec![sse(&json!({"type": "message_stop"}))]),
+                malformed_frame: sse_raw("{not json"),
+                unknown_event_frame: Some(sse(&json!({
+                    "type": "content_block_heartbeat",
+                    "index": 0,
+                }))),
+                // A known tag (`content_block_delta`) with a schema-defective
+                // payload must classify `Corrupt`, never `Unknown`.
+                defective_known_frame: Some(sse_raw(
+                    r#"{"type":"content_block_delta","index":0,"delta":42}"#,
+                )),
+                delta_less_prelude_frame: None,
+                refusal: None,
+            }
+        }
+    }
+
     /// Cohere v2 chat SSE wire.
     pub mod cohere {
         use super::*;

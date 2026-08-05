@@ -10,7 +10,7 @@
 
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
-    fixtures::{cohere, gemini_rest, ollama, openai_chat, openai_responses},
+    fixtures::{anthropic, cohere, gemini_rest, ollama, openai_chat, openai_responses},
 };
 
 macro_rules! conformance_test {
@@ -77,6 +77,7 @@ conformance_suite!(openai_responses_suite, openai_responses::fixture);
 conformance_suite!(gemini_rest_suite, gemini_rest::fixture);
 conformance_suite!(cohere_suite, cohere::fixture);
 conformance_suite!(ollama_suite, ollama::fixture);
+conformance_suite!(anthropic_suite, anthropic::fixture);
 
 // The defective-known-payload family. For the OpenAI Responses fixture it
 // pins the P2 in `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5
@@ -109,6 +110,11 @@ mod defective_known_event {
     conformance_test!(
         ollama,
         ollama::fixture,
+        conformance::defective_known_event_surfaces_err
+    );
+    conformance_test!(
+        anthropic,
+        anthropic::fixture,
         conformance::defective_known_event_surfaces_err
     );
 }
