@@ -19,6 +19,7 @@ mod openai_chat_suite {
     streaming_conformance_suite! {
         provider: "openai_chat",
         fixture: openai_chat::fixture(),
+        manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, defective_known_frame, delta_less_prelude],
     }
 }
 
@@ -28,6 +29,7 @@ mod openai_responses_suite {
     streaming_conformance_suite! {
         provider: "openai_responses",
         fixture: openai_responses::fixture(),
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
     }
 }
 
@@ -37,6 +39,7 @@ mod gemini_rest_suite {
     streaming_conformance_suite! {
         provider: "gemini_rest",
         fixture: gemini_rest::fixture(),
+        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
     }
 }
 
@@ -46,6 +49,7 @@ mod gemini_interactions_suite {
     streaming_conformance_suite! {
         provider: "gemini_interactions",
         fixture: interactions::fixture(),
+        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
     }
 }
 
@@ -55,6 +59,7 @@ mod anthropic_suite {
     streaming_conformance_suite! {
         provider: "anthropic",
         fixture: anthropic::fixture(),
+        manifest: [partial_tool_args, bare_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
     }
 }
 
@@ -64,6 +69,7 @@ mod cohere_suite {
     streaming_conformance_suite! {
         provider: "cohere",
         fixture: cohere::fixture(),
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
     }
 }
 
@@ -73,5 +79,6 @@ mod ollama_suite {
     streaming_conformance_suite! {
         provider: "ollama",
         fixture: ollama::fixture(),
+        manifest: [zero_usage_terminal, malformed_frame, defective_known_frame],
     }
 }

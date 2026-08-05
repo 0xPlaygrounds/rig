@@ -107,7 +107,7 @@ pub enum ScenarioOutcome {
 /// only constructor is [`ProviderWireFixture::capabilities`] — suites never
 /// hand-write flags, so a flag structurally cannot drift from the wire
 /// fixture that backs it (it *is* the fixture's populated-field set).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SuiteCapabilities {
     /// The wire streams tool-call arguments incrementally
     /// (`partial_tool_call_frames`).
@@ -129,6 +129,29 @@ pub struct SuiteCapabilities {
     pub delta_less_prelude: bool,
     /// The wire has a refusal channel (`refusal`).
     pub refusal: bool,
+}
+
+impl SuiteCapabilities {
+    /// Build a capability set from manifest names. Unknown names panic so a
+    /// typo in a suite's `manifest:` list fails loudly rather than silently
+    /// asserting an empty flag.
+    pub fn from_names(names: &[&str]) -> Self {
+        let mut caps = Self::default();
+        for name in names {
+            match *name {
+                "partial_tool_args" => caps.partial_tool_args = true,
+                "zero_usage_terminal" => caps.zero_usage_terminal = true,
+                "bare_terminal" => caps.bare_terminal = true,
+                "malformed_frame" => caps.malformed_frame = true,
+                "unknown_event_frame" => caps.unknown_event_frame = true,
+                "defective_known_frame" => caps.defective_known_frame = true,
+                "delta_less_prelude" => caps.delta_less_prelude = true,
+                "refusal" => caps.refusal = true,
+                other => panic!("unknown capability name in suite manifest: {other}"),
+            }
+        }
+        caps
+    }
 }
 
 /// The canonical fixture-driven scenario set every wire-family suite must

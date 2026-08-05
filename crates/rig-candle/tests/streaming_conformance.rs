@@ -97,4 +97,7 @@ fn fixture() -> ProviderWireFixture {
 rig_core::streaming_conformance_suite! {
     provider: "candle",
     fixture: fixture(),
+    // Typed local wire: no malformed/unknown/defective shapes exist,
+    // so the derived set is genuinely empty.
+    manifest: [],
 }

@@ -380,14 +380,28 @@ implementation must uphold:
   only. (For websocket consumers: `ResponsesWebSocketEvent` gained an
   `Unknown(serde_json::Value)` variant carrying the same raw passthrough —
   exhaustive `match`es over that enum need a new arm.)
+- **Behavioral note — `Unknown` events now occur on every provider.**
+  `StreamedAssistantContent::Unknown` is not a new variant (it has carried
+  unmodeled Responses output items since #1950), but it previously appeared
+  only on the OpenAI Responses wire. Every wire family now forwards
+  unrecognized-but-valid frames as `Unknown` passthrough events — copilot
+  heartbeats, gateway extras, future provider event types. Aggregation is
+  unaffected (`Unknown` is never folded into the choice), but a match arm
+  like `other => panic!(..)` that never fired before will fire now: treat
+  `Unknown` as an ignorable passthrough unless you deliberately consume raw
+  frames.
 - **Identity is mandatory**: every `Reasoning`/`ReasoningDelta`,
   `ToolCallDelta`, and `TextStart` event carries a non-empty id — the wire's
   own identity when it exists, else an id minted via `SyntheticIds` in the
   reserved namespaces (`reasoning-{n}`, `block-{n}`, `output-{n}`,
-  `tool-{index}`, `text-{n}`). The reserved namespaces are provenance-gated:
-  aggregation treats them as per-stream constants (other output closes the
-  open block) and they are never replayed upstream as wire-genuine ids. Wire
-  ids must never use these shapes.
+  `tool-{index}`, `text-{n}`). Wire ids must never use these shapes.
+  Aggregation treats minted ids as per-stream constants (other output closes
+  the open block). Upstream, the rule is per-wire: providers that validate
+  identity server-side gate minted ids out of requests (the Responses
+  reasoning path drops boundary-minted items); wires where identity is
+  structurally required — the chat `tool_call_id` pair — replay minted ids
+  self-consistently, which id-omitting gateways accept since they had no
+  server-side id to check against.
 - **Finish/flush obligations**: `finish` runs only on EOF without a terminal
   and closes open blocks — it must never synthesize a terminal record
   (deferring a terminal the wire already signaled is allowed).

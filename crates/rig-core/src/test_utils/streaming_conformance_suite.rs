@@ -56,7 +56,8 @@
 macro_rules! streaming_conformance_suite {
     (
         provider: $family:literal,
-        fixture: $fixture:expr
+        fixture: $fixture:expr,
+        manifest: [$($cap:ident),* $(,)?]
         $(, xfail: [$($xfail:literal),* $(,)?])?
         $(,)?
     ) => {
@@ -69,6 +70,26 @@ macro_rules! streaming_conformance_suite {
 
         fn suite_fixture() -> $crate::test_utils::streaming_conformance::ProviderWireFixture {
             $fixture
+        }
+
+        /// Snapshot of the fixture-derived capability set. Flags still derive
+        /// from the fixture (drift between flags and fixture is structurally
+        /// impossible); this manifest exists so a capability LOSS is loud —
+        /// dropping a fixture sample cannot silently turn a scenario into a
+        /// passing named skip. Editing the fixture's shape requires editing
+        /// this list, restoring the two-sided review diff.
+        #[test]
+        fn derived_capabilities_match_the_manifest() {
+            let derived = suite_fixture().capabilities();
+            let expected =
+                $crate::test_utils::streaming_conformance::SuiteCapabilities::from_names(&[
+                    $(stringify!($cap)),*
+                ]);
+            assert_eq!(
+                derived, expected,
+                "fixture-derived capabilities changed; update this suite's `manifest:` \
+                 to acknowledge the new coverage set"
+            );
         }
 
         #[tokio::test]

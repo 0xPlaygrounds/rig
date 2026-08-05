@@ -141,4 +141,5 @@ fn fixture() -> ProviderWireFixture {
 rig_core::streaming_conformance_suite! {
     provider: "gemini_grpc",
     fixture: fixture(),
+    manifest: [zero_usage_terminal],
 }

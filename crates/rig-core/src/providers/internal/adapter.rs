@@ -83,10 +83,13 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 ///   `ToolCallDelta`, and `TextStart` event carries a non-empty id — the
 ///   wire's own identity when it exists, else an id minted via
 ///   [`SyntheticIds`] in the reserved namespaces (`reasoning-{n}`,
-///   `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`). Reserved
-///   namespaces are provenance-gated: aggregation treats them as per-stream
-///   constants and they are never serialized upstream as wire-genuine ids,
-///   so wire ids must never use these shapes.
+///   `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`). Wire ids must
+///   never use these shapes. The upstream rule is per-wire: providers that
+///   validate identity server-side gate minted ids out of requests (the
+///   Responses reasoning path drops boundary-minted items); wires where
+///   identity is structurally required (chat `tool_call_id`) replay minted
+///   ids as a self-consistent pair, which id-omitting gateways accept —
+///   they had no server-side id to check against in the first place.
 /// - **Finish/flush obligations**: see [`WireAdapter::finish`] (EOF-only,
 ///   never synthesizes a terminal) and
 ///   [`WireAdapter::flush_before_terminal_error`] (fully-delivered content
@@ -330,8 +333,10 @@ fn drain_buffered<R>(
 ///
 /// Every id-less wire mints ids the same way — a namespace plus a counter or
 /// wire index — and the namespaces are the reserved set the boundary-minted
-/// provenance gate recognizes (`streaming::MINTED_ID_NAMESPACES`),
-/// so a minted id can never serialize upstream as a wire-genuine one.
+/// provenance gate recognizes (`streaming::MINTED_ID_NAMESPACES`). Where a
+/// provider validates ids server-side, the gate keeps minted ids out of
+/// requests; where the wire structurally requires an id (chat
+/// `tool_call_id`), the minted id replays as a self-consistent pair.
 #[derive(Debug)]
 pub struct SyntheticIds {
     namespace: &'static str,
@@ -391,7 +396,8 @@ mod tests {
     use super::*;
 
     /// Every id this helper can mint must be recognized by the F7 provenance
-    /// gate, so fabricated reasoning identities never serialize upstream.
+    /// gate, so server-validated paths can drop fabricated identities before
+    /// they reach a request.
     #[test]
     fn minted_ids_are_recognized_as_boundary_minted() {
         for mut ids in [

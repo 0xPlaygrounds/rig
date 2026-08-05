@@ -158,4 +158,5 @@ fn fixture() -> ProviderWireFixture {
 rig_core::streaming_conformance_suite! {
     provider: "bedrock",
     fixture: fixture(),
+    manifest: [partial_tool_args, zero_usage_terminal],
 }
