@@ -27,3 +27,12 @@ providers/openai/responses_api/streaming.rs | let value = match serde_json::from
 providers/openai/responses_api/streaming.rs | completed = Some(serde_json::from_value(response.clone())?); | parse_sse_completion_body: decodes the terminal `response` payload of a completed/incomplete unary body; failure is an error.
 providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
 providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
+# Single-file providers: unary/non-stream parses sharing a file with streaming code.
+providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame
+providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame
+providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
+providers/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame
+providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame
+providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame
+providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame
+providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame

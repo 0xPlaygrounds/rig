@@ -330,12 +330,14 @@ impl GeminiRestAdapter {
                     // replace-on-supersede discards only the deltas it
                     // restates.
                     self.thought_buffer.push_str(&text);
-                    if !self.thought_buffer.is_empty() {
-                        out.push(Ok(shared_parts::signed_reasoning(
-                            std::mem::take(&mut self.thought_buffer),
-                            signature,
-                        )));
-                    }
+                    // Emit even when no thought text accumulated: a
+                    // signature-only block still carries replay-required
+                    // provider state, and the gRPC and Interactions adapters
+                    // already emit it — the REST wire must not diverge.
+                    out.push(Ok(shared_parts::signed_reasoning(
+                        std::mem::take(&mut self.thought_buffer),
+                        signature,
+                    )));
                 } else if !text.is_empty() {
                     self.thought_buffer.push_str(&text);
                     out.push(Ok(shared_parts::reasoning_delta(text)));
@@ -1124,6 +1126,43 @@ mod tests {
                 }
             }
             (texts, saw_error, saw_terminal, stream)
+        }
+
+        #[tokio::test]
+        async fn a_signature_with_no_thought_text_still_emits_a_signed_block() {
+            // gRPC and Interactions emit signature-only blocks; the REST
+            // wire must not diverge — the signature is replay-required
+            // provider state even when no thought text accumulated.
+            const SIGNATURE_ONLY_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"","thought":true,"thoughtSignature":"sig-only"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4}}"#;
+
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient {
+                    sse_bytes: sse(&[SIGNATURE_ONLY_CHUNK]),
+                })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(
+                crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+            );
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut signed = None;
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Reasoning(reasoning) =
+                    item.expect("stream item should be Ok")
+                {
+                    signed = Some(reasoning);
+                }
+            }
+            let signed = signed.expect("signature-only block must be emitted");
+            assert!(signed.content.iter().any(|content| matches!(
+                content,
+                crate::message::ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig-only"
+            )));
         }
 
         #[tokio::test]

@@ -120,10 +120,31 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 /// (the classify layer) and `adapter.rs` (the driver) are different basenames
 /// and therefore never scanned; `rig-agent`'s streaming modules are
 /// consumer-side (no wire decoding) and are excluded by path.
+///
+/// Single-file providers keep their streaming code in files the basename
+/// pattern misses, so those are scanned by explicit path suffix — extend
+/// `SINGLE_FILE_STREAMING_MODULES` when a new provider adopts that layout.
+///
+/// Both this scan and the driver-adoption scan are textual tripwires against
+/// drift, not security boundaries: an aliased import could evade them, and
+/// that aliasing would itself be reviewable. AST-grade enforcement is
+/// deliberately not attempted.
+const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
+    "providers/ollama.rs",
+    "providers/copilot/mod.rs",
+    "providers/chatgpt/mod.rs",
+];
+
 fn is_provider_streaming_module(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
     if unix_path.contains("/rig-agent/") || unix_path.contains("/test_utils/") {
         return false;
+    }
+    if SINGLE_FILE_STREAMING_MODULES
+        .iter()
+        .any(|suffix| unix_path.ends_with(suffix))
+    {
+        return true;
     }
     path.file_name()
         .map(|name| name.to_string_lossy().into_owned())
