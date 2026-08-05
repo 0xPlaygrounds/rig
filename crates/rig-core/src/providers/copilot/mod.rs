@@ -1653,6 +1653,9 @@ enum ChatFinishReason {
 
 #[derive(Deserialize, Debug)]
 struct ChatStreamingChoice {
+    // Defaulted for delta-less choices (e.g. Azure-style content-filter
+    // prelude chunks); an empty delta with no finish reason is a no-op frame.
+    #[serde(default)]
     delta: ChatStreamingDelta,
     finish_reason: Option<ChatFinishReason>,
 }

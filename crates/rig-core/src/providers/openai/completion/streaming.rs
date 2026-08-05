@@ -68,7 +68,7 @@ where
     }))
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 struct StreamingDelta {
     #[serde(default, deserialize_with = "deserialize_delta_content")]
     content: Option<String>,
@@ -128,6 +128,12 @@ pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFini
 
 #[derive(Deserialize, Debug)]
 struct StreamingChoice {
+    // Defaulted because a choice on the wire is not guaranteed to carry a
+    // delta: Azure prepends a `prompt_filter_results` chunk (delta-less
+    // choice) to every stream when content filtering is enabled. An empty
+    // delta with no finish reason is a no-op frame, matching how the
+    // reference SDKs treat it (skip at consumption, never an error).
+    #[serde(default)]
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
 }
@@ -1272,5 +1278,41 @@ mod tests {
             "a stream with no successfully decoded frame must not emit a terminal record"
         );
         assert!(stream.response.is_none());
+    }
+
+    #[tokio::test]
+    async fn azure_content_filter_prelude_chunk_is_a_no_op_not_an_error() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // Azure prepends a delta-less choice carrying `prompt_filter_results`
+        // to every stream when content filtering is enabled. It must parse as
+        // a no-op frame, never surface as an error item.
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"","object":"","choices":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":false,"severity":"safe"}}}]}"#,
+                r#"{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"delta":{"content":"hi"},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","object":"chat.completion.chunk","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
+
+        let mut texts = Vec::new();
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(streaming::StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(_) => {}
+                Err(error) => panic!("the filter prelude chunk must not error: {error}"),
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(saw_final, "the genuine terminal must still arrive");
     }
 }

@@ -370,6 +370,11 @@ concrete. Their terminal record is `StreamFinal`, which carries normalized
 usage, finish reason, provider, provider-reported model, message ID, and
 response ID.
 
+A full `Reasoning` stream event supersedes prior `ReasoningDelta` events with
+the same reasoning `id` — UIs that render deltas incrementally should replace
+the accumulated text when the full block arrives, mirroring what the
+aggregated `choice` already does.
+
 `GetTokenUsage` is deleted — read `StreamFinal::usage` (or
 `StreamingCompletionResponse::usage()`) directly. A stream that ends without a
 terminal record still reports `Usage::new()`, the documented zero sentinel.

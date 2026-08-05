@@ -787,20 +787,33 @@ impl Stream for StreamingCompletionResponse {
                     // accumulation: the deltas are only a fallback for
                     // providers that never send the completed block, so the
                     // delta-built item is *replaced*, not kept alongside a
-                    // duplicate. When both the accumulating item and the full
-                    // block carry an ID and they differ, the block belongs to
-                    // a different reasoning item and is appended instead.
-                    let replace_index = stream.reasoning_item_index.filter(|&index| {
-                        match stream.assistant_items.get(index) {
-                            Some(AssistantContent::Reasoning(existing)) => {
-                                match (&existing.id, &reasoning.id) {
-                                    (Some(existing_id), Some(id)) => existing_id == id,
-                                    _ => true,
-                                }
-                            }
-                            _ => false,
-                        }
-                    });
+                    // duplicate. Identity is decided by ID: matching IDs (or
+                    // neither side carrying one) replace; mismatched IDs —
+                    // including an ID on only one side — belong to a
+                    // different reasoning item and append. The active-index
+                    // slot is only a fast path: providers may emit the
+                    // completed block after other output cleared the index
+                    // (reasoning → tool call → completed block), so a miss
+                    // falls back to a by-ID scan of the aggregated items.
+                    let same_item = |existing: &Reasoning| match (&existing.id, &reasoning.id) {
+                        (Some(existing_id), Some(id)) => existing_id == id,
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    let replace_index = stream
+                        .reasoning_item_index
+                        .filter(|&index| {
+                            matches!(
+                                stream.assistant_items.get(index),
+                                Some(AssistantContent::Reasoning(existing)) if same_item(existing)
+                            )
+                        })
+                        .or_else(|| {
+                            reasoning.id.as_ref()?;
+                            stream.assistant_items.iter().rposition(|item| {
+                                matches!(item, AssistantContent::Reasoning(existing) if same_item(existing))
+                            })
+                        });
                     match replace_index.and_then(|index| stream.assistant_items.get_mut(index)) {
                         Some(item) => *item = AssistantContent::Reasoning(reasoning.clone()),
                         None => stream
@@ -1432,6 +1445,96 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
+        // Providers may emit the completed reasoning item after other output
+        // (reasoning -> tool call -> completed block). The tool call clears
+        // the active reasoning index, so replacement must fall back to the
+        // by-ID scan rather than appending a duplicate.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "partial ".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                    "call_1".to_string(),
+                    "probe".to_string(),
+                    serde_json::json!({}),
+                )));
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_1".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "the full block".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_items: Vec<&Reasoning> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            reasoning_items.len(),
+            1,
+            "the full block must replace the delta-built item, not join it"
+        );
+        let only = reasoning_items.first().expect("one reasoning item");
+        assert_eq!(only.id.as_deref(), Some("rs_1"));
+        assert!(
+            only.content.iter().any(|content| matches!(
+                content,
+                ReasoningContent::Text { text, .. } if text == "the full block"
+            )),
+            "the surviving item must carry the full block's content"
+        );
+    }
+
+    #[tokio::test]
+    async fn id_less_full_reasoning_block_does_not_clobber_an_id_carrying_item() {
+        // An ID on only one side means the identity is unknown: the block is
+        // appended rather than overwriting an unrelated item's deltas.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "identified deltas".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    content: ReasoningContent::Text {
+                        text: "anonymous block".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_ids: Vec<Option<&str>> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), None]);
+    }
+
+    #[tokio::test]
     async fn test_stream_reasoning_only_does_not_inject_empty_text() {
         let mut stream = create_reasoning_only_stream();
         while stream.next().await.is_some() {}
@@ -1584,6 +1687,12 @@ pub enum StreamedAssistantContent {
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning block emitted by the assistant.
+    ///
+    /// Supersedes any prior [`StreamedAssistantContent::ReasoningDelta`]s
+    /// carrying the same reasoning `id` (or with no `id` on either side):
+    /// render it as a *replacement* for the accumulated delta text, not an
+    /// addition. The aggregated [`StreamingCompletionResponse::choice`]
+    /// already applies this replacement.
     Reasoning(Reasoning),
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {

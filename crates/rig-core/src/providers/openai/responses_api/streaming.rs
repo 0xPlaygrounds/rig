@@ -787,10 +787,12 @@ pub(crate) async fn completion_response_from_raw_choices(
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
     let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    // Presence of ANY streamed text — even whitespace — means the deltas were
+    // the content channel; merging the body then would duplicate it.
     let replay_has_message_text = contents.iter().any(|content| {
         matches!(
             content,
-            completion::AssistantContent::Text(text) if !text.text.trim().is_empty()
+            completion::AssistantContent::Text(text) if !text.text.is_empty()
         )
     });
     if !replay_has_message_text {
@@ -1084,8 +1086,21 @@ pub struct ContentPartChunk {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPartChunkPart {
-    OutputText { text: String },
-    SummaryText { text: String },
+    OutputText {
+        text: String,
+    },
+    SummaryText {
+        text: String,
+    },
+    /// Any part type this client doesn't model — `refusal` and
+    /// `reasoning_text` parts appear on real refusal/reasoning-text turns,
+    /// and new part types ship without notice. Content-part events are
+    /// bookkeeping (the content itself arrives via the corresponding delta
+    /// events, e.g. `response.refusal.delta`), so an unmodeled part must
+    /// parse as a no-op rather than fail the whole chunk — the same shape as
+    /// [`Output::Unknown`](super::Output).
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1981,6 +1996,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
+        // A refusal turn emits `response.content_part.added/.done` with a
+        // `refusal` part — a shape outside the modeled text parts — followed
+        // by the refusal text via `response.refusal.delta`. The part frames
+        // must parse as no-ops (never error items); the deltas carry the
+        // content.
+        let part_added = json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "part": { "type": "refusal", "refusal": "" }
+        });
+        let refusal_delta = json!({
+            "type": "response.refusal.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 2,
+            "delta": "I can't help with that."
+        });
+        let part_done = json!({
+            "type": "response.content_part.done",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 3,
+            "part": { "type": "refusal", "refusal": "I can't help with that." }
+        });
+        let reasoning_part = json!({
+            "type": "response.content_part.added",
+            "item_id": "rs_1",
+            "output_index": 1,
+            "content_index": 0,
+            "sequence_number": 4,
+            "part": { "type": "reasoning_text", "text": "" }
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 5,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[
+                    part_added,
+                    refusal_delta,
+                    part_done,
+                    reasoning_part,
+                    completed,
+                ]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut texts = Vec::new();
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("content-part frames must not surface as errors") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["I can't help with that."]);
+        assert!(saw_final, "the terminal must still arrive");
+    }
+
+    #[tokio::test]
     async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
         use crate::test_utils::MockStreamingClient;
@@ -2153,6 +2244,50 @@ mod tests {
                 .iter()
                 .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_))),
             "the genuine terminal must still be recorded"
+        );
+    }
+
+    #[test]
+    fn refusal_content_part_frames_do_not_fail_the_buffered_body() {
+        // The ChatGPT buffered route replays recorded SSE bodies; a refusal
+        // turn's `content_part` frames (an unmodeled `refusal` part) must not
+        // fail the whole completion — the refusal text arrives via the
+        // modeled `response.refusal.delta`.
+        let part_added = json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "part": { "type": "refusal", "refusal": "" }
+        });
+        let refusal_delta = json!({
+            "type": "response.refusal.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 2,
+            "delta": "no"
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 3,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        let body = format!(
+            "data: {part_added}
+data: {refusal_delta}
+data: {completed}
+"
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("refusal content-part frames must not fail the buffered decode");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::Message(text) if text == "no")),
+            "the refusal text must be delivered"
         );
     }
 

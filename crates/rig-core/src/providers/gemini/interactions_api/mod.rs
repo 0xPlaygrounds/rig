@@ -1305,17 +1305,21 @@ pub mod interactions_api_types {
     }
 
     impl InteractionStatus {
-        /// Returns true if the status is terminal.
+        /// Returns true when polling can stop: the status will not advance
+        /// on its own.
         ///
         /// The known *in-flight* statuses are the allowlist, so a status this
         /// crate does not know yet reads as terminal: a poll loop that treated
         /// an unknown status as in-flight would wait on it forever, whereas
         /// surfacing it lets the caller act on the provider's own spelling.
+        ///
+        /// [`InteractionStatus::RequiresAction`] is terminal *for the poll*
+        /// even though the interaction itself is resumable: it only advances
+        /// when the caller submits tool results, so waiting on it can never
+        /// succeed. Callers must branch on it as a distinct, resumable
+        /// outcome rather than a completion.
         pub fn is_terminal(&self) -> bool {
-            !matches!(
-                self,
-                InteractionStatus::InProgress | InteractionStatus::RequiresAction
-            )
+            !matches!(self, InteractionStatus::InProgress)
         }
 
         /// The exact spelling the Interactions API uses for this status on the
@@ -3305,8 +3309,10 @@ mod tests {
         assert!(!interaction.is_terminal());
         assert!(!interaction.is_completed());
 
+        // RequiresAction is terminal for the poll (it never advances without
+        // the caller submitting tool results) but is not a completion.
         interaction.status = Some(InteractionStatus::RequiresAction);
-        assert!(!interaction.is_terminal());
+        assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
 
         interaction.status = Some(InteractionStatus::Completed);
