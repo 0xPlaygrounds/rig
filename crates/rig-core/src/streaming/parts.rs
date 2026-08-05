@@ -171,6 +171,11 @@ impl PartsAccumulator {
             return;
         }
 
+        // Metadata targets a text block, so it is a text entry point like
+        // `text_delta`/`text_start`: any minted (id-less) reasoning run ends
+        // here, or interleaved reasoning after this metadata would merge into
+        // the pre-metadata part across the text boundary.
+        self.close_minted_reasoning();
         let index = self.ensure_text_block();
         let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(text))) = self.parts.get_mut(index)
         else {
@@ -410,7 +415,11 @@ impl PartsAccumulator {
             ),
             None => (crate::id::generate(), end.id.clone(), String::new(), None),
         };
-        if let Some(final_name) = end.name.clone() {
+        // An authoritative end-event name supersedes assembly, but an *empty*
+        // one is filtered like the fragment path (`tool_name_delta`'s
+        // last-non-empty semantics): it must not erase an established name and
+        // turn a real call into a nameless drop.
+        if let Some(final_name) = end.name.clone().filter(|final_name| !final_name.is_empty()) {
             name = final_name;
         }
         // A call whose name never arrived is not a call the model made
@@ -900,6 +909,25 @@ mod tests {
         ));
     }
 
+    /// Standalone text metadata is a boundary too: a `TextAdditionalParams`
+    /// with no surrounding text deltas still targets a text block, so
+    /// minted-id reasoning around it stays two parts in arrival order.
+    #[test]
+    fn text_metadata_closes_a_minted_id_reasoning_item() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.text_additional_params(serde_json::json!({"citations": ["c1"]}));
+        accumulator.reasoning_delta("reasoning-0", "B");
+
+        let parts = accumulator.finish();
+        assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
+        assert!(matches!(
+            parts.get(1),
+            Some(AssistantContent::Text(text))
+                if text.additional_params == Some(serde_json::json!({"citations": ["c1"]}))
+        ));
+    }
+
     /// Wire-supplied ids are exact item identities: the Responses replay case
     /// must keep collapsing a done block onto its deltas across interleaved
     /// output (the boundary bump applies to minted namespaces only).
@@ -969,6 +997,24 @@ mod tests {
 
         let (tool_call, _) = accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("call must finalize under the established name");
+        assert_eq!(tool_call.function.name, "get_weather");
+    }
+
+    /// The fragment filter applied to the authoritative path: an end event
+    /// carrying `Some("")` as its name must not erase the established name
+    /// and drop the call as nameless.
+    #[test]
+    fn an_empty_authoritative_end_name_does_not_erase_an_established_name() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "get_weather");
+        accumulator.tool_args_delta("call_1", "{}");
+
+        let mut done = end("call_1", UnparseableToolInput::Drop);
+        done.name = Some(String::new());
+        let (tool_call, _) = accumulator
+            .tool_input_end(done)
             .expect("no error")
             .expect("call must finalize under the established name");
         assert_eq!(tool_call.function.name, "get_weather");

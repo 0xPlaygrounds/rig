@@ -176,14 +176,30 @@ where
     /// Apply a provider decoration to the in-flight call it names, matched by
     /// the established provider id. Decorations ride the slot onto its end
     /// event; assembly itself is untouched.
+    ///
+    /// Two matching rules keep this deterministic:
+    /// - A slot whose wire never established a provider id (empty `id`) never
+    ///   matches — a decoration for the empty string would otherwise pick an
+    ///   arbitrary id-less slot out of `HashMap` iteration order.
+    /// - Each field is **first-wins**: a later decoration for the same call
+    ///   fills only the fields still unset, so a gemini-style
+    ///   signature-then-params sequence composes instead of the second
+    ///   decoration clobbering the first's signature with `None`.
     pub fn decorate(&mut self, decoration: ToolCallDecoration) {
+        if decoration.tool_id.is_empty() {
+            return;
+        }
         if let Some(slot) = self
             .slots
             .values_mut()
             .find(|slot| slot.id == decoration.tool_id)
         {
-            slot.signature = decoration.signature;
-            slot.additional_params = decoration.additional_params;
+            if slot.signature.is_none() {
+                slot.signature = decoration.signature;
+            }
+            if slot.additional_params.is_none() {
+                slot.additional_params = decoration.additional_params;
+            }
         }
     }
 
@@ -289,6 +305,63 @@ mod tests {
         let end = decorated.end_event(UnparseableToolInput::Drop);
         assert_eq!(end.signature.as_deref(), Some("sig-b"));
         assert_eq!(end.additional_params, Some(serde_json::json!({"k": "v"})));
+    }
+
+    /// An empty-id decoration must never match: id-less slots keep an empty
+    /// established id, and matching `""` would decorate an arbitrary one of
+    /// them in `HashMap` iteration order.
+    #[test]
+    fn an_empty_id_decoration_never_matches_an_id_less_slot() {
+        let mut bridge = ToolCallBridge::<usize>::new();
+        bridge.open(0, None, Some("get_weather"));
+        bridge.open(1, None, Some("get_time"));
+
+        bridge.decorate(ToolCallDecoration {
+            tool_id: String::new(),
+            signature: Some("sig".to_owned()),
+            additional_params: None,
+        });
+
+        for index in [0, 1] {
+            let slot = bridge.remove(index).expect("slot open");
+            assert!(
+                slot.signature.is_none(),
+                "an empty-id decoration must not land on slot {index}"
+            );
+        }
+    }
+
+    /// Decoration fields are first-wins: a gemini-style signature-then-params
+    /// sequence composes, and a later decoration cannot clobber an earlier
+    /// signature with `None`.
+    #[test]
+    fn decoration_fields_are_first_wins_per_field() {
+        let mut bridge = ToolCallBridge::<usize>::new();
+        bridge.open(0, Some("call_a"), Some("get_weather"));
+
+        bridge.decorate(ToolCallDecoration {
+            tool_id: "call_a".to_owned(),
+            signature: Some("sig-1".to_owned()),
+            additional_params: None,
+        });
+        bridge.decorate(ToolCallDecoration {
+            tool_id: "call_a".to_owned(),
+            signature: None,
+            additional_params: Some(serde_json::json!({"thought": true})),
+        });
+        // A third decoration cannot overwrite either established field.
+        bridge.decorate(ToolCallDecoration {
+            tool_id: "call_a".to_owned(),
+            signature: Some("sig-2".to_owned()),
+            additional_params: Some(serde_json::json!({"other": 1})),
+        });
+
+        let slot = bridge.remove(0).expect("slot open");
+        assert_eq!(slot.signature.as_deref(), Some("sig-1"));
+        assert_eq!(
+            slot.additional_params,
+            Some(serde_json::json!({"thought": true}))
+        );
     }
 
     #[test]

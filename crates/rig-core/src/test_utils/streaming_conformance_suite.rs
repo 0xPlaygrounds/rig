@@ -38,6 +38,9 @@
 ///     rig_core::streaming_conformance_suite! {
 ///         provider: "anthropic",
 ///         fixture: anthropic::fixture(),
+///         // Snapshot of the fixture-derived capability set (required); the
+///         // `derived_capabilities_match_the_manifest` test keeps it honest.
+///         manifest: [partial_tool_args, malformed_frame, unknown_event_frame],
 ///         // Sanctioned known failures only, each with a finding reference.
 ///         xfail: ["unknown_event_is_skipped: warn-skip pending F2 (#2258)"],
 ///     }
@@ -49,9 +52,11 @@
 /// the workspace registry test matches invocations on it. `fixture` is an
 /// expression producing a fresh
 /// [`ProviderWireFixture`](crate::test_utils::streaming_conformance::ProviderWireFixture)
-/// per test. There is no `capabilities` block: the flags derive from the
-/// fixture's populated optional fields, so they cannot be written out of sync
-/// with the frames the suite actually drives.
+/// per test. The gating flags themselves derive from the fixture's populated
+/// optional fields, so they cannot be written out of sync with the frames the
+/// suite actually drives; `manifest:` is a required snapshot of that derived
+/// set, so losing a fixture sample (and its scenario) is a loud diff rather
+/// than a silent skip.
 #[macro_export]
 macro_rules! streaming_conformance_suite {
     (

@@ -3,7 +3,8 @@
 //! `rig_core::test_utils::streaming_conformance::fixtures`.
 //!
 //! Each invocation expands the full canonical scenario set plus the
-//! anti-tamper tests (`suite_is_complete`, `capabilities_match_fixture`);
+//! anti-tamper tests (`suite_is_complete`,
+//! `derived_capabilities_match_the_manifest`);
 //! capability flags gate visible named skips, never absence. The workspace
 //! registry test (`streaming_conformance_registry.rs`) fails CI when any wire
 //! family lacks an invocation.

@@ -421,8 +421,23 @@ impl SyntheticIds {
 
     /// The id for a stable wire-supplied index (anthropic's content-block
     /// index pattern).
+    ///
+    /// Signed index types (Bedrock's `i32` content-block indices) render
+    /// negatives sign-free as `n{magnitude}` (`-1` → `tool-n1`): a literal
+    /// `-` inside the id would escape
+    /// [`is_boundary_minted_id`](crate::streaming::is_boundary_minted_id)'s
+    /// suffix check, letting a minted id masquerade as wire-genuine. The gate
+    /// models the same `n` marker, and
+    /// `every_for_index_rendering_is_provenance_gated` pins the agreement.
+    /// Negative indices don't occur on any known wire; the scheme just keeps
+    /// the mint total instead of trusting that.
     pub fn for_index(&self, index: impl std::fmt::Display) -> String {
-        format!("{}{}", self.namespace, index)
+        let rendered = index.to_string();
+        let rendered = match rendered.strip_prefix('-') {
+            Some(magnitude) => format!("n{magnitude}"),
+            None => rendered,
+        };
+        format!("{}{}", self.namespace, rendered)
     }
 }
 
@@ -460,5 +475,31 @@ mod tests {
         let mut ids = SyntheticIds::reasoning();
         assert_eq!(ids.mint(), "reasoning-0");
         assert_eq!(ids.mint(), "reasoning-1");
+    }
+
+    /// Mint/gate agreement, property-style over the signed index domain:
+    /// every rendering `for_index` can produce — negative (Bedrock's `i32`
+    /// indices), zero, and large in both directions — must pass the
+    /// provenance gate. A negative index renders sign-free (`tool-n1`), so
+    /// no minted id ever carries a literal `-` the gate would miss.
+    #[test]
+    fn every_for_index_rendering_is_provenance_gated() {
+        let ids = SyntheticIds::tool();
+        for index in [i64::MIN, -1_000_000, -7, -1, 0, 1, 7, 1_000_000, i64::MAX] {
+            let id = ids.for_index(index);
+            assert!(
+                crate::streaming::is_boundary_minted_id(&id),
+                "{id} (index {index}) must be provenance-gated"
+            );
+            let suffix = id
+                .strip_prefix("tool-")
+                .expect("minted in the tool namespace");
+            assert!(
+                !suffix.contains('-'),
+                "sanity: only the namespace separator may be a dash: {id}"
+            );
+        }
+        assert_eq!(ids.for_index(-1i32), "tool-n1");
+        assert_eq!(ids.for_index(0i32), "tool-0");
     }
 }

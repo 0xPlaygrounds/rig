@@ -24,10 +24,19 @@ pub(crate) const MINTED_ID_NAMESPACES: [&str; 5] =
     ["reasoning-", "block-", "output-", "tool-", "text-"];
 
 /// Whether `id` belongs to a reserved boundary-minted namespace.
+///
+/// The suffix is the mint's index rendering
+/// ([`SyntheticIds::for_index`](crate::providers::internal::adapter::SyntheticIds)):
+/// digits, optionally prefixed with the `n` marker the mint uses for negative
+/// indices (`tool-n1` is minted from index `-1`; a literal `-` never appears
+/// inside a minted id). Gate and mint must agree — a rendering the gate
+/// misses would let a minted id masquerade as wire-genuine.
 pub(crate) fn is_boundary_minted_id(id: &str) -> bool {
     MINTED_ID_NAMESPACES.iter().any(|namespace| {
-        id.strip_prefix(namespace)
-            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+        id.strip_prefix(namespace).is_some_and(|rest| {
+            let digits = rest.strip_prefix('n').unwrap_or(rest);
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
     })
 }
 
@@ -787,6 +796,10 @@ impl Stream for StreamingCompletionResponse {
         let stream = self.get_mut();
 
         if stream.is_paused() {
+            // TODO(pre-existing): wake-immediately turns a pause into a busy
+            // poll loop; parking the waker on the `watch` channel and waking
+            // on resume would idle properly. Out of scope for the grammar
+            // refactor.
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }

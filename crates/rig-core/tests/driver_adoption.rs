@@ -18,18 +18,50 @@
 
 use std::path::PathBuf;
 
-/// File basenames where the policy table and classifiers legitimately name the
-/// triage variants.
-const ALLOWED_FILES: &[&str] = &["adapter.rs", "wire.rs"];
+/// Full path suffixes of the ONLY files where the policy table and
+/// classifiers legitimately name the triage variants. Matching by full path
+/// (not basename) means a future `rig-bedrock/src/streaming/adapter.rs` that
+/// hand-rolls a `WireEvent` policy table is scanned like any other file
+/// instead of inheriting the core driver's exemption.
+const ALLOWED_POLICY_HOMES: &[&str] = &[
+    "rig-core/src/providers/internal/adapter.rs",
+    "rig-core/src/providers/internal/wire.rs",
+];
+
+/// Whether `path` is one of the two files allowed to state triage policy.
+fn is_policy_home(path: &std::path::Path) -> bool {
+    let unix_path = path.to_string_lossy().replace('\\', "/");
+    ALLOWED_POLICY_HOMES
+        .iter()
+        .any(|suffix| unix_path.ends_with(suffix))
+}
 
 /// Directories that hold test harness code rather than shipped policy.
 const SKIPPED_DIRS: &[&str] = &["tests", "test_utils", "fixtures", "target"];
 
+/// Returns the shipped portion of a source file: everything before the first
+/// line whose (trimmed) content *starts with* `#[cfg(test)]` — i.e. an actual
+/// attribute in attribute position. Inline unit-test modules may exercise wire
+/// shapes freely; only the code before the test module ships. Line-anchoring
+/// matters: a doc comment or trailing comment merely *mentioning*
+/// `#[cfg(test)]` must not exempt the shipped code below it (see the
+/// `shipped_portion_ignores_cfg_test_mentions_in_comments` self-test).
+fn shipped_portion(source: &str) -> &str {
+    let mut offset = 0usize;
+    for line in source.split_inclusive('\n') {
+        if line.trim_start().starts_with("#[cfg(test)]") {
+            break;
+        }
+        offset += line.len();
+    }
+    source
+        .get(..offset)
+        .expect("offset lies on a line boundary")
+}
+
 /// Walks every `.rs` file under the workspace `crates/` directory (skipping
 /// [`SKIPPED_DIRS`]) and calls `visit(path, shipped_source)`, where
-/// `shipped_source` is the file content truncated at the first
-/// `#[cfg(test)]` marker: inline unit-test modules may exercise wire shapes
-/// freely, only the code before the test module ships.
+/// `shipped_source` is the file content truncated by [`shipped_portion`].
 fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
     // rig-core/tests -> workspace crates/ directory, so the guards also cover
     // the out-of-core adapter crates (bedrock, candle, gemini-grpc).
@@ -56,11 +88,7 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
             }
 
             let source = std::fs::read_to_string(&path).expect("source file should be readable");
-            let shipped = source
-                .split("#[cfg(test)]")
-                .next()
-                .expect("split always yields at least one part");
-            visit(&path, shipped);
+            visit(&path, shipped_portion(&source));
         }
     }
 }
@@ -71,11 +99,7 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
     let mut violations = Vec::new();
 
     for_each_shipped_source(|path, shipped| {
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        if ALLOWED_FILES.contains(&name.as_str()) {
+        if is_policy_home(path) {
             return;
         }
 
@@ -116,14 +140,30 @@ const RAW_SERDE_MARKERS: &[&str] = &[
     "#[serde(other)]",
 ];
 
-/// A file is a provider streaming module when its basename says so. `wire.rs`
-/// (the classify layer) and `adapter.rs` (the driver) are different basenames
-/// and therefore never scanned; `rig-agent`'s streaming modules are
-/// consumer-side (no wire decoding) and are excluded by path.
+/// A file is in scope for the serde policy wall when ANY of:
 ///
-/// Single-file providers keep their streaming code in files the basename
-/// pattern misses, so those are scanned by explicit path suffix — extend
-/// `SINGLE_FILE_STREAMING_MODULES` when a new provider adopts that layout.
+/// 1. its basename says it is streaming code (`streaming`/`websocket`);
+/// 2. it is a single-file provider named in
+///    [`SINGLE_FILE_STREAMING_MODULES`] (those keep streaming code in files
+///    the basename pattern misses — extend the list when a new provider
+///    adopts that layout);
+/// 3. **fail-closed content scoping**: its shipped content references the
+///    wire/classify/adapter machinery ([`WIRE_MACHINERY_MARKERS`]). This is
+///    what closes the "compat helper" hole: a helper like
+///    `internal/openai_chat_completions_compatible.rs` (or any future
+///    `compat.rs`/`sse.rs`) has a basename the pattern misses, but it cannot
+///    participate in wire handling without naming the machinery, so touching
+///    the machinery is what opts a file into the scan. A helper that decodes
+///    the wire WITHOUT touching the machinery is a driver-adoption problem
+///    (guard 1 / review), not a scoping problem — content scoping was chosen
+///    over an ever-growing explicit path list precisely so future helpers are
+///    scanned the moment they are written, with no list to forget to update.
+///
+/// The classify layer (`wire.rs`) and driver (`adapter.rs`) are exempt by
+/// FULL path suffix ([`ALLOWED_POLICY_HOMES`]), not by basename, so a foreign
+/// `adapter.rs` elsewhere in the workspace is scanned like any other file.
+/// `rig-agent`'s streaming modules are consumer-side (no wire decoding) and
+/// are excluded by path, as is `test_utils`.
 ///
 /// Both this scan and the driver-adoption scan are textual tripwires against
 /// drift, not security boundaries: an aliased import could evade them, and
@@ -135,9 +175,22 @@ const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
     "providers/chatgpt/mod.rs",
 ];
 
-fn is_provider_streaming_module(path: &std::path::Path) -> bool {
+/// Identifiers a file cannot mention without participating in wire handling.
+const WIRE_MACHINERY_MARKERS: &[&str] = &[
+    "WireEvent",
+    "WireAdapter",
+    "WireFrame",
+    "run_wire_stream",
+    "run_wire_buffered",
+    "triage_frame",
+];
+
+fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
     if unix_path.contains("/rig-agent/") || unix_path.contains("/test_utils/") {
+        return false;
+    }
+    if is_policy_home(path) {
         return false;
     }
     if SINGLE_FILE_STREAMING_MODULES
@@ -146,9 +199,16 @@ fn is_provider_streaming_module(path: &std::path::Path) -> bool {
     {
         return true;
     }
-    path.file_name()
+    if path
+        .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .is_some_and(|name| name.contains("streaming") || name.contains("websocket"))
+    {
+        return true;
+    }
+    WIRE_MACHINERY_MARKERS
+        .iter()
+        .any(|marker| shipped.contains(marker))
 }
 
 /// One allowlist entry: `path suffix | line snippet | justification`.
@@ -228,7 +288,7 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
 
     let mut violations = Vec::new();
     for_each_shipped_source(|path, shipped| {
-        if !is_provider_streaming_module(path) {
+        if !is_serde_wall_target(path, shipped) {
             return;
         }
         let label = path.to_string_lossy().replace('\\', "/");
@@ -296,11 +356,95 @@ fn serde_policy_scanner_catches_raw_parses() {
     );
     assert!(allowlist.iter().all(|entry| entry.used));
 
-    // The classify layer's own file is out of scope by construction.
-    assert!(!is_provider_streaming_module(std::path::Path::new(
+    // The classify layer's own file is out of scope by construction, even
+    // though its content mentions the machinery.
+    assert!(!is_serde_wall_target(
+        std::path::Path::new("crates/rig-core/src/providers/internal/wire.rs"),
+        "fn classify(frame: WireFrame) -> WireEvent { todo!() }",
+    ));
+    assert!(is_serde_wall_target(
+        std::path::Path::new("crates/rig-core/src/providers/openai/responses_api/websocket.rs"),
+        "",
+    ));
+}
+
+/// Fail-closed content scoping: a helper whose basename the streaming
+/// pattern misses (compat/sse helpers) is still scanned once its shipped
+/// content touches the wire machinery, and stays out of scope while it
+/// doesn't.
+#[test]
+fn serde_wall_scopes_by_machinery_content() {
+    let compat = std::path::Path::new(
+        "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
+    );
+    assert!(
+        is_serde_wall_target(compat, "use super::adapter::run_wire_stream;"),
+        "a compat helper referencing the machinery must be scanned"
+    );
+    let future_helper = std::path::Path::new("crates/rig-core/src/providers/somegateway/sse.rs");
+    assert!(
+        is_serde_wall_target(
+            future_helper,
+            "let out = run_wire_buffered(adapter, frames);"
+        ),
+        "any future compat/sse helper opts in the moment it names the machinery"
+    );
+    assert!(
+        !is_serde_wall_target(future_helper, "fn plain_request_builder() {}"),
+        "machinery-free helpers stay out of scope"
+    );
+}
+
+/// The wire.rs/adapter.rs exemption is by full path suffix: a foreign
+/// `adapter.rs` (e.g. a hand-rolled rig-bedrock driver) is scanned by both
+/// guards instead of inheriting the core driver's exemption.
+#[test]
+fn foreign_adapter_files_are_not_exempt() {
+    let foreign = std::path::Path::new("crates/rig-bedrock/src/streaming/adapter.rs");
+    assert!(
+        !is_policy_home(foreign),
+        "guard 1 must scan a foreign adapter.rs for restated policy tables"
+    );
+    assert!(
+        is_serde_wall_target(foreign, "match event { WireEvent::Unknown(_) => {} }"),
+        "guard 2 must scan a foreign adapter.rs that touches the machinery"
+    );
+    assert!(is_policy_home(std::path::Path::new(
+        "crates/rig-core/src/providers/internal/adapter.rs"
+    )));
+    assert!(is_policy_home(std::path::Path::new(
         "crates/rig-core/src/providers/internal/wire.rs"
     )));
-    assert!(is_provider_streaming_module(std::path::Path::new(
-        "crates/rig-core/src/providers/openai/responses_api/websocket.rs"
-    )));
+}
+
+/// Truncation at `#[cfg(test)]` is line-anchored: only an attribute in
+/// attribute position ends the shipped portion. A doc-comment (or trailing
+/// comment) merely mentioning the attribute must not exempt subsequent code.
+#[test]
+fn shipped_portion_ignores_cfg_test_mentions_in_comments() {
+    let source = "\
+/// This helper is exercised under #[cfg(test)] elsewhere.
+fn shipped_code() { let _ = WireEvent::Unknown; }
+#[cfg(test)]
+mod tests {
+    fn test_only() { let _ = WireEvent::Corrupt; }
+}
+";
+    let shipped = shipped_portion(source);
+    assert!(
+        shipped.contains("WireEvent::Unknown"),
+        "code after a doc-comment mention still ships"
+    );
+    assert!(
+        !shipped.contains("WireEvent::Corrupt"),
+        "the real attribute-position marker still truncates"
+    );
+
+    // Indented attribute position (inside an impl block) also truncates.
+    let indented = "fn a() {}\n    #[cfg(test)]\n    fn b() {}\n";
+    assert_eq!(shipped_portion(indented), "fn a() {}\n");
+
+    // No marker at all: the whole file ships.
+    let plain = "fn a() {}\n";
+    assert_eq!(shipped_portion(plain), plain);
 }

@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(streaming)* `WireAdapter` gains an associated `Frame` type so typed-event wires implement the same contract over their SDK events; `classify` now takes the frame by value
 - *(streaming)* the conformance corpus accepts typed-event input (`WireInput::{Bytes, Event}`), so typed wires run the shared scenarios events-first with no mock transport; frame-level scenarios a typed wire cannot spell report visible skips
 - *(streaming)* wire-sequence conformance corpus (`test_utils::streaming_conformance` + `tests/core`) driving raw bytes through each provider's full pipeline; recorded `streaming_grammar` cassette suites for openai (reasoning summaries, encrypted multi-part reasoning, parallel tool calls, incomplete) and gemini (max-tokens truncation, tool calls, thinking, interactions requires_action)
+- *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
+- *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
 
 ### Changed
 
@@ -22,13 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(streaming)* [**breaking**] reasoning stream events carry mandatory identity: `RawStreamingChoice::{Reasoning, ReasoningDelta}` and `StreamedAssistantContent::ReasoningDelta` take `id: String`; providers propagate wire identity or mint a stream-stable id, and aggregation keys by exact id — OpenAI Responses summary-delta streams no longer duplicate reasoning content
 - *(streaming)* [**breaking**] text-block stream events carry mandatory identity: `RawStreamingChoice::TextStart` takes `id: String` and aggregation keys text blocks by it — two OpenAI Responses `message` output items now aggregate as two distinct text parts instead of concatenating; wires that never announce text boundaries need no `TextStart` (a bare `Message` opens a block under a boundary-minted `text-{n}` id, preserving single-block aggregation exactly)
 - *(streaming)* the public wire-adapter surface (`WireAdapter`, `run_wire_stream`, `run_wire_buffered`, `SyntheticIds`, `ToolCallBridge`) is documented as a contract for out-of-tree provider authors: classify delegation, driver-owns-policy, the reserved minted-id namespaces and their provenance gate, and the finish/flush obligations (see MIGRATING)
-
-### Added
-
-- *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
-- *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
-
-### Changed
 
 - *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete and carry normalized `finish_reason`/`provider`/`model`/`message_id`
 - *(completion)* [**breaking**] `CompletionModel` no longer requires `Clone`; generic code that cloned models must bound `+ Clone` explicitly, and `completion_request` now gates on `Self: Clone` (a relaxation for implementors — derives kept only for the old bound can be dropped)

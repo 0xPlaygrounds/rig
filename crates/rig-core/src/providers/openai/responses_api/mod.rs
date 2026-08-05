@@ -2201,7 +2201,10 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 // turn cut by `max_output_tokens` mid-tool-call) do not
                 // fabricate a call the model never fully made.
                 Err(_) => {
-                    tracing::debug!(
+                    // warn, not debug: main errored the whole response here,
+                    // so the quieter drop still deserves an operator-visible
+                    // signal.
+                    tracing::warn!(
                         tool = %name,
                         "dropping tool call whose arguments never fully arrived"
                     );

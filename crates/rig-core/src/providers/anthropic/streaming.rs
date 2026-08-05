@@ -85,7 +85,9 @@ fn create_streaming_request_body(
 /// outside it classifies `Unknown` (driver policy: warn + skip), while a
 /// listed type must pass the full [`StreamingEvent`] decode or classify
 /// `Corrupt`. There is no `#[serde(other)]` fallback — policy lives in the
-/// classify layer, never in serde.
+/// classify layer, never in serde. The one modeled exception is a novel
+/// *nested* delta type inside `content_block_delta`, which decodes to
+/// [`ContentDelta::Unknown`] (a warned no-op) via its hand-written dispatch.
 const KNOWN_EVENT_TYPES: &[&str] = &[
     "message_start",
     "content_block_start",
@@ -146,8 +148,7 @@ pub struct MessageStart {
     pub usage: Usage,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Debug)]
 pub enum ContentDelta {
     TextDelta {
         text: String,
@@ -164,6 +165,81 @@ pub enum ContentDelta {
     CitationsDelta {
         citation: super::completion::Citation,
     },
+    /// Any nested delta type this client doesn't model. Anthropic's
+    /// versioning policy reserves the right to add new delta types without
+    /// notice, so an unmodeled nested tag must not fail the whole
+    /// `content_block_delta` frame (which would classify it `Corrupt` and
+    /// surface an `Err` item per frame). It decodes to a no-op, warned at the
+    /// interpret site — the same shape as
+    /// [`ContentPartChunkPart::Unknown`](crate::providers::openai::responses_api::streaming::ContentPartChunkPart).
+    Unknown(serde_json::Value),
+}
+
+/// Hand-written tag dispatch instead of a trailing `#[serde(untagged)]`
+/// variant: on an internally-tagged enum the untagged fallback also swallows
+/// a *known* tag with an invalid payload, silently demoting a data-level
+/// defect to a skippable unknown delta. Here a known delta tag must decode
+/// fully or error (the frame classifies `Corrupt`); only an unmodeled (or
+/// absent) tag falls back to [`ContentDelta::Unknown`], preserving the value
+/// verbatim. Same pattern as `ContentPartChunkPart`'s hand dispatch in
+/// `openai/responses_api/streaming.rs`.
+impl<'de> Deserialize<'de> for ContentDelta {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        // A non-object delta is a data-level defect of the tagged shape, not
+        // an unmodeled delta kind: it errors (classifying the frame
+        // `Corrupt`) instead of degrading to an `Unknown` no-op — the
+        // conformance corpus pins `"delta": 42` as Corrupt.
+        if !value.is_object() {
+            return Err(serde::de::Error::custom("content delta must be an object"));
+        }
+        let str_field = |tag: &str, field: &str| -> Result<String, D::Error> {
+            value
+                .get(field)
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "`{tag}` content delta is missing a string `{field}` field"
+                    ))
+                })
+        };
+        match value.get("type").cloned() {
+            Some(serde_json::Value::String(tag)) => match tag.as_str() {
+                "text_delta" => Ok(Self::TextDelta {
+                    text: str_field("text_delta", "text")?,
+                }),
+                "input_json_delta" => Ok(Self::InputJsonDelta {
+                    partial_json: str_field("input_json_delta", "partial_json")?,
+                }),
+                "thinking_delta" => Ok(Self::ThinkingDelta {
+                    thinking: str_field("thinking_delta", "thinking")?,
+                }),
+                "signature_delta" => Ok(Self::SignatureDelta {
+                    signature: str_field("signature_delta", "signature")?,
+                }),
+                "citations_delta" => {
+                    let citation = value.get("citation").cloned().ok_or_else(|| {
+                        serde::de::Error::custom(
+                            "`citations_delta` content delta is missing a `citation` field",
+                        )
+                    })?;
+                    Ok(Self::CitationsDelta {
+                        citation: serde_json::from_value(citation)
+                            .map_err(serde::de::Error::custom)?,
+                    })
+                }
+                _ => Ok(Self::Unknown(value)),
+            },
+            Some(_) => Err(serde::de::Error::custom(
+                "content delta `type` must be a string",
+            )),
+            None => Ok(Self::Unknown(value)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -549,6 +625,16 @@ fn handle_event(
                 Some(Ok(RawStreamingChoice::TextAdditionalParams(json!({
                     "citations": [citation]
                 }))))
+            }
+            ContentDelta::Unknown(value) => {
+                // Structural metadata only: a novel delta type can carry
+                // model output, which must not leak into production WARN
+                // logs (same policy as the adapter's unknown-event warn).
+                tracing::warn!(
+                    delta_type = value.get("type").and_then(serde_json::Value::as_str),
+                    "skipping unrecognized Anthropic content delta type"
+                );
+                None
             }
         },
         StreamingEvent::ContentBlockStart {
@@ -1892,8 +1978,11 @@ mod tests {
     /// The `#[serde(other)]` policy fallbacks are gone: classification is the
     /// only policy site. An unmodeled *top-level* event type is `Unknown`
     /// (driver: warn + skip); a `ping` is Known; and a known tag whose payload
-    /// this client cannot decode — including an unmodeled nested delta type —
-    /// is `Corrupt`, never silently demoted to an ignorable unknown.
+    /// this client cannot decode is `Corrupt`, never silently demoted to an
+    /// ignorable unknown. An unmodeled *nested* delta type is the one carved
+    /// exception (Anthropic's versioning policy reserves the right to add
+    /// them): it decodes to [`ContentDelta::Unknown`] and stays a Known
+    /// no-op — see the dedicated tests below.
     #[test]
     fn classify_dispatches_on_the_known_event_list() {
         let adapter = AnthropicAdapter::default();
@@ -1912,16 +2001,45 @@ mod tests {
             crate::providers::internal::wire::WireEvent::Known(StreamingEvent::Ping)
         ));
 
-        let frame = WireFrame::Text(
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"delta_shape_from_the_future"}}"#
-                .into(),
-        );
+        let frame = WireFrame::Text("{not json".into());
         assert!(matches!(
             adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Corrupt(_)
         ));
+    }
 
-        let frame = WireFrame::Text("{not json".into());
+    /// Forward compat: a novel nested delta type Anthropic ships tomorrow
+    /// must not corrupt the whole `content_block_delta` frame — it decodes
+    /// to [`ContentDelta::Unknown`] and interprets as a warned no-op, so the
+    /// stream continues.
+    #[test]
+    fn novel_nested_delta_type_is_a_known_noop() {
+        let adapter = AnthropicAdapter::default();
+        let frame = WireFrame::Text(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"banana_delta","x":1}}"#
+                .into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame)
+        else {
+            panic!("a novel nested delta type must stay a Known event");
+        };
+
+        let mut adapter = AnthropicAdapter::default();
+        let mut out = Vec::new();
+        adapter.interpret(event, &mut out);
+        assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
+    }
+
+    /// Policy preserved: a *known* nested delta tag with a defective payload
+    /// is a data-level defect, not an unmodeled delta — the frame classifies
+    /// `Corrupt` instead of degrading to an `Unknown` no-op.
+    #[test]
+    fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
+        let adapter = AnthropicAdapter::default();
+        let frame = WireFrame::Text(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":42}}"#
+                .into(),
+        );
         assert!(matches!(
             adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Corrupt(_)

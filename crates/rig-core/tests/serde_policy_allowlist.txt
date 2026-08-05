@@ -7,7 +7,11 @@
 # Stale entries (matching no shipped line) fail the guard — delete them
 # alongside the code they covered.
 
+# --- shared Chat Completions-compatible helper: in-band error triage -------
+providers/internal/openai_chat_completions_compatible.rs | serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_compatible_sse_data deliberately runs pre-classification: compatible gateways send in-band error envelopes as data frames ("Treat the chunk as an error only when `error` is present AND carries a payload ... canonical OpenAI-compatible error event"), so it peeks for a populated `error` key (with no `choices`) to surface a CompletionError; unparseable or non-error chunks fall through to the classifier untouched.
+
 # --- anthropic: content assembly, not frame triage -------------------------
+providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
 providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.
 
 # --- openai Responses websocket: websocket-only envelope pre-dispatch ------
