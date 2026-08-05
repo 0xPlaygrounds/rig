@@ -182,3 +182,45 @@ mod reasoning {
             .expect("scenario should hold");
     }
 }
+
+// The F1b boundary family (#2258 review): constant-id wires mint a per-stream
+// reasoning identity, so the only interleaving signal is other output — main's
+// "other output closes the reasoning item" boundary must survive aggregation.
+// The Responses fixture stays on `interleaved_reasoning_aggregates_to_one_item`
+// above: real per-item ids must keep collapsing across boundaries.
+mod interleaved_constant_id_reasoning {
+    use super::*;
+
+    #[tokio::test]
+    async fn gemini_rest_preserves_order_around_a_tool_call() {
+        let driver = gemini_rest::fixture().driver;
+        let (frames, first, tool, second) = gemini_rest::interleaved_thought_frames();
+        conformance::interleaved_constant_id_reasoning_preserves_order(
+            &driver, frames, first, tool, second,
+        )
+        .await
+        .expect("scenario should hold");
+    }
+
+    #[tokio::test]
+    async fn gemini_rest_signed_full_does_not_erase_prior_thought() {
+        let driver = gemini_rest::fixture().driver;
+        let (frames, first, tool, second) = gemini_rest::interleaved_signed_thought_frames();
+        conformance::interleaved_signed_full_reasoning_does_not_erase_prior_thought(
+            &driver, frames, first, tool, second,
+        )
+        .await
+        .expect("scenario should hold");
+    }
+
+    #[tokio::test]
+    async fn ollama_preserves_order_around_a_tool_call() {
+        let driver = ollama::fixture().driver;
+        let (frames, first, tool, second) = ollama::interleaved_thinking_frames();
+        conformance::interleaved_constant_id_reasoning_preserves_order(
+            &driver, frames, first, tool, second,
+        )
+        .await
+        .expect("scenario should hold");
+    }
+}

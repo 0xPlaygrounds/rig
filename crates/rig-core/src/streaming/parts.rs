@@ -72,6 +72,7 @@ impl PartsAccumulator {
     /// Append streamed text to the active text block, opening one if none is
     /// active.
     pub(crate) fn text_delta(&mut self, text: &str) {
+        self.close_minted_reasoning();
         if let Some(index) = self.text_index
             && let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(existing))) =
                 self.parts.get_mut(index)
@@ -90,6 +91,7 @@ impl PartsAccumulator {
     /// Close the active text block and, when metadata is provided, open the
     /// next block carrying it.
     pub(crate) fn text_start(&mut self, additional_params: Option<serde_json::Value>) {
+        self.close_minted_reasoning();
         self.text_index = None;
         if let Some(additional_params) = additional_params {
             self.text_additional_params(additional_params);
@@ -230,6 +232,7 @@ impl PartsAccumulator {
 
     /// Append a completed tool call.
     pub(crate) fn tool_call(&mut self, tool_call: ToolCall) {
+        self.close_minted_reasoning();
         self.text_index = None;
         self.parts
             .push(ManagedPart::Complete(AssistantContent::ToolCall(tool_call)));
@@ -251,6 +254,30 @@ impl PartsAccumulator {
             parts.push(AssistantContent::text(""));
         }
         parts
+    }
+
+    /// Close every open reasoning item whose id is boundary-minted.
+    ///
+    /// A minted id (`reasoning-0`, `block-{n}`, `output-{n}`) is a per-stream
+    /// constant, not a wire item boundary, so the only interleaving signal
+    /// those wires have is other output arriving: bumping the ordinal makes a
+    /// later delta or full block open (or complete) a *new* part instead of
+    /// extending — or replacing — the one from before the boundary. Real wire
+    /// ids (OpenAI Responses `rs_*`) are exact item identities and must keep
+    /// collapsing across interleaved output, so they are never bumped.
+    fn close_minted_reasoning(&mut self) {
+        let open_minted: Vec<(String, u32)> = self
+            .reasoning_index
+            .keys()
+            .filter(|key| {
+                key.ordinal == self.open_ordinal.get(&key.item_id).copied().unwrap_or(0)
+                    && crate::streaming::is_boundary_minted_reasoning_id(&key.item_id)
+            })
+            .map(|key| (key.item_id.clone(), key.ordinal))
+            .collect();
+        for (item_id, ordinal) in open_minted {
+            self.open_ordinal.insert(item_id, ordinal + 1);
+        }
     }
 
     fn push_reasoning(&mut self, key: PartKey, part: ManagedPart) {
@@ -455,6 +482,90 @@ mod tests {
             parts.get(2),
             Some(AssistantContent::Text(text)) if text.text == "outro"
         ));
+    }
+
+    fn probe_tool_call() -> ToolCall {
+        ToolCall {
+            id: "call_1".to_owned(),
+            call_id: None,
+            function: crate::message::ToolFunction {
+                name: "probe".to_owned(),
+                arguments: serde_json::json!({}),
+            },
+            signature: None,
+            additional_params: None,
+        }
+    }
+
+    /// The F1b boundary contract for constant-id wires: a tool call closes
+    /// the open minted-id reasoning item, so a later delta opens a new part in
+    /// arrival order — never merging backwards across the boundary.
+    #[test]
+    fn other_output_closes_a_minted_id_reasoning_item() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.tool_call(probe_tool_call());
+        accumulator.reasoning_delta("reasoning-0", "B");
+
+        let parts = accumulator.finish();
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(
+            parts.first(),
+            Some(AssistantContent::Reasoning(reasoning))
+                if matches!(reasoning.content.first(), Some(ReasoningContent::Text { text, .. }) if text == "A")
+        ));
+        assert!(matches!(parts.get(1), Some(AssistantContent::ToolCall(_))));
+        assert!(matches!(
+            parts.get(2),
+            Some(AssistantContent::Reasoning(reasoning))
+                if matches!(reasoning.content.first(), Some(ReasoningContent::Text { text, .. }) if text == "B")
+        ));
+    }
+
+    /// The F1b erasure route: a full block after the boundary must not
+    /// replace-and-discard the pre-boundary delta buffer of a minted id.
+    #[test]
+    fn a_full_block_after_the_boundary_does_not_erase_prior_minted_id_deltas() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.tool_call(probe_tool_call());
+        accumulator.reasoning_full(full("reasoning-0", reasoning_text("B")));
+
+        let parts = accumulator.finish();
+        assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
+        assert!(matches!(parts.get(1), Some(AssistantContent::ToolCall(_))));
+    }
+
+    /// Text output is a boundary too: minted-id reasoning around streamed text
+    /// stays two parts in arrival order.
+    #[test]
+    fn text_output_closes_a_minted_id_reasoning_item() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.text_delta("visible");
+        accumulator.reasoning_delta("reasoning-0", "B");
+
+        let parts = accumulator.finish();
+        assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
+        assert!(matches!(
+            parts.get(1),
+            Some(AssistantContent::Text(text)) if text.text == "visible"
+        ));
+    }
+
+    /// Wire-supplied ids are exact item identities: the Responses replay case
+    /// must keep collapsing a done block onto its deltas across interleaved
+    /// output (the boundary bump applies to minted namespaces only).
+    #[test]
+    fn wire_id_full_blocks_still_collapse_across_interleaved_output() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("rs_1", "thinking");
+        accumulator.tool_call(probe_tool_call());
+        accumulator.reasoning_full(full("rs_1", reasoning_text("full reasoning")));
+
+        let parts = accumulator.finish();
+        assert_eq!(reasoning_texts(&parts), vec!["full reasoning"]);
+        assert_eq!(parts.len(), 2);
     }
 
     #[test]

@@ -179,6 +179,15 @@ where
             let mut final_model_version: Option<String> = None;
             let mut final_response_id: Option<String> = None;
             let mut stream_failed = false;
+            // Thought text since the last boundary (signed emission, visible
+            // text, or tool call). The grammar requires a full `Reasoning`
+            // block to be the block's *completed* form, but Gemini's
+            // `thoughtSignature` chunk carries only its own final fragment —
+            // so the adapter restates the accumulated text. Reset on
+            // non-thought output to mirror the accumulator's minted-id
+            // boundary: a signed chunk after interleaved output completes only
+            // the post-boundary part.
+            let mut thought_buffer = String::new();
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
@@ -261,30 +270,34 @@ where
                                     thought_signature,
                                     ..
                                 } => {
-                                    if !text.is_empty() {
-                                        if thought_signature.is_some() {
-                                            // Signature arrives on the final chunk of a
-                                            // thinking block; emit a full Reasoning so the
-                                            // core accumulator captures the signature for
-                                            // Gemini 3+ roundtrip.
+                                    if let Some(signature) = thought_signature {
+                                        // Signature arrives on the final chunk of a
+                                        // thinking block; emit a full Reasoning — the
+                                        // completed restatement of every fragment since
+                                        // the last boundary, not just this chunk's text
+                                        // — so the core accumulator's replace-on-
+                                        // supersede discards only the deltas it restates.
+                                        thought_buffer.push_str(&text);
+                                        if !thought_buffer.is_empty() {
                                             yield Ok(streaming::RawStreamingChoice::Reasoning {
                                                 // Gemini thought parts carry no id or block
                                                 // boundaries; a per-stream constant keeps all
                                                 // thought deltas merging into one item.
                                                 id: "reasoning-0".to_string(),
                                                 content: ReasoningContent::Text {
-                                                    text,
-                                                    signature: thought_signature,
+                                                    text: std::mem::take(&mut thought_buffer),
+                                                    signature: Some(signature),
                                                 },
                                             });
-                                        } else {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                // Same per-stream constant as the full
-                                                // Reasoning above.
-                                                id: "reasoning-0".to_string(),
-                                                reasoning: text,
-                                            });
                                         }
+                                    } else if !text.is_empty() {
+                                        thought_buffer.push_str(&text);
+                                        yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                            // Same per-stream constant as the full
+                                            // Reasoning above.
+                                            id: "reasoning-0".to_string(),
+                                            reasoning: text,
+                                        });
                                     }
                                 },
                                 Part {
@@ -292,6 +305,9 @@ where
                                     ..
                                 } => {
                                     if !text.is_empty() {
+                                        // Non-thought output closes the open reasoning
+                                        // item (accumulator minted-id boundary).
+                                        thought_buffer.clear();
                                         yield Ok(streaming::RawStreamingChoice::Message(text));
                                     }
                                 },
@@ -300,6 +316,9 @@ where
                                     thought_signature,
                                     ..
                                 } => {
+                                    // Non-thought output closes the open reasoning
+                                    // item (accumulator minted-id boundary).
+                                    thought_buffer.clear();
                                     let tool_call = streaming::RawStreamingToolCall::new(
                                         function_call.name.clone(),
                                         function_call.name,

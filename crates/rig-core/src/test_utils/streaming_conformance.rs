@@ -1047,6 +1047,149 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
     })
 }
 
+/// On a constant-id wire (a boundary-minted per-stream reasoning id), other
+/// output closes the open reasoning item: thought → tool call → thought must
+/// aggregate as `[Reasoning(first), ToolCall, Reasoning(second)]` — two items
+/// in arrival order, never one merged item that misorders history on replay.
+///
+/// Pins the F1b ordering dimension of the #2258 review (main's
+/// "other output closes the reasoning item" boundary, lost when identity
+/// became the per-stream constant).
+pub async fn interleaved_constant_id_reasoning_preserves_order(
+    driver: &WireDriver,
+    frames: Vec<Bytes>,
+    first: &str,
+    tool_name: &str,
+    second: &str,
+) -> Result<ScenarioReport, ConformanceError> {
+    const SCENARIO: &str = "interleaved_constant_id_reasoning_preserves_order";
+    let provider = driver.provider;
+
+    let drained = driver.drive(ok_chunks(frames)).await?;
+    if drained.error_count() != 0 || drained.response.is_none() {
+        return Err(ConformanceError::contract(
+            SCENARIO,
+            provider,
+            "the interleaved stream must complete without errors",
+        ));
+    }
+    assert_reasoning_tool_reasoning(SCENARIO, provider, &drained, first, tool_name, second)?;
+
+    Ok(ScenarioReport {
+        name: SCENARIO,
+        provider,
+        observations: vec!["boundary kept: reasoning, tool call, reasoning in order".to_string()],
+    })
+}
+
+/// On a constant-id wire whose completed reasoning block arrives as a signed
+/// full restatement (gemini `thoughtSignature`), a full block *after*
+/// interleaved output must not replace-and-discard the thought accumulated
+/// before the boundary: the choice keeps `[Reasoning(first), ToolCall,
+/// Reasoning(second, signed)]`.
+///
+/// Pins the F1b erasure dimension of the #2258 review, on top of the F1
+/// adapter fix (the signed chunk restates only post-boundary fragments).
+pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
+    driver: &WireDriver,
+    frames: Vec<Bytes>,
+    first: &str,
+    tool_name: &str,
+    second: &str,
+) -> Result<ScenarioReport, ConformanceError> {
+    const SCENARIO: &str = "interleaved_signed_full_reasoning_does_not_erase_prior_thought";
+    let provider = driver.provider;
+
+    let drained = driver.drive(ok_chunks(frames)).await?;
+    if drained.error_count() != 0 || drained.response.is_none() {
+        return Err(ConformanceError::contract(
+            SCENARIO,
+            provider,
+            "the interleaved stream must complete without errors",
+        ));
+    }
+    assert_reasoning_tool_reasoning(SCENARIO, provider, &drained, first, tool_name, second)?;
+    let signed = drained.choice_reasoning().last().is_some_and(|reasoning| {
+        reasoning.content.iter().any(|content| {
+            matches!(
+                content,
+                crate::message::ReasoningContent::Text {
+                    signature: Some(_),
+                    ..
+                }
+            )
+        })
+    });
+    if !signed {
+        return Err(ConformanceError::contract(
+            SCENARIO,
+            provider,
+            "the post-boundary block must keep its signature",
+        ));
+    }
+
+    Ok(ScenarioReport {
+        name: SCENARIO,
+        provider,
+        observations: vec![
+            "pre-boundary thought survived; signed block completed the post-boundary part"
+                .to_string(),
+        ],
+    })
+}
+
+/// Shared assertion: the aggregated choice is exactly
+/// `[Reasoning(first), ToolCall(tool_name), Reasoning(second…)]`.
+fn assert_reasoning_tool_reasoning(
+    scenario: &'static str,
+    provider: &'static str,
+    drained: &DrainedStream,
+    first: &str,
+    tool_name: &str,
+    second: &str,
+) -> Result<(), ConformanceError> {
+    let shape: Vec<String> = drained
+        .choice
+        .iter()
+        .map(|content| match content {
+            AssistantContent::Reasoning(reasoning) => {
+                let text: String = reasoning
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        crate::message::ReasoningContent::Summary(text)
+                        | crate::message::ReasoningContent::Text { text, .. } => {
+                            Some(text.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                format!("reasoning:{text}")
+            }
+            AssistantContent::ToolCall(tool_call) => {
+                format!("tool:{}", tool_call.function.name)
+            }
+            AssistantContent::Text(text) => format!("text:{}", text.text),
+            AssistantContent::Image(_) => "image".to_string(),
+        })
+        .collect();
+    let expected = vec![
+        format!("reasoning:{first}"),
+        format!("tool:{tool_name}"),
+        format!("reasoning:{second}"),
+    ];
+    if shape != expected {
+        return Err(ConformanceError::contract(
+            scenario,
+            provider,
+            format!(
+                "the boundary must survive aggregation: expected {expected:?}, observed {shape:?}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
@@ -1553,6 +1696,64 @@ pub mod fixtures {
                 refusal: None,
             }
         }
+
+        fn chunk(parts: serde_json::Value) -> Bytes {
+            sse(&json!({
+                "candidates": [{"content": {"parts": parts, "role": "model"}}],
+                "responseId": "resp-1",
+                "modelVersion": "gemini-2.5-pro",
+            }))
+        }
+
+        fn terminal_frame() -> Bytes {
+            sse(&json!({
+                "candidates": [{
+                    "content": {"parts": [], "role": "model"},
+                    "finishReason": "STOP",
+                }],
+                "usageMetadata": {
+                    "promptTokenCount": 5,
+                    "candidatesTokenCount": 2,
+                    "totalTokenCount": 7,
+                },
+                "responseId": "resp-1",
+                "modelVersion": "gemini-2.5-pro",
+            }))
+        }
+
+        /// Thought delta, interleaved tool call, thought delta, terminal —
+        /// the constant-id (`reasoning-0`) interleaving shape.
+        pub fn interleaved_thought_frames() -> (Vec<Bytes>, &'static str, &'static str, &'static str)
+        {
+            let frames = vec![
+                chunk(json!([{"text": "before tool", "thought": true}])),
+                chunk(json!([{
+                    "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
+                }])),
+                chunk(json!([{"text": "after tool", "thought": true}])),
+                terminal_frame(),
+            ];
+            (frames, "before tool", "get_weather", "after tool")
+        }
+
+        /// Thought delta, interleaved tool call, then a signed full thought
+        /// chunk carrying non-empty text — the F1 erasure shape.
+        pub fn interleaved_signed_thought_frames()
+        -> (Vec<Bytes>, &'static str, &'static str, &'static str) {
+            let frames = vec![
+                chunk(json!([{"text": "before tool", "thought": true}])),
+                chunk(json!([{
+                    "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
+                }])),
+                chunk(json!([{
+                    "text": "signed conclusion",
+                    "thought": true,
+                    "thoughtSignature": "sig-1",
+                }])),
+                terminal_frame(),
+            ];
+            (frames, "before tool", "get_weather", "signed conclusion")
+        }
     }
 
     /// Cohere v2 chat SSE wire.
@@ -1704,6 +1905,44 @@ pub mod fixtures {
                 delta_less_prelude_frame: None,
                 refusal: None,
             }
+        }
+
+        /// Thinking delta, interleaved tool call, thinking delta, terminal —
+        /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
+        pub fn interleaved_thinking_frames()
+        -> (Vec<Bytes>, &'static str, &'static str, &'static str) {
+            let frames = vec![
+                ndjson(&json!({
+                    "model": "llama3.2",
+                    "created_at": "2023-08-04T19:22:45.499127Z",
+                    "message": {"role": "assistant", "content": "", "thinking": "before tool"},
+                    "done": false,
+                })),
+                ndjson(&json!({
+                    "model": "llama3.2",
+                    "created_at": "2023-08-04T19:22:45.599127Z",
+                    "message": {"role": "assistant", "content": "", "tool_calls": [{
+                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
+                    }]},
+                    "done": false,
+                })),
+                ndjson(&json!({
+                    "model": "llama3.2",
+                    "created_at": "2023-08-04T19:22:45.699127Z",
+                    "message": {"role": "assistant", "content": "", "thinking": "after tool"},
+                    "done": false,
+                })),
+                ndjson(&json!({
+                    "model": "llama3.2",
+                    "created_at": "2023-08-04T19:22:47.499127Z",
+                    "message": {"role": "assistant", "content": ""},
+                    "done": true,
+                    "done_reason": "stop",
+                    "prompt_eval_count": 10,
+                    "eval_count": 4,
+                })),
+            ];
+            (frames, "before tool", "get_weather", "after tool")
         }
     }
 }

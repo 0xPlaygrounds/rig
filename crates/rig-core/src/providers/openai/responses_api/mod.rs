@@ -675,6 +675,17 @@ fn openai_reasoning_from_core(
     let Some(id) = reasoning.id.clone() else {
         return Ok(None);
     };
+    // Provenance gate: ids in the reserved boundary-minted namespaces
+    // (`reasoning-{n}`, `block-{n}`, `output-{n}` — see
+    // `streaming::MINTED_REASONING_ID_NAMESPACES`) were fabricated by rig, not
+    // issued by OpenAI. Serializing one upstream risks a 400 on multi-turn:
+    // reachable via cross-provider replay (another provider's reasoning
+    // history swapped onto a Responses model) and via a same-provider
+    // delta-only stream whose deltas lacked `item_id`. Mirror main's handling
+    // of id-less reasoning: drop the item from request input.
+    if crate::streaming::is_boundary_minted_reasoning_id(&id) {
+        return Ok(None);
+    }
 
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
@@ -2950,6 +2961,142 @@ mod tests {
                 && tool_call_id == "call-id"
                 && matches!(after.first(), UserContent::InputText { text } if text == "after")
         ));
+    }
+
+    fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
+        items
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("input item should serialize"))
+            .filter(|value| value["type"] == "reasoning")
+            .collect()
+    }
+
+    /// F7 leak route (a): reasoning replayed cross-provider — another
+    /// provider's stream aggregated under a boundary-minted id and swapped
+    /// onto a Responses model — must not serialize the fabricated id
+    /// upstream; the item is dropped like main dropped id-less reasoning.
+    /// A wire-plausible id keeps round-tripping.
+    #[tokio::test]
+    async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::MockStreamEvent;
+        use futures::StreamExt as _;
+
+        // The constant-id shape gemini/ollama/chat-compat streams leave in
+        // history, via the mock model's streaming pipeline.
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::reasoning_delta("thinking hard"),
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
+        let mut stream = model.stream(request).await.expect("mock stream");
+        while stream.next().await.is_some() {}
+        let choice = stream.choice.clone();
+        assert!(
+            choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.as_deref() == Some("reasoning-0"))
+            ),
+            "precondition: the replayed history carries the minted id"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: choice,
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "a boundary-minted reasoning id must not reach the request input"
+        );
+
+        // The anthropic/bedrock namespace is reserved too.
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("block-1".to_string()),
+                content: vec![message::ReasoningContent::Text {
+                    text: "anthropic thought".to_string(),
+                    signature: None,
+                }],
+            })),
+        })
+        .expect("history should convert");
+        assert!(reasoning_input_items(&items).is_empty());
+
+        // A wire-plausible id is provider-issued and must round-trip.
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("rs_0123".to_string()),
+                content: vec![message::ReasoningContent::Text {
+                    text: "real item".to_string(),
+                    signature: None,
+                }],
+            })),
+        })
+        .expect("history should convert");
+        let reasoning = reasoning_input_items(&items);
+        assert_eq!(reasoning.len(), 1);
+        assert_eq!(reasoning[0]["id"], "rs_0123");
+    }
+
+    /// F7 leak route (b): a same-provider delta-only Responses stream whose
+    /// reasoning deltas lack `item_id` aggregates under the minted
+    /// `output-{index}` identity; with no `output_item.done` to supersede it,
+    /// that id must be filtered before the next request.
+    #[tokio::test]
+    async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
+        use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
+        use bytes::Bytes;
+
+        let sse = |frame: &serde_json::Value| Bytes::from(format!("data: {frame}\n\n"));
+        let frames = vec![
+            // No `item_id`: the streaming adapter mints `output-0`.
+            sse(&json!({
+                "type": "response.reasoning_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "unattributed thought",
+            })),
+            sse(&json!({
+                "type": "response.completed",
+                "sequence_number": 2,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "model": "gpt-5.4",
+                    "output": [],
+                    "tools": [],
+                    "usage": null,
+                },
+            })),
+        ];
+        let drained = fixtures::openai_responses::driver()
+            .drive(ok_chunks(frames))
+            .await
+            .expect("stream should complete");
+        assert!(
+            drained.choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.as_deref() == Some("output-0"))
+            ),
+            "precondition: the delta-only stream aggregates under the minted id"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: drained.choice.clone(),
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "the minted `output-0` identity must not go back upstream"
+        );
     }
 
     #[test]

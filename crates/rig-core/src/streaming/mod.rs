@@ -7,6 +7,26 @@
 
 mod parts;
 
+/// Reserved id namespaces for reasoning identities minted at the provider
+/// boundary rather than read off the wire: `reasoning-{n}` (gemini REST /
+/// interactions / gRPC, ollama, chat-compat `reasoning_content`, candle),
+/// `block-{n}` (anthropic, bedrock), and `output-{n}` (the OpenAI Responses
+/// fallback for delta events lacking `item_id`). Wire-supplied ids must never
+/// use these shapes; they gate two behaviors: the [`PartsAccumulator`]
+/// interleaving boundary (a minted id is a per-stream constant, so other
+/// output must close the open reasoning item) and the OpenAI Responses
+/// request-serialization guard (a minted id must not be replayed upstream as
+/// if the provider issued it).
+pub(crate) const MINTED_REASONING_ID_NAMESPACES: [&str; 3] = ["reasoning-", "block-", "output-"];
+
+/// Whether `id` belongs to a reserved boundary-minted reasoning namespace.
+pub(crate) fn is_boundary_minted_reasoning_id(id: &str) -> bool {
+    MINTED_REASONING_ID_NAMESPACES.iter().any(|namespace| {
+        id.strip_prefix(namespace)
+            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
+    })
+}
+
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
