@@ -369,10 +369,17 @@ implementation must uphold:
   classifier (`classify_tagged_frame`, `classify_chat_completions_frame`,
   `classify_untyped_line`, `classify_typed_event`) — never raw serde — so
   decode-then-validate policy is stated once per wire family.
-- **The driver owns policy**: `Unknown` frames warn-and-skip, `Corrupt`
-  frames surface as in-band `Err` items (buffered mode: fail the operation),
-  transport errors end the stream with truncation semantics. Adapters contain
-  no `match WireEvent`; `interpret` maps `Known` events only.
+- **The driver owns policy**: `Unknown` frames warn, skip the semantic path,
+  and surface verbatim as `RawStreamingChoice::Unknown` /
+  `StreamedAssistantContent::Unknown` passthrough events (the openai-agents
+  raw-event precedent) — never folded into the aggregated assistant choice;
+  buffered mode has no stream to carry them, so there they remain a warned
+  skip. `Corrupt` frames surface as in-band `Err` items (buffered mode: fail
+  the operation), transport errors end the stream with truncation semantics.
+  Adapters contain no `match WireEvent`; `interpret` maps `Known` events
+  only. (For websocket consumers: `ResponsesWebSocketEvent` gained an
+  `Unknown(serde_json::Value)` variant carrying the same raw passthrough —
+  exhaustive `match`es over that enum need a new arm.)
 - **Identity is mandatory**: every `Reasoning`/`ReasoningDelta`,
   `ToolCallDelta`, and `TextStart` event carries a non-empty id — the wire's
   own identity when it exists, else an id minted via `SyntheticIds` in the

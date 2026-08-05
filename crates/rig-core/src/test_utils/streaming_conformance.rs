@@ -103,10 +103,10 @@ pub enum ScenarioOutcome {
 /// Streaming-relevant capability flags for one wire family's conformance
 /// suite: which optional sequence shapes the wire can spell.
 ///
-/// Each flag mirrors an `Option` field on [`ProviderWireFixture`]; the suite
-/// macro's `capabilities_match_fixture` test asserts they agree (via
-/// [`capability_fixture_mismatches`]), so a flag cannot drift from the wire
-/// fixture that backs it.
+/// Each flag mirrors an `Option` field on [`ProviderWireFixture`], and the
+/// only constructor is [`ProviderWireFixture::capabilities`] — suites never
+/// hand-write flags, so a flag structurally cannot drift from the wire
+/// fixture that backs it (it *is* the fixture's populated-field set).
 #[derive(Debug, Clone, Copy)]
 pub struct SuiteCapabilities {
     /// The wire streams tool-call arguments incrementally
@@ -187,59 +187,6 @@ pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
             None => true,
         })
         .map(|entry| entry.to_string())
-        .collect()
-}
-
-/// Disagreements between a suite's declared capability flags and the optional
-/// shapes its fixture actually supplies.
-pub fn capability_fixture_mismatches(
-    fixture: &ProviderWireFixture,
-    capabilities: &SuiteCapabilities,
-) -> Vec<String> {
-    let checks = [
-        (
-            "partial_tool_args",
-            capabilities.partial_tool_args,
-            fixture.partial_tool_call_frames.is_some(),
-        ),
-        (
-            "zero_usage_terminal",
-            capabilities.zero_usage_terminal,
-            fixture.zero_usage_terminal_frames.is_some(),
-        ),
-        (
-            "bare_terminal",
-            capabilities.bare_terminal,
-            fixture.bare_terminal_frames.is_some(),
-        ),
-        (
-            "malformed_frame",
-            capabilities.malformed_frame,
-            fixture.malformed_frame.is_some(),
-        ),
-        (
-            "unknown_event_frame",
-            capabilities.unknown_event_frame,
-            fixture.unknown_event_frame.is_some(),
-        ),
-        (
-            "defective_known_frame",
-            capabilities.defective_known_frame,
-            fixture.defective_known_frame.is_some(),
-        ),
-        (
-            "delta_less_prelude",
-            capabilities.delta_less_prelude,
-            fixture.delta_less_prelude_frame.is_some(),
-        ),
-        ("refusal", capabilities.refusal, fixture.refusal.is_some()),
-    ];
-    checks
-        .iter()
-        .filter(|(_, declared, supplied)| declared != supplied)
-        .map(|(flag, declared, supplied)| {
-            format!("{flag}: declared {declared}, fixture supplies the shape: {supplied}")
-        })
         .collect()
 }
 
@@ -408,6 +355,18 @@ impl DrainedStream {
                 Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
                     Some(tool_call.function.name.as_str())
                 }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Raw payloads of the `Unknown` passthrough items the stream yielded,
+    /// in order.
+    pub fn unknown_values(&self) -> Vec<&serde_json::Value> {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamedAssistantContent::Unknown(value)) => Some(value),
                 _ => None,
             })
             .collect()
@@ -592,6 +551,28 @@ pub struct ProviderWireFixture {
     pub delta_less_prelude_frame: Option<WireInput>,
     /// Refusal content frames, where the wire has a refusal channel.
     pub refusal: Option<RefusalFixture>,
+}
+
+impl ProviderWireFixture {
+    /// The capability set this fixture's populated optional fields spell —
+    /// the descriptor the suite macro gates scenarios on.
+    ///
+    /// Deriving flags here (instead of hand-writing them per suite
+    /// invocation) makes flag/fixture drift structurally impossible: a shape
+    /// the fixture supplies is a declared capability, a shape it lacks is a
+    /// visible named skip, and there is nothing else to keep in sync.
+    pub fn capabilities(&self) -> SuiteCapabilities {
+        SuiteCapabilities {
+            partial_tool_args: self.partial_tool_call_frames.is_some(),
+            zero_usage_terminal: self.zero_usage_terminal_frames.is_some(),
+            bare_terminal: self.bare_terminal_frames.is_some(),
+            malformed_frame: self.malformed_frame.is_some(),
+            unknown_event_frame: self.unknown_event_frame.is_some(),
+            defective_known_frame: self.defective_known_frame.is_some(),
+            delta_less_prelude: self.delta_less_prelude_frame.is_some(),
+            refusal: self.refusal.is_some(),
+        }
+    }
 }
 
 fn concat_frames(parts: &[&[WireInput]]) -> Vec<WireInput> {
@@ -847,11 +828,40 @@ pub async fn unknown_event_is_skipped(
             "the stream must deliver its content and complete around the skipped event",
         ));
     }
+    // The frame is skipped semantically but observable verbatim on the raw
+    // passthrough channel (openai-agents' raw-event precedent, #2258 item 5).
+    if drained.unknown_values().len() != 1 {
+        return Err(ConformanceError::contract(
+            SCENARIO,
+            provider,
+            format!(
+                "exactly one Unknown passthrough item must surface for the unknown frame, \
+                 observed {}",
+                drained.unknown_values().len()
+            ),
+        ));
+    }
+
+    // Control run without the unknown frame: the aggregated assistant choice
+    // must be byte-identical — the passthrough item is never folded in.
+    let control_frames = concat_frames(&[&fixture.text_frames, &fixture.terminal_frames]);
+    let control = fixture.driver.drive(ok_chunks(control_frames)).await?;
+    if drained.choice != control.choice {
+        return Err(ConformanceError::contract(
+            SCENARIO,
+            provider,
+            "the unknown frame must not perturb the aggregated assistant choice",
+        ));
+    }
 
     Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
-        observations: vec!["unknown event skipped, stream completed".to_string()],
+        observations: vec![
+            "unknown event skipped semantically, surfaced on the raw channel, \
+             choice unchanged, stream completed"
+                .to_string(),
+        ],
     }))
 }
 
@@ -1549,6 +1559,11 @@ pub async fn drain_openai_responses_websocket_events(
                 if terminal {
                     break;
                 }
+            }
+            // Semantic skip, raw passthrough: an unknown frame never reaches
+            // the accumulator but is still yielded verbatim.
+            Ok(ResponsesWebSocketEvent::Unknown(value)) => {
+                raw.push(Ok(crate::streaming::RawStreamingChoice::Unknown(value)));
             }
             // `response.done` / `error` envelopes are websocket-only shapes the
             // fixtures never script; the production session maps them to a

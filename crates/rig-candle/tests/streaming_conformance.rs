@@ -97,14 +97,4 @@ fn fixture() -> ProviderWireFixture {
 rig_core::streaming_conformance_suite! {
     provider: "candle",
     fixture: fixture(),
-    capabilities: {
-        partial_tool_args: false,
-        zero_usage_terminal: false,
-        bare_terminal: false,
-        malformed_frame: false,
-        unknown_event_frame: false,
-        defective_known_frame: false,
-        delta_less_prelude: false,
-        refusal: false,
-    },
 }

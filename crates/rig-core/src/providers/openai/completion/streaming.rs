@@ -1231,13 +1231,18 @@ mod tests {
 
         let mut error_count = 0;
         let mut saw_final = false;
+        let mut unknown = None;
         while let Some(item) = stream.next().await {
             match item {
                 Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+                // The unknown-shaped event skips the semantic path but
+                // surfaces verbatim on the raw passthrough channel.
+                Ok(streaming::StreamedAssistantContent::Unknown(value)) => unknown = Some(value),
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(_) => error_count += 1,
             }
         }
+        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"})));
 
         assert_eq!(
             error_count, 2,

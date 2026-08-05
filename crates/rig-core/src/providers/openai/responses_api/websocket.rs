@@ -7,7 +7,7 @@
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::adapter::triage_frame;
+use crate::providers::internal::adapter::{TriagedFrame, triage_frame};
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
     StreamingCompletionChunk, classify_responses_frame, completion_response_from_raw_choices,
@@ -164,6 +164,10 @@ pub enum ResponsesWebSocketEvent {
     Error(ResponsesWebSocketErrorEvent),
     /// An optional `response.done` event emitted by OpenAI over WebSockets.
     Done(ResponsesWebSocketDoneEvent),
+    /// An unrecognized event's raw payload — warned and skipped on the
+    /// semantic path, forwarded verbatim so the streaming surface can carry
+    /// it on the `RawStreamingChoice::Unknown` passthrough channel.
+    Unknown(serde_json::Value),
 }
 
 impl ResponsesWebSocketEvent {
@@ -173,7 +177,7 @@ impl ResponsesWebSocketEvent {
         match self {
             Self::Response(chunk) => Some(&chunk.response.id),
             Self::Done(done) => done.response_id(),
-            Self::Item(_) | Self::Error(_) => None,
+            Self::Item(_) | Self::Error(_) | Self::Unknown(_) => None,
         }
     }
 
@@ -188,7 +192,7 @@ impl ResponsesWebSocketEvent {
                     | ResponseChunkKind::ResponseIncomplete
             ),
             Self::Error(_) | Self::Done(_) => true,
-            Self::Item(_) => false,
+            Self::Item(_) | Self::Unknown(_) => false,
         }
     }
 }
@@ -561,6 +565,12 @@ where
                         accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict()),
                     );
                 }
+                ResponsesWebSocketEvent::Unknown(value) => {
+                    // Semantic skip, raw passthrough: the accumulator never
+                    // sees the frame, but the streaming surface still yields
+                    // it verbatim.
+                    raw_choices.push(crate::streaming::RawStreamingChoice::Unknown(value));
+                }
             }
         }
     }
@@ -604,7 +614,8 @@ where
                 self.pending_done_response_id = None;
                 self.in_flight = false;
             }
-            ResponsesWebSocketEvent::Item(_) => {}
+            // An unknown frame carries no turn-lifecycle signal.
+            ResponsesWebSocketEvent::Item(_) | ResponsesWebSocketEvent::Unknown(_) => {}
         }
     }
 
@@ -759,16 +770,20 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
         "response.done" => serde_json::from_str(payload)
             .map(|d| Some(ResponsesWebSocketEvent::Done(d)))
             .map_err(CompletionError::from),
-        // Shared per-frame triage (warn-skip `Unknown`, `Corrupt` fails the
-        // turn — this surface has no stream to carry `Err` items).
-        _ => Ok(
-            triage_frame(classify_responses_frame(payload))?.map(|chunk| match chunk {
-                StreamingCompletionChunk::Response(response) => {
+        // Shared per-frame triage (`Unknown` is warned and forwarded raw for
+        // the passthrough channel, `Corrupt` fails the turn — this surface
+        // has no stream to carry `Err` items).
+        _ => Ok(Some(
+            match triage_frame(classify_responses_frame(payload))? {
+                TriagedFrame::Event(StreamingCompletionChunk::Response(response)) => {
                     ResponsesWebSocketEvent::Response(response)
                 }
-                StreamingCompletionChunk::Delta(item) => ResponsesWebSocketEvent::Item(item),
-            }),
-        ),
+                TriagedFrame::Event(StreamingCompletionChunk::Delta(item)) => {
+                    ResponsesWebSocketEvent::Item(item)
+                }
+                TriagedFrame::Unknown(value) => ResponsesWebSocketEvent::Unknown(value),
+            },
+        )),
     }
 }
 
@@ -2122,7 +2137,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_event_type_is_skipped() {
+    fn unknown_event_type_is_forwarded_raw() {
         let payload = json!({
             "type": "response.some_future_event",
             "data": "hello"
@@ -2130,7 +2145,12 @@ mod tests {
 
         let result =
             parse_server_event(&payload.to_string()).expect("unknown event should not error");
-        assert!(result.is_none(), "unknown event should be skipped");
+        // Semantically skipped, but carried verbatim so the streaming surface
+        // can yield it on the `RawStreamingChoice::Unknown` passthrough.
+        match result {
+            Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload),
+            other => panic!("expected the raw Unknown passthrough event, got {other:?}"),
+        }
     }
 
     #[test]

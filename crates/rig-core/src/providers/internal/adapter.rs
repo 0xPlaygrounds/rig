@@ -9,7 +9,10 @@
 //! | classify                  | driver action                                |
 //! |---------------------------|----------------------------------------------|
 //! | [`WireEvent::Known`]      | `adapter.interpret`, yield its outputs       |
-//! | [`WireEvent::Unknown`]    | `tracing::warn!` (with the payload) + skip   |
+//! | [`WireEvent::Unknown`]    | `tracing::warn!` (with the payload), skip on |
+//! |                           | the semantic path, and yield the raw value   |
+//! |                           | as [`RawStreamingChoice::Unknown`] (the      |
+//! |                           | passthrough channel — never aggregated)      |
 //! | [`WireEvent::Corrupt`]    | in-band `Err` item, keep consuming           |
 //! | transport `Err`           | `Err` item, then end (truncation semantics — |
 //! |                           | no `finish` flush, no terminal record)       |
@@ -148,24 +151,38 @@ pub trait WireAdapter {
     }
 }
 
+/// One frame after [`triage_frame`]: a modeled event for `interpret`, or an
+/// unknown frame's raw payload for the passthrough channel.
+#[derive(Debug)]
+pub enum TriagedFrame<T> {
+    /// A modeled event, ready for [`WireAdapter::interpret`].
+    Event(T),
+    /// An unknown frame's raw payload. Already warned; the caller forwards it
+    /// as [`RawStreamingChoice::Unknown`] where the surface has a raw channel
+    /// (openai-agents' raw-event precedent), and never interprets it — the
+    /// semantic path skips it.
+    Unknown(serde_json::Value),
+}
+
 /// Triage one classified frame under the shared policy table (see the module
 /// docs): `Known` passes through, `Unknown` is warned (with its payload) and
-/// skipped, `Corrupt` is a [`CompletionError::JsonError`].
+/// handed back raw for the passthrough channel, `Corrupt` is a
+/// [`CompletionError::JsonError`].
 ///
 /// This is [`run_wire_stream`]'s per-frame policy factored out for the
 /// non-stream surfaces that classify frames one at a time (the websocket
 /// pre-dispatch, the interactions typed-event stream), so they share the
 /// driver's table instead of restating it.
-pub fn triage_frame<T>(event: WireEvent<T>) -> Result<Option<T>, CompletionError> {
+pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, CompletionError> {
     match event {
-        WireEvent::Known(event) => Ok(Some(event)),
+        WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             tracing::warn!(
                 event_type,
                 payload = %value,
                 "skipping unrecognized stream event"
             );
-            Ok(None)
+            Ok(TriagedFrame::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(CompletionError::JsonError(error)),
     }
@@ -206,8 +223,14 @@ where
             };
 
             match triage_frame(adapter.classify(frame)) {
-                Ok(Some(event)) => adapter.interpret(event, &mut out),
-                Ok(None) => {}
+                Ok(TriagedFrame::Event(event)) => adapter.interpret(event, &mut out),
+                // Skipped semantically, but surfaced verbatim on the raw
+                // passthrough channel so consumers who want unmodeled frames
+                // can observe them; aggregation never folds `Unknown` into
+                // the assistant choice.
+                Ok(TriagedFrame::Unknown(value)) => {
+                    out.push(Ok(RawStreamingChoice::Unknown(value)));
+                }
                 Err(error) => {
                     yield Err(error);
                 }
@@ -243,7 +266,9 @@ where
 /// |---------------------------|----------------------------------------------|
 /// | [`WireEvent::Known`]      | `adapter.interpret`; an `Err` item it pushes |
 /// |                           | fails the whole operation                    |
-/// | [`WireEvent::Unknown`]    | `tracing::warn!` + skip                      |
+/// | [`WireEvent::Unknown`]    | `tracing::warn!` + skip (a buffered result   |
+/// |                           | is a finished completion — there is no       |
+/// |                           | stream to carry the raw passthrough item)    |
 /// | [`WireEvent::Corrupt`]    | fail the whole operation — the alternative   |
 /// |                           | is a successful-but-incomplete completion    |
 ///

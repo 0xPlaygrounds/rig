@@ -2277,7 +2277,8 @@ mod tests {
     async fn chat_stream_skips_unrecognized_event_and_still_completes() {
         // Valid JSON that is not recognizably a chat completion chunk (no
         // `choices`, no `"object": "chat.completion.chunk"`) is an event this
-        // client doesn't know yet — skipped for forward compatibility.
+        // client doesn't know yet — skipped semantically for forward
+        // compatibility, surfaced verbatim on the raw passthrough channel.
         let http_client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines([
                 "{\"type\":\"copilot.heartbeat\",\"payload\":{}}",
@@ -2297,15 +2298,22 @@ mod tests {
 
         let mut text = String::new();
         let mut terminal = None;
+        let mut unknown = None;
         while let Some(item) = stream.next().await {
             match item.expect("unrecognized events must not surface errors") {
                 StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
                 StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+                StreamedAssistantContent::Unknown(value) => unknown = Some(value),
                 other => panic!("unexpected stream item: {other:?}"),
             }
         }
 
         assert_eq!(text, "hello");
+        assert_eq!(
+            unknown,
+            Some(serde_json::json!({"type": "copilot.heartbeat", "payload": {}})),
+            "the unrecognized frame must surface verbatim on the raw channel"
+        );
         let terminal = terminal.expect("stream should still emit its terminal record");
         assert_eq!(
             terminal.finish_reason,

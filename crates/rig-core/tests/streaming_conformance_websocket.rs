@@ -150,16 +150,6 @@ mod openai_responses_websocket_suite {
     rig_core::streaming_conformance_suite! {
         provider: "openai_responses_websocket",
         fixture: fixture(),
-        capabilities: {
-            partial_tool_args: true,
-            zero_usage_terminal: true,
-            bare_terminal: false,
-            malformed_frame: true,
-            unknown_event_frame: true,
-            defective_known_frame: true,
-            delta_less_prelude: false,
-            refusal: true,
-        },
         xfail: [
             "malformed_frame_surfaces_err_and_terminal_still_completes: the websocket turn is request/response — a corrupt frame fails the whole session, there is no in-band Err channel beside a completing terminal (#2258 unification review)",
             "defective_known_event_surfaces_err: the websocket turn is request/response — a schema-defective known frame fails the whole session instead of surfacing an in-band Err (#2258 unification review)",

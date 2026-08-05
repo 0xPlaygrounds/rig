@@ -17,7 +17,7 @@ use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
 use crate::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, WireFrame, run_wire_stream, triage_frame,
+    AdapterOutput, TriagedFrame, WireAdapter, WireFrame, run_wire_stream, triage_frame,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
@@ -311,8 +311,13 @@ where
                     // driver's factored per-frame policy against the same
                     // classify site instead of restating the table.
                     match triage_frame(classify_interaction_frame(&message.data)) {
-                        Ok(Some(event)) => yield Ok(event),
-                        Ok(None) => {}
+                        Ok(TriagedFrame::Event(event)) => yield Ok(event),
+                        // This surface yields typed interaction events, not
+                        // grammar events — there is no raw passthrough item to
+                        // carry an unknown frame on, so it stays a warned skip
+                        // (the completion path surfaces Unknown via the
+                        // driver's `RawStreamingChoice::Unknown` passthrough).
+                        Ok(TriagedFrame::Unknown(_)) => {}
                         Err(error) => yield Err(error),
                     }
                 }

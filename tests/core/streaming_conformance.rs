@@ -173,16 +173,6 @@ mod xai_suite {
     rig_core::streaming_conformance_suite! {
         provider: "xai",
         fixture: xai::fixture(),
-        capabilities: {
-            partial_tool_args: true,
-            zero_usage_terminal: true,
-            bare_terminal: false,
-            malformed_frame: true,
-            unknown_event_frame: true,
-            defective_known_frame: true,
-            delta_less_prelude: false,
-            refusal: true,
-        },
     }
 }
 
@@ -192,16 +182,6 @@ mod copilot_responses_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::responses_fixture(),
-        capabilities: {
-            partial_tool_args: true,
-            zero_usage_terminal: true,
-            bare_terminal: false,
-            malformed_frame: true,
-            unknown_event_frame: true,
-            defective_known_frame: true,
-            delta_less_prelude: false,
-            refusal: true,
-        },
     }
 }
 
@@ -211,16 +191,6 @@ mod chatgpt_suite {
     rig_core::streaming_conformance_suite! {
         provider: "chatgpt",
         fixture: chatgpt::fixture(),
-        capabilities: {
-            partial_tool_args: true,
-            zero_usage_terminal: true,
-            bare_terminal: false,
-            malformed_frame: true,
-            unknown_event_frame: true,
-            defective_known_frame: true,
-            delta_less_prelude: false,
-            refusal: true,
-        },
     }
 }
 
@@ -230,16 +200,6 @@ mod copilot_chat_suite {
     rig_core::streaming_conformance_suite! {
         provider: "copilot",
         fixture: copilot::chat_fixture(),
-        capabilities: {
-            partial_tool_args: true,
-            zero_usage_terminal: true,
-            bare_terminal: true,
-            malformed_frame: true,
-            unknown_event_frame: false,
-            defective_known_frame: true,
-            delta_less_prelude: true,
-            refusal: false,
-        },
     }
 }
 
