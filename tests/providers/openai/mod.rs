@@ -26,6 +26,7 @@ mod cassette {
     mod responses_tool_choice;
     mod streaming;
     mod streaming_grammar;
+    mod streaming_grammar_chat;
     mod streaming_tools;
     mod structured_output;
     mod typed_prompt_tools;

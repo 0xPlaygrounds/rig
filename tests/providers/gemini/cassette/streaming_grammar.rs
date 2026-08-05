@@ -26,7 +26,8 @@ use rig::providers::gemini::interactions_api;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
+    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
+    ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
 };
 
 /// Everything observed while draining a normalized stream, alongside the
@@ -218,16 +219,21 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
 /// choice's reasoning content — a signed final thinking chunk must not erase
 /// the preceding reasoning text (34ee8ba5 Gemini P1).
 ///
-/// This recording's signed chunk arrives with empty text after two unsigned
-/// thought deltas, and the aggregation keeps the delta text, so the assertion
-/// holds on main; a recording whose signed chunk carries text would trip the
-/// P1 erasure.
+/// Re-recorded (2258 item 5, sanctioned drift) with a multi-step problem at
+/// high thinking. Recording note: across repeated attempts (gemini-3 low /
+/// medium / high thinking, gemini-2.5 with a thinking budget, with and
+/// without tools) the wire only ever attaches `thoughtSignature` to a
+/// trailing **empty** text part or to a functionCall part — a signed chunk
+/// carrying non-empty thinking text was not inducible, so the F1
+/// signed-restatement erasure stays pinned by the synthetic corpus and this
+/// recording pins the real signed-empty-trailer shape: the signed trailer
+/// must not erase or duplicate the preceding unsigned thought deltas.
 #[tokio::test]
 async fn thinking_stream_aggregates_all_reasoning_text() {
     let config = GenerationConfig {
         thinking_config: Some(ThinkingConfig {
             thinking_budget: None,
-            thinking_level: Some(ThinkingLevel::Medium),
+            thinking_level: Some(ThinkingLevel::High),
             include_thoughts: Some(true),
         }),
         ..Default::default()
@@ -239,7 +245,8 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
             let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
             let request = model
                 .completion_request(
-                    "In one short sentence, why does ice float on water? Think it through first.",
+                    "How many positive integers n < 400 are divisible by 6 but not by 9? \
+                     Think it through carefully step by step, then answer with just the number.",
                 )
                 .additional_params(
                     serde_json::to_value(params).expect("params should serialize"),
@@ -267,6 +274,273 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 "aggregated reasoning lost streamed thinking text;\nstreamed: {:?}\naggregated: {:?}",
                 run.reasoning_delta,
                 aggregated
+            );
+            // The signed restatement supersedes the delta accumulation: the
+            // delta text must survive exactly once, not once per statement.
+            assert_eq!(
+                aggregated.matches(run.reasoning_delta.trim()).count(),
+                1,
+                "signed restatement must not duplicate the thinking text;\naggregated: {aggregated:?}"
+            );
+        },
+    )
+    .await;
+}
+
+/// Thinking and a tool call interleaved in ONE stream: the aggregated choice
+/// keeps the reasoning part and the tool-call part as discrete siblings (the
+/// F1b thinking/tool boundary, pinned on real traffic).
+#[tokio::test]
+async fn thinking_and_tool_call_interleave_as_discrete_parts() {
+    let config = GenerationConfig {
+        thinking_config: Some(ThinkingConfig {
+            thinking_budget: None,
+            thinking_level: Some(ThinkingLevel::Medium),
+            include_thoughts: Some(true),
+        }),
+        ..Default::default()
+    };
+    let params = AdditionalParameters::default().with_config(config);
+    super::super::support::with_gemini_cassette(
+        "streaming_grammar/thinking_then_tool_call",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+            let request = model
+                // A trivial tool turn yields no thought parts on this wire; a
+                // math sub-task reliably interleaves thinking with the call.
+                .completion_request(
+                    "First work out how many positive integers n < 60 are divisible by 8 \
+                     (carefully). Then call `lookup_harbor_label` exactly once. After the \
+                     tool result arrives, answer with the count and the exact tool output.",
+                )
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::ToolCalls);
+            assert!(
+                !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
+                "include_thoughts should surface reasoning before the call"
+            );
+            let streamed = run
+                .tool_calls
+                .iter()
+                .find(|call| call.function.name == "lookup_harbor_label")
+                .expect("stream should yield the lookup_harbor_label call");
+            // Discrete parts: exactly one reasoning part and one tool call
+            // live side-by-side in the aggregated choice; the tool call did
+            // not absorb or erase the thinking, and vice versa.
+            let reasoning_parts = run
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .count();
+            assert!(
+                reasoning_parts >= 1,
+                "aggregated choice should keep the reasoning part, got {:?}",
+                run.choice
+            );
+            let aggregated_call = run
+                .choice
+                .iter()
+                .find_map(|content| match content {
+                    AssistantContent::ToolCall(call)
+                        if call.function.name == "lookup_harbor_label" =>
+                    {
+                        Some(call)
+                    }
+                    _ => None,
+                })
+                .expect("aggregated choice should keep the tool call");
+            assert_eq!(aggregated_call.id, streamed.id);
+            assert_eq!(aggregated_call.call_id, streamed.call_id);
+            assert!(
+                !aggregated_reasoning_text(&run.choice).is_empty(),
+                "reasoning text must survive alongside the tool call"
+            );
+        },
+    )
+    .await;
+}
+
+/// Parallel function calls in one turn: both calls survive aggregation as
+/// distinct parts with the ids the stream reported.
+#[tokio::test]
+async fn parallel_function_calls_stay_distinct() {
+    let config = GenerationConfig {
+        thinking_config: Some(ThinkingConfig {
+            thinking_budget: Some(0),
+            thinking_level: None,
+            include_thoughts: None,
+        }),
+        ..Default::default()
+    };
+    let params = AdditionalParameters::default().with_config(config);
+    super::super::support::with_gemini_cassette(
+        "streaming_grammar/parallel_function_calls",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request(
+                    "Call `lookup_harbor_label` and `lookup_orchard_label` now, both of them \
+                     together in this single reply, before writing any text. Emit the two \
+                     tool calls in one turn - do not wait for results between them.",
+                )
+                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .tool(rig::tool::tool_definition(&BetaSignal))
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::ToolCalls);
+            let aggregated: Vec<&ToolCall> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::ToolCall(call) => Some(call),
+                    _ => None,
+                })
+                .collect();
+            for name in ["lookup_harbor_label", "lookup_orchard_label"] {
+                let streamed = run
+                    .tool_calls
+                    .iter()
+                    .find(|call| call.function.name == name)
+                    .unwrap_or_else(|| panic!("stream should yield a {name} call"));
+                let aggregated_call = aggregated
+                    .iter()
+                    .find(|call| call.function.name == name)
+                    .unwrap_or_else(|| panic!("aggregated choice should keep the {name} call"));
+                // IDs derived from the recorded turn, never minted literally.
+                assert_eq!(
+                    aggregated_call.id, streamed.id,
+                    "{name} id should aggregate"
+                );
+            }
+            assert_eq!(
+                aggregated.len(),
+                2,
+                "aggregated choice should contain exactly the two parallel calls"
+            );
+            assert_ne!(
+                aggregated[0].id, aggregated[1].id,
+                "parallel calls must keep distinct identities"
+            );
+        },
+    )
+    .await;
+}
+
+/// Plain `STOP` finish on a text-only turn (`finishReason` variant beyond
+/// MAX_TOKENS): terminal record present, `Stop` normalized, text aggregated
+/// exactly as streamed.
+#[tokio::test]
+async fn stop_finish_reason_normalizes_on_text_turn() {
+    let config = GenerationConfig {
+        thinking_config: Some(ThinkingConfig {
+            thinking_budget: Some(0),
+            thinking_level: None,
+            include_thoughts: None,
+        }),
+        ..Default::default()
+    };
+    let params = AdditionalParameters::default().with_config(config);
+    super::super::support::with_gemini_cassette(
+        "streaming_grammar/stop_finish_reason",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let request = model
+                .completion_request("Reply with one short sentence about volcanoes.")
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::Stop);
+            assert!(!run.text.trim().is_empty(), "turn should produce text");
+            assert_eq!(
+                aggregated_text(&run.choice),
+                run.text,
+                "aggregated choice should keep exactly the streamed text"
+            );
+        },
+    )
+    .await;
+}
+
+/// Thinking-enabled Interactions streaming turn: reasoning and text arrive as
+/// discrete normalized parts through the shared REST/interactions part-kind
+/// interpretation, pinned on real traffic.
+#[tokio::test]
+async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
+    super::super::support::with_gemini_interactions_cassette(
+        "streaming_grammar/interactions_thinking_stream",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request(
+                    "How many positive integers n < 200 are divisible by 4 but not by 10? \
+                     Think it through, then answer with just the number.",
+                )
+                .additional_params(
+                    serde_json::to_value(interactions_api::AdditionalParameters {
+                        generation_config: Some(interactions_api::GenerationConfig {
+                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
+                            thinking_summaries: Some(interactions_api::ThinkingSummaries::Auto),
+                            ..Default::default()
+                        }),
+                        store: Some(true),
+                        ..Default::default()
+                    })
+                    .expect("params should serialize"),
+                )
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert!(!run.text.trim().is_empty(), "turn should produce text");
+            assert_eq!(
+                run.finals.len(),
+                1,
+                "stream should yield exactly one terminal record"
+            );
+            let terminal = run
+                .response
+                .as_ref()
+                .expect("aggregated stream should retain the terminal record");
+            assert_eq!(
+                terminal.finish_reason.as_ref(),
+                Some(&FinishReason::Stop),
+                "unexpected finish reason"
+            );
+            assert!(
+                terminal.usage.total_tokens > 0,
+                "terminal record should carry non-zero usage, got {:?}",
+                terminal.usage
+            );
+            assert!(
+                !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
+                "thinking summaries should surface reasoning on the stream"
+            );
+            // Discrete parts: the reasoning part and the text part live
+            // side-by-side in the aggregated choice.
+            assert!(
+                run.choice
+                    .iter()
+                    .any(|content| matches!(content, AssistantContent::Reasoning(_))),
+                "aggregated choice should keep a reasoning part, got {:?}",
+                run.choice
+            );
+            let reasoning_text = aggregated_reasoning_text(&run.choice);
+            assert!(
+                !reasoning_text.is_empty(),
+                "aggregated reasoning should carry the summary text"
+            );
+            assert_eq!(
+                aggregated_text(&run.choice),
+                run.text,
+                "aggregated text should match the streamed text exactly"
             );
         },
     )

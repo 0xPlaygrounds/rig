@@ -22,7 +22,7 @@ use serde_json::json;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
     ORDERED_TOOL_STREAM_PROMPT, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
 };
 
@@ -431,6 +431,353 @@ async fn tool_call_then_followup_text_across_turns() {
                 second.text.contains(ALPHA_SIGNAL_OUTPUT),
                 "follow-up text should use the tool result, got {:?}",
                 second.text
+            );
+        },
+    )
+    .await;
+}
+
+/// Three-turn tool session with encrypted reasoning (`store: false`): every
+/// turn's reasoning items carry real `rs_*` ids that are sent back verbatim on
+/// the following turn, exercising the Responses provenance gate on real ids
+/// across turns (reasoning + tool call → tool result → follow-up reasoning +
+/// text → follow-up text).
+#[tokio::test]
+async fn three_turn_tool_session_replays_rs_ids_across_turns() {
+    with_openai_cassette(
+        "streaming_grammar/three_turn_tool_session",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6);
+            // A trivial tool turn skips the reasoning item entirely on the
+            // wire (verified via a direct probe, even at medium effort); a
+            // math sub-task at high effort reliably yields the `rs_*`
+            // reasoning item the provenance assertions need.
+            const FIRST_TURN_PROMPT: &str =
+                "First work out how many positive integers n < 90 are divisible by 7 \
+                 (do this carefully). Then call `lookup_harbor_label` exactly once. After \
+                 the tool result arrives, answer with the count and the exact tool output.";
+            let params = json!({
+                "reasoning": { "effort": "high" },
+                "include": ["reasoning.encrypted_content"],
+                "store": false
+            });
+
+            // Turn 1: forced tool work with encrypted reasoning.
+            let request = model
+                .completion_request(FIRST_TURN_PROMPT)
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .additional_params(params.clone())
+                .build();
+            let first =
+                drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert_terminal(&first, FinishReason::ToolCalls);
+
+            // The reasoning item the wire produced carries a real `rs_*` id;
+            // the id is derived from the recorded turn, never minted.
+            let reasoning_ids: Vec<&str> = first
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Reasoning(reasoning) => reasoning.id.as_deref(),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                !reasoning_ids.is_empty(),
+                "store:false encrypted turn should aggregate a reasoning part with an id, got {:?}",
+                first.choice
+            );
+            for id in &reasoning_ids {
+                assert!(
+                    id.starts_with("rs_"),
+                    "reasoning part should carry the wire's rs_* id, got {id}"
+                );
+            }
+            let tool_call = first
+                .choice
+                .iter()
+                .find_map(|content| match content {
+                    AssistantContent::ToolCall(call)
+                        if call.function.name == "lookup_harbor_label" =>
+                    {
+                        Some(call.clone())
+                    }
+                    _ => None,
+                })
+                .expect("aggregated first turn should contain the lookup_harbor_label call");
+
+            // Turn 2: the full aggregated choice — reasoning items with their
+            // recorded rs_* ids included — goes back through the provenance
+            // gate together with the tool result.
+            let first_assistant = Message::Assistant {
+                id: first.message_id.clone(),
+                content: first.choice.clone(),
+            };
+            let tool_result = Message::tool_result_with_call_id(
+                tool_call.id.clone(),
+                tool_call.call_id.clone(),
+                ALPHA_SIGNAL_OUTPUT,
+            );
+            let second_request = model
+                .completion_request(
+                    "Answer in one short sentence that includes the exact tool output. \
+                     Do not call any tools.",
+                )
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+                .messages(vec![
+                    Message::user(FIRST_TURN_PROMPT),
+                    first_assistant.clone(),
+                    tool_result.clone(),
+                ])
+                .additional_params(params.clone())
+                .build();
+            let second = drain_stream(
+                model
+                    .stream(second_request)
+                    .await
+                    .expect("second-turn stream should start"),
+            )
+            .await;
+            assert_terminal(&second, FinishReason::Stop);
+            assert!(
+                second.text.contains(ALPHA_SIGNAL_OUTPUT),
+                "second turn should use the tool result, got {:?}",
+                second.text
+            );
+
+            // Turn 3: both prior assistant turns' rs_* items replay together.
+            let second_assistant = Message::Assistant {
+                id: second.message_id.clone(),
+                content: second.choice.clone(),
+            };
+            let third_request = model
+                .completion_request(
+                    "Repeat the exact tool output one more time, alone on a single line.",
+                )
+                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
+                .messages(vec![
+                    Message::user(FIRST_TURN_PROMPT),
+                    first_assistant,
+                    tool_result,
+                    Message::user(
+                        "Answer in one short sentence that includes the exact tool output. \
+                         Do not call any tools.",
+                    ),
+                    second_assistant,
+                ])
+                .additional_params(params)
+                .build();
+            let third = drain_stream(
+                model
+                    .stream(third_request)
+                    .await
+                    .expect("third-turn stream should start"),
+            )
+            .await;
+            assert_terminal(&third, FinishReason::Stop);
+            assert!(
+                third.text.contains(ALPHA_SIGNAL_OUTPUT),
+                "third turn should still carry the tool output, got {:?}",
+                third.text
+            );
+            assert!(
+                third.tool_calls.is_empty(),
+                "third turn should not call tools"
+            );
+        },
+    )
+    .await;
+}
+
+/// `response.incomplete` cut mid-tool-call: forced tool use with a minimal
+/// `max_output_tokens` budget. The stream must still terminate cleanly with a
+/// `Length` finish, and any tool call that did surface must carry object
+/// arguments (never a corrupted fragment).
+///
+/// WIRE DIVERGENCE (captured in the cassette): the wire cuts the function
+/// call's `arguments` mid-JSON (`"arguments":"{\""`, item and response status
+/// `incomplete`), and rig's Responses parse rejects both the
+/// `response.output_item.done` and `response.incomplete` frames ("data did
+/// not match any variant of untagged enum StreamingCompletionChunk"), so the
+/// stream errors instead of terminating with `Length`. The assertion below
+/// states what the wire means; do not weaken it — fix the parse to tolerate
+/// truncated arguments on incomplete items, then drop the ignore.
+#[tokio::test]
+#[ignore = "wire divergence: truncated tool-call arguments on response.incomplete fail the Responses frame parse"]
+async fn incomplete_mid_tool_call_normalizes_to_length() {
+    with_openai_cassette(
+        "streaming_grammar/incomplete_mid_tool_call",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6);
+            let request = model
+                .completion_request(
+                    "Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.",
+                )
+                .tool(rig::tool::tool_definition(&Adder))
+                .tool_choice(rig::message::ToolChoice::Required)
+                .max_tokens(16)
+                .additional_params(json!({ "reasoning": { "effort": "low" } }))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::Length);
+            // Whatever partial output survived must be well-formed part-wise:
+            // a truncated tool call must not surface corrupted arguments.
+            for call in &run.tool_calls {
+                assert!(
+                    call.function.arguments.is_object(),
+                    "surfaced tool call must carry object arguments, got {:?}",
+                    call.function.arguments
+                );
+            }
+            for content in run.choice.iter() {
+                if let AssistantContent::ToolCall(call) = content {
+                    assert!(
+                        call.function.arguments.is_object(),
+                        "aggregated tool call must carry object arguments, got {:?}",
+                        call.function.arguments
+                    );
+                }
+            }
+        },
+    )
+    .await;
+}
+
+/// Structured-output streaming (`text.format` json_schema): the streamed text
+/// parses as the requested schema and matches the aggregated text part.
+#[tokio::test]
+async fn structured_output_stream_yields_schema_conformant_text() {
+    with_openai_cassette(
+        "streaming_grammar/structured_output_stream",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6);
+            let request = model
+                .completion_request(
+                    "Return a concise event object for a local Rust meetup in Seattle.",
+                )
+                .additional_params(json!({
+                    "reasoning": { "effort": "low" },
+                    "text": {
+                        "format": {
+                            "type": "json_schema",
+                            "name": "smoke_event",
+                            "strict": true,
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": { "type": "string" },
+                                    "category": { "type": "string" },
+                                    "summary": { "type": "string" }
+                                },
+                                "required": ["title", "category", "summary"],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                }))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::Stop);
+            let parsed: serde_json::Value = serde_json::from_str(run.text.trim())
+                .expect("structured-output stream should yield valid JSON text");
+            for field in ["title", "category", "summary"] {
+                assert!(
+                    parsed
+                        .get(field)
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|value| !value.trim().is_empty()),
+                    "structured output should carry a non-empty {field}, got {parsed}"
+                );
+            }
+            // The aggregated text part is exactly the streamed text — one
+            // discrete text part, not a re-concatenation.
+            let aggregated_text_parts: Vec<&str> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                aggregated_text_parts.concat(),
+                run.text,
+                "aggregated text should match the streamed structured output"
+            );
+        },
+    )
+    .await;
+}
+
+/// `previous_response_id`-chained turn: turn one is stored, turn two chains
+/// off its recorded `resp_*` id (derived from the turn, never minted) and can
+/// see the earlier turn's content.
+#[tokio::test]
+async fn previous_response_id_chains_server_side_state() {
+    with_openai_cassette(
+        "streaming_grammar/previous_response_id_chain",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6);
+            let request = model
+                .completion_request("Reply with exactly one word: quartz")
+                .additional_params(json!({
+                    "reasoning": { "effort": "low" },
+                    "store": true
+                }))
+                .build();
+            let first =
+                drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert_terminal(&first, FinishReason::Stop);
+            assert!(
+                first.text.to_ascii_lowercase().contains("quartz"),
+                "first turn should echo the word, got {:?}",
+                first.text
+            );
+            let previous_response_id = first
+                .response
+                .as_ref()
+                .and_then(|terminal| terminal.response_id.clone())
+                .expect("stored turn should report a resp_* id");
+
+            let second_request = model
+                .completion_request(
+                    "What exact word did you reply with just now? Reply with only that word.",
+                )
+                .additional_params(json!({
+                    "reasoning": { "effort": "low" },
+                    "store": true,
+                    "previous_response_id": previous_response_id
+                }))
+                .build();
+            let second = drain_stream(
+                model
+                    .stream(second_request)
+                    .await
+                    .expect("chained stream should start"),
+            )
+            .await;
+            assert_terminal(&second, FinishReason::Stop);
+            assert!(
+                second.text.to_ascii_lowercase().contains("quartz"),
+                "chained turn should see the stored turn's content, got {:?}",
+                second.text
+            );
+            let second_id = second
+                .response
+                .as_ref()
+                .and_then(|terminal| terminal.response_id.as_deref())
+                .expect("chained turn should report its own resp_* id");
+            assert_ne!(
+                second_id,
+                first
+                    .response
+                    .as_ref()
+                    .and_then(|terminal| terminal.response_id.as_deref())
+                    .expect("first turn id"),
+                "each turn carries its own response-scoped id"
             );
         },
     )
