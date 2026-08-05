@@ -1,44 +1,24 @@
 //! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel).
 
 use crate::{
-    completion::{CompletionError, GetTokenUsage, Usage},
+    completion::{CompletionError, Usage},
     message::ReasoningContent,
-    streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
+    streaming::{RawStreamingChoice, RawStreamingToolCall, StreamFinal, ToolCallDeltaContent},
 };
-use serde::{Deserialize, Serialize};
 
-/// Raw mock response used by completion and streaming test utilities.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct MockResponse {
-    usage: Usage,
+/// Provider descriptor name reported by the test doubles.
+pub const MOCK_PROVIDER: &str = "mock";
+
+/// Build the terminal record the mock model yields, carrying `usage`.
+pub fn mock_final(usage: Usage) -> StreamFinal {
+    StreamFinal::new(MOCK_PROVIDER, usage)
 }
 
-impl MockResponse {
-    /// Create a mock raw response without token usage (zero-valued usage,
-    /// [`Usage`]'s documented sentinel for missing provider metrics).
-    pub fn new() -> Self {
-        Self {
-            usage: Usage::new(),
-        }
-    }
-
-    /// Create a mock raw response carrying token usage.
-    pub fn with_usage(usage: Usage) -> Self {
-        Self { usage }
-    }
-
-    /// Create a mock raw response whose usage has only `total_tokens` set.
-    pub fn with_total_tokens(total_tokens: u64) -> Self {
-        let mut usage = Usage::new();
-        usage.total_tokens = total_tokens;
-        Self::with_usage(usage)
-    }
-}
-
-impl GetTokenUsage for MockResponse {
-    fn token_usage(&self) -> Usage {
-        self.usage
-    }
+/// Build a terminal record whose usage has only `total_tokens` set.
+pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
+    let mut usage = Usage::new();
+    usage.total_tokens = total_tokens;
+    mock_final(usage)
 }
 
 /// Scripted streaming event yielded by [`MockCompletionModel`](super::MockCompletionModel).
@@ -80,7 +60,7 @@ pub enum MockStreamEvent {
     /// Provider-native output item that Rig does not model.
     Unknown(serde_json::Value),
     /// Final raw response carrying optional usage.
-    FinalResponse(MockResponse),
+    FinalResponse(StreamFinal),
     /// Stream error.
     Error(MockError),
 }
@@ -190,17 +170,17 @@ impl MockStreamEvent {
 
     /// Create a final response event with usage.
     pub fn final_response(usage: Usage) -> Self {
-        Self::FinalResponse(MockResponse::with_usage(usage))
+        Self::FinalResponse(mock_final(usage))
     }
 
     /// Create a final response event with default zero usage.
     pub fn final_response_with_default_usage() -> Self {
-        Self::FinalResponse(MockResponse::with_usage(Usage::new()))
+        Self::FinalResponse(mock_final(Usage::new()))
     }
 
     /// Create a final response event whose usage has only `total_tokens` set.
     pub fn final_response_with_total_tokens(total_tokens: u64) -> Self {
-        Self::FinalResponse(MockResponse::with_total_tokens(total_tokens))
+        Self::FinalResponse(mock_final_with_total_tokens(total_tokens))
     }
 
     /// Create a stream error event.
@@ -208,9 +188,7 @@ impl MockStreamEvent {
         Self::Error(MockError::provider(message))
     }
 
-    pub(crate) fn into_raw_choice(
-        self,
-    ) -> Result<RawStreamingChoice<MockResponse>, CompletionError> {
+    pub(crate) fn into_raw_choice(self) -> Result<RawStreamingChoice, CompletionError> {
         match self {
             Self::Text(text) => Ok(RawStreamingChoice::Message(text)),
             Self::TextStart { additional_params } => {

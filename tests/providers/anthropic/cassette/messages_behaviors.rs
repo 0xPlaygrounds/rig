@@ -7,7 +7,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::CompletionModel;
+use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -34,8 +34,8 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 .expect("a truncated response should still convert, not error");
 
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("max_tokens"),
+                response.finish_reason(),
+                Some(FinishReason::Length),
                 "hitting max_tokens should preserve the max_tokens stop reason"
             );
             let text: String = response

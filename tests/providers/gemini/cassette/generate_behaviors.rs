@@ -8,11 +8,10 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{CompletionModel, FinishReason, Prompt};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::FinishReason;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -60,16 +59,12 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 .await
                 .expect("a truncated response should still convert, not error");
 
-            let candidate = response
-                .raw_response
-                .candidates
-                .first()
-                .expect("response should carry a candidate");
+            // Gemini's MAX_TOKENS normalizes to `FinishReason::Length`.
             assert!(
-                matches!(candidate.finish_reason, Some(FinishReason::MaxTokens)),
+                matches!(response.finish_reason(), Some(FinishReason::Length)),
                 "hitting maxOutputTokens should preserve the MAX_TOKENS finish reason, \
                  got {:?}",
-                candidate.finish_reason
+                response.finish_reason()
             );
             let text: String = response
                 .choice
@@ -85,8 +80,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
             );
             assert!(
                 response
-                    .raw_response
-                    .model_version
+                    .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"

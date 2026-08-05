@@ -13,7 +13,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
 
-async fn collect_final<R>(stream: &mut StreamingResult<R>) -> Result<String> {
+async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {

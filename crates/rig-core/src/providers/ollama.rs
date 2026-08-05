@@ -42,11 +42,11 @@ use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
-use crate::completion::{GetTokenUsage, Usage};
+use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::streaming::RawStreamingChoice;
+use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
     OneOrMany,
@@ -57,7 +57,7 @@ use crate::{
     streaming,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use async_stream::try_stream;
+use async_stream::stream;
 use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -67,6 +67,10 @@ use tracing_futures::Instrument;
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
+
+/// Stable descriptor name recorded on normalized responses, streams, and
+/// telemetry spans for this provider.
+const PROVIDER_NAME: &str = "ollama";
 
 /// Optional API key for Ollama. By default Ollama requires no authentication,
 /// but proxied or secured deployments may require a Bearer token.
@@ -321,95 +325,92 @@ pub struct CompletionResponse {
     #[serde(default)]
     pub eval_duration: Option<u64>,
 }
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
+/// Map Ollama's `done_reason` onto rig's normalized vocabulary.
+///
+/// Ollama documents `stop` and `length`, but also emits operational reasons
+/// such as `load`/`unload`; those are carried verbatim in Ollama's own spelling
+/// rather than being flattened into a natural stop.
+pub(crate) fn map_done_reason(reason: &str) -> completion::FinishReason {
+    match reason {
+        "stop" => completion::FinishReason::Stop,
+        "length" => completion::FinishReason::Length,
+        other => completion::FinishReason::Other(other.to_owned()),
+    }
+}
+
+impl From<&CompletionResponse> for Usage {
+    fn from(response: &CompletionResponse) -> Usage {
+        let input_tokens = response.prompt_eval_count.unwrap_or(0);
+        let output_tokens = response.eval_count.unwrap_or(0);
+
+        let mut usage = Usage::new();
+        usage.input_tokens = input_tokens;
+        usage.output_tokens = output_tokens;
+        usage.total_tokens = input_tokens + output_tokens;
+        usage
+    }
+}
+
+impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
     fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
-        match resp.message {
-            // Process only if an assistant message is present.
-            Message::Assistant {
-                content,
-                thinking,
-                tool_calls,
-                ..
-            } => {
-                let mut assistant_contents = Vec::new();
-                let permits_omitted_think_start = resp.model.to_ascii_lowercase().contains("qwen3");
-                let (legacy_thinking, visible_content) =
-                    if matches!(thinking.as_deref(), None | Some("")) {
-                        split_legacy_thinking(&content, permits_omitted_think_start)
-                    } else {
-                        (None, content.as_str())
-                    };
-                // Preserve the model's reasoning so it round-trips into agent
-                // history and is echoed back to Ollama on the next turn (issue
-                // #1926). Without this, non-streaming `thinking` is kept only in
-                // `raw_response` and lost from `choice`, unlike the streaming path
-                // (see `RawStreamingChoice::ReasoningDelta` below).
-                if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
-                    assistant_contents.push(completion::AssistantContent::reasoning(thinking));
-                }
-                if let Some(legacy_thinking) = legacy_thinking {
-                    assistant_contents
-                        .push(completion::AssistantContent::reasoning(legacy_thinking));
-                }
-                // Add the assistant's text content if any.
-                if !visible_content.is_empty() {
-                    assistant_contents.push(completion::AssistantContent::text(visible_content));
-                }
-                // Process tool_calls following Ollama's chat response definition.
-                // Each ToolCall has an id, a type, and a function field.
-                for tc in tool_calls.iter() {
-                    assistant_contents.push(completion::AssistantContent::tool_call(
-                        tc.function.name.clone(),
-                        tc.function.name.clone(),
-                        tc.function.arguments.clone(),
-                    ));
-                }
-                let choice = OneOrMany::many(assistant_contents).map_err(|_| {
-                    CompletionError::ResponseError("No content provided".to_owned())
-                })?;
-                let prompt_tokens = resp.prompt_eval_count.unwrap_or(0);
-                let completion_tokens = resp.eval_count.unwrap_or(0);
+        let usage = Usage::from(&resp);
+        let finish_reason = resp.done_reason.as_deref().map(map_done_reason);
+        let model = resp.model.clone();
+        let permits_omitted_think_start = resp.model.to_ascii_lowercase().contains("qwen3");
 
-                let raw_response = CompletionResponse {
-                    model: resp.model,
-                    created_at: resp.created_at,
-                    done: resp.done,
-                    done_reason: resp.done_reason,
-                    total_duration: resp.total_duration,
-                    load_duration: resp.load_duration,
-                    prompt_eval_count: resp.prompt_eval_count,
-                    prompt_eval_duration: resp.prompt_eval_duration,
-                    eval_count: resp.eval_count,
-                    eval_duration: resp.eval_duration,
-                    message: Message::Assistant {
-                        content,
-                        thinking,
-                        images: None,
-                        name: None,
-                        tool_calls,
-                    },
-                };
-
-                Ok(completion::CompletionResponse {
-                    choice,
-                    usage: Usage {
-                        input_tokens: prompt_tokens,
-                        output_tokens: completion_tokens,
-                        total_tokens: prompt_tokens + completion_tokens,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    },
-                    raw_response,
-                    message_id: None,
-                })
-            }
-            _ => Err(CompletionError::ResponseError(
+        // Process only if an assistant message is present.
+        let Message::Assistant {
+            content,
+            thinking,
+            tool_calls,
+            ..
+        } = resp.message
+        else {
+            return Err(CompletionError::ResponseError(
                 "Chat response does not include an assistant message".into(),
-            )),
+            ));
+        };
+
+        let mut assistant_contents = Vec::new();
+        let (legacy_thinking, visible_content) = if matches!(thinking.as_deref(), None | Some("")) {
+            split_legacy_thinking(&content, permits_omitted_think_start)
+        } else {
+            (None, content.as_str())
+        };
+        // Preserve the model's reasoning so it round-trips into agent history
+        // and is echoed back to Ollama on the next turn (issue #1926). `choice`
+        // is the only place it can live — the normalized response carries no
+        // provider payload — so dropping it here would lose the reasoning
+        // entirely, unlike the streaming path (see
+        // `RawStreamingChoice::ReasoningDelta` below).
+        if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
+            assistant_contents.push(completion::AssistantContent::reasoning(thinking));
         }
+        if let Some(legacy_thinking) = legacy_thinking {
+            assistant_contents.push(completion::AssistantContent::reasoning(legacy_thinking));
+        }
+        // Add the assistant's text content if any.
+        if !visible_content.is_empty() {
+            assistant_contents.push(completion::AssistantContent::text(visible_content));
+        }
+        // Process tool_calls following Ollama's chat response definition.
+        // Each ToolCall has an id, a type, and a function field.
+        for tc in tool_calls.iter() {
+            assistant_contents.push(completion::AssistantContent::tool_call(
+                tc.function.name.clone(),
+                tc.function.name.clone(),
+                tc.function.arguments.clone(),
+            ));
+        }
+        let choice = OneOrMany::many(assistant_contents)
+            .map_err(|_| CompletionError::ResponseError("No content provided".to_owned()))?;
+
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_model(model)
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -574,11 +575,20 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: &str) -> Self {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,
-            model: model.to_owned(),
+            model: model.into(),
         }
+    }
+}
+
+impl<T> crate::client::ConstructCompletionModel<Client<T>> for CompletionModel<T>
+where
+    Client<T>: Clone,
+{
+    fn construct(client: &Client<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -600,8 +610,12 @@ enum Level {
 
 // ---------- CompletionModel Implementation ----------
 
+/// Ollama's terminal stream record, kept provider-native for
+/// [`CompletionModel::raw_stream`].
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
+    /// Provider-reported model identifier from the terminating NDJSON line.
+    pub model: String,
     pub done_reason: Option<String>,
     pub total_duration: Option<u64>,
     pub load_duration: Option<u64>,
@@ -611,16 +625,26 @@ pub struct StreamingCompletionResponse {
     pub eval_duration: Option<u64>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        let input_tokens = self.prompt_eval_count.unwrap_or_default();
-        let output_tokens = self.eval_count.unwrap_or_default();
+impl From<&StreamingCompletionResponse> for Usage {
+    fn from(response: &StreamingCompletionResponse) -> Usage {
+        let input_tokens = response.prompt_eval_count.unwrap_or_default();
+        let output_tokens = response.eval_count.unwrap_or_default();
+
+        let mut usage = Usage::new();
         usage.input_tokens = input_tokens;
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
-
         usage
+    }
+}
+
+impl From<StreamingCompletionResponse> for StreamFinal {
+    fn from(response: StreamingCompletionResponse) -> StreamFinal {
+        // Ollama's `/api/chat` stream assigns no message identifier, so the
+        // normalized `message_id` stays unset.
+        StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
+            .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
+            .with_model(response.model)
     }
 }
 
@@ -656,29 +680,29 @@ impl NdjsonBuffer {
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
+impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into().as_str())
-    }
-
-    async fn completion(
+    /// Execute a completion and return Ollama's own wire response.
+    ///
+    /// This is the escape hatch for Ollama-specific fields rig does not
+    /// normalize (the timing counters, `created_at`). It shares the request
+    /// builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let span = CompletionSpanBuilder::new("ollama", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let span =
+            CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
+                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+                .build();
 
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!(target: "rig::completions",
@@ -726,25 +750,28 @@ where
                 );
             }
 
-            let response: completion::CompletionResponse<CompletionResponse> =
-                response.try_into()?;
-
             Ok(response)
         };
 
         tracing::Instrument::instrument(async_block, span).await
     }
 
-    async fn stream(
+    /// Open a stream whose terminal record stays Ollama-native.
+    ///
+    /// This is the escape hatch for Ollama's own terminal payload; it shares the
+    /// request builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::stream`](completion::CompletionModel::stream), which
+    /// calls it and normalizes the terminal record once through
+    /// [`streaming::normalize_stream`] — one network request either way.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-    {
+    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = request.preamble.clone();
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
-            "ollama",
+            PROVIDER_NAME,
             &request.model,
             CompletionOperation::ChatStreaming,
         )
@@ -792,17 +819,32 @@ where
             ));
         }
 
-        let stream = try_stream! {
+        let stream = stream! {
             let span = tracing::Span::current();
             let mut line_buf = NdjsonBuffer::new();
 
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = chunk.map_err(|e| http_client::Error::Instance(e.into()))?;
+            'outer: while let Some(chunk) = byte_stream.next().await {
+                let bytes = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
+                        break;
+                    }
+                };
 
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    let response: CompletionResponse = serde_json::from_slice(&line)?;
+                    let response: CompletionResponse = match serde_json::from_slice(&line) {
+                        Ok(response) => response,
+                        Err(err) => {
+                            // Surface the malformed line but keep consuming:
+                            // a later genuine `done: true` record can still
+                            // complete the stream with its terminal record.
+                            yield Err(CompletionError::JsonError(err));
+                            continue;
+                        }
+                    };
 
                     if response.done {
                         span.record("gen_ai.response.model", &response.model);
@@ -810,28 +852,29 @@ where
 
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield RawStreamingChoice::ReasoningDelta {
+                            yield Ok(RawStreamingChoice::ReasoningDelta {
                                 id: None,
                                 reasoning: thinking_content,
-                            };
+                            });
                         }
 
                         if !content.is_empty() {
-                            yield RawStreamingChoice::Message(content);
+                            yield Ok(RawStreamingChoice::Message(content));
                         }
 
                         for tool_call in tool_calls {
-                            yield RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(String::new(), tool_call.function.name, tool_call.function.arguments)
-                            );
+                            yield Ok(RawStreamingChoice::ToolCall(
+                                crate::streaming::RawStreamingToolCall::new(tool_call.function.name.clone(), tool_call.function.name, tool_call.function.arguments)
+                            ));
                         }
                     }
 
                     if response.done {
                         span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
                         span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield RawStreamingChoice::FinalResponse(
+                        yield Ok(RawStreamingChoice::FinalResponse(
                             StreamingCompletionResponse {
+                                model: response.model,
                                 total_duration: response.total_duration,
                                 load_duration: response.load_duration,
                                 prompt_eval_count: response.prompt_eval_count,
@@ -840,16 +883,39 @@ where
                                 eval_duration: response.eval_duration,
                                 done_reason: response.done_reason,
                             }
-                        );
-                        break;
+                        ));
+                        break 'outer;
                     }
                 }
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(request).await?;
+        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            normalized,
+        ))
     }
 }
 
@@ -1385,12 +1451,107 @@ mod tests {
 
         let chat_resp: CompletionResponse =
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-        let conv: completion::CompletionResponse<CompletionResponse> =
-            chat_resp.try_into().unwrap();
+        let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
             !conv.choice.is_empty(),
             "Expected non-empty choice in chat response"
         );
+    }
+
+    #[test]
+    fn done_reason_maps_documented_values_and_preserves_the_rest() {
+        assert_eq!(map_done_reason("stop"), completion::FinishReason::Stop);
+        assert_eq!(map_done_reason("length"), completion::FinishReason::Length);
+        // Ollama's operational reasons have no normalized equivalent, so they
+        // are carried through verbatim rather than read as a natural stop.
+        assert_eq!(
+            map_done_reason("load"),
+            completion::FinishReason::Other("load".to_owned())
+        );
+        assert_eq!(
+            map_done_reason("unload"),
+            completion::FinishReason::Other("unload".to_owned())
+        );
+    }
+
+    #[test]
+    fn response_metadata_is_normalized() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {"role": "assistant", "content": "Hi!", "tool_calls": []},
+            "done": true,
+            "done_reason": "length",
+            "prompt_eval_count": 12u64,
+            "eval_count": 3u64
+        }))
+        .expect("fixture should deserialize");
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("normalization should succeed");
+
+        assert_eq!(normalized.provider, PROVIDER_NAME);
+        assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
+        assert_eq!(
+            normalized.finish_reason(),
+            Some(completion::FinishReason::Length)
+        );
+        // Ollama assigns no message identifier.
+        assert_eq!(normalized.message_id, None);
+        assert_eq!(normalized.usage.input_tokens, 12);
+        assert_eq!(normalized.usage.output_tokens, 3);
+        assert_eq!(normalized.usage.total_tokens, 15);
+    }
+
+    // A `done_reason` of `stop` on a turn that actually called a tool must be
+    // upgraded by the response builder's reconciliation.
+    #[test]
+    fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "model": "qwen3:4b",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"type": "function", "function": {"name": "get_weather", "arguments": {"location": "Berlin"}}}
+                ]
+            },
+            "done": true,
+            "done_reason": "stop"
+        }))
+        .expect("fixture should deserialize");
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("normalization should succeed");
+
+        assert_eq!(
+            normalized.finish_reason(),
+            Some(completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
+    fn streaming_terminal_record_is_normalized() {
+        let terminal = StreamingCompletionResponse {
+            model: "llama3.2".to_string(),
+            done_reason: Some("dragons".to_string()),
+            total_duration: None,
+            load_duration: None,
+            prompt_eval_count: Some(7),
+            prompt_eval_duration: None,
+            eval_count: Some(5),
+            eval_duration: None,
+        };
+
+        let final_record = StreamFinal::from(terminal);
+        assert_eq!(final_record.provider, PROVIDER_NAME);
+        assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
+        assert_eq!(
+            final_record.finish_reason,
+            Some(completion::FinishReason::Other("dragons".to_owned()))
+        );
+        assert_eq!(final_record.usage.total_tokens, 12);
     }
 
     // Test conversion from provider Message to completion Message.
@@ -1677,7 +1838,7 @@ mod tests {
 
         let raw: CompletionResponse =
             serde_json::from_value(sample_response).expect("deserialize ollama response");
-        let completed: completion::CompletionResponse<CompletionResponse> =
+        let completed: completion::CompletionResponse =
             raw.try_into().expect("convert to completion response");
 
         let reasoning = completed.choice.iter().find_map(|c| match c {
@@ -2441,6 +2602,161 @@ mod tests {
         assert_eq!(received.len(), 2);
         assert_eq!(received[0]["message"]["content"], "hi");
         assert_eq!(received[1]["done"], true);
+    }
+
+    // Proves a truncated NDJSON stream — content chunks then EOF without a
+    // `done: true` record — delivers its content but never a synthesized
+    // terminal record.
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without a done record must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    // Proves a malformed NDJSON line between valid lines surfaces as an
+    // `Err` item while the stream keeps consuming: the following content and
+    // the `done: true` record still arrive.
+    #[tokio::test]
+    async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+            "{not json\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":" there"},"done":false}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_error = false;
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                Ok(StreamedAssistantContent::Final(final_response)) => {
+                    terminal = Some(final_response)
+                }
+                Ok(_) => {}
+                Err(_) => saw_error = true,
+            }
+        }
+
+        assert_eq!(texts, ["hi", " there"]);
+        assert!(saw_error, "the malformed line must reach the consumer");
+        let terminal = terminal.expect("the genuine done record must still arrive");
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
+    }
+
+    // Proves the `done: true` record ends the stream: a content line that
+    // arrives after it is never yielded — only the pre-done content and the
+    // terminal record reach the consumer.
+    #[tokio::test]
+    async fn content_after_the_done_record_is_not_yielded() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let ndjson = concat!(
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:46.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
+            "\n",
+            r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":"stray"},"done":false}"#,
+            "\n",
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(ndjson),
+            })
+            .build()
+            .expect("build client");
+        let model = client.completion_model(LLAMA3_2);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = model.stream(request).await.expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut terminal = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(final_response) => {
+                    assert!(
+                        terminal.is_none(),
+                        "the terminal record must be yielded exactly once"
+                    );
+                    terminal = Some(final_response);
+                }
+                other => panic!("unexpected stream item: {other:?}"),
+            }
+        }
+
+        assert_eq!(
+            texts,
+            ["hi"],
+            "content after the done record must not be yielded"
+        );
+        let terminal = terminal.expect("the done record must yield the terminal record");
+        assert_eq!(terminal.usage.input_tokens, 10);
+        assert_eq!(terminal.usage.output_tokens, 4);
     }
 
     // Proves a non-success HTTP response from `/api/chat` preserves the

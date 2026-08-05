@@ -122,7 +122,9 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<GroqExt, H>;
 
-/// Final streaming response, shared with the OpenAI Chat Completions path.
+/// Groq's provider-native terminal streaming record: the value carried by the
+/// final item of the stream returned by `CompletionModel::raw_stream`. Shared
+/// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 
 impl ProviderClient for Client {

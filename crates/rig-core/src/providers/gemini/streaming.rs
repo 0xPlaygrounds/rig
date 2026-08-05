@@ -6,13 +6,14 @@ use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
+    map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, create_request_body, function_call_finish_reason_error, resolve_request_model,
-    streaming_endpoint,
+    CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
+    resolve_request_model, streaming_endpoint,
 };
 use crate::completion::message::ReasoningContent;
-use crate::completion::{CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming;
@@ -45,18 +46,24 @@ pub struct PartialUsage {
     pub traffic_type: Option<TrafficType>,
 }
 
-impl GetTokenUsage for PartialUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&PartialUsage> for crate::completion::Usage {
+    fn from(value: &PartialUsage) -> crate::completion::Usage {
         let mut usage = crate::completion::Usage::new();
 
-        usage.input_tokens = self.prompt_token_count as u64;
-        usage.output_tokens = self.candidates_token_count.unwrap_or_default() as u64;
-        usage.cached_input_tokens = self.cached_content_token_count.unwrap_or_default() as u64;
-        usage.reasoning_tokens = self.thoughts_token_count.unwrap_or_default() as u64;
-        usage.tool_use_prompt_tokens = self.tool_use_prompt_token_count.unwrap_or_default() as u64;
-        usage.total_tokens = self.total_token_count as u64;
+        usage.input_tokens = value.prompt_token_count as u64;
+        usage.output_tokens = value.candidates_token_count.unwrap_or_default() as u64;
+        usage.cached_input_tokens = value.cached_content_token_count.unwrap_or_default() as u64;
+        usage.reasoning_tokens = value.thoughts_token_count.unwrap_or_default() as u64;
+        usage.tool_use_prompt_tokens = value.tool_use_prompt_token_count.unwrap_or_default() as u64;
+        usage.total_tokens = value.total_token_count as u64;
 
         usage
+    }
+}
+
+impl From<PartialUsage> for crate::completion::Usage {
+    fn from(value: PartialUsage) -> crate::completion::Usage {
+        (&value).into()
     }
 }
 
@@ -80,12 +87,38 @@ pub struct StreamingCompletionResponse {
     pub finish_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
 }
 
-impl GetTokenUsage for StreamingCompletionResponse {
-    fn token_usage(&self) -> crate::completion::Usage {
-        self.usage_metadata.token_usage()
+impl From<&StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
+        (&value.usage_metadata).into()
     }
+}
+
+impl From<StreamingCompletionResponse> for crate::completion::Usage {
+    fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
+        (&value).into()
+    }
+}
+
+/// Normalize Gemini's terminal streaming record.
+///
+/// Infallible in practice, but stated as a `Result` because
+/// [`crate::streaming::normalize_stream`] maps terminal records through a
+/// fallible closure.
+fn map_stream_final(
+    response: StreamingCompletionResponse,
+) -> Result<streaming::StreamFinal, CompletionError> {
+    let finish_reason = response.finish_reason.as_ref().and_then(map_finish_reason);
+
+    Ok(
+        streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_response_id(response.response_id)
+            .with_optional_model(response.model_version),
+    )
 }
 
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
@@ -97,14 +130,19 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a `streamGenerateContent` stream whose terminal record stays
+    /// provider-native.
+    ///
+    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
+    /// delegates here and maps only the terminal record, so both paths open
+    /// exactly one stream over the same request, telemetry, and error handling.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &request_model,
             CompletionOperation::ChatStreaming,
         )
@@ -139,6 +177,7 @@ where
             let mut final_finish_reason: Option<FinishReason> = None;
             let mut final_finish_message: Option<String> = None;
             let mut final_model_version: Option<String> = None;
+            let mut final_response_id: Option<String> = None;
             let mut stream_failed = false;
             while let Some(event_result) = event_source.next().await {
                 match event_result {
@@ -155,23 +194,28 @@ where
                         let data = match serde_json::from_str::<StreamGenerateContentResponse>(&message.data) {
                             Ok(d) => d,
                             Err(error) => {
+                                // Surface the malformed frame but keep
+                                // consuming: a later genuine terminal chunk can
+                                // still complete the stream, and if none
+                                // arrives the missing finishReason suppresses
+                                // the terminal record below.
                                 tracing::error!(?error, message = message.data, "Failed to parse SSE message");
-                                stream_failed = true;
                                 yield Err(CompletionError::JsonError(error));
-                                break;
+                                continue;
                             }
                         };
 
                         let span = tracing::Span::current();
                         if let Some(response_id) = data.response_id.as_deref() {
                             span.record("gen_ai.response.id", response_id);
+                            final_response_id = Some(response_id.to_owned());
                         }
                         if let Some(model_version) = &data.model_version {
                             span.record("gen_ai.response.model", model_version.as_str());
                             final_model_version = Some(model_version.clone());
                         }
                         if let Some(usage) = data.usage_metadata.as_ref() {
-                            span.record_token_usage(usage);
+                            span.record_token_usage(&crate::completion::Usage::from(usage));
                             final_usage = Some(usage.clone());
                         }
 
@@ -292,19 +336,35 @@ where
             // Ensure event source is closed when stream ends
             event_source.close();
 
-            if !stream_failed {
+            // Only a chunk carrying Gemini's `finishReason` counts as the
+            // provider completing the turn. A stream that errored out, or that
+            // reached EOF without that chunk (truncation), never gets a
+            // synthesized terminal record: yielding one would report a
+            // successful completion for a turn the provider aborted.
+            if !stream_failed && final_finish_reason.is_some() {
                 yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
                     usage_metadata: final_usage.unwrap_or_default(),
                     finish_reason: final_finish_reason,
                     finish_message: final_finish_message,
                     model_version: final_model_version,
+                    response_id: final_response_id,
                 }));
             }
         }.instrument(span);
 
-        Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-            stream,
-        )))
+        Ok(Box::pin(stream))
+    }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let inner = self.raw_stream(completion_request).await?;
+
+        Ok(streaming::StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            streaming::normalize_stream(inner, map_stream_final),
+        ))
     }
 }
 
@@ -434,7 +494,7 @@ mod tests {
         let usage = response
             .usage_metadata
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
@@ -684,7 +744,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 40);
         assert_eq!(token_usage.cached_input_tokens, 20);
         assert_eq!(token_usage.output_tokens, 30);
@@ -709,7 +769,7 @@ mod tests {
             traffic_type: None,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 20);
         assert_eq!(token_usage.cached_input_tokens, 0);
         assert_eq!(token_usage.output_tokens, 30);
@@ -736,6 +796,7 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.5-pro-preview-05-06".to_string()),
+            response_id: None,
         };
 
         assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
@@ -775,9 +836,10 @@ mod tests {
             finish_reason: Some(FinishReason::Stop),
             finish_message: None,
             model_version: Some("gemini-2.0-flash-001".to_string()),
+            response_id: None,
         };
 
-        let token_usage = response.token_usage();
+        let token_usage = crate::completion::Usage::from(&response);
         assert_eq!(token_usage.input_tokens, 75);
         assert_eq!(token_usage.output_tokens, 75);
         assert_eq!(token_usage.reasoning_tokens, 0);
@@ -832,12 +894,161 @@ mod tests {
             Some(TrafficType::ProvisionedThroughput)
         ));
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
         assert_eq!(token_usage.output_tokens, 50);
         assert_eq!(token_usage.reasoning_tokens, 15);
         assert_eq!(token_usage.tool_use_prompt_tokens, 12);
         assert_eq!(token_usage.total_tokens, 190);
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    mod terminal_emission {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        const CONTENT_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"}}],"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
+        const TERMINAL_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"totalTokenCount":7},"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
+
+        fn sse(frames: &[&str]) -> bytes::Bytes {
+            bytes::Bytes::from(
+                frames
+                    .iter()
+                    .map(|frame| format!("data: {frame}\n\n"))
+                    .collect::<String>(),
+            )
+        }
+
+        async fn collect(
+            sse_bytes: bytes::Bytes,
+        ) -> (
+            Vec<String>,
+            bool,
+            bool,
+            crate::streaming::StreamingCompletionResponse,
+        ) {
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient { sse_bytes })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(
+                crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+            );
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut texts = Vec::new();
+            let mut saw_error = false;
+            let mut saw_terminal = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                    Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                    Ok(_) => {}
+                    Err(_) => saw_error = true,
+                }
+            }
+            (texts, saw_error, saw_terminal, stream)
+        }
+
+        #[tokio::test]
+        async fn truncated_stream_yields_content_but_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) = collect(sse(&[CONTENT_CHUNK])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(!saw_error);
+            assert!(
+                !saw_terminal,
+                "EOF without a finishReason chunk must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn errored_stream_forwards_the_error_and_no_terminal_record() {
+            use crate::test_utils::SequencedStreamingHttpClient;
+
+            // A transport failure after some content must reach the consumer
+            // and must not be papered over with a synthesized terminal record.
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(SequencedStreamingHttpClient::new(vec![
+                    Ok(sse(&[CONTENT_CHUNK])),
+                    Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        http::StatusCode::BAD_GATEWAY,
+                        "connection reset".to_string(),
+                    )),
+                ]))
+                .build()
+                .expect("build client");
+            let model = client.completion_model(
+                crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
+            );
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+
+            let mut texts = Vec::new();
+            let mut saw_error = false;
+            let mut saw_terminal = false;
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                    Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+                    Ok(_) => {}
+                    Err(_) => saw_error = true,
+                }
+            }
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the transport failure must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a failed stream must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_eof_yields_error_and_no_terminal_record() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[CONTENT_CHUNK, "{not json"])).await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a parse error followed by EOF must not read as a completed turn"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn malformed_frame_then_real_terminal_still_completes_the_stream() {
+            let (texts, saw_error, saw_terminal, stream) =
+                collect(sse(&[CONTENT_CHUNK, "{not json", TERMINAL_CHUNK])).await;
+
+            assert_eq!(texts, ["hi", "!"]);
+            assert!(saw_error, "the malformed frame must reach the consumer");
+            assert!(
+                saw_terminal,
+                "a genuine finishReason chunk after a parse error still completes the stream"
+            );
+            let terminal = stream.response.expect("terminal record");
+            assert_eq!(
+                terminal.finish_reason,
+                Some(crate::completion::FinishReason::Stop)
+            );
+            assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
+        }
     }
 }

@@ -6,10 +6,11 @@
 //! events without depending on a runtime.
 
 use crate::OneOrMany;
-use crate::completion::{CompletionError, CompletionResponse, GetTokenUsage, Usage};
+use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
 };
+use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -65,12 +66,210 @@ pub enum ToolCallDeltaContent {
     Delta(String),
 }
 
-/// Enum representing a streaming chunk from the model
+/// Discriminant for [`StreamFinal`].
+///
+/// [`StreamedAssistantContent`] is `#[serde(untagged)]` and its
+/// [`StreamedAssistantContent::Unknown`] variant matches any JSON value, so the
+/// terminal record needs a field that identifies it structurally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamFinalKind {
+    /// The provider's terminal stream event.
+    Final,
+}
+
+/// The provider's terminal stream record, normalized.
+///
+/// This replaces the provider-typed final payload that streams used to carry:
+/// usage is a plain field rather than a trait method, and the finish reason is
+/// normalized exactly as on the unary [`CompletionResponse`].
+///
+/// Providers that want their own terminal type keep it behind
+/// [`RawStreamingResult`] and map it once with [`normalize_stream`].
+///
+/// # Emission contract
+///
+/// A terminal record is emitted only when the provider signaled genuine
+/// completion — its own end-of-response event (an Anthropic `message_delta`
+/// with a stop reason, an OpenAI `[DONE]` / `response.completed`, a Gemini
+/// chunk carrying `finishReason`, and so on). Three failure shapes reach a
+/// consumer, and they are distinct:
+///
+/// | Shape | `Err` item | Stream continues | Terminal record |
+/// |---|---|---|---|
+/// | Transport error (connection lost, HTTP failure) | yes | no | never |
+/// | Malformed frame (recoverable parse error) | yes | yes | if a genuine terminal later arrives |
+/// | Truncation (EOF without the provider's end event) | no | — | never |
+///
+/// On a terminal error (a transport failure or the provider's own failure
+/// event), tool calls that were fully delivered before the failure are yielded
+/// *before* the terminal `Err`; nothing follows the error — the stream then
+/// ends without a terminal record.
+///
+/// Consequently an `Err` item is **not** by itself terminal: a malformed frame
+/// is surfaced and the stream keeps consuming, so a later genuine terminal
+/// still completes it. Consumers must drain the stream to `None` rather than
+/// stop at the first `Err`, and must treat the absence of a terminal record as
+/// truncation, never as a successful zero-usage completion.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "StreamFinalRepr")]
+#[non_exhaustive]
+pub struct StreamFinal {
+    /// Discriminating field; always [`StreamFinalKind::Final`].
+    pub kind: StreamFinalKind,
+    /// Token usage reported by the provider for this streamed completion.
+    /// Zero-valued usage is the documented sentinel for missing metrics.
+    pub usage: Usage,
+    /// Why the model stopped generating, when the provider reported it.
+    ///
+    /// [`normalize_stream`] applies
+    /// [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output)
+    /// to this value using the tool calls actually seen on the stream, so a
+    /// provider mapper does not need to (and cannot — it has no view of the
+    /// preceding events).
+    #[serde(default)]
+    pub finish_reason: Option<crate::completion::FinishReason>,
+    /// Provider-assigned *assistant message* ID, when available — only IDs the
+    /// provider would recognize on a replayed assistant message. Response-scoped
+    /// identifiers belong in [`StreamFinal::response_id`].
+    #[serde(default)]
+    pub message_id: Option<String>,
+    /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
+    /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
+    #[serde(default)]
+    pub response_id: Option<String>,
+    /// Stable descriptor name of the provider that produced this stream.
+    pub provider: String,
+    /// Provider-reported model identifier, when available.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+impl StreamFinal {
+    /// Create a terminal record for `provider` with `usage`; optional metadata
+    /// starts unset and is filled in with the `with_*` helpers.
+    pub fn new(provider: impl Into<String>, usage: Usage) -> Self {
+        Self {
+            kind: StreamFinalKind::Final,
+            usage,
+            finish_reason: None,
+            message_id: None,
+            response_id: None,
+            provider: provider.into(),
+            model: None,
+        }
+    }
+
+    /// Attach the normalized finish reason.
+    pub fn with_finish_reason(self, finish_reason: crate::completion::FinishReason) -> Self {
+        self.with_optional_finish_reason(Some(finish_reason))
+    }
+
+    /// Attach the normalized finish reason when the provider reported one.
+    pub fn with_optional_finish_reason(
+        mut self,
+        finish_reason: Option<crate::completion::FinishReason>,
+    ) -> Self {
+        self.finish_reason = finish_reason;
+        self
+    }
+
+    /// Attach the provider-assigned message ID.
+    ///
+    /// An empty string is treated as absent, matching the unary
+    /// [`CompletionResponse`](crate::completion::CompletionResponse) setters:
+    /// the invariant lives in the setters so no provider call site can
+    /// diverge.
+    pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
+        self.with_optional_message_id(Some(message_id.into()))
+    }
+
+    /// Attach the provider-assigned message ID when the provider reported one.
+    pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
+        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
+        self
+    }
+
+    /// Attach the provider-assigned response-scoped ID.
+    pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
+        self.with_optional_response_id(Some(response_id.into()))
+    }
+
+    /// Attach the provider-assigned response-scoped ID when the provider
+    /// reported one.
+    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
+        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
+        self
+    }
+
+    /// Attach the provider-reported model identifier.
+    pub fn with_model(self, model: impl Into<String>) -> Self {
+        self.with_optional_model(Some(model.into()))
+    }
+
+    /// Attach the provider-reported model identifier when the stream reported
+    /// one.
+    pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
+        self.model = model.map(Into::into).filter(|model| !model.is_empty());
+        self
+    }
+}
+
+/// Wire-shape mirror of [`StreamFinal`], used only for deserialization.
+///
+/// Serde must never construct an invariant-bearing value structurally: a plain
+/// derive would let `"message_id":""` skip the empty-string filtering the
+/// `with_*` setters apply. This mirror deserializes the exact wire shape —
+/// including the discriminating `kind` field — and [`From`] funnels it through
+/// [`StreamFinal::new`] and the setters, so every deserialized value satisfies
+/// the same invariants as a constructed one. Serialization stays derived on
+/// [`StreamFinal`] itself, so the wire format is unchanged.
+#[derive(Deserialize)]
+struct StreamFinalRepr {
+    kind: StreamFinalKind,
+    usage: Usage,
+    #[serde(default)]
+    finish_reason: Option<crate::completion::FinishReason>,
+    #[serde(default)]
+    message_id: Option<String>,
+    #[serde(default)]
+    response_id: Option<String>,
+    provider: String,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+impl From<StreamFinalRepr> for StreamFinal {
+    fn from(repr: StreamFinalRepr) -> Self {
+        let StreamFinalRepr {
+            kind,
+            usage,
+            finish_reason,
+            message_id,
+            response_id,
+            provider,
+            model,
+        } = repr;
+        // `StreamFinal::new` sets the only possible discriminant; the
+        // irrefutable pattern consumes the mirrored field.
+        let StreamFinalKind::Final = kind;
+        Self::new(provider, usage)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_message_id(message_id)
+            .with_optional_response_id(response_id)
+            .with_optional_model(model)
+    }
+}
+
+/// Enum representing a streaming chunk from the model.
+///
+/// `R` is the terminal record type. Ordinary streams use the normalized
+/// [`StreamFinal`] default; a provider's inherent `raw_stream` method
+/// substitutes its own native terminal type over the same event vocabulary,
+/// which is what keeps [`crate::completion::CompletionModel`] free of response
+/// associated types.
 #[derive(Debug, Clone)]
-pub enum RawStreamingChoice<R>
-where
-    R: Clone,
-{
+pub enum RawStreamingChoice<R = StreamFinal> {
     /// A text chunk from a message response
     Message(String),
 
@@ -130,6 +329,40 @@ where
     /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
     /// assistant message (there is no `AssistantContent::Unknown` history slot).
     Unknown(serde_json::Value),
+}
+
+impl<R> RawStreamingChoice<R> {
+    /// Convert only the terminal record, preserving every incremental content
+    /// event unchanged.
+    pub fn try_map_final<S>(
+        self,
+        map: impl FnOnce(R) -> Result<S, CompletionError>,
+    ) -> Result<RawStreamingChoice<S>, CompletionError> {
+        Ok(match self {
+            Self::Message(text) => RawStreamingChoice::Message(text),
+            Self::TextStart { additional_params } => {
+                RawStreamingChoice::TextStart { additional_params }
+            }
+            Self::TextAdditionalParams(params) => RawStreamingChoice::TextAdditionalParams(params),
+            Self::ToolCall(call) => RawStreamingChoice::ToolCall(call),
+            Self::ToolCallDelta {
+                id,
+                internal_call_id,
+                content,
+            } => RawStreamingChoice::ToolCallDelta {
+                id,
+                internal_call_id,
+                content,
+            },
+            Self::Reasoning { id, content } => RawStreamingChoice::Reasoning { id, content },
+            Self::ReasoningDelta { id, reasoning } => {
+                RawStreamingChoice::ReasoningDelta { id, reasoning }
+            }
+            Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
+            Self::MessageId(id) => RawStreamingChoice::MessageId(id),
+            Self::Unknown(value) => RawStreamingChoice::Unknown(value),
+        })
+    }
 }
 
 /// Describes a streaming tool call response (in its entirety)
@@ -219,45 +452,91 @@ impl From<RawStreamingToolCall> for ToolCall {
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-/// Provider stream of raw completion chunks on native targets.
-pub type StreamingResult<R> =
+/// Provider stream whose terminal record is the provider-native `R`, on native
+/// targets.
+pub type RawStreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-/// Provider stream of raw completion chunks on wasm targets.
-pub type StreamingResult<R> =
+/// Provider stream whose terminal record is the provider-native `R`, on wasm
+/// targets.
+pub type RawStreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>>>>;
+
+/// Normalized provider stream, as consumed by [`StreamingCompletionResponse`].
+pub type StreamingResult = RawStreamingResult<StreamFinal>;
+
+/// Normalize the terminal record of a provider-native stream.
+///
+/// Every incremental event passes through untouched; only
+/// [`RawStreamingChoice::FinalResponse`] is converted, by `map`. On the way
+/// through, the stream remembers whether it emitted any tool call and applies
+/// [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output)
+/// to the mapped record — the streaming counterpart of what
+/// [`CompletionResponse::with_finish_reason`] does on the unary path, so both
+/// paths agree about a `stop` that was really a tool call.
+pub fn normalize_stream<R, F>(stream: RawStreamingResult<R>, mut map: F) -> StreamingResult
+where
+    R: 'static,
+    F: FnMut(R) -> Result<StreamFinal, CompletionError> + WasmCompatSend + 'static,
+{
+    let mut emitted_tool_call = false;
+    Box::pin(stream.map(move |item| {
+        item.and_then(|choice| {
+            // Only a completed `ToolCall` counts, because only that becomes an
+            // `AssistantContent::ToolCall` in the aggregated choice — which is
+            // exactly what the unary path reconciles against. Counting deltas
+            // here would make a stream whose tool call never assembled report
+            // `ToolCalls` while the same data converted to a unary response
+            // reported `Stop`.
+            if matches!(&choice, RawStreamingChoice::ToolCall(_)) {
+                emitted_tool_call = true;
+            }
+            choice.try_map_final(|response| {
+                let mut response = map(response)?;
+                response.finish_reason = response
+                    .finish_reason
+                    .map(|reason| reason.reconcile_with_output(emitted_tool_call));
+                Ok(response)
+            })
+        })
+    }))
+}
 
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
-pub struct StreamingCompletionResponse<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    pub(crate) inner: Abortable<StreamingResult<R>>,
+pub struct StreamingCompletionResponse {
+    pub(crate) inner: Abortable<StreamingResult>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
     assistant_items: Vec<AssistantContent>,
     text_item_index: Option<usize>,
     reasoning_item_index: Option<usize>,
+    /// Stable descriptor name of the provider producing this stream.
+    ///
+    /// Known when the stream is opened rather than when it terminates, so a
+    /// stream that errors or is cancelled before its terminal record still
+    /// names its provider.
+    provider: String,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub choice: OneOrMany<AssistantContent>,
-    /// The final response from the stream, may be `None`
+    /// The provider's normalized terminal record, may be `None`
     /// if the provider didn't yield it during the stream
-    pub response: Option<R>,
+    pub response: Option<StreamFinal>,
     pub final_response_yielded: AtomicBool,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
     pub message_id: Option<String>,
 }
 
-impl<R> StreamingCompletionResponse<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
+impl StreamingCompletionResponse {
     /// Wrap a provider stream and initialize aggregation state.
-    pub fn stream(inner: StreamingResult<R>) -> StreamingCompletionResponse<R> {
+    ///
+    /// `provider` is the stable descriptor name of the provider producing the
+    /// stream; it is recorded up front so it is available even when the stream
+    /// never reaches its terminal record.
+    pub fn stream(provider: impl Into<String>, inner: StreamingResult) -> Self {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let abortable_stream = Abortable::new(inner, abort_registration);
         let pause_control = PauseControl::new();
@@ -268,6 +547,7 @@ where
             assistant_items: vec![],
             text_item_index: None,
             reasoning_item_index: None,
+            provider: provider.into(),
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
             final_response_yielded: AtomicBool::new(false),
@@ -275,12 +555,17 @@ where
         }
     }
 
+    /// Stable descriptor name of the provider producing this stream.
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
     /// Cancel the stream and immediately drop the provider's inner stream.
     /// Cancellation is surfaced as normal stream termination.
     pub fn cancel(&mut self) {
         self.abort_handle.abort();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        let empty: StreamingResult<R> = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
+        let empty: StreamingResult = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
         self.inner = Abortable::new(empty, abort_registration);
         self.abort_handle = abort_handle;
     }
@@ -307,7 +592,10 @@ where
     /// usage — this returns [`Usage::new`], the zero-valued sentinel for missing
     /// usage metrics.
     pub fn usage(&self) -> Usage {
-        self.response.token_usage()
+        self.response
+            .as_ref()
+            .map(|response| response.usage)
+            .unwrap_or_default()
     }
 
     fn append_text_chunk(&mut self, text: &str) {
@@ -404,28 +692,31 @@ fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serd
     }
 }
 
-impl<R> From<StreamingCompletionResponse<R>> for CompletionResponse<Option<R>>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    fn from(value: StreamingCompletionResponse<R>) -> CompletionResponse<Option<R>> {
-        CompletionResponse {
-            choice: value.choice,
-            // Derive usage from the final response. `Option<R>: GetTokenUsage`
-            // yields the provider's usage when present and the zero sentinel
-            // (`Usage::new`) when the stream produced no final response.
-            usage: value.response.token_usage(),
-            raw_response: value.response,
-            message_id: value.message_id,
-        }
+impl From<StreamingCompletionResponse> for CompletionResponse {
+    fn from(value: StreamingCompletionResponse) -> CompletionResponse {
+        // Usage is the zero sentinel (`Usage::new`) when the stream produced no
+        // terminal record. `provider` comes from the stream itself rather than
+        // the terminal record, so it is populated even then.
+        let terminal = value.response.as_ref();
+        CompletionResponse::new(
+            value.choice,
+            terminal.map(|response| response.usage).unwrap_or_default(),
+            value.provider,
+        )
+        // An explicit `MessageId` event outranks the terminal record's ID.
+        .with_optional_message_id(
+            value
+                .message_id
+                .or_else(|| terminal.and_then(|response| response.message_id.clone())),
+        )
+        .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
+        .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
+        .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }
 }
 
-impl<R> Stream for StreamingCompletionResponse<R>
-where
-    R: Clone + Unpin + GetTokenUsage,
-{
-    type Item = Result<StreamedAssistantContent<R>, CompletionError>;
+impl Stream for StreamingCompletionResponse {
+    type Item = Result<StreamedAssistantContent, CompletionError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
@@ -492,11 +783,44 @@ where
                         content: vec![content],
                     };
                     stream.text_item_index = None;
-                    // Full reasoning block supersedes any delta accumulation
+                    // A full reasoning block supersedes its own delta
+                    // accumulation: the deltas are only a fallback for
+                    // providers that never send the completed block, so the
+                    // delta-built item is *replaced*, not kept alongside a
+                    // duplicate. Identity is decided by ID: matching IDs (or
+                    // neither side carrying one) replace; mismatched IDs —
+                    // including an ID on only one side — belong to a
+                    // different reasoning item and append. The active-index
+                    // slot is only a fast path: providers may emit the
+                    // completed block after other output cleared the index
+                    // (reasoning → tool call → completed block), so a miss
+                    // falls back to a by-ID scan of the aggregated items.
+                    let same_item = |existing: &Reasoning| match (&existing.id, &reasoning.id) {
+                        (Some(existing_id), Some(id)) => existing_id == id,
+                        (None, None) => true,
+                        _ => false,
+                    };
+                    let replace_index = stream
+                        .reasoning_item_index
+                        .filter(|&index| {
+                            matches!(
+                                stream.assistant_items.get(index),
+                                Some(AssistantContent::Reasoning(existing)) if same_item(existing)
+                            )
+                        })
+                        .or_else(|| {
+                            reasoning.id.as_ref()?;
+                            stream.assistant_items.iter().rposition(|item| {
+                                matches!(item, AssistantContent::Reasoning(existing) if same_item(existing))
+                            })
+                        });
+                    match replace_index.and_then(|index| stream.assistant_items.get_mut(index)) {
+                        Some(item) => *item = AssistantContent::Reasoning(reasoning.clone()),
+                        None => stream
+                            .assistant_items
+                            .push(AssistantContent::Reasoning(reasoning.clone())),
+                    }
                     stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::Reasoning(reasoning.clone()));
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                 }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
@@ -527,7 +851,12 @@ where
                     {
                         stream.poll_next_unpin(cx)
                     } else {
-                        // Set the final response field and return the next item in the stream
+                        // Set the final response field and return the next item in the stream.
+                        // An explicit `MessageId` event keeps precedence; the
+                        // terminal record only fills a gap.
+                        if stream.message_id.is_none() {
+                            stream.message_id = response.message_id.clone();
+                        }
                         stream.response = Some(response.clone());
                         stream
                             .final_response_yielded
@@ -557,28 +886,37 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::test_utils::MockResponse;
+    use crate::completion::FinishReason;
     use async_stream::stream;
     use tokio::time::sleep;
 
+    /// Provider descriptor used by the mock streams in this module.
+    const TEST_PROVIDER: &str = "test-provider";
+
+    /// Terminal record with a known total-token count.
+    fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
+        let mut usage = Usage::new();
+        usage.total_tokens = total_tokens;
+        StreamFinal::new(TEST_PROVIDER, usage)
+    }
+
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>>
         + Send
         + 'static,
-    ) -> StreamingResult<MockResponse> {
+    ) -> StreamingResult {
         Box::pin(stream)
     }
 
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn to_stream_result(
-        stream: impl futures::Stream<Item = Result<RawStreamingChoice<MockResponse>, CompletionError>>
-        + 'static,
-    ) -> StreamingResult<MockResponse> {
+        stream: impl futures::Stream<Item = Result<RawStreamingChoice, CompletionError>> + 'static,
+    ) -> StreamingResult {
         Box::pin(stream)
     }
 
-    fn create_mock_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_mock_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Message("hello 1".to_string()));
             sleep(Duration::from_millis(100)).await;
@@ -586,13 +924,13 @@ mod tests {
             sleep(Duration::from_millis(100)).await;
             yield Ok(RawStreamingChoice::Message("hello 3".to_string()));
             sleep(Duration::from_millis(100)).await;
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(15)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(15)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
-    fn create_reasoning_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_reasoning_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_1".to_string()),
@@ -602,25 +940,25 @@ mod tests {
                 },
             });
             yield Ok(RawStreamingChoice::Message("final answer".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(5)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(5)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
-    fn create_reasoning_only_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_reasoning_only_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_only".to_string()),
                 content: ReasoningContent::Summary("hidden summary".to_string()),
             });
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(2)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
-    fn create_interleaved_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_interleaved_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {
                 id: Some("rs_interleaved".to_string()),
@@ -637,13 +975,13 @@ mod tests {
                     serde_json::json!({"arg": 1}),
                 ),
             ));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
-    fn create_text_tool_text_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_text_tool_text_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Message("first".to_string()));
             yield Ok(RawStreamingChoice::ToolCall(
@@ -654,13 +992,13 @@ mod tests {
                 ),
             ));
             yield Ok(RawStreamingChoice::Message("second".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
-    fn create_text_metadata_stream() -> StreamingCompletionResponse<MockResponse> {
+    fn create_text_metadata_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::TextStart {
                 additional_params: None,
@@ -690,10 +1028,10 @@ mod tests {
                 })),
             });
             yield Ok(RawStreamingChoice::Message("second".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(3)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(3)));
         };
 
-        StreamingCompletionResponse::stream(to_stream_result(stream))
+        StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
     #[tokio::test]
@@ -707,16 +1045,221 @@ mod tests {
         assert_eq!(stream.usage().total_tokens, 15);
 
         // ...and the From conversion carries it instead of a zero sentinel.
-        let response: CompletionResponse<Option<MockResponse>> = stream.into();
+        let response: CompletionResponse = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
+        assert_eq!(response.provider, TEST_PROVIDER);
+    }
+
+    #[tokio::test]
+    async fn a_stream_without_a_terminal_record_still_names_its_provider() {
+        // The provider is known when the stream is opened, so a stream that
+        // errors or is truncated before its terminal record must not degrade
+        // `provider` to an empty string — every other missing value has a
+        // documented sentinel (`Usage::new`, `None`) and this one should too.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("truncated".to_string()));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        // No terminal record was ever yielded, so none may be synthesized.
+        assert!(stream.response.is_none());
+
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.provider, TEST_PROVIDER);
+        assert_eq!(response.usage, Usage::new());
+        assert_eq!(response.finish_reason(), None);
+        assert_eq!(response.model, None);
+    }
+
+    #[tokio::test]
+    async fn a_stream_that_errors_mid_stream_keeps_content_and_omits_the_terminal() {
+        // A transport error after some content must forward the error, keep
+        // the content already aggregated, and never fabricate a terminal
+        // record the provider did not send.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("partial".to_string()));
+                yield Err(CompletionError::ProviderError(
+                    "connection reset".to_string(),
+                ));
+            }),
+        );
+
+        let mut saw_error = false;
+        while let Some(item) = stream.next().await {
+            if item.is_err() {
+                saw_error = true;
+            }
+        }
+        assert!(saw_error, "the mid-stream error must be forwarded");
+
+        // No StreamFinal may be synthesized for the aborted stream...
+        assert!(stream.response.is_none());
+
+        // ...but the content delivered before the error is preserved.
+        assert_eq!(
+            stream.choice.first(),
+            AssistantContent::text("partial".to_string()),
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_stream_upgrades_a_stop_that_carried_a_tool_call() {
+        // Several gateways report a plain `stop` on a tool-calling turn. The
+        // streaming path must reconcile it exactly as the unary path does.
+        let raw: RawStreamingResult<Usage> = Box::pin(stream! {
+            yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
+                id: "call_1".to_string(),
+                call_id: None,
+                internal_call_id: "internal_1".to_string(),
+                name: "lookup".to_string(),
+                arguments: serde_json::json!({}),
+                signature: None,
+                additional_params: None,
+            }));
+            yield Ok(RawStreamingChoice::FinalResponse(Usage::new()));
+        });
+
+        let normalized = normalize_stream(raw, |usage| {
+            Ok(StreamFinal::new(TEST_PROVIDER, usage).with_finish_reason(FinishReason::Stop))
+        });
+
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, normalized);
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream
+                .response
+                .as_ref()
+                .and_then(|final_record| final_record.finish_reason.clone()),
+            Some(FinishReason::ToolCalls),
+        );
+    }
+
+    #[tokio::test]
+    async fn normalize_stream_leaves_a_stop_without_tool_calls_alone() {
+        let raw: RawStreamingResult<Usage> = Box::pin(stream! {
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(Usage::new()));
+        });
+
+        let normalized = normalize_stream(raw, |usage| {
+            Ok(StreamFinal::new(TEST_PROVIDER, usage).with_finish_reason(FinishReason::Stop))
+        });
+
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, normalized);
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream
+                .response
+                .as_ref()
+                .and_then(|final_record| final_record.finish_reason.clone()),
+            Some(FinishReason::Stop),
+        );
+    }
+
+    #[test]
+    fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
+        let final_record = StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: 4,
+                output_tokens: 6,
+                total_tokens: 10,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 2,
+                tool_use_prompt_tokens: 3,
+                reasoning_tokens: 4,
+            },
+        )
+        .with_finish_reason(FinishReason::Other("future_reason".to_owned()))
+        .with_message_id("msg_123")
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(StreamedAssistantContent::Final(final_record.clone()))
+            .expect("serialize final item");
+        assert_eq!(encoded["kind"], serde_json::json!("final"));
+
+        let decoded = serde_json::from_value::<StreamedAssistantContent>(encoded)
+            .expect("deserialize final item");
+        assert_eq!(decoded, StreamedAssistantContent::Final(final_record));
+
+        // An unmodeled provider item must still land in `Unknown` rather than
+        // being mistaken for a terminal record.
+        let provider_item = serde_json::json!({
+            "provider_native_event": "future_terminal",
+            "usage": {"total_tokens": 10}
+        });
+        let decoded = serde_json::from_value::<StreamedAssistantContent>(provider_item.clone())
+            .expect("deserialize unknown item");
+        assert_eq!(decoded, StreamedAssistantContent::Unknown(provider_item));
+    }
+
+    /// Deserialization funnels through `new` + the setters, so the invariants
+    /// hold on persisted values too: a `""` identifier comes back as `None`.
+    #[test]
+    fn deserializing_stream_final_filters_empty_identifiers() {
+        let decoded = serde_json::from_value::<StreamFinal>(serde_json::json!({
+            "kind": "final",
+            "usage": Usage::new(),
+            "message_id": "",
+            "response_id": "",
+            "model": "",
+            "provider": "example",
+        }))
+        .expect("deserialize terminal record");
+
+        assert_eq!(decoded.message_id, None);
+        assert_eq!(decoded.response_id, None);
+        assert_eq!(decoded.model, None);
+    }
+
+    /// The deserialization mirror must not change the wire format: a fully
+    /// populated terminal record round-trips to byte-identical JSON.
+    #[test]
+    fn stream_final_serde_round_trip_is_identity() {
+        let final_record = StreamFinal::new(
+            "example",
+            Usage {
+                input_tokens: 4,
+                output_tokens: 6,
+                total_tokens: 10,
+                cached_input_tokens: 1,
+                cache_creation_input_tokens: 2,
+                tool_use_prompt_tokens: 3,
+                reasoning_tokens: 4,
+            },
+        )
+        .with_finish_reason(FinishReason::Stop)
+        .with_message_id("msg_123")
+        .with_response_id("resp_456")
+        .with_model("provider-model-v2");
+
+        let encoded = serde_json::to_value(&final_record).expect("serialize terminal record");
+        assert_eq!(encoded["kind"], serde_json::json!("final"));
+
+        let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
+        assert_eq!(decoded, final_record);
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("re-serialize"),
+            encoded
+        );
     }
 
     #[tokio::test]
     async fn usage_is_zero_sentinel_before_final_response() {
         // A stream that never yields a FinalResponse reports the zero sentinel.
-        let stream = StreamingCompletionResponse::stream(to_stream_result(stream! {
-            yield Ok(RawStreamingChoice::Message("no final response".to_string()));
-        }));
+        let stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("no final response".to_string()));
+            }),
+        );
         assert_eq!(stream.usage().total_tokens, 0);
     }
 
@@ -823,6 +1366,174 @@ mod tests {
         )));
     }
 
+    /// A full reasoning block replaces its own delta accumulation, so the
+    /// aggregated choice matches unary normalization of the same turn: one
+    /// reasoning item carrying the completed block, not delta-plus-duplicate.
+    #[tokio::test]
+    async fn full_reasoning_block_supersedes_its_accumulated_deltas() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "partial ".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_1".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "the complete chain".to_string(),
+                        signature: Some("sig_1".to_string()),
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_items: Vec<&Reasoning> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_items.len(), 1, "got {choice_items:?}");
+        let reasoning = reasoning_items.first().expect("one reasoning item");
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert!(matches!(
+            reasoning.content.first(),
+            Some(ReasoningContent::Text { text, signature: Some(signature) })
+                if text == "the complete chain" && signature == "sig_1"
+        ));
+    }
+
+    /// A full block whose ID differs from the accumulating item's ID is a
+    /// distinct reasoning item and is appended, not a replacement.
+    #[tokio::test]
+    async fn full_reasoning_block_with_a_different_id_appends() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "first item deltas".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_2".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "a different item".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_ids: Vec<Option<&str>> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
+    }
+
+    #[tokio::test]
+    async fn full_reasoning_block_supersedes_deltas_across_interleaved_output() {
+        // Providers may emit the completed reasoning item after other output
+        // (reasoning -> tool call -> completed block). The tool call clears
+        // the active reasoning index, so replacement must fall back to the
+        // by-ID scan rather than appending a duplicate.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "partial ".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                    "call_1".to_string(),
+                    "probe".to_string(),
+                    serde_json::json!({}),
+                )));
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: Some("rs_1".to_string()),
+                    content: ReasoningContent::Text {
+                        text: "the full block".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_items: Vec<&Reasoning> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            reasoning_items.len(),
+            1,
+            "the full block must replace the delta-built item, not join it"
+        );
+        let only = reasoning_items.first().expect("one reasoning item");
+        assert_eq!(only.id.as_deref(), Some("rs_1"));
+        assert!(
+            only.content.iter().any(|content| matches!(
+                content,
+                ReasoningContent::Text { text, .. } if text == "the full block"
+            )),
+            "the surviving item must carry the full block's content"
+        );
+    }
+
+    #[tokio::test]
+    async fn id_less_full_reasoning_block_does_not_clobber_an_id_carrying_item() {
+        // An ID on only one side means the identity is unknown: the block is
+        // appended rather than overwriting an unrelated item's deltas.
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: Some("rs_1".to_string()),
+                    reasoning: "identified deltas".to_string(),
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: None,
+                    content: ReasoningContent::Text {
+                        text: "anonymous block".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let choice_items: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        let reasoning_ids: Vec<Option<&str>> = choice_items
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.id.as_deref()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), None]);
+    }
+
     #[tokio::test]
     async fn test_stream_reasoning_only_does_not_inject_empty_text() {
         let mut stream = create_reasoning_only_stream();
@@ -868,9 +1579,10 @@ mod tests {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Unknown(yielded));
             yield Ok(RawStreamingChoice::Message("done".to_string()));
-            yield Ok(RawStreamingChoice::FinalResponse(MockResponse::with_total_tokens(1)));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
         };
-        let mut stream = StreamingCompletionResponse::stream(to_stream_result(stream));
+        let mut stream =
+            StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream));
 
         let mut consumer_unknown = None;
         let mut consumer_text = String::new();
@@ -956,7 +1668,7 @@ mod tests {
 /// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(untagged)]
-pub enum StreamedAssistantContent<R> {
+pub enum StreamedAssistantContent {
     /// Text delta emitted by the assistant.
     Text(Text),
     /// Complete tool call emitted by the assistant.
@@ -975,6 +1687,12 @@ pub enum StreamedAssistantContent<R> {
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning block emitted by the assistant.
+    ///
+    /// Supersedes any prior [`StreamedAssistantContent::ReasoningDelta`]s
+    /// carrying the same reasoning `id` (or with no `id` on either side):
+    /// render it as a *replacement* for the accumulated delta text, not an
+    /// addition. The aggregated [`StreamingCompletionResponse::choice`]
+    /// already applies this replacement.
     Reasoning(Reasoning),
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
@@ -983,8 +1701,8 @@ pub enum StreamedAssistantContent<R> {
         /// Partial reasoning text.
         reasoning: String,
     },
-    /// Final provider response object, if yielded by the provider stream.
-    Final(R),
+    /// The provider's normalized terminal record, if yielded by the stream.
+    Final(StreamFinal),
     /// A provider-native output item rig does not model, preserved verbatim —
     /// e.g. an OpenAI Responses hosted-tool result (`web_search_call`,
     /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
@@ -995,17 +1713,14 @@ pub enum StreamedAssistantContent<R> {
     Unknown(serde_json::Value),
 }
 
-impl<R> StreamedAssistantContent<R>
-where
-    R: Clone + Unpin,
-{
+impl StreamedAssistantContent {
     /// Create a text stream item.
     pub fn text(text: &str) -> Self {
         Self::Text(Text::new(text.to_string()))
     }
 
     /// Create a final response stream item.
-    pub fn final_response(res: R) -> Self {
+    pub fn final_response(res: StreamFinal) -> Self {
         Self::Final(res)
     }
 }

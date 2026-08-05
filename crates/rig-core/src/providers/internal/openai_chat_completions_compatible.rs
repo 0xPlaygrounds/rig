@@ -13,7 +13,7 @@ use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::json_utils;
@@ -41,10 +41,65 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     Some(crate::provider_response::completion_error_from_body(data))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Map an OpenAI Chat Completions-style `finish_reason` string onto the
+/// normalized vocabulary, preserving anything unrecognized verbatim.
+///
+/// Shared by the unary and streaming paths so both agree, and so a gateway
+/// inventing a new reason surfaces it rather than reading as a natural stop.
+pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
+    match reason {
+        "stop" => FinishReason::Stop,
+        "length" | "max_tokens" => FinishReason::Length,
+        "tool_calls" | "function_call" => FinishReason::ToolCalls,
+        "content_filter" => FinishReason::ContentFilter,
+        other => FinishReason::Other(other.to_owned()),
+    }
+}
+
+/// A chunk's terminal reason, as reported by an OpenAI-compatible provider.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {
-    ToolCalls,
-    Other,
+    /// The chunk reported a terminal reason, normalized.
+    Reported(FinishReason),
+    /// The chunk carried no `finish_reason` field.
+    Absent,
+}
+
+impl CompatibleFinishReason {
+    /// Normalize a wire `finish_reason` field.
+    pub(crate) fn from_wire(reason: Option<&str>) -> Self {
+        match reason.filter(|reason| !reason.is_empty()) {
+            Some(reason) => Self::Reported(map_openai_finish_reason(reason)),
+            None => Self::Absent,
+        }
+    }
+
+    /// Whether the provider explicitly ended the turn to call tools.
+    pub(crate) fn is_tool_calls(&self) -> bool {
+        matches!(self, Self::Reported(FinishReason::ToolCalls))
+    }
+
+    /// The normalized reason, when the provider reported one.
+    pub(crate) fn reported(&self) -> Option<FinishReason> {
+        match self {
+            Self::Reported(reason) => Some(reason.clone()),
+            Self::Absent => None,
+        }
+    }
+}
+
+/// The terminal state a compatible stream reached, handed to a profile so it
+/// can build its own provider-native terminal record.
+#[derive(Debug, Clone)]
+pub(crate) struct CompatibleTerminal<U> {
+    /// Provider-native usage payload from the terminal event.
+    pub(crate) usage: U,
+    /// Normalized finish reason, when the stream reported one.
+    pub(crate) finish_reason: Option<FinishReason>,
+    /// Provider-assigned response identifier, when emitted.
+    pub(crate) response_id: Option<String>,
+    /// Provider-reported model identifier, when emitted.
+    pub(crate) model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,13 +211,19 @@ where
 }
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + GetTokenUsage + WasmCompatSend + 'static;
+    type Usage: Clone + Default + Into<Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
-    type FinalResponse: Clone + Unpin + GetTokenUsage + WasmCompatSend + 'static;
+    type FinalResponse: Clone + WasmCompatSend + 'static;
 
     fn normalize_chunk(&self, data: &str) -> NormalizedCompatibleChunk<Self::Usage, Self::Detail>;
 
-    fn build_final_response(&self, usage: Self::Usage) -> Self::FinalResponse;
+    /// Build the provider's own terminal record from the stream's terminal
+    /// state. The record stays provider-native for `raw_stream`; the normalized
+    /// path maps it once through [`crate::streaming::normalize_stream`].
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse;
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         false
@@ -215,11 +276,11 @@ pub(crate) fn should_evict_distinct_named_tool_call(
     false
 }
 
-pub(crate) async fn send_compatible_streaming_request<T, P>(
+pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
     profile: P,
-) -> Result<streaming::StreamingCompletionResponse<P::FinalResponse>, CompletionError>
+) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
@@ -231,7 +292,12 @@ where
     let stream = stream! {
         let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
         let mut final_usage = None;
-        let mut terminated_with_error = false;
+        let mut final_finish_reason = None;
+        let mut response_id = None;
+        let mut response_model = None;
+        let mut pending_error = None;
+        let mut saw_terminal = false;
+        let mut saw_any_valid_frame = false;
 
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -240,23 +306,36 @@ where
                     continue;
                 }
                 Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() || message.data == "[DONE]" {
+                    if message.data == "[DONE]" {
+                        saw_terminal = true;
+                        continue;
+                    }
+                    if message.data.trim().is_empty() {
                         continue;
                     }
 
                     if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
-                        terminated_with_error = true;
-                        yield Err(error);
+                        // Buffered rather than yielded here: fully-delivered
+                        // tool calls flush before the terminal error reaches
+                        // the consumer.
+                        pending_error = Some(error);
                         break;
                     }
 
                     let chunk = match profile.normalize_chunk(&message.data) {
-                        Ok(Some(chunk)) => chunk,
+                        Ok(Some(chunk)) => {
+                            saw_any_valid_frame = true;
+                            chunk
+                        }
                         Ok(None) => continue,
                         Err(error) => {
-                            terminated_with_error = true;
+                            // Surface the malformed frame but keep consuming:
+                            // a later genuine terminal signal can still
+                            // complete the stream, and without one the
+                            // missing `saw_terminal` suppresses the terminal
+                            // record below.
                             yield Err(error);
-                            break;
+                            continue;
                         }
                     };
 
@@ -266,6 +345,14 @@ where
                         chunk.response_model.as_deref(),
                     );
 
+                    if let Some(id) = chunk.response_id.as_ref() {
+                        response_id = Some(id.clone());
+                    }
+
+                    if let Some(model) = chunk.response_model.as_ref() {
+                        response_model = Some(model.clone());
+                    }
+
                     if let Some(usage) = chunk.usage {
                         final_usage = Some(usage);
                     }
@@ -273,6 +360,11 @@ where
                     let Some(choice) = chunk.choice else {
                         continue;
                     };
+
+                    if let Some(reason) = choice.finish_reason.reported() {
+                        final_finish_reason = Some(reason);
+                        saw_terminal = true;
+                    }
 
                     for incoming in choice.tool_calls {
                         if let Some(existing) = tool_calls.get(&incoming.index)
@@ -351,7 +443,7 @@ where
                         yield Ok(RawStreamingChoice::Message(content));
                     }
 
-                    if choice.finish_reason == CompatibleFinishReason::ToolCalls {
+                    if choice.finish_reason.is_tool_calls() {
                         for tool_call in take_finalized_tool_calls(
                             &mut tool_calls,
                             DroppedToolCallContext::ToolCallsFinishReason,
@@ -365,8 +457,7 @@ where
                 }
                 Err(error) => {
                     tracing::error!(?error, "SSE error");
-                    terminated_with_error = true;
-                    yield Err(CompletionError::from_stream_transport(error));
+                    pending_error = Some(CompletionError::from_stream_transport(error));
                     break;
                 }
             }
@@ -374,38 +465,54 @@ where
 
         event_source.close();
 
-        if terminated_with_error {
-            return;
-        }
-
+        // Tool calls the provider fully delivered are content, so a truncated
+        // or errored stream still flushes them to the consumer — before any
+        // terminal error, so a first-`Err`-stop consumer sees them too.
         for tool_call in
             take_finalized_tool_calls(&mut tool_calls, DroppedToolCallContext::EndOfStream)
         {
             yield Ok(RawStreamingChoice::ToolCall(tool_call));
         }
 
+        // A terminal failure ends the stream after the flush, with no
+        // terminal record, preserving the truncation signal.
+        if let Some(error) = pending_error {
+            yield Err(error);
+            return;
+        }
+
+        // But only `[DONE]` or a chunk carrying a finish reason counts as the
+        // provider completing the turn. A stream that reached EOF without
+        // either signal (truncation) gets no terminal record — synthesizing
+        // one would present the partial turn as a successful, default-usage
+        // completion. A bare `[DONE]` with no successfully decoded frame at
+        // all is treated the same way: the parse errors were already yielded,
+        // and a default-usage terminal would dress the failure up as success.
+        if !saw_terminal || !saw_any_valid_frame {
+            return;
+        }
+
         let final_usage = final_usage.unwrap_or_default();
-        record_usage(&span, &final_usage);
+        record_usage(&span, &final_usage.clone().into());
         yield Ok(RawStreamingChoice::FinalResponse(
-            profile.build_final_response(final_usage),
+            profile.build_final_response(CompatibleTerminal {
+                usage: final_usage,
+                finish_reason: final_finish_reason,
+                response_id,
+                model: response_model,
+            }),
         ));
     }
     .instrument(instrument_span);
 
-    Ok(streaming::StreamingCompletionResponse::stream(Box::pin(
-        stream,
-    )))
+    Ok(Box::pin(stream))
 }
 
-fn record_usage<T>(span: &tracing::Span, usage: &T)
-where
-    T: GetTokenUsage,
-{
+fn record_usage(span: &tracing::Span, usage: &Usage) {
     if span.is_disabled() {
         return;
     }
 
-    let usage = usage.token_usage();
     if !usage.has_values() {
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
@@ -576,7 +683,6 @@ fn take_finalized_tool_calls(
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::completion::GetTokenUsage;
     use crate::streaming::{self, StreamedAssistantContent};
     use bytes::Bytes;
     use futures::StreamExt;
@@ -607,14 +713,12 @@ pub(crate) mod test_support {
         )
     }
 
-    pub(crate) async fn assert_zero_arg_tool_call_is_emitted<R>(
-        mut stream: streaming::StreamingCompletionResponse<R>,
+    pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
+        mut stream: streaming::StreamingCompletionResponse,
         expected_id: &str,
         expected_name: &str,
         expect_final_response: bool,
-    ) where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+    ) {
         let mut saw_final = false;
         let mut collected_tool_calls = Vec::new();
 
@@ -631,6 +735,11 @@ pub(crate) mod test_support {
 
         if expect_final_response {
             assert!(saw_final, "stream should still yield a final response");
+        } else {
+            assert!(
+                !saw_final,
+                "a truncated stream must not synthesize a terminal record"
+            );
         }
 
         assert_eq!(collected_tool_calls.len(), 1);
@@ -647,8 +756,8 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
     use super::{
-        finalize_completed_streaming_tool_call, finalize_pending_tool_call,
-        send_compatible_streaming_request,
+        CompatibleStreamProfile, finalize_completed_streaming_tool_call,
+        finalize_pending_tool_call, send_compatible_raw_streaming_request,
     };
     use crate::completion::CompletionError;
     use crate::http_client;
@@ -660,6 +769,24 @@ mod tests {
         FinishReasonCleanupProfile,
     };
     use futures::StreamExt;
+
+    /// Wrap a profile-driven raw stream into the normalized carrier, so these
+    /// tests exercise the same path providers use.
+    async fn send_compatible_streaming_request<T, P>(
+        http_client: T,
+        req: http::Request<Vec<u8>>,
+        profile: P,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError>
+    where
+        T: crate::http_client::HttpClientExt + Clone + 'static,
+        P: CompatibleStreamProfile<FinalResponse = crate::streaming::StreamFinal> + 'static,
+    {
+        let raw = send_compatible_raw_streaming_request(http_client, req, profile).await?;
+        Ok(crate::streaming::StreamingCompletionResponse::stream(
+            "test-compatible",
+            crate::streaming::normalize_stream(raw, Ok),
+        ))
+    }
 
     #[test]
     fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
@@ -948,9 +1075,21 @@ mod tests {
             .expect_err("second item should be the normalize error");
         assert_eq!(err.to_string(), "ProviderError: normalize failed");
 
+        // The malformed frame does not abort the stream; consumption continues
+        // to EOF. The fully-delivered zero-arg tool call still flushes as
+        // content, but with no `[DONE]` or finish reason the truncated stream
+        // must not synthesize a terminal record.
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("post-error items should be ok") {
+                StreamedAssistantContent::Final(_) => saw_final = true,
+                StreamedAssistantContent::ToolCall { .. } => {}
+                other => panic!("unexpected post-error stream item: {other:?}"),
+            }
+        }
         assert!(
-            stream.next().await.is_none(),
-            "stream should terminate immediately after normalize_chunk error"
+            !saw_final,
+            "a truncated stream must not synthesize a terminal record"
         );
     }
 
@@ -1068,7 +1207,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1118,7 +1257,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1187,7 +1326,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req)
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
             .await
             .expect("stream should start");
 
@@ -1244,5 +1383,118 @@ mod tests {
             !saw_tool_call,
             "finish_reason cleanup should drop partial tool calls instead of emitting them"
         );
+    }
+
+    #[tokio::test]
+    async fn transport_error_still_flushes_fully_delivered_tool_calls() {
+        use crate::providers::openai::send_compatible_streaming_request;
+        use crate::test_utils::SequencedStreamingHttpClient;
+
+        // A fully-delivered tool call followed by a transport error: the tool
+        // call is content and must flush BEFORE the error surfaces (so a
+        // first-`Err`-stop consumer sees it), and the stream must end without
+        // a terminal record.
+        let chunks = vec![
+            Ok(sse_bytes_from_data_lines([
+                "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"{\\\"x\\\":1}\"}}]}}],\"usage\":null}",
+            ])),
+            Err(http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::BAD_GATEWAY,
+                r#"{"error":{"message":"upstream unavailable"}}"#.to_string(),
+            )),
+        ];
+        let client = SequencedStreamingHttpClient::new(chunks);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, "openai")
+            .await
+            .expect("stream should start");
+
+        let mut saw_error = false;
+        let mut saw_final = false;
+        let mut collected_tool_calls = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    assert!(
+                        !saw_error,
+                        "the flushed tool call must arrive before the terminal error"
+                    );
+                    collected_tool_calls.push(tool_call);
+                }
+                Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(other) => panic!("unexpected stream item: {other:?}"),
+                Err(_) => saw_error = true,
+            }
+            if saw_error {
+                break;
+            }
+        }
+
+        assert!(saw_error, "the transport failure must reach the consumer");
+        assert_eq!(
+            collected_tool_calls.len(),
+            1,
+            "the fully-delivered tool call must flush despite the transport error"
+        );
+        assert_eq!(collected_tool_calls[0].id, "call_123");
+        assert_eq!(collected_tool_calls[0].function.name, "ping");
+        assert_eq!(
+            collected_tool_calls[0].function.arguments,
+            serde_json::json!({"x": 1})
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "nothing may follow the terminal error"
+        );
+        assert!(
+            !saw_final,
+            "an errored stream must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
+    }
+
+    #[tokio::test]
+    async fn bare_done_after_only_unparseable_frames_emits_no_terminal() {
+        // Every frame fails to decode; the trailing `[DONE]` must not dress
+        // the failure up as a successful, default-usage completion.
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["bad", "bad", "[DONE]"]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ErrorAfterPendingToolCallProfile)
+                .await
+                .expect("stream should start");
+
+        let mut error_count = 0;
+        let mut saw_final = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(other) => panic!("unexpected stream item: {other:?}"),
+                Err(_) => error_count += 1,
+            }
+        }
+
+        assert_eq!(
+            error_count, 2,
+            "each unparseable frame must surface as an error item"
+        );
+        assert!(
+            !saw_final,
+            "a stream with no successfully decoded frame must not emit a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 }

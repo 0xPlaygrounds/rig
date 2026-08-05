@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{ContentBlock, InternalConverseOutput, TokenUsage},
+    converse_output::{ContentBlock, InternalConverseOutput, StopReason, TokenUsage},
     json::AwsDocument,
 };
-use rig_core::completion::{self, GetTokenUsage};
+use rig_core::completion::{self};
 use rig_core::telemetry::ProviderResponseExt;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -75,13 +75,28 @@ impl ProviderResponseExt for AwsConverseOutput {
     }
 }
 
-impl GetTokenUsage for AwsConverseOutput {
-    fn token_usage(&self) -> completion::Usage {
-        self.get_usage().unwrap_or_default()
+/// Stable descriptor name reported on normalized Bedrock responses.
+pub const PROVIDER_NAME: &str = "aws_bedrock";
+
+/// Map Bedrock's `stopReason` onto rig's normalized vocabulary.
+///
+/// `StopSequence` is a natural stop, not a truncation — the model emitted a
+/// configured stop string and finished. Guardrail intervention is a content
+/// filter by another name. Anything the SDK surfaced as unknown is carried
+/// verbatim.
+pub fn map_stop_reason(stop_reason: &StopReason) -> completion::FinishReason {
+    match stop_reason {
+        StopReason::EndTurn | StopReason::StopSequence => completion::FinishReason::Stop,
+        StopReason::MaxTokens => completion::FinishReason::Length,
+        StopReason::ToolUse => completion::FinishReason::ToolCalls,
+        StopReason::ContentFiltered | StopReason::GuardrailIntervened => {
+            completion::FinishReason::ContentFilter
+        }
+        StopReason::Unknown(value) => completion::FinishReason::Other(value.to_string()),
     }
 }
 
-impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOutput> {
+impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(value: AwsConverseOutput) -> Result<Self, Self::Error> {
@@ -110,12 +125,12 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse<AwsConverseOu
 
         let usage = value.0.usage().map(normalize_usage).unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: value,
-            message_id: None,
-        })
+        let finish_reason = map_stop_reason(&value.0.stop_reason);
+
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -250,7 +265,6 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         OneOrMany, completion,
-        completion::GetTokenUsage,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
@@ -330,7 +344,7 @@ mod tests {
     fn get_token_usage_delegates_to_provider_response_ext() {
         let out = make_output("x", Some(make_usage(10, 20, 30)));
         assert_eq!(
-            out.token_usage(),
+            out.get_usage().unwrap_or_default(),
             completion::Usage {
                 input_tokens: 10,
                 output_tokens: 20,
@@ -345,8 +359,11 @@ mod tests {
         let out = make_output("x", None);
         // Zero-valued usage is rig's documented sentinel for "the provider
         // reported no usage metrics".
-        assert_eq!(out.token_usage(), completion::Usage::new());
-        assert!(!out.token_usage().has_values());
+        assert_eq!(
+            out.get_usage().unwrap_or_default(),
+            completion::Usage::new()
+        );
+        assert!(!out.get_usage().unwrap_or_default().has_values());
     }
 
     #[test]
@@ -367,7 +384,7 @@ mod tests {
             converse_output.try_into();
         assert!(converse_output.is_ok());
         let converse_output = converse_output.unwrap();
-        let completion: Result<completion::CompletionResponse<AwsConverseOutput>, _> =
+        let completion: Result<completion::CompletionResponse, _> =
             AwsConverseOutput(converse_output).try_into();
         assert!(completion.is_ok());
         let completion = completion.unwrap();
@@ -399,10 +416,9 @@ mod tests {
             ),
         ];
 
-        let completion: completion::CompletionResponse<AwsConverseOutput> =
-            make_output_with_content(content, None)
-                .try_into()
-                .expect("conversion should succeed");
+        let completion: completion::CompletionResponse = make_output_with_content(content, None)
+            .try_into()
+            .expect("conversion should succeed");
 
         let choice: Vec<_> = completion.choice.into_iter().collect();
         assert_eq!(choice.len(), 3);

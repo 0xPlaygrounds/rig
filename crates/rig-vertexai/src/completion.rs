@@ -5,11 +5,9 @@ use crate::types::{
     completion_request::VertexCompletionRequest, completion_response::VertexGenerateContentOutput,
 };
 use rig_core::completion::{
-    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest,
-    CompletionResponse, GetTokenUsage,
+    CompletionError, CompletionModel as CompletionModelTrait, CompletionRequest, CompletionResponse,
 };
 use rig_core::streaming::StreamingCompletionResponse;
-use serde::{Deserialize, Serialize};
 
 /// `gemini-1.5-pro`
 pub const GEMINI_1_5_PRO: &str = "gemini-1.5-pro";
@@ -32,15 +30,6 @@ pub const GEMINI_2_5_PRO: &str = "gemini-2.5-pro";
 pub struct CompletionModel {
     pub(crate) client: crate::client::Client,
     pub model: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct PlaceholderStreamingResponse;
-
-impl GetTokenUsage for PlaceholderStreamingResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
-        rig_core::completion::Usage::new()
-    }
 }
 
 impl CompletionModel {
@@ -68,20 +57,16 @@ impl CompletionModel {
     }
 }
 
-impl CompletionModelTrait for CompletionModel {
-    type Response = VertexGenerateContentOutput;
-    type StreamingResponse = PlaceholderStreamingResponse;
-
-    type Client = Client;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model.into())
-    }
-
-    async fn completion(
+impl CompletionModel {
+    /// Execute a completion and return Vertex AI's own wire response.
+    ///
+    /// This is the escape hatch for fields rig does not normalize;
+    /// [`CompletionModelTrait::completion`] calls it and maps the result, so
+    /// there is exactly one RPC either way.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<VertexGenerateContentOutput, CompletionError> {
         tracing::debug!(
             target: "rig_core::vertexai",
             "Vertex AI completion request: {request:?}"
@@ -128,19 +113,41 @@ impl CompletionModelTrait for CompletionModel {
             "Vertex AI completion response: {response:?}"
         );
 
-        let vertex_output = VertexGenerateContentOutput(response);
-        let completion_response = vertex_output.try_into()?;
+        Ok(VertexGenerateContentOutput(response))
+    }
 
-        Ok(completion_response)
+    /// Vertex AI streaming is not implemented in this integration.
+    ///
+    /// Present for parity with the other providers' escape hatches so callers
+    /// get the same error from the raw and normalized paths.
+    pub async fn raw_stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> Result<rig_core::streaming::RawStreamingResult<VertexGenerateContentOutput>, CompletionError>
+    {
+        Err(streaming_unsupported())
+    }
+}
+
+fn streaming_unsupported() -> CompletionError {
+    CompletionError::ProviderError(
+        "Streaming is not supported for Vertex AI in this integration".to_string(),
+    )
+}
+
+impl CompletionModelTrait for CompletionModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion(request).await?.try_into()
     }
 
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        Err(CompletionError::ProviderError(
-            "Streaming is not supported for Vertex AI in this integration".to_string(),
-        ))
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        Err(streaming_unsupported())
     }
 }
 

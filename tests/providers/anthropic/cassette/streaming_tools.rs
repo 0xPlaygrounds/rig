@@ -262,8 +262,8 @@ struct ConcurrentToolObservation {
     events: Vec<&'static str>,
 }
 
-async fn collect_concurrent_tool_observation<R>(
-    stream: &mut StreamingResult<R>,
+async fn collect_concurrent_tool_observation(
+    stream: &mut StreamingResult,
 ) -> ConcurrentToolObservation {
     let mut observation = ConcurrentToolObservation::default();
     let mut tool_names_by_id = HashMap::new();
