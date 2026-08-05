@@ -278,6 +278,17 @@ association.
 
 ## 0.41 → next
 
+### Stream parse policy and aggregation are centralized
+
+Choice aggregation is one component (`PartsAccumulator`); a full reasoning
+block supersedes only its own deltas, and multi-part reasoning items keep
+every part. Parse policy is uniform across providers: unknown event types are
+skipped with a warning; corrupt or schema-defective known frames surface as
+`Err` items while the stream keeps consuming (the buffered ChatGPT unary path
+fails the completion instead — it has no stream to carry errors). Consumers
+that drain to `None` see identical content to before, plus error items where
+frames were previously dropped silently.
+
 ### Streaming reasoning events carry mandatory identity
 
 `RawStreamingChoice::Reasoning` and `RawStreamingChoice::ReasoningDelta` — and

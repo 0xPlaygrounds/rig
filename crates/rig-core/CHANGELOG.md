@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(streaming)* choice aggregation lives in one `PartsAccumulator` keyed by (item id, part ordinal) with replace-and-discard-buffer supersede semantics — OpenAI multi-part reasoning items keep every part; the aggregation heuristics in `poll_next` are gone
+- *(streaming)* stream parse policy is decode-then-validate, stated once per wire family: known event with a defective payload surfaces an `Err`; unknown event types warn and skip; corrupt frames surface and the stream continues
+- *(providers)* copilot's Responses route and the ChatGPT buffered SSE path delegate to the shared Responses interpreter — seven latent behavioral divergences resolved toward the canonical path
 - *(streaming)* [**breaking**] reasoning stream events carry mandatory identity: `RawStreamingChoice::{Reasoning, ReasoningDelta}` and `StreamedAssistantContent::ReasoningDelta` take `id: String`; providers propagate wire identity or mint a stream-stable id, and aggregation keys by exact id — OpenAI Responses summary-delta streams no longer duplicate reasoning content
 
 ### Added
