@@ -12,7 +12,6 @@ use super::completion::{
     CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
     resolve_request_model, streaming_endpoint,
 };
-use crate::completion::message::ReasoningContent;
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -39,6 +38,22 @@ pub(crate) mod shared_parts {
         RawStreamingChoice::ReasoningDelta {
             id: REASONING_ID.to_string(),
             reasoning: text,
+        }
+    }
+
+    /// A completed signed thinking block: the full accumulated thought text
+    /// restated with its provider signature, superseding the deltas it
+    /// restates (the core accumulator's replace-on-supersede keys on the
+    /// per-stream [`REASONING_ID`]). Shared by the REST and Interactions
+    /// wires, whose signature payloads coincide (an opaque provider string,
+    /// passed through verbatim).
+    pub(crate) fn signed_reasoning<R>(text: String, signature: String) -> RawStreamingChoice<R> {
+        RawStreamingChoice::Reasoning {
+            id: REASONING_ID.to_string(),
+            content: crate::completion::message::ReasoningContent::Text {
+                text,
+                signature: Some(signature),
+            },
         }
     }
 
@@ -288,6 +303,14 @@ impl WireAdapter for GeminiRestAdapter {
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
     }
+
+    fn is_finished(&self) -> bool {
+        // A tool-protocol terminal failure is the wire's own in-band
+        // terminal: `interpret` already pushed the `Err` and gates itself on
+        // `failed`, so the driver must stop reading rather than drain the
+        // rest of the transport (and pass through post-error unknown frames).
+        self.failed
+    }
 }
 
 impl GeminiRestAdapter {
@@ -308,13 +331,10 @@ impl GeminiRestAdapter {
                     // restates.
                     self.thought_buffer.push_str(&text);
                     if !self.thought_buffer.is_empty() {
-                        out.push(Ok(streaming::RawStreamingChoice::Reasoning {
-                            id: shared_parts::REASONING_ID.to_string(),
-                            content: ReasoningContent::Text {
-                                text: std::mem::take(&mut self.thought_buffer),
-                                signature: Some(signature),
-                            },
-                        }));
+                        out.push(Ok(shared_parts::signed_reasoning(
+                            std::mem::take(&mut self.thought_buffer),
+                            signature,
+                        )));
                     }
                 } else if !text.is_empty() {
                     self.thought_buffer.push_str(&text);
@@ -550,6 +570,72 @@ mod tests {
                         && message.contains(finish_message)
             ));
         }
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::gemini::Client;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // A tool-protocol terminal failure, then more frames: a well-formed
+        // text chunk, an unknown frame, and a terminal `finishReason` chunk.
+        // The failure must be the LAST item the consumer sees — the driver
+        // stops reading (`is_finished`), so nothing after it is interpreted
+        // or passed through as `Unknown`.
+        let frames = [
+            r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"index":0}]}"#,
+            r#"{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL","finishMessage":"malformed function call","index":0}]}"#,
+            r#"{"candidates":[{"content":{"parts":[{"text":"dead"}],"role":"model"},"index":0}]}"#,
+            r#"{"someFutureField":{"x":1}}"#,
+            r#"{"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}"#,
+        ];
+        let sse_bytes = bytes::Bytes::from(
+            frames
+                .iter()
+                .map(|frame| format!("data: {frame}\n\n"))
+                .collect::<String>(),
+        );
+
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(MockStreamingClient { sse_bytes })
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gemini-2.5-flash");
+        let request = model.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut texts = Vec::new();
+        let mut saw_error = false;
+        let mut items_after_error = 0usize;
+        while let Some(item) = stream.next().await {
+            if saw_error {
+                items_after_error += 1;
+            }
+            match item {
+                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
+                Ok(_) => {}
+                Err(_) => saw_error = true,
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            saw_error,
+            "the tool-protocol failure must reach the consumer"
+        );
+        assert_eq!(
+            items_after_error, 0,
+            "the in-band failure must end the stream: no later text, Unknown passthrough, or terminal"
+        );
+        assert!(stream.response.is_none());
     }
 
     #[test]

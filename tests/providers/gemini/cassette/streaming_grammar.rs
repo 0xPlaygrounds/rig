@@ -537,6 +537,44 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                 !reasoning_text.is_empty(),
                 "aggregated reasoning should carry the summary text"
             );
+            // The recorded stream carries a `thought_signature` delta after
+            // the thought summaries; the completed signed block must restate
+            // the accumulated summary text AND keep the signature. The
+            // signature value is a scrub placeholder in the cassette, so the
+            // assertion derives nothing beyond presence — a real recorded
+            // signature and its placeholder are both non-empty opaque strings.
+            let signatures: Vec<&str> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|part| match part {
+                    ReasoningContent::Text {
+                        signature: Some(signature),
+                        ..
+                    } => Some(signature.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                signatures.iter().any(|signature| !signature.is_empty()),
+                "the recorded thought_signature must survive onto the aggregated reasoning, got {:?}",
+                run.choice
+            );
+            // Supersede contract: the signed restatement replaced the deltas
+            // it restates, so the delta text survives exactly once.
+            assert!(
+                reasoning_text.contains(run.reasoning_delta.trim()),
+                "aggregated reasoning lost streamed summary text"
+            );
+            assert_eq!(
+                reasoning_text.matches(run.reasoning_delta.trim()).count(),
+                1,
+                "signed restatement must not duplicate the summary text"
+            );
             assert_eq!(
                 aggregated_text(&run.choice),
                 run.text,

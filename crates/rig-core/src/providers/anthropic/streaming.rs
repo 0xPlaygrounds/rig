@@ -237,6 +237,10 @@ struct AnthropicAdapter {
     input_tokens: u64,
     message_id: Option<String>,
     response_model: Option<String>,
+    /// A provider `error` event ended the turn; later frames are dead — the
+    /// provider aborted, and interpreting more output (or a terminal) would
+    /// dress the failure up as a completed turn.
+    failed: bool,
 }
 
 impl WireAdapter for AnthropicAdapter {
@@ -251,6 +255,10 @@ impl WireAdapter for AnthropicAdapter {
     }
 
     fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput<Self::Response>) {
+        if self.failed {
+            return;
+        }
+
         match &event {
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
@@ -299,6 +307,7 @@ impl WireAdapter for AnthropicAdapter {
                 // matching the interactions wire's handling; the stream
                 // carries it as an in-band `Err` item, and EOF without
                 // `message_delta` then withholds the terminal record.
+                self.failed = true;
                 let body = serde_json::json!({ "type": "error", "error": error }).to_string();
                 out.push(Err(crate::provider_response::completion_error_from_body(
                     body,
@@ -321,6 +330,14 @@ impl WireAdapter for AnthropicAdapter {
     fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
         // EOF without `message_delta` is truncation: open blocks stay
         // partial, and no terminal record may be synthesized.
+    }
+
+    fn is_finished(&self) -> bool {
+        // A provider `error` event is the wire's own terminal failure:
+        // `interpret` already pushed the in-band `Err`, so the driver must
+        // stop reading — a later modeled frame (e.g. a stray `message_delta`)
+        // would otherwise dress the aborted turn up as a completed one.
+        self.failed
     }
 }
 
@@ -2165,6 +2182,33 @@ mod tests {
             assert!(
                 !saw_terminal,
                 "a failed stream must not synthesize a terminal record"
+            );
+            assert!(stream.response.is_none());
+        }
+
+        #[tokio::test]
+        async fn provider_error_event_stops_the_stream_before_a_later_terminal() {
+            // The findings-file probe: an in-band provider `error` event
+            // followed by a well-formed `message_delta`. The error must reach
+            // the consumer and NOTHING may follow it — the adapter is
+            // finished, so the later terminal frame must not be interpreted
+            // into a successful FinalResponse.
+            const ERROR_EVENT: &str =
+                r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+            let (texts, saw_error, saw_terminal, stream) = collect(sse(&[
+                MESSAGE_START,
+                TEXT_START,
+                TEXT_DELTA,
+                ERROR_EVENT,
+                MESSAGE_DELTA,
+            ]))
+            .await;
+
+            assert_eq!(texts, ["hi"]);
+            assert!(saw_error, "the provider error must reach the consumer");
+            assert!(
+                !saw_terminal,
+                "a message_delta after an in-band provider error must not read as a completed turn"
             );
             assert!(stream.response.is_none());
         }

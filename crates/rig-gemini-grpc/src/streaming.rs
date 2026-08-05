@@ -19,10 +19,20 @@ use super::proto;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
 
-/// The Gemini gRPC typed wire as a [`WireAdapter`]: stateless — parts map
-/// one-to-one onto grammar events, and the chunk carrying a finish reason is
-/// the terminal.
-struct GrpcAdapter;
+/// The Gemini gRPC typed wire as a [`WireAdapter`]: the chunk carrying a
+/// finish reason is the terminal, and the only per-stream state is the open
+/// thinking block's accumulated text (for signed restatement).
+#[derive(Default)]
+struct GrpcAdapter {
+    /// Thought text since the last boundary (signed emission, visible text,
+    /// or tool call). The grammar requires a full `Reasoning` block to be
+    /// the block's *completed* form, but Gemini attaches
+    /// `thought_signature` to a single part — so the adapter restates the
+    /// accumulated text, mirroring the REST wire's `thoughtSignature`
+    /// handling. Reset on non-thought output to mirror the accumulator's
+    /// minted-id boundary.
+    thought_buffer: String,
+}
 
 impl WireAdapter for GrpcAdapter {
     type Frame = proto::GenerateContentResponse;
@@ -52,18 +62,49 @@ impl WireAdapter for GrpcAdapter {
                     match &part.data {
                         Some(proto::part::Data::Text(text)) => {
                             if part.thought {
-                                out.push(Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                    // Thought parts carry no wire id or block
-                                    // boundaries; a per-stream constant merges
-                                    // them into one item.
-                                    id: "reasoning-0".to_string(),
-                                    reasoning: text.clone(),
-                                }));
+                                self.thought_buffer.push_str(text);
+                                if let Some(signature) = encode_signature(&part.thought_signature) {
+                                    // The signature closes the thinking
+                                    // block: emit the completed signed
+                                    // `Reasoning` — the full accumulated
+                                    // text restated with the signature —
+                                    // superseding the deltas it restates
+                                    // (same base64 encoding as the unary
+                                    // path's `Reasoning::new_with_signature`
+                                    // conversion). A signature on an empty
+                                    // trailer part still emits, so it
+                                    // survives into chat history.
+                                    out.push(Ok(streaming::RawStreamingChoice::Reasoning {
+                                        // Thought parts carry no wire id or
+                                        // block boundaries; a per-stream
+                                        // constant merges them into one item.
+                                        id: "reasoning-0".to_string(),
+                                        content: rig_core::message::ReasoningContent::Text {
+                                            text: std::mem::take(&mut self.thought_buffer),
+                                            signature: Some(signature),
+                                        },
+                                    }));
+                                } else if !text.is_empty() {
+                                    out.push(Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                        // Thought parts carry no wire id or
+                                        // block boundaries; a per-stream
+                                        // constant merges them into one item.
+                                        id: "reasoning-0".to_string(),
+                                        reasoning: text.clone(),
+                                    }));
+                                }
                             } else {
+                                // Non-thought output closes the open
+                                // reasoning item (accumulator minted-id
+                                // boundary).
+                                self.thought_buffer.clear();
                                 out.push(Ok(streaming::RawStreamingChoice::Message(text.clone())));
                             }
                         }
                         Some(proto::part::Data::FunctionCall(function_call)) => {
+                            // Non-thought output closes the open reasoning
+                            // item (accumulator minted-id boundary).
+                            self.thought_buffer.clear();
                             let args_json = function_call
                                 .args
                                 .as_ref()
@@ -129,7 +170,7 @@ pub fn stream_from_events(
     + WasmCompatSend
     + 'static,
 ) -> streaming::StreamingCompletionResponse {
-    let raw = run_wire_stream(events, GrpcAdapter);
+    let raw = run_wire_stream(events, GrpcAdapter::default());
     streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
         normalize_grpc_stream(raw),
@@ -168,7 +209,7 @@ pub(crate) async fn raw_stream(
         }
     };
 
-    Ok(Box::pin(run_wire_stream(transport, GrpcAdapter)))
+    Ok(Box::pin(run_wire_stream(transport, GrpcAdapter::default())))
 }
 
 /// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
@@ -257,6 +298,128 @@ fn prost_value_to_json(v: &proto::Value) -> Value {
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
+    use super::*;
+    use rig_core::message::{Reasoning, ReasoningContent};
+    use rig_core::streaming::StreamedAssistantContent;
+
+    fn thought_part(text: &str, signature: &[u8]) -> proto::Part {
+        proto::Part {
+            data: Some(proto::part::Data::Text(text.to_string())),
+            thought: true,
+            thought_signature: signature.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    fn response(parts: Vec<proto::Part>, finish_reason: i32) -> proto::GenerateContentResponse {
+        proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts,
+                    role: "model".to_string(),
+                }),
+                finish_reason,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Drive protobuf events through the full normalized path and collect the
+    /// Reasoning blocks the consumer sees.
+    async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Reasoning> {
+        let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+        let mut blocks = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Reasoning(reasoning) =
+                item.expect("stream item should be ok")
+            {
+                blocks.push(reasoning);
+            }
+        }
+        blocks
+    }
+
+    // Streaming parity with the unary conversion (completion.rs
+    // `Reasoning::new_with_signature` + base64): a signed thought part must
+    // reach the normalized stream as a completed signed Reasoning block that
+    // restates the accumulated thought text.
+    #[tokio::test]
+    async fn signed_thought_part_restates_accumulated_text_with_signature() {
+        let signature_bytes = b"opaque-signature".as_slice();
+        let events = vec![
+            response(vec![thought_part("think1 ", b"")], 0),
+            response(
+                vec![thought_part("think2", signature_bytes)],
+                proto::candidate::FinishReason::Stop as i32,
+            ),
+        ];
+
+        let blocks = reasoning_blocks(events).await;
+        let signed = blocks
+            .last()
+            .expect("the signed part must yield a Reasoning block");
+        assert_eq!(
+            signed.content,
+            vec![ReasoningContent::Text {
+                text: "think1 think2".to_string(),
+                // The expected encoding is the unary path's: standard base64
+                // over the wire's signature bytes.
+                signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
+            }]
+        );
+    }
+
+    // The wire's real signed shape: the signature rides a trailing EMPTY
+    // thought part. It must still emit a signed block so the signature
+    // survives into chat history (signature-only case).
+    #[tokio::test]
+    async fn signature_on_empty_trailer_part_still_carries_the_signature() {
+        let signature_bytes = b"trailer-signature".as_slice();
+        let events = vec![
+            response(vec![thought_part("thinking...", b"")], 0),
+            response(
+                vec![thought_part("", signature_bytes)],
+                proto::candidate::FinishReason::Stop as i32,
+            ),
+        ];
+
+        let blocks = reasoning_blocks(events).await;
+        let signed = blocks
+            .last()
+            .expect("the signed trailer must yield a Reasoning block");
+        assert_eq!(
+            signed.content,
+            vec![ReasoningContent::Text {
+                text: "thinking...".to_string(),
+                signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
+            }]
+        );
+    }
+
+    // Signature with no thought text anywhere in the stream: the signed block
+    // still surfaces (empty text) rather than dropping the signature.
+    #[tokio::test]
+    async fn signature_without_any_thought_text_still_surfaces() {
+        let signature_bytes = b"lone-signature".as_slice();
+        let events = vec![response(
+            vec![thought_part("", signature_bytes)],
+            proto::candidate::FinishReason::Stop as i32,
+        )];
+
+        let blocks = reasoning_blocks(events).await;
+        let signed = blocks
+            .last()
+            .expect("a lone signature must yield a Reasoning block");
+        assert_eq!(
+            signed.content,
+            vec![ReasoningContent::Text {
+                text: String::new(),
+                signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
+            }]
+        );
+    }
+
     // The streaming path maps both the initial `stream_generate_content` RPC
     // failure and any per-item iteration error through `rpc_error`. Pin that the
     // mapping preserves the provider's status text and exposes no HTTP status.
