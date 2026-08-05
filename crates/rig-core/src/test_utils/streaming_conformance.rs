@@ -1690,7 +1690,10 @@ pub mod fixtures {
                 }))]),
                 bare_terminal_frames: None,
                 malformed_frame: sse_raw("{not json"),
-                unknown_event_frame: None,
+                // The wire has no event tag; valid JSON carrying neither
+                // `candidates` nor `usageMetadata` is unrecognizable and must
+                // be warn-skipped, not silently decoded as an empty chunk.
+                unknown_event_frame: Some(sse_raw(r#"{"noise":true}"#)),
                 defective_known_frame: Some(sse_raw(r#"{"candidates": 42}"#)),
                 delta_less_prelude_frame: None,
                 refusal: None,
@@ -1753,6 +1756,131 @@ pub mod fixtures {
                 terminal_frame(),
             ];
             (frames, "before tool", "get_weather", "signed conclusion")
+        }
+    }
+
+    /// Gemini Interactions SSE wire (`event_type`-tagged events).
+    pub mod interactions {
+        use super::*;
+
+        fn driver() -> WireDriver {
+            WireDriver::new("gemini", |chunks| {
+                Box::pin(async move {
+                    let client = crate::providers::gemini::Client::builder()
+                        .api_key("test-key")
+                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .build()?
+                        .interactions_api();
+                    let model = client.completion_model("gemini-2.5-pro");
+                    let request = model.completion_request("hello").build();
+                    let stream = model.stream(request).await?;
+                    Ok(drain(stream).await)
+                })
+            })
+        }
+
+        fn completed(usage: Option<serde_json::Value>) -> Bytes {
+            let mut interaction = json!({
+                "id": "int-1",
+                "model": "gemini-2.5-pro",
+                "status": "completed",
+            });
+            if let (Some(usage), Some(object)) = (usage, interaction.as_object_mut()) {
+                object.insert("usage".to_string(), usage);
+            }
+            sse(&json!({
+                "event_type": "interaction.completed",
+                "interaction": interaction,
+            }))
+        }
+
+        /// The Interactions fixture.
+        pub fn fixture() -> ProviderWireFixture {
+            ProviderWireFixture {
+                driver: driver(),
+                text_frames: vec![sse(&json!({
+                    "event_type": "step.delta",
+                    "index": 0,
+                    "delta": {"type": "text", "text": "hi"},
+                }))],
+                expected_texts: vec!["hi"],
+                tool_call_frames: vec![sse(&json!({
+                    "event_type": "step.delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "function_call",
+                        "name": "get_weather",
+                        "arguments": {"city": "Tokyo"},
+                        "id": "call-1",
+                    },
+                }))],
+                expected_tool_name: "get_weather",
+                // The Interactions wire delivers function calls whole;
+                // arguments never stream.
+                partial_tool_call_frames: None,
+                terminal_frames: vec![completed(Some(json!({
+                    "total_input_tokens": 5,
+                    "total_output_tokens": 2,
+                    "total_tokens": 7,
+                })))],
+                expected_usage_total: 7,
+                expected_finish_reason: Some(FinishReason::Stop),
+                zero_usage_terminal_frames: Some(vec![completed(None)]),
+                bare_terminal_frames: None,
+                malformed_frame: sse_raw("{not json"),
+                unknown_event_frame: Some(sse(&json!({
+                    "event_type": "future.event",
+                    "index": 0,
+                }))),
+                // A known tag (`step.delta`) with a schema-defective payload
+                // must classify `Corrupt`, never `Unknown`.
+                defective_known_frame: Some(sse_raw(
+                    r#"{"event_type":"step.delta","index":0,"delta":42}"#,
+                )),
+                delta_less_prelude_frame: None,
+                refusal: None,
+            }
+        }
+
+        /// Thought-summary delta, interleaved function call, thought-summary
+        /// delta, terminal — the constant-id (`reasoning-0`) interleaving
+        /// shape on the Interactions wire.
+        pub fn interleaved_thought_frames() -> (Vec<Bytes>, &'static str, &'static str, &'static str)
+        {
+            let frames = vec![
+                sse(&json!({
+                    "event_type": "step.delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "thought_summary",
+                        "content": {"text": "before tool"},
+                    },
+                })),
+                sse(&json!({
+                    "event_type": "step.delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "function_call",
+                        "name": "get_weather",
+                        "arguments": {"city": "Tokyo"},
+                        "id": "call-1",
+                    },
+                })),
+                sse(&json!({
+                    "event_type": "step.delta",
+                    "index": 0,
+                    "delta": {
+                        "type": "thought_summary",
+                        "content": {"text": "after tool"},
+                    },
+                })),
+                completed(Some(json!({
+                    "total_input_tokens": 5,
+                    "total_output_tokens": 2,
+                    "total_tokens": 7,
+                }))),
+            ];
+            (frames, "before tool", "get_weather", "after tool")
         }
     }
 

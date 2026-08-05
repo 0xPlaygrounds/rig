@@ -238,7 +238,7 @@ impl WireAdapter for AnthropicAdapter {
     type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: &WireFrame) -> WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), |event_type| {
+        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
         })
     }

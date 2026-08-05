@@ -212,6 +212,7 @@ where
                         // |           | its terminal record                 |
                         let event = match wire::classify_tagged_frame::<StreamingEvent>(
                             data_str,
+                            "type",
                             |event_type| KNOWN_EVENT_TYPES.contains(&event_type),
                         ) {
                             wire::WireEvent::Known(event) => event,
@@ -372,7 +373,9 @@ mod tests {
     }
 
     fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(data, |event_type| KNOWN_EVENT_TYPES.contains(&event_type))
+        wire::classify_tagged_frame(data, "type", |event_type| {
+            KNOWN_EVENT_TYPES.contains(&event_type)
+        })
     }
 
     #[test]

@@ -259,7 +259,7 @@ fn is_known_responses_event_type(kind: &str) -> bool {
 /// are checked separately before this, because their `type` is outside the
 /// modeled set yet must not be skipped as unknown.
 pub(super) fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
-    wire::classify_tagged_frame(data, is_known_responses_event_type)
+    wire::classify_tagged_frame(data, "type", is_known_responses_event_type)
 }
 
 fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionError> {

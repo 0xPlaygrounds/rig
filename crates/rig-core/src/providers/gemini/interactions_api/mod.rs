@@ -1404,8 +1404,17 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Step {
-        UserInput { content: Vec<Content> },
-        ModelOutput { content: Vec<Content> },
+        // `content` is defaulted: a streaming `step.start` announces the step
+        // with the content omitted (it follows in `step.delta` events), e.g.
+        // `{"type":"model_output"}` on the recorded wire.
+        UserInput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
+        ModelOutput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
         Thought(ThoughtContent),
         FunctionCall(FunctionCallContent),
         FunctionResult(FunctionResultContent),

@@ -31,15 +31,17 @@ pub enum WireEvent<T> {
     Corrupt(serde_json::Error),
 }
 
-/// Classify one frame of a `type`-discriminated JSON wire (OpenAI Responses
-/// SSE, Cohere SSE).
+/// Classify one frame of a tag-discriminated JSON wire (OpenAI Responses SSE,
+/// Cohere SSE, and Anthropic use `type`; Gemini Interactions uses
+/// `event_type`).
 ///
-/// Dispatch on the envelope's `type`: a value outside `is_known_event_type`
-/// is `Unknown`; a modeled value — or a missing `type`, which no modeled
-/// event omits — must pass the full typed decode, and a failure there is
-/// `Corrupt`, not `Unknown`.
+/// Dispatch on the envelope's `tag` field: a value outside
+/// `is_known_event_type` is `Unknown`; a modeled value — or a missing tag,
+/// which no modeled event omits — must pass the full typed decode, and a
+/// failure there is `Corrupt`, not `Unknown`.
 pub fn classify_tagged_frame<T>(
     data: &str,
+    tag: &str,
     is_known_event_type: impl Fn(&str) -> bool,
 ) -> WireEvent<T>
 where
@@ -50,7 +52,7 @@ where
         Err(error) => return WireEvent::Corrupt(error),
     };
 
-    match value.get("type").and_then(serde_json::Value::as_str) {
+    match value.get(tag).and_then(serde_json::Value::as_str) {
         Some(event_type) if !is_known_event_type(event_type) => WireEvent::Unknown {
             event_type: event_type.to_owned(),
             value,
@@ -85,6 +87,37 @@ where
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default()
             .to_owned();
+        return WireEvent::Unknown { event_type, value };
+    }
+
+    decode_known(data)
+}
+
+/// Classify one frame of an untagged JSON wire recognized by payload keys
+/// (Gemini `streamGenerateContent`).
+///
+/// The wire has no discriminator, so recognizability substitutes — the same
+/// policy as [`classify_chat_completions_frame`]: a frame carrying any of
+/// `marker_keys` at top level is the wire's chunk shape and must pass the
+/// full typed decode (failure is `Corrupt`); valid JSON carrying none of them
+/// is `Unknown`.
+pub fn classify_marker_keyed_frame<T>(data: &str, marker_keys: &[&str]) -> WireEvent<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let value = match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(value) => value,
+        Err(error) => return WireEvent::Corrupt(error),
+    };
+
+    let recognizable = marker_keys.iter().any(|key| value.get(key).is_some());
+    if !recognizable {
+        // No tag exists on this wire; name the frame by its top-level keys so
+        // the driver's warn log stays diagnosable.
+        let event_type = value
+            .as_object()
+            .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
+            .unwrap_or_default();
         return WireEvent::Unknown { event_type, value };
     }
 
@@ -139,14 +172,17 @@ mod tests {
 
     #[test]
     fn tagged_known_frame_decodes() {
-        let event =
-            classify_tagged_frame::<TestEvent>(r#"{"type":"text.delta","delta":"hi"}"#, known);
+        let event = classify_tagged_frame::<TestEvent>(
+            r#"{"type":"text.delta","delta":"hi"}"#,
+            "type",
+            known,
+        );
         assert!(matches!(event, WireEvent::Known(TestEvent::TextDelta { delta }) if delta == "hi"));
     }
 
     #[test]
     fn tagged_unknown_type_is_unknown() {
-        let event = classify_tagged_frame::<TestEvent>(r#"{"type":"future.event"}"#, known);
+        let event = classify_tagged_frame::<TestEvent>(r#"{"type":"future.event"}"#, "type", known);
         assert!(matches!(
             event,
             WireEvent::Unknown { event_type, .. } if event_type == "future.event"
@@ -155,20 +191,23 @@ mod tests {
 
     #[test]
     fn tagged_invalid_json_is_corrupt() {
-        let event = classify_tagged_frame::<TestEvent>("{not json", known);
+        let event = classify_tagged_frame::<TestEvent>("{not json", "type", known);
         assert!(matches!(event, WireEvent::Corrupt(_)));
     }
 
     #[test]
     fn tagged_known_type_with_defective_payload_is_corrupt() {
-        let event =
-            classify_tagged_frame::<TestEvent>(r#"{"type":"text.delta","delta":42}"#, known);
+        let event = classify_tagged_frame::<TestEvent>(
+            r#"{"type":"text.delta","delta":42}"#,
+            "type",
+            known,
+        );
         assert!(matches!(event, WireEvent::Corrupt(_)));
     }
 
     #[test]
     fn tagged_typeless_frame_is_corrupt() {
-        let event = classify_tagged_frame::<TestEvent>("{}", known);
+        let event = classify_tagged_frame::<TestEvent>("{}", "type", known);
         assert!(matches!(event, WireEvent::Corrupt(_)));
     }
 
@@ -196,6 +235,70 @@ mod tests {
     #[test]
     fn chat_invalid_json_is_corrupt() {
         let event = classify_chat_completions_frame::<TestChunk>("{not json");
+        assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn tagged_dispatch_honors_a_non_type_tag_name() {
+        #[derive(Debug, serde::Deserialize)]
+        #[serde(tag = "event_type")]
+        enum EventTypeTagged {
+            #[serde(rename = "step.delta")]
+            StepDelta { delta: String },
+        }
+
+        let event = classify_tagged_frame::<EventTypeTagged>(
+            r#"{"event_type":"step.delta","delta":"hi"}"#,
+            "event_type",
+            |event_type| event_type == "step.delta",
+        );
+        assert!(matches!(
+            event,
+            WireEvent::Known(EventTypeTagged::StepDelta { delta }) if delta == "hi"
+        ));
+
+        let event = classify_tagged_frame::<EventTypeTagged>(
+            r#"{"event_type":"future.event"}"#,
+            "event_type",
+            |event_type| event_type == "step.delta",
+        );
+        assert!(matches!(
+            event,
+            WireEvent::Unknown { event_type, .. } if event_type == "future.event"
+        ));
+    }
+
+    #[test]
+    fn marker_keyed_recognizable_chunk_decodes() {
+        let event = super::classify_marker_keyed_frame::<TestChunk>(
+            r#"{"choices":[]}"#,
+            &["choices", "usage"],
+        );
+        assert!(matches!(event, WireEvent::Known(_)));
+    }
+
+    #[test]
+    fn marker_keyed_unrecognizable_json_is_unknown() {
+        let event = super::classify_marker_keyed_frame::<TestChunk>(
+            r#"{"noise":true,"other":1}"#,
+            &["choices", "usage"],
+        );
+        assert!(matches!(
+            event,
+            WireEvent::Unknown { event_type, .. } if event_type == "noise,other"
+        ));
+    }
+
+    #[test]
+    fn marker_keyed_recognizable_chunk_with_defective_payload_is_corrupt() {
+        let event =
+            super::classify_marker_keyed_frame::<TestChunk>(r#"{"choices":42}"#, &["choices"]);
+        assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn marker_keyed_invalid_json_is_corrupt() {
+        let event = super::classify_marker_keyed_frame::<TestChunk>("{not json", &["choices"]);
         assert!(matches!(event, WireEvent::Corrupt(_)));
     }
 

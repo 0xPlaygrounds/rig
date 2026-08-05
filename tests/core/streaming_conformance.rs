@@ -10,7 +10,9 @@
 
 use rig_core::test_utils::streaming_conformance::{
     self as conformance,
-    fixtures::{anthropic, cohere, gemini_rest, ollama, openai_chat, openai_responses},
+    fixtures::{
+        anthropic, cohere, gemini_rest, interactions, ollama, openai_chat, openai_responses,
+    },
 };
 
 macro_rules! conformance_test {
@@ -78,6 +80,7 @@ conformance_suite!(gemini_rest_suite, gemini_rest::fixture);
 conformance_suite!(cohere_suite, cohere::fixture);
 conformance_suite!(ollama_suite, ollama::fixture);
 conformance_suite!(anthropic_suite, anthropic::fixture);
+conformance_suite!(interactions_suite, interactions::fixture);
 
 // The defective-known-payload family. For the OpenAI Responses fixture it
 // pins the P2 in `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5
@@ -115,6 +118,11 @@ mod defective_known_event {
     conformance_test!(
         anthropic,
         anthropic::fixture,
+        conformance::defective_known_event_surfaces_err
+    );
+    conformance_test!(
+        interactions,
+        interactions::fixture,
         conformance::defective_known_event_surfaces_err
     );
 }
@@ -213,6 +221,17 @@ mod interleaved_constant_id_reasoning {
         let driver = gemini_rest::fixture().driver;
         let (frames, first, tool, second) = gemini_rest::interleaved_signed_thought_frames();
         conformance::interleaved_signed_full_reasoning_does_not_erase_prior_thought(
+            &driver, frames, first, tool, second,
+        )
+        .await
+        .expect("scenario should hold");
+    }
+
+    #[tokio::test]
+    async fn interactions_preserves_order_around_a_tool_call() {
+        let driver = interactions::fixture().driver;
+        let (frames, first, tool, second) = interactions::interleaved_thought_frames();
+        conformance::interleaved_constant_id_reasoning_preserves_order(
             &driver, frames, first, tool, second,
         )
         .await

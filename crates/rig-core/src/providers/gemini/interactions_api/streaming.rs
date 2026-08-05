@@ -15,9 +15,38 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
+use crate::providers::gemini::streaming::shared_parts;
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use serde_json::{Map, Value};
+
+/// The `event_type` values this client models on the Interactions SSE wire.
+///
+/// [`wire::classify_tagged_frame`] dispatches on this list: a frame whose
+/// `event_type` is outside it classifies `Unknown` (driver policy: warn +
+/// skip), while a listed value must pass the full [`InteractionSseEvent`]
+/// decode or classify `Corrupt`. There is no untagged serde fallback — policy
+/// lives in the classify layer, never in serde.
+const KNOWN_EVENT_TYPES: &[&str] = &[
+    "interaction.created",
+    "interaction.completed",
+    "interaction.status_update",
+    "step.start",
+    "step.delta",
+    "step.stop",
+    "error",
+];
+
+/// Classify one Interactions SSE frame. The single classify site for both
+/// consumers of this wire: the completion adapter below and the raw
+/// [`stream_interaction_events`] surface.
+fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
+    wire::classify_tagged_frame(data, "event_type", |event_type| {
+        KNOWN_EVENT_TYPES.contains(&event_type)
+    })
+}
 
 /// Final metadata yielded by an Interactions streaming response.
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -120,105 +149,40 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let mut event_source = GenericEventSource::new(self.client.clone(), req);
+        let event_source = GenericEventSource::new(self.client.clone(), req);
 
-        let stream = stream! {
-            let mut final_interaction: Option<Interaction> = None;
-            let mut final_usage: Option<InteractionUsage> = None;
-            let mut stream_failed = false;
-
+        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
+        // framing only — classification and policy live downstream.
+        let transport = stream! {
+            let mut event_source = Box::pin(event_source);
             while let Some(event_result) = event_source.next().await {
                 match event_result {
                     Ok(Event::Open) => {
                         tracing::debug!("SSE connection opened");
-                        continue;
                     }
                     Ok(Event::Message(message)) => {
                         if message.data.trim().is_empty() {
                             continue;
                         }
-
-                        let data = match serde_json::from_str::<InteractionSseEvent>(&message.data)
-                        {
-                            Ok(data) => data,
-                            Err(err) => {
-                                tracing::debug!(
-                                    "Failed to deserialize interactions SSE event: {err}"
-                                );
-                                continue;
-                            }
-                        };
-
-                        match data {
-                            InteractionSseEvent::StepDelta { delta, .. } => {
-                                if let Some(choice) = content_delta_to_choice(delta) {
-                                    yield Ok(choice);
-                                }
-                            }
-                            InteractionSseEvent::StepStart { step, .. } => {
-                                if let Some(choice) = step_start_to_choice(step) {
-                                    yield Ok(choice);
-                                }
-                            }
-                            InteractionSseEvent::InteractionCompleted { interaction, .. } => {
-                                let span = tracing::Span::current();
-                                span.record("gen_ai.response.id", &interaction.id);
-                                if let Some(model) = interaction.model.clone() {
-                                    span.record("gen_ai.response.model", model);
-                                }
-
-                                if let Some(usage) = interaction.usage.clone() {
-                                    span.record_token_usage(&crate::completion::Usage::from(&usage));
-                                    final_usage = Some(usage);
-                                }
-                                final_interaction = Some(interaction);
-                            }
-                            InteractionSseEvent::Error { .. } => {
-                                // Preserve the full provider error payload (code +
-                                // message) by reusing the raw SSE event JSON, matching
-                                // the SSE path's `completion_error_from_body`. The error
-                                // arrives over an established stream, so there is no HTTP
-                                // status to attach (status: None).
-                                stream_failed = true;
-                                yield Err(crate::provider_response::completion_error_from_body(
-                                    message.data,
-                                ));
-                                break;
-                            }
-                            _ => continue,
-                        }
+                        yield Ok(WireFrame::Text(message.data));
                     }
                     Err(crate::http_client::Error::StreamEnded) => {
                         break;
                     }
                     Err(error) => {
                         tracing::error!(?error, "SSE error");
-                        stream_failed = true;
                         yield Err(CompletionError::from_stream_transport(error));
                         break;
                     }
                 }
             }
-
             event_source.close();
+        };
 
-            // Only a genuine `interaction.completed` event counts as the
-            // provider completing the turn. A stream that errored out, or that
-            // reached EOF without that event (truncation), never gets a
-            // synthesized terminal record: yielding one would report a
-            // successful completion for a turn the provider aborted.
-            if !stream_failed && final_interaction.is_some() {
-                let model_version = final_interaction.as_ref().and_then(|i| i.model.clone());
-                yield Ok(streaming::RawStreamingChoice::FinalResponse(StreamingCompletionResponse {
-                    usage: final_usage.or_else(|| final_interaction.as_ref().and_then(|i| i.usage.clone())),
-                    interaction: final_interaction,
-                    model_version,
-                }));
-            }
-        }
-        .instrument(span);
+        let stream: streaming::RawStreamingResult<StreamingCompletionResponse> =
+            Box::pin(run_wire_stream(transport, InteractionsAdapter::default()).instrument(span));
 
-        Ok(Box::pin(stream))
+        Ok(stream)
     }
 
     pub(crate) async fn stream(
@@ -231,6 +195,92 @@ where
             PROVIDER_NAME,
             streaming::normalize_stream(inner, map_stream_final),
         ))
+    }
+}
+
+/// The Gemini Interactions SSE wire as a [`WireAdapter`].
+///
+/// Frame-triage policy (warn on `Unknown`, in-band `Err` on `Corrupt`) lives
+/// in [`run_wire_stream`], not here — this ends the wire's former
+/// debug-log-and-skip handling of every decode failure.
+#[derive(Default)]
+struct InteractionsAdapter {
+    /// A provider `error` event ended the turn; later frames are dead — the
+    /// provider aborted, and interpreting more output (or a terminal) would
+    /// dress the failure up as a completed turn.
+    failed: bool,
+}
+
+impl WireAdapter for InteractionsAdapter {
+    type Event = InteractionSseEvent;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: &WireFrame) -> WireEvent<InteractionSseEvent> {
+        classify_interaction_frame(&frame.as_str())
+    }
+
+    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput<Self::Response>) {
+        if self.failed {
+            return;
+        }
+
+        match event {
+            InteractionSseEvent::StepDelta { delta, .. } => {
+                if let Some(choice) = content_delta_to_choice(delta) {
+                    out.push(Ok(choice));
+                }
+            }
+            InteractionSseEvent::StepStart { step, .. } => {
+                if let Some(choice) = step_start_to_choice(step) {
+                    out.push(Ok(choice));
+                }
+            }
+            InteractionSseEvent::InteractionCompleted { interaction, .. } => {
+                let span = tracing::Span::current();
+                span.record("gen_ai.response.id", &interaction.id);
+                if let Some(model) = interaction.model.clone() {
+                    span.record("gen_ai.response.model", model);
+                }
+                if let Some(usage) = interaction.usage.as_ref() {
+                    span.record_token_usage(&crate::completion::Usage::from(usage));
+                }
+
+                // Only a genuine `interaction.completed` event counts as the
+                // provider completing the turn; the driver stops consuming
+                // after the terminal record. EOF without one is truncation and
+                // synthesizes nothing (see `finish`).
+                let model_version = interaction.model.clone();
+                out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
+                    StreamingCompletionResponse {
+                        usage: interaction.usage.clone(),
+                        interaction: Some(interaction),
+                        model_version,
+                    },
+                )));
+            }
+            event @ InteractionSseEvent::Error { .. } => {
+                // Preserve the provider error payload (code + message) as the
+                // error body, matching the blocking path's
+                // `completion_error_from_body`. The event is re-serialized
+                // from its decoded form — the modeled fields survive. The
+                // error arrives over an established stream, so there is no
+                // HTTP status to attach (status: None).
+                self.failed = true;
+                let body = serde_json::to_string(&event).unwrap_or_default();
+                out.push(Err(crate::provider_response::completion_error_from_body(
+                    body,
+                )));
+            }
+            InteractionSseEvent::InteractionCreated { .. }
+            | InteractionSseEvent::InteractionStatusUpdate { .. }
+            | InteractionSseEvent::StepStop { .. } => {}
+        }
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // EOF without `interaction.completed` is truncation: no terminal
+        // record may be synthesized — it would report a successful completion
+        // for a turn the provider aborted.
     }
 }
 
@@ -252,16 +302,23 @@ where
                         continue;
                     }
 
-                    let data = serde_json::from_str::<InteractionSseEvent>(&message.data);
-                    let Ok(data) = data else {
-                        let Err(err) = data else {
-                            continue;
-                        };
-                        tracing::debug!("Failed to deserialize interactions SSE event: {err}");
-                        continue;
-                    };
-
-                    yield Ok(data);
+                    // Same frame-triage table as the completion path's
+                    // `run_wire_stream` driver — this surface yields typed
+                    // events rather than grammar events, so the policy is
+                    // restated here against the same classify site.
+                    match classify_interaction_frame(&message.data) {
+                        WireEvent::Known(event) => yield Ok(event),
+                        WireEvent::Unknown { event_type, value } => {
+                            tracing::warn!(
+                                event_type,
+                                payload = %value,
+                                "skipping unrecognized stream event"
+                            );
+                        }
+                        WireEvent::Corrupt(error) => {
+                            yield Err(CompletionError::JsonError(error));
+                        }
+                    }
                 }
                 Err(crate::http_client::Error::StreamEnded) => break,
                 Err(error) => {
@@ -290,13 +347,11 @@ fn step_start_to_choice(
         }) => {
             let name = name?;
             let call_id = id.unwrap_or_else(|| name.clone());
-            Some(streaming::RawStreamingChoice::ToolCall(
-                streaming::RawStreamingToolCall::new(
-                    name.clone(),
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                )
-                .with_call_id(call_id),
+            Some(shared_parts::function_call(
+                name,
+                arguments.unwrap_or(Value::Object(Map::new())),
+                Some(call_id),
+                None,
             ))
         }
         _ => None,
@@ -329,13 +384,11 @@ fn content_delta_to_choice(
         }) => {
             let name = name?;
             let call_id = id.unwrap_or_else(|| name.clone());
-            Some(streaming::RawStreamingChoice::ToolCall(
-                streaming::RawStreamingToolCall::new(
-                    name.clone(),
-                    name,
-                    arguments.unwrap_or(Value::Object(Map::new())),
-                )
-                .with_call_id(call_id),
+            Some(shared_parts::function_call(
+                name,
+                arguments.unwrap_or(Value::Object(Map::new())),
+                Some(call_id),
+                None,
             ))
         }
         ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
@@ -343,12 +396,7 @@ fn content_delta_to_choice(
                 ThoughtSummaryContent::Text(text) => text.text,
                 _ => return None,
             };
-            Some(streaming::RawStreamingChoice::ReasoningDelta {
-                // Thought summaries carry no wire id or block boundaries;
-                // a per-stream constant merges them into one item.
-                id: "reasoning-0".to_string(),
-                reasoning: text,
-            })
+            Some(shared_parts::reasoning_delta(text))
         }
         _ => None,
     }
