@@ -253,12 +253,12 @@ fn is_known_responses_event_type(kind: &str) -> bool {
 /// Classify one Responses SSE frame; see
 /// [`crate::providers::internal::wire`] for the dispatch contract.
 ///
-/// Shared by the live SSE loop and the buffered
-/// [`raw_choices_from_sse_body`] path so both apply the same known/unknown
-/// boundary. Provider `error` events are checked separately before this,
-/// because their `type` is outside the modeled set yet must fail the stream
-/// rather than be skipped as unknown.
-fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
+/// Shared by the live SSE loop, the buffered [`raw_choices_from_sse_body`]
+/// path, and the websocket session so all apply the same known/unknown
+/// boundary. Provider `error` events (and the websocket-only `response.done`)
+/// are checked separately before this, because their `type` is outside the
+/// modeled set yet must not be skipped as unknown.
+pub(super) fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
     wire::classify_tagged_frame(data, is_known_responses_event_type)
 }
 
