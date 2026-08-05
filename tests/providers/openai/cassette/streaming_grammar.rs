@@ -143,7 +143,6 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
 /// duplication; same-id multi-part collapse). The assertion states what the
 /// wire means; it is not weakened to match the current aggregation.
 #[tokio::test]
-#[ignore = "known failure on main: fixed in phase 2 — 34ee8ba5 P1s"]
 async fn reasoning_summary_stream_aggregates_each_part_once() {
     with_openai_cassette(
         "streaming_grammar/reasoning_summary_stream",
@@ -238,7 +237,6 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
 /// readable summary part (34ee8ba5 P1-2 collapses same-id parts so only the
 /// encrypted blob survives).
 #[tokio::test]
-#[ignore = "known failure on main: fixed in phase 2 — 34ee8ba5 P1s"]
 async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
     with_openai_cassette(
         "streaming_grammar/encrypted_reasoning_multi_part",

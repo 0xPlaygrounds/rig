@@ -278,6 +278,26 @@ association.
 
 ## 0.41 → next
 
+### Streaming reasoning events carry mandatory identity
+
+`RawStreamingChoice::Reasoning` and `RawStreamingChoice::ReasoningDelta` — and
+the public `StreamedAssistantContent::ReasoningDelta` — now carry `id: String`
+instead of `id: Option<String>`. Reasoning interleaves with other output on
+real wires (OpenAI Responses emits the completed item after tool calls), so
+aggregation keys by identity rather than guessing by adjacency; an optional id
+made the correct behavior unimplementable.
+
+Provider authors: propagate the wire's item identity (the Responses `item_id`,
+a content-block index) when it exists; when the wire has none, mint a
+stream-stable id at the boundary (a per-stream constant like `"reasoning-0"`
+preserves merge-into-one-block behavior for non-interleaving protocols). All
+deltas of one block must share one id with that block's completed form —
+that id is what lets a full block supersede its deltas.
+
+Consumers matching on `ReasoningDelta { id, .. }` drop the `Option` unwrap.
+A full `Reasoning` event supersedes prior deltas with the same id — render it
+as a replacement, not an addition.
+
 ### Completion responses are concrete and normalized
 
 `CompletionResponse<T>` is now `CompletionResponse`. The provider-native

@@ -5,6 +5,8 @@
 //! Provider implementations use these types to expose raw streamed completion
 //! events without depending on a runtime.
 
+mod parts;
+
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
@@ -13,6 +15,7 @@ use crate::message::{
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
+use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -521,9 +524,8 @@ pub struct StreamingCompletionResponse {
     pub(crate) inner: Abortable<StreamingResult>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
-    assistant_items: Vec<AssistantContent>,
-    text_item_index: Option<usize>,
-    reasoning_item_index: Option<usize>,
+    /// Accumulates the streamed parts of the final aggregated choice.
+    parts: PartsAccumulator,
     /// Stable descriptor name of the provider producing this stream.
     ///
     /// Known when the stream is opened rather than when it terminates, so a
@@ -555,9 +557,7 @@ impl StreamingCompletionResponse {
             inner: abortable_stream,
             abort_handle,
             pause_control,
-            assistant_items: vec![],
-            text_item_index: None,
-            reasoning_item_index: None,
+            parts: PartsAccumulator::new(),
             provider: provider.into(),
             choice: OneOrMany::one(AssistantContent::text("")),
             response: None,
@@ -608,103 +608,6 @@ impl StreamingCompletionResponse {
             .map(|response| response.usage)
             .unwrap_or_default()
     }
-
-    fn append_text_chunk(&mut self, text: &str) {
-        if let Some(index) = self.text_item_index
-            && let Some(AssistantContent::Text(existing_text)) = self.assistant_items.get_mut(index)
-        {
-            existing_text.text.push_str(text);
-            return;
-        }
-
-        self.assistant_items
-            .push(AssistantContent::text(text.to_owned()));
-        self.text_item_index = Some(self.assistant_items.len() - 1);
-    }
-
-    fn append_text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null() {
-            return;
-        }
-
-        let index = if let Some(index) = self.text_item_index
-            && matches!(
-                self.assistant_items.get(index),
-                Some(AssistantContent::Text(_))
-            ) {
-            index
-        } else {
-            self.assistant_items.push(AssistantContent::text(""));
-            let index = self.assistant_items.len() - 1;
-            self.text_item_index = Some(index);
-            index
-        };
-
-        let Some(AssistantContent::Text(text)) = self.assistant_items.get_mut(index) else {
-            return;
-        };
-
-        match text.additional_params.as_mut() {
-            Some(existing) => merge_text_additional_params(existing, additional_params),
-            None => text.additional_params = Some(additional_params),
-        }
-    }
-
-    /// Accumulate streaming reasoning delta text into assistant_items.
-    /// Providers that only emit ReasoningDelta (not full Reasoning blocks)
-    /// need this so the aggregated response includes reasoning content.
-    fn append_reasoning_chunk(&mut self, id: &str, text: &str) {
-        // Deltas key strictly by item id: a delta for a different item never
-        // merges into the active block (ids are mandatory on the raw grammar,
-        // so this is exact, not heuristic).
-        if let Some(index) = self.reasoning_item_index
-            && let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
-            && existing.id.as_deref() == Some(id)
-            && let Some(ReasoningContent::Text {
-                text: existing_text,
-                ..
-            }) = existing.content.last_mut()
-        {
-            existing_text.push_str(text);
-            return;
-        }
-
-        self.assistant_items
-            .push(AssistantContent::Reasoning(Reasoning {
-                id: Some(id.to_string()),
-                content: vec![ReasoningContent::Text {
-                    text: text.to_string(),
-                    signature: None,
-                }],
-            }));
-        self.reasoning_item_index = Some(self.assistant_items.len() - 1);
-    }
-}
-
-fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
-    match (existing, incoming) {
-        (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
-            for (key, incoming_value) in incoming_map {
-                match existing_map.get_mut(&key) {
-                    Some(existing_value) => match (existing_value, incoming_value) {
-                        (
-                            serde_json::Value::Array(existing_array),
-                            serde_json::Value::Array(mut incoming_array),
-                        ) => existing_array.append(&mut incoming_array),
-                        (existing_value, incoming_value) => {
-                            merge_text_additional_params(existing_value, incoming_value);
-                        }
-                    },
-                    None => {
-                        existing_map.insert(key, incoming_value);
-                    }
-                }
-            }
-        }
-        (existing, incoming) => {
-            *existing = incoming;
-        }
-    }
 }
 
 impl From<StreamingCompletionResponse> for CompletionResponse {
@@ -745,14 +648,9 @@ impl Stream for StreamingCompletionResponse {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => {
                 // This is run at the end of the inner stream to collect all tokens into
-                // a single unified `Message`.
-                if stream.assistant_items.is_empty() {
-                    stream.assistant_items.push(AssistantContent::text(""));
-                }
-
-                if let Some(choice) =
-                    OneOrMany::from_iter_optional(std::mem::take(&mut stream.assistant_items))
-                {
+                // a single unified `Message`. `finish` is never empty, so the
+                // conversion cannot fail.
+                if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
                     stream.choice = choice;
                 }
 
@@ -767,20 +665,15 @@ impl Stream for StreamingCompletionResponse {
             }
             Poll::Ready(Some(Ok(choice))) => match choice {
                 RawStreamingChoice::Message(text) => {
-                    stream.reasoning_item_index = None;
-                    stream.append_text_chunk(&text);
+                    stream.parts.text_delta(&text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
                 RawStreamingChoice::TextStart { additional_params } => {
-                    stream.reasoning_item_index = None;
-                    stream.text_item_index = None;
-                    if let Some(additional_params) = additional_params {
-                        stream.append_text_additional_params(additional_params);
-                    }
+                    stream.parts.text_start(additional_params);
                     stream.poll_next_unpin(cx)
                 }
                 RawStreamingChoice::TextAdditionalParams(additional_params) => {
-                    stream.append_text_additional_params(additional_params);
+                    stream.parts.text_additional_params(additional_params);
                     stream.poll_next_unpin(cx)
                 }
                 RawStreamingChoice::ToolCallDelta {
@@ -797,49 +690,11 @@ impl Stream for StreamingCompletionResponse {
                         id: Some(id),
                         content: vec![content],
                     };
-                    stream.text_item_index = None;
-                    // A full reasoning block supersedes its own delta
-                    // accumulation: the deltas are only a fallback for
-                    // providers that never send the completed block, so the
-                    // delta-built item is *replaced*, not kept alongside a
-                    // duplicate. Identity is decided by ID: matching IDs (or
-                    // neither side carrying one) replace; mismatched IDs —
-                    // including an ID on only one side — belong to a
-                    // different reasoning item and append. The active-index
-                    // slot is only a fast path: providers may emit the
-                    // completed block after other output cleared the index
-                    // (reasoning → tool call → completed block), so a miss
-                    // falls back to a by-ID scan of the aggregated items.
-                    // Ids are mandatory on the raw grammar, so identity is
-                    // exact equality — no heuristics. The active-index slot is
-                    // only a fast path; a miss (other output interleaved since
-                    // the deltas) falls back to a by-id scan.
-                    let same_item = |existing: &Reasoning| existing.id == reasoning.id;
-                    let replace_index = stream
-                        .reasoning_item_index
-                        .filter(|&index| {
-                            matches!(
-                                stream.assistant_items.get(index),
-                                Some(AssistantContent::Reasoning(existing)) if same_item(existing)
-                            )
-                        })
-                        .or_else(|| {
-                            stream.assistant_items.iter().rposition(|item| {
-                                matches!(item, AssistantContent::Reasoning(existing) if same_item(existing))
-                            })
-                        });
-                    match replace_index.and_then(|index| stream.assistant_items.get_mut(index)) {
-                        Some(item) => *item = AssistantContent::Reasoning(reasoning.clone()),
-                        None => stream
-                            .assistant_items
-                            .push(AssistantContent::Reasoning(reasoning.clone())),
-                    }
-                    stream.reasoning_item_index = None;
+                    stream.parts.reasoning_full(reasoning.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                 }
                 RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                    stream.text_item_index = None;
-                    stream.append_reasoning_chunk(&id, &reasoning);
+                    stream.parts.reasoning_delta(&id, &reasoning);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
                         id,
                         reasoning,
@@ -848,11 +703,7 @@ impl Stream for StreamingCompletionResponse {
                 RawStreamingChoice::ToolCall(raw_tool_call) => {
                     let internal_call_id = raw_tool_call.internal_call_id.clone();
                     let tool_call: ToolCall = raw_tool_call.into();
-                    stream.text_item_index = None;
-                    stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::ToolCall(tool_call.clone()));
+                    stream.parts.tool_call(tool_call.clone());
                     Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                         tool_call,
                         internal_call_id,

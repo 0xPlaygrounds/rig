@@ -169,7 +169,6 @@ mod reasoning {
     // `rposition` by-id fallback replaces the just-appended same-id sibling,
     // so a multi-part reasoning item survives only as its last part.
     #[tokio::test]
-    #[ignore = "known failure on main: fixed in phase 2 — rig-2257-code-review-findings-34ee8ba5.md P1-2 (by-id fallback collapses multi-part same-id reasoning items)"]
     async fn multi_part_same_id_reasoning_keeps_every_part() {
         let driver = openai_responses::driver();
         let (frames, expected) = openai_responses::multi_part_reasoning_frames();

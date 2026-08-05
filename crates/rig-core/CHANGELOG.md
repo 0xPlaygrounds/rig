@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(streaming)* wire-sequence conformance corpus (`test_utils::streaming_conformance` + `tests/core`) driving raw bytes through each provider's full pipeline; recorded `streaming_grammar` cassette suites for openai (reasoning summaries, encrypted multi-part reasoning, parallel tool calls, incomplete) and gemini (max-tokens truncation, tool calls, thinking, interactions requires_action)
+
+### Changed
+
+- *(streaming)* [**breaking**] reasoning stream events carry mandatory identity: `RawStreamingChoice::{Reasoning, ReasoningDelta}` and `StreamedAssistantContent::ReasoningDelta` take `id: String`; providers propagate wire identity or mint a stream-stable id, and aggregation keys by exact id — OpenAI Responses summary-delta streams no longer duplicate reasoning content
+
+### Added
+
 - *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
 - *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
 
